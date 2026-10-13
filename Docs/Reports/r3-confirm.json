@@ -1,0 +1,70 @@
+{
+  "schema": "idea35.r3-confirm.v1",
+  "task": "R3 聚焦增量确认",
+  "reviewer": "quality-lead",
+  "commit": "43fa4c44bad7a5604771c4f30ced1869d3565757",
+  "verdict": "PASS_WITH_CONCERNS",
+  "blocksDay4": false,
+  "anchor": {"criterion": "git diff 43fa4c4 -- <冻结路径>", "result": "EMPTY", "ok": true},
+  "checks": {
+    "1_single_precondition": {
+      "status": "PASS",
+      "evidence": ["EnsureGeneratedPrecondition 定义 :114（全类唯一）", "存在即早退不重建 :116-120", "ValidateInteractive:130 与 ValidateFromCommandLine:190 共用", "RebuildAndValidateInteractive:149 自证其名（MenuItem 'Rebuild && Validate'）+ :152 显式 Import", "TableDataImporter.Import() 仅 2 处 :123(守卫内)/:152(重建入口)", "类头 :111-112 '本类不提供默默重建的校验入口'"]
+    },
+    "2_menu_entry_does_not_rebuild": {
+      "status": "PASS_BUT_DEGENERATE",
+      "run": {
+        "A_ValidateInteractive": {"exit": 0, "scopedStatusHash": "e3b0c44298fc1c14(unched)", "TableConfigAssetChanged": false, "mtime": "2026-10-13 11:49:42", "log": "[前置] TableConfig.asset 已存在 ⇒ 不重建，校验既有产物", "day2": "33/0/0"},
+        "B_RebuildAndValidateInteractive": {"exit": 0, "scopedStatusHash": "e3b0c44298fc1c14(unched)", "TableConfigAssetChanged": false, "mtime": "2026-10-13 11:49:42", "log": "[Rebuild & Validate] 显式重建 TableConfig.asset", "day2": "33/0/0"}
+      },
+      "keyFinding": "A 与 B 在文件层不可区分：TableDataImporter.Import() 幂等（源sha/版本/计数匹配则跳过重写），故 B 的显式重建在资产已最新时无任何文件变化（mtime 未变即证）。区分只能靠代码路径+日志。",
+      "implication": "git status 前后对比无法证明'修的是行为'——资产已最新时，旧版(会重建)也观察不到文件变化。R2 的原始缺陷本质是语义/意图缺陷（若资产过期则静默重写），非当下可见的写入。",
+      "toTrulyDistinguish": "需在临时副本构造'资产过期'场景（未做：会改冻结证据/实现）；或 EnsureGeneratedPrecondition 分支单测",
+      "concern": "R3-4"
+    },
+    "3_cleanup_and_enumeration": {
+      "status": "PARTIAL",
+      "codeCleaned": {"沿面内滑动全盲_in_Assets": 0, "轮廓近似残差_in_code": 2, "both_are_tombstones": true, "tombstone_locations": ["TableIntegrityValidator.cs:30", "TableConfigTests.cs:31"]},
+      "residualsNotFound_but_exist": [
+        {"id": 1, "severity": "中", "path": "Docs/adr/ADR-0001-坐标系与手性约定.md:162", "text": "规范容差表仍写'轮廓近似残差 ≤ 0.5 mm'（现行规则口径），无就地勘误（更正在远处 §9.5:254）"},
+        {"id": 2, "severity": "低-中", "path": "Docs/35-A_Day2_数据与美术导入_执行记录.md:436", "text": "'阈值收紧至 1e-4 m —— 既恢复真实检出（盲区0.26→0.1）'——该处方已撤回"},
+        {"id": 3, "severity": "低", "path": "Docs/35-A_Day3_材质与视觉基础_执行记录.md:400", "text": "'面点度量对位移完全盲被测试钉住'——C4 判过宽"},
+        {"id": 4, "severity": "低", "path": "Docs/35-A_Day3_材质与视觉基础_执行记录.md:412", "text": "L1 行'对沿面内滑动全盲'——应为'足迹内盲/掉出网格敏感'"},
+        {"id": 5, "severity": "低(复核方自查)", "path": "Docs/Reviews/D2-T02B_TableConfig落地复核.md + Docs/Reports/d2t02b-crosscheck.json:287 + Docs/Tools/_gen_crosscheck_json.py:127", "text": "复核方自己的产出仍载已撤回的处方('恢复真实检出能力')", "alreadyFixed": "已加勘误块（本轮）"}
+      ],
+      "alreadyClean": {"来自glTF/three.js": "Day2:125 与 Day3:92 均有内联勘误块"},
+      "conclusion": "R3 清干净了代码；Docs/ADR 的清除未枚举完（≥4 处，含 ADR 规范表与复核方自己的产出）"
+    },
+    "4_editmode_tests": {"status": "PASS", "observed": "53/53 passed, 0 failed", "breakdown": {"PoolConstantsTests": 13, "TableConfigTests": 24, "D2T02B_IndependentAuditTests": 6, "ModelOrientationTests": 5, "MeshAlignmentSensitivityTests": 5}, "artifact": "Docs/Reports/r3-editmode-tests.xml"},
+    "5_scoped_invariant": {"status": "HOLDS", "scope": "Assets+Docs", "hashBeforeAfter": "e3b0c44298fc1c14 == e3b0c44298fc1c14", "frozenPathsDiffVsCommit": "EMPTY", "note": "r3-editmode-tests.xml 是复核方新产出，非校验器写入"},
+    "6_outputDir_consistency": {"status": "PASS", "evidence": "ResolveReportPath 用于 :133 / :155 / :203 三处；WriteToDisk 已不在本文件"},
+    "7_g3_ledger": {"status": "REFRESHED", "g3After": "PASS", "tableintegrityvalidator_sha16": "30fdebeeff702f63"},
+    "8a_default_path_not_overwritten": {
+      "status": "PASS",
+      "day2_mtime": "2026-10-13 13:10:15",
+      "day3_mtime": "2026-10-13 13:10:33",
+      "note": "早于我 A/B 跑(~13:43) => -outputDir 跑未覆写默认入库路径",
+      "contentCrossCheck": "默认 vs 我的临时产出: 唯一差异 generatedAtUtc (05:10:15Z vs 05:43:10Z); checks 完全一致(33, id/status/actual 全同)"
+    },
+    "8b_head_drift_during_window": {
+      "status": "NO_IMPACT",
+      "commit43fa4c4": "43fa4c44bad7a5604771c4f30ced1869d3565757",
+      "headNow": "e2d9c20",
+      "frozenPathsDiffVs43fa4c4": "EMPTY",
+      "e2d9c20_touched": [".workbuddy/memory/MEMORY.md (+8)"],
+      "conclusion": "被冻内容一字未变; e2d9c20 非冻结非交付物 => 正式锚点 43fa4c4 不变, 本次确认不受影响",
+      "note": "'限定作用域'判据第二次挡下假阳性(R2 的 MEMORY.md; 本次 HEAD 漂移)"
+    }
+  },
+  "concerns": [
+    {"id": "R3-1", "severity": "中", "text": "ADR-0001:162 规范容差表仍写已被证伪的'轮廓近似残差 ≤ 0.5 mm'（无就地勘误）", "fix": "表内勘误/改写为 L1/L2/L3"},
+    {"id": "R3-2", "severity": "低-中", "text": "Day2:436 / Day3:400 / Day3:412 三处 Docs 残留", "fix": "就地勘误/改写"},
+    {"id": "R3-3", "severity": "低（复核方自查）", "text": "复核方自己的 D2-T02B 报告/JSON 仍载已撤回处方", "fix": "已加勘误块（本轮完成）"},
+    {"id": "R3-4", "severity": "信息", "text": "② 的验收在'资产已最新'时退化，无法区分会重建/不重建", "fix": "资产过期场景(临时副本) 或分支单测"}
+  ],
+  "notVerified": [
+    "未构造'资产过期'场景证明 B 会重写（需改冻结证据/实现）=> B 的'会重建'只有代码+日志证据，无文件层证据",
+    "未验证 EnsureGeneratedPrecondition 的相对路径/异常分支",
+    "③ 的枚举基于关键词再扫，未做语义级全库通读"
+  ]
+}
