@@ -1,0 +1,813 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="88" result="Failed(Child)" total="88" passed="84" failed="4" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:38Z" duration="19.9869402">
+  <test-suite type="TestSuite" id="1000" name="Idea35 Pool Room" fullname="Idea35 Pool Room" runstate="Runnable" testcasecount="88" result="Failed" site="Child" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:38Z" duration="19.986940" total="88" passed="84" failed="4" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <failure>
+      <message><![CDATA[One or more child tests had errors]]></message>
+    </failure>
+    <test-suite type="Assembly" id="1102" name="Billiards.Tests.EditMode.dll" fullname="E:/Unity_Deve/Unity_Project/Billiards game/Library/ScriptAssemblies/Billiards.Tests.EditMode.dll" runstate="Runnable" testcasecount="88" result="Failed" site="Child" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:38Z" duration="19.972583" total="88" passed="84" failed="4" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="8412" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <failure>
+        <message><![CDATA[One or more child tests had errors]]></message>
+      </failure>
+      <test-suite type="TestSuite" id="1103" name="Billiards" fullname="Billiards" runstate="Runnable" testcasecount="88" result="Failed" site="Child" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:38Z" duration="19.967805" total="88" passed="84" failed="4" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <failure>
+          <message><![CDATA[One or more child tests had errors]]></message>
+        </failure>
+        <test-suite type="TestSuite" id="1104" name="Tests" fullname="Billiards.Tests" runstate="Runnable" testcasecount="88" result="Failed" site="Child" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:38Z" duration="19.963042" total="88" passed="84" failed="4" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <failure>
+            <message><![CDATA[One or more child tests had errors]]></message>
+          </failure>
+          <test-suite type="TestFixture" id="1001" name="D2T02B_IndependentAuditTests" fullname="Billiards.Tests.D2T02B_IndependentAuditTests" classname="Billiards.Tests.D2T02B_IndependentAuditTests" runstate="Runnable" testcasecount="6" result="Passed" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:21Z" duration="2.559020" total="6" passed="6" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1005" name="ChiralityProbe_FlipsUnderHorizontalMirror" fullname="Billiards.Tests.D2T02B_IndependentAuditTests.ChiralityProbe_FlipsUnderHorizontalMirror" methodname="ChiralityProbe_FlipsUnderHorizontalMirror" classname="Billiards.Tests.D2T02B_IndependentAuditTests" runstate="Runnable" seed="1916174922" result="Passed" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:18Z" duration="0.027850" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1002" name="CrossCheck_DetectsMirroredB" fullname="Billiards.Tests.D2T02B_IndependentAuditTests.CrossCheck_DetectsMirroredB" methodname="CrossCheck_DetectsMirroredB" classname="Billiards.Tests.D2T02B_IndependentAuditTests" runstate="Runnable" seed="1072733592" result="Passed" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:18Z" duration="0.019970" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1003" name="CrossCheck_DetectsScaledB" fullname="Billiards.Tests.D2T02B_IndependentAuditTests.CrossCheck_DetectsScaledB" methodname="CrossCheck_DetectsScaledB" classname="Billiards.Tests.D2T02B_IndependentAuditTests" runstate="Runnable" seed="2062070972" result="Passed" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:18Z" duration="0.002848" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1004" name="CrossCheck_DetectsSingleEndpointOffsetB" fullname="Billiards.Tests.D2T02B_IndependentAuditTests.CrossCheck_DetectsSingleEndpointOffsetB" methodname="CrossCheck_DetectsSingleEndpointOffsetB" classname="Billiards.Tests.D2T02B_IndependentAuditTests" runstate="Runnable" seed="1936421246" result="Passed" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:18Z" duration="0.002285" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1007" name="IndependentAxisEnumeration_ReproducesBestAndSecondBest" fullname="Billiards.Tests.D2T02B_IndependentAuditTests.IndependentAxisEnumeration_ReproducesBestAndSecondBest" methodname="IndependentAxisEnumeration_ReproducesBestAndSecondBest" classname="Billiards.Tests.D2T02B_IndependentAuditTests" runstate="Runnable" seed="1297869111" result="Passed" start-time="2026-10-13 11:28:18Z" end-time="2026-10-13 11:28:21Z" duration="2.474137" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[D2T02B: 未给 -outputDir ⇒ 跳过证据写入（R3-5：测试不得产生仓库改动）。 入库路径 Docs/Reports/d2t02b-mesh-audit.json 未被触碰。
+D2T02B: 未给 -outputDir ⇒ 跳过证据写入（R3-5：测试不得产生仓库改动）。 入库路径 Docs/Reports/d2t02b-mesh-audit.json 未被触碰。
+]]></output>
+            </test-case>
+            <test-case id="1006" name="WindingProbe_FlipsSignUnderHorizontalMirror" fullname="Billiards.Tests.D2T02B_IndependentAuditTests.WindingProbe_FlipsSignUnderHorizontalMirror" methodname="WindingProbe_FlipsSignUnderHorizontalMirror" classname="Billiards.Tests.D2T02B_IndependentAuditTests" runstate="Runnable" seed="1933017049" result="Passed" start-time="2026-10-13 11:28:21Z" end-time="2026-10-13 11:28:21Z" duration="0.001856" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1008" name="Day4GreyboxTests" fullname="Billiards.Tests.Day4GreyboxTests" classname="Billiards.Tests.Day4GreyboxTests" runstate="Runnable" testcasecount="5" result="Failed" site="Child" start-time="2026-10-13 11:28:21Z" end-time="2026-10-13 11:28:21Z" duration="0.016111" total="5" passed="4" failed="1" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1013" name="PhysicsGreyboxScene_HasExactlyOneGizmoAndOneDrive_NonVacuous" fullname="Billiards.Tests.Day4GreyboxTests.PhysicsGreyboxScene_HasExactlyOneGizmoAndOneDrive_NonVacuous" methodname="PhysicsGreyboxScene_HasExactlyOneGizmoAndOneDrive_NonVacuous" classname="Billiards.Tests.Day4GreyboxTests" runstate="Runnable" seed="935885448" result="Passed" start-time="2026-10-13 11:28:21Z" end-time="2026-10-13 11:28:21Z" duration="0.007332" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1011" name="WholeSteps_BelowOneStep_ReturnsZero_NotOne" fullname="Billiards.Tests.Day4GreyboxTests.WholeSteps_BelowOneStep_ReturnsZero_NotOne" methodname="WholeSteps_BelowOneStep_ReturnsZero_NotOne" classname="Billiards.Tests.Day4GreyboxTests" runstate="Runnable" seed="813090138" result="Passed" start-time="2026-10-13 11:28:21Z" end-time="2026-10-13 11:28:21Z" duration="0.000386" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1009" name="WholeSteps_ExactlyOneStepAtBoundary" fullname="Billiards.Tests.Day4GreyboxTests.WholeSteps_ExactlyOneStepAtBoundary" methodname="WholeSteps_ExactlyOneStepAtBoundary" classname="Billiards.Tests.Day4GreyboxTests" runstate="Runnable" seed="2091146717" result="Passed" start-time="2026-10-13 11:28:21Z" end-time="2026-10-13 11:28:21Z" duration="0.000238" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1012" name="WholeSteps_NonPositiveStep_ReturnsZero" fullname="Billiards.Tests.Day4GreyboxTests.WholeSteps_NonPositiveStep_ReturnsZero" methodname="WholeSteps_NonPositiveStep_ReturnsZero" classname="Billiards.Tests.Day4GreyboxTests" runstate="Runnable" seed="852895032" result="Passed" start-time="2026-10-13 11:28:21Z" end-time="2026-10-13 11:28:21Z" duration="0.000215" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1010" name="WholeSteps_TruncatesRemainder" fullname="Billiards.Tests.Day4GreyboxTests.WholeSteps_TruncatesRemainder" methodname="WholeSteps_TruncatesRemainder" classname="Billiards.Tests.Day4GreyboxTests" runstate="Runnable" seed="942370064" result="Failed" start-time="2026-10-13 11:28:21Z" end-time="2026-10-13 11:28:21Z" duration="0.003973" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  0.02 s 应折算为 2 步（2.4 向下取整），余 0.02 - 2×dt 留给下一帧。
+  Expected: 2
+  But was:  1
+]]></message>
+                <stack-trace><![CDATA[at Billiards.Tests.Day4GreyboxTests.WholeSteps_TruncatesRemainder () [0x00001] in E:\Unity_Deve\Unity_Project\Billiards game\Assets\_Project\Tests\EditMode\Day4GreyboxTests.cs:35
+]]></stack-trace>
+              </failure>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1014" name="MeshAlignmentSensitivityTests" fullname="Billiards.Tests.MeshAlignmentSensitivityTests" classname="Billiards.Tests.MeshAlignmentSensitivityTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-10-13 11:28:21Z" end-time="2026-10-13 11:28:22Z" duration="1.205032" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1019" name="L2_IsBlindAlongEdgeDirection_AndThisIsPinned" fullname="Billiards.Tests.MeshAlignmentSensitivityTests.L2_IsBlindAlongEdgeDirection_AndThisIsPinned" methodname="L2_IsBlindAlongEdgeDirection_AndThisIsPinned" classname="Billiards.Tests.MeshAlignmentSensitivityTests" runstate="Runnable" seed="526261961" result="Passed" start-time="2026-10-13 11:28:21Z" end-time="2026-10-13 11:28:21Z" duration="0.012411" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[L2 盲区] 沿**真实网格边**滑动 ±10.89 mm：L2 最大 = 0.0598 µm（≈0 即全盲）；L3 最大比值 = 0.1085（阈值 0.0958）
+]]></output>
+            </test-case>
+            <test-case id="1018" name="LocalRegionShift_HasNoUpperBlindBand" fullname="Billiards.Tests.MeshAlignmentSensitivityTests.LocalRegionShift_HasNoUpperBlindBand" methodname="LocalRegionShift_HasNoUpperBlindBand" classname="Billiards.Tests.MeshAlignmentSensitivityTests" runstate="Runnable" seed="1001241699" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.103451" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[局部] rail='end_negative' 的 26 点平移，方向 (0,1)：首个检出 δ = 0.05 mm
+[局部] 盲带 = （无）（应仅有底噪带）
+]]></output>
+            </test-case>
+            <test-case id="1016" name="SinglePointScan_ListsUpperBlindBands_CoveredByCmp03" fullname="Billiards.Tests.MeshAlignmentSensitivityTests.SinglePointScan_ListsUpperBlindBands_CoveredByCmp03" methodname="SinglePointScan_ListsUpperBlindBands_CoveredByCmp03" classname="Billiards.Tests.MeshAlignmentSensitivityTests" runstate="Runnable" seed="695824023" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.136019" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[单点] 端点(-0.0711,-0.6975)，方向 (1,1)/√2，步进 0.05 mm：
+[单点] 首个被检出的 δ = 0.05 mm
+[单点] 上盲带（期间判 PASS）= [0.50, 0.50] mm、[4.75, 4.80] mm、[5.10, 5.10] mm、[5.20, 5.20] mm、[6.00, 6.00] mm、[6.95, 6.95] mm、[10.50, 10.50] mm
+[单点] 该威胁由 CMP-03（索引对齐、容差 1e-5 m）覆盖 —— 单点值错误属威胁 A，不是 AXL 的职责。
+]]></output>
+            </test-case>
+            <test-case id="1015" name="Undisplaced_NoLayerFires_AndBaselinesAreRecorded" fullname="Billiards.Tests.MeshAlignmentSensitivityTests.Undisplaced_NoLayerFires_AndBaselinesAreRecorded" methodname="Undisplaced_NoLayerFires_AndBaselinesAreRecorded" classname="Billiards.Tests.MeshAlignmentSensitivityTests" runstate="Runnable" seed="947863271" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.043071" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[底噪] L1 面点 max = 0.0000 µm；L2 边距 max = 0.3086 µm；L3 最坏比值 = 0.0479（阈值 k = 0.0958，余量 2.00×）
+]]></output>
+            </test-case>
+            <test-case id="1017" name="WholeSetRigidShift_HasNoUpperBlindBand" fullname="Billiards.Tests.MeshAlignmentSensitivityTests.WholeSetRigidShift_HasNoUpperBlindBand" methodname="WholeSetRigidShift_HasNoUpperBlindBand" classname="Billiards.Tests.MeshAlignmentSensitivityTests" runstate="Runnable" seed="672301597" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.135754" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[整体] 188 点刚性平移，方向 (1,1)/√2：首个检出 δ = 0.05 mm
+[整体] 盲带 = （无）（应仅有底噪带）
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1020" name="ModelOrientationTests" fullname="Billiards.Tests.ModelOrientationTests" classname="Billiards.Tests.ModelOrientationTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.005967" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1025" name="Falsification_FlippingOrientationConstant_MakesWorldBoundsCheckFail" fullname="Billiards.Tests.ModelOrientationTests.Falsification_FlippingOrientationConstant_MakesWorldBoundsCheckFail" methodname="Falsification_FlippingOrientationConstant_MakesWorldBoundsCheckFail" classname="Billiards.Tests.ModelOrientationTests" runstate="Runnable" seed="178230720" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.002167" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[证伪] 翻转朝向常量后，世界包围盒与正确期望的最大偏差 = 2.772E-004 m
+[证伪] 容差 = 1E-004 m ⇒ 判定 = FAIL（如预期）
+]]></output>
+            </test-case>
+            <test-case id="1021" name="ModelOrientation_IsMinus90AboutX" fullname="Billiards.Tests.ModelOrientationTests.ModelOrientation_IsMinus90AboutX" methodname="ModelOrientation_IsMinus90AboutX" classname="Billiards.Tests.ModelOrientationTests" runstate="Runnable" seed="578719528" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000591" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1022" name="PhysicsToUnity_MatchesModelVertexToUnity_AlongWholeChain" fullname="Billiards.Tests.ModelOrientationTests.PhysicsToUnity_MatchesModelVertexToUnity_AlongWholeChain" methodname="PhysicsToUnity_MatchesModelVertexToUnity_AlongWholeChain" classname="Billiards.Tests.ModelOrientationTests" runstate="Runnable" seed="1671094073" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000344" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1023" name="PhysicsToUnity_RoundTripsThroughUnityToPhysics" fullname="Billiards.Tests.ModelOrientationTests.PhysicsToUnity_RoundTripsThroughUnityToPhysics" methodname="PhysicsToUnity_RoundTripsThroughUnityToPhysics" classname="Billiards.Tests.ModelOrientationTests" runstate="Runnable" seed="612844207" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000443" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1024" name="WorldBounds_AreDerived_AndRetainCornerAsymmetry" fullname="Billiards.Tests.ModelOrientationTests.WorldBounds_AreDerived_AndRetainCornerAsymmetry" methodname="WorldBounds_AreDerived_AndRetainCornerAsymmetry" classname="Billiards.Tests.ModelOrientationTests" runstate="Runnable" seed="943002833" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000285" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1026" name="PhysicsBanGuardTests" fullname="Billiards.Tests.PhysicsBanGuardTests" classname="Billiards.Tests.PhysicsBanGuardTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.064156" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1029" name="Counter_DetectsInjectedRigidbodyAndCollider_OnSyntheticHierarchy" fullname="Billiards.Tests.PhysicsBanGuardTests.Counter_DetectsInjectedRigidbodyAndCollider_OnSyntheticHierarchy" methodname="Counter_DetectsInjectedRigidbodyAndCollider_OnSyntheticHierarchy" classname="Billiards.Tests.PhysicsBanGuardTests" runstate="Runnable" seed="826966728" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.002227" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1031" name="DiagnosticsAssembly_IsEditorOnlyAndSeparateFromRuntime" fullname="Billiards.Tests.PhysicsBanGuardTests.DiagnosticsAssembly_IsEditorOnlyAndSeparateFromRuntime" methodname="DiagnosticsAssembly_IsEditorOnlyAndSeparateFromRuntime" classname="Billiards.Tests.PhysicsBanGuardTests" runstate="Runnable" seed="1439968584" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.001914" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1030" name="RuntimeAssembly_DoesNotReferencePhysXModule" fullname="Billiards.Tests.PhysicsBanGuardTests.RuntimeAssembly_DoesNotReferencePhysXModule" methodname="RuntimeAssembly_DoesNotReferencePhysXModule" classname="Billiards.Tests.PhysicsBanGuardTests" runstate="Runnable" seed="486263316" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000388" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1028" name="Scan_CoversScenesAndPrefabs_CoverageIsNonVacuous" fullname="Billiards.Tests.PhysicsBanGuardTests.Scan_CoversScenesAndPrefabs_CoverageIsNonVacuous" methodname="Scan_CoversScenesAndPrefabs_CoverageIsNonVacuous" classname="Billiards.Tests.PhysicsBanGuardTests" runstate="Runnable" seed="320646233" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.042634" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[扫描覆盖：scene=2  prefab=18
+]]></output>
+            </test-case>
+            <test-case id="1027" name="ScenesAndPrefabs_ContainNoRigidbodyOrCollider" fullname="Billiards.Tests.PhysicsBanGuardTests.ScenesAndPrefabs_ContainNoRigidbodyOrCollider" methodname="ScenesAndPrefabs_ContainNoRigidbodyOrCollider" classname="Billiards.Tests.PhysicsBanGuardTests" runstate="Runnable" seed="942619495" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.015207" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1032" name="PoolConstantsTests" fullname="Billiards.Tests.PoolConstantsTests" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.007618" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1042" name="BallFitsInsideAllTableClearances" fullname="Billiards.Tests.PoolConstantsTests.BallFitsInsideAllTableClearances" methodname="BallFitsInsideAllTableClearances" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="1964483552" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000287" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1034" name="BallRadius_MatchesSourceMeasurement" fullname="Billiards.Tests.PoolConstantsTests.BallRadius_MatchesSourceMeasurement" methodname="BallRadius_MatchesSourceMeasurement" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="1634076253" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000182" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1038" name="CaptureRadius_IsOpeningRadiusMinusBallRadiusMinusTwoMillimetres" fullname="Billiards.Tests.PoolConstantsTests.CaptureRadius_IsOpeningRadiusMinusBallRadiusMinusTwoMillimetres" methodname="CaptureRadius_IsOpeningRadiusMinusBallRadiusMinusTwoMillimetres" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="356620309" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000152" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1035" name="ClothGeometry_HalfDimensionsAreConsistent" fullname="Billiards.Tests.PoolConstantsTests.ClothGeometry_HalfDimensionsAreConsistent" methodname="ClothGeometry_HalfDimensionsAreConsistent" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="12971900" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000140" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1036" name="ClothLength_IsNineFootSpecification" fullname="Billiards.Tests.PoolConstantsTests.ClothLength_IsNineFootSpecification" methodname="ClothLength_IsNineFootSpecification" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="1818667721" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000129" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1039" name="ClothPlane_IsWorldOrigin" fullname="Billiards.Tests.PoolConstantsTests.ClothPlane_IsWorldOrigin" methodname="ClothPlane_IsWorldOrigin" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="1190743772" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000126" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1037" name="ClothWidth_DeviatesFromNominalByUnderOneMillimetre" fullname="Billiards.Tests.PoolConstantsTests.ClothWidth_DeviatesFromNominalByUnderOneMillimetre" methodname="ClothWidth_DeviatesFromNominalByUnderOneMillimetre" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="2033216717" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000220" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1040" name="CollisionTopology_MatchesSourceCounts" fullname="Billiards.Tests.PoolConstantsTests.CollisionTopology_MatchesSourceCounts" methodname="CollisionTopology_MatchesSourceCounts" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="975313757" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000202" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1044" name="CueDimensions_MatchArtAsset" fullname="Billiards.Tests.PoolConstantsTests.CueDimensions_MatchArtAsset" methodname="CueDimensions_MatchArtAsset" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="554712316" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000129" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1043" name="PresentationScale_IsAppliedSeparatelyFromPhysicsUnits" fullname="Billiards.Tests.PoolConstantsTests.PresentationScale_IsAppliedSeparatelyFromPhysicsUnits" methodname="PresentationScale_IsAppliedSeparatelyFromPhysicsUnits" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="1153701176" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000140" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1033" name="RuntimeCode_LivesInBilliardsRuntimeAssembly_NotInlinedIntoTestAssembly" fullname="Billiards.Tests.PoolConstantsTests.RuntimeCode_LivesInBilliardsRuntimeAssembly_NotInlinedIntoTestAssembly" methodname="RuntimeCode_LivesInBilliardsRuntimeAssembly_NotInlinedIntoTestAssembly" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="779047521" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000212" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1045" name="SourceProvenance_IsRecorded" fullname="Billiards.Tests.PoolConstantsTests.SourceProvenance_IsRecorded" methodname="SourceProvenance_IsRecorded" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="1067945991" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000143" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1041" name="TableAspectRatio_DeviatesOnlyByMeasuredWidthError" fullname="Billiards.Tests.PoolConstantsTests.TableAspectRatio_DeviatesOnlyByMeasuredWidthError" methodname="TableAspectRatio_DeviatesOnlyByMeasuredWidthError" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="976332936" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.001075" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1046" name="PoolSimulatorIntegralFormatTests" fullname="Billiards.Tests.PoolSimulatorIntegralFormatTests" classname="Billiards.Tests.PoolSimulatorIntegralFormatTests" runstate="Runnable" testcasecount="6" result="Failed" site="Child" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.023261" total="6" passed="4" failed="2" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1050" name="D2_JudgementB_SubStepDerivation_IsLive" fullname="Billiards.Tests.PoolSimulatorIntegralFormatTests.D2_JudgementB_SubStepDerivation_IsLive" methodname="D2_JudgementB_SubStepDerivation_IsLive" classname="Billiards.Tests.PoolSimulatorIntegralFormatTests" runstate="Runnable" seed="1984869582" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.001296" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[D-2: a_max=5 m/s², bound=5.0E-005 m, dt_sub=0.00333333341 s, ½·a_max·dt_sub²=2.778E-005 m（余量 1.80×）; 判据B需求比值=3.7268 ⇒ nB=4; vA1=1.54304981 m/s ⇒ DeriveSubSteps=4（期望 max(1,nB)=4）; SubSteps=5
+]]></output>
+            </test-case>
+            <test-case id="1051" name="D2b_JudgementB_SufficiencyAndMinimality_AreFormulaAgnostic" fullname="Billiards.Tests.PoolSimulatorIntegralFormatTests.D2b_JudgementB_SufficiencyAndMinimality_AreFormulaAgnostic" methodname="D2b_JudgementB_SufficiencyAndMinimality_AreFormulaAgnostic" classname="Billiards.Tests.PoolSimulatorIntegralFormatTests" runstate="Runnable" seed="410632362" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000388" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[D2b: a_max=5, bound=5.0E-005 m, dt=0.0166666675 s, vA1=1.54304981 m/s, ratioA=0.9000（<1 ⇒ nA=1）; DeriveSubSteps(vA1)=4; 充分性 4.340E-005 ≤ 5.000E-005 ✓; 最小性 7.716E-005 > 5.000E-005（n≥2 时检查 n−1）✓
+]]></output>
+            </test-case>
+            <test-case id="1052" name="D4GAP02_3_FixedDeltaTimeAndSubSteps_ArePinnedByIndependentLiterals" fullname="Billiards.Tests.PoolSimulatorIntegralFormatTests.D4GAP02_3_FixedDeltaTimeAndSubSteps_ArePinnedByIndependentLiterals" methodname="D4GAP02_3_FixedDeltaTimeAndSubSteps_ArePinnedByIndependentLiterals" classname="Billiards.Tests.PoolSimulatorIntegralFormatTests" runstate="Runnable" seed="1693926104" result="Failed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000567" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  D4-GAP-02-3：定长步应为字面量 1/120 s（spec §2.1），实测 0.0166666675。
+  Expected: 0.0083333337679505348d +/- 0.0d
+  But was:  0.01666666753590107d
+]]></message>
+                <stack-trace><![CDATA[at Billiards.Tests.PoolSimulatorIntegralFormatTests.D4GAP02_3_FixedDeltaTimeAndSubSteps_ArePinnedByIndependentLiterals () [0x00001] in E:\Unity_Deve\Unity_Project\Billiards game\Assets\_Project\Tests\EditMode\PoolSimulatorIntegralFormatTests.cs:397
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1047" name="T11a_FreeFlight_NoDeceleration_DisplacementIsExact" fullname="Billiards.Tests.PoolSimulatorIntegralFormatTests.T11a_FreeFlight_NoDeceleration_DisplacementIsExact" methodname="T11a_FreeFlight_NoDeceleration_DisplacementIsExact" classname="Billiards.Tests.PoolSimulatorIntegralFormatTests" runstate="Runnable" seed="213147342" result="Failed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.010659" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  T11a：触发了袋喉事件，污染自由飞行。
+  Expected: 0
+  But was:  1
+]]></message>
+                <stack-trace><![CDATA[at Billiards.Tests.PoolSimulatorIntegralFormatTests.T11a_FreeFlight_NoDeceleration_DisplacementIsExact () [0x000bc] in E:\Unity_Deve\Unity_Project\Billiards game\Assets\_Project\Tests\EditMode\PoolSimulatorIntegralFormatTests.cs:133
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="1048" name="T11b_FreeFlight_WithSyntheticDeceleration_DisplacementIsExact" fullname="Billiards.Tests.PoolSimulatorIntegralFormatTests.T11b_FreeFlight_WithSyntheticDeceleration_DisplacementIsExact" methodname="T11b_FreeFlight_WithSyntheticDeceleration_DisplacementIsExact" classname="Billiards.Tests.PoolSimulatorIntegralFormatTests" runstate="Runnable" seed="270337535" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.007203" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T11b(a=1.0, T=0.5): p_end=(0.359762669, -0.162949651), expected=(0.3597644, -0.162950069), err=1.778E-006 m, tol=8.314E-006 m（SubSteps=5 派生）, 前向欧拉实测误差=6.946e-4 m（本容差的 84 倍）
+]]></output>
+            </test-case>
+            <test-case id="1049" name="T12_EndpointPrecision_DisplacementMatchesMeanVelocity" fullname="Billiards.Tests.PoolSimulatorIntegralFormatTests.T12_EndpointPrecision_DisplacementMatchesMeanVelocity" methodname="T12_EndpointPrecision_DisplacementMatchesMeanVelocity" classname="Billiards.Tests.PoolSimulatorIntegralFormatTests" runstate="Runnable" seed="1407160301" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.000900" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T12(a=1.0, Δ=dt): 位移法=(1.29266191, -0.6960493), 速度法=(1.29266262, -0.696049154), 速度差=7.251E-007 m/s (tol 1.667E-005), 位移残差=1.152E-008 m (tol 1.667E-007) [SubSteps=5]；前向欧拉预估 a·dt/(2n)=1.667E-003 m/s（= 本容差的 100 倍）
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1053" name="PoolSimulatorInvariantTests" fullname="Billiards.Tests.PoolSimulatorInvariantTests" classname="Billiards.Tests.PoolSimulatorInvariantTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.010769" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1054" name="T5a_HighSpeedHeadOn_NoPenetration" fullname="Billiards.Tests.PoolSimulatorInvariantTests.T5a_HighSpeedHeadOn_NoPenetration" methodname="T5a_HighSpeedHeadOn_NoPenetration" classname="Billiards.Tests.PoolSimulatorInvariantTests" runstate="Runnable" seed="113597170" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.006952" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T5a: 6 条直库 8 m/s 正撞，全轨迹最大嵌入量 = 0.000000 mm（判据 ≤ 0.01 mm）。
+]]></output>
+            </test-case>
+            <test-case id="1055" name="T5b_NegativeControl_ToiDisabled_PenetrationIsLarge" fullname="Billiards.Tests.PoolSimulatorInvariantTests.T5b_NegativeControl_ToiDisabled_PenetrationIsLarge" methodname="T5b_NegativeControl_ToiDisabled_PenetrationIsLarge" classname="Billiards.Tests.PoolSimulatorInvariantTests" runstate="Runnable" seed="1953356185" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.002396" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T5b: 阈值 0.9·v·dt_sub = 24.0000 mm；各库最大嵌入量 seg[6]=26.13mm seg[20]=26.13mm seg[33]=26.13mm seg[47]=26.13mm seg[61]=26.13mm seg[74]=26.13mm ；worst=26.1332 mm。
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1056" name="PoolSimulatorPocketAndMultiBallTests" fullname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests" classname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests" runstate="Runnable" testcasecount="4" result="Failed" site="Child" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.385948" total="4" passed="3" failed="1" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="1060" name="D3_SixteenBalls_TraversalOrder_IsBitIdentical" fullname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests.D3_SixteenBalls_TraversalOrder_IsBitIdentical" methodname="D3_SixteenBalls_TraversalOrder_IsBitIdentical" classname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests" runstate="Runnable" seed="535932858" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.371745" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[D-3(结构): 升序遍历命中写法 = `for(inti=0;i<_balls.Length;i++)`（空白归一化后子串匹配）
+D-3: 16 球 × 120 步，两次运行逐位一致 ✓；contacts=16, events=0; 样例 ball[0] pos=(-0.501203656, 0.5576857) vel=(-0.09600142, 0.719999731)
+]]></output>
+            </test-case>
+            <test-case id="1057" name="T13a_PocketProximity_FreezesBall_AndStopsIntegration" fullname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests.T13a_PocketProximity_FreezesBall_AndStopsIntegration" methodname="T13a_PocketProximity_FreezesBall_AndStopsIntegration" classname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests" runstate="Runnable" seed="1967760029" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.003417" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T13a: 冻结于第 20 步; 末位=(0, -0.6999995); 越界量=4.9360 mm （上界 v·dt_sub=6.6667 mm，占用 74.0%）；冻结后再 20 步位置不变 ✓; events=1
+]]></output>
+            </test-case>
+            <test-case id="1059" name="T13b_BallRollingInCentre_IsNotFrozen" fullname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests.T13b_BallRollingInCentre_IsNotFrozen" methodname="T13b_BallRollingInCentre_IsNotFrozen" classname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests" runstate="Runnable" seed="1989278348" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.006021" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T13b: 60 步后台面内位置=(0.599999368, 0), 速度=(0.6, 0), events=0（应为 0）
+]]></output>
+            </test-case>
+            <test-case id="1058" name="T13c_PocketProximity_SameBound_AtNonDivisibleCrossingSubStep" fullname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests.T13c_PocketProximity_SameBound_AtNonDivisibleCrossingSubStep" methodname="T13c_PocketProximity_SameBound_AtNonDivisibleCrossingSubStep" classname="Billiards.Tests.PoolSimulatorPocketAndMultiBallTests" runstate="Runnable" seed="1625290123" result="Failed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:22Z" duration="0.002876" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  T13c：越界子步索引 84 可被 3 整除 ⇒ 本探针**失去**对'每 3 子步检查'的敏感性。 请换一个 speed 使索引 % 3 != 0（设计取值 v=2.5 ⇒ 101）。
+  Expected: not equal to 0
+  But was:  0
+]]></message>
+                <stack-trace><![CDATA[at Billiards.Tests.PoolSimulatorPocketAndMultiBallTests.T13c_PocketProximity_SameBound_AtNonDivisibleCrossingSubStep () [0x0020c] in E:\Unity_Deve\Unity_Project\Billiards game\Assets\_Project\Tests\EditMode\PoolSimulatorPocketAndMultiBallTests.cs:175
+]]></stack-trace>
+              </failure>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1061" name="PoolSimulatorSegmentCoverageTests" fullname="Billiards.Tests.PoolSimulatorSegmentCoverageTests" classname="Billiards.Tests.PoolSimulatorSegmentCoverageTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:37Z" duration="14.448452" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1062" name="T7_AllSegmentCoverage_ScanAndReport" fullname="Billiards.Tests.PoolSimulatorSegmentCoverageTests.T7_AllSegmentCoverage_ScanAndReport" methodname="T7_AllSegmentCoverage_ScanAndReport" classname="Billiards.Tests.PoolSimulatorSegmentCoverageTests" runstate="Runnable" seed="909282039" result="Passed" start-time="2026-10-13 11:28:22Z" end-time="2026-10-13 11:28:37Z" duration="14.446516" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T7: 未给 -outputDir ⇒ 跳过证据写入（R3-5：测试不得产生仓库改动）。 入库路径 Docs/Reports/d4-segment-coverage.json 未被触碰；全部断言已执行完毕。
+T7: 未给 -outputDir ⇒ 跳过证据写入（R3-5：测试不得产生仓库改动）。 入库路径 Docs/Reports/d4-segment-coverage.json 未被触碰；全部断言已执行完毕。
+T7 seg[0] hitCount=0 nearestApproach=40.1993mm
+T7 seg[1] hitCount=0 nearestApproach=21.9676mm
+T7 seg[2] hitCount=0 nearestApproach=18.4182mm
+T7 seg[3] hitCount=3 nearestApproach=0.0000mm
+T7 seg[4] hitCount=17 nearestApproach=0.0000mm
+T7 seg[5] hitCount=38 nearestApproach=0.0000mm
+T7 seg[6] hitCount=48 nearestApproach=7.7158mm
+T7 seg[7] hitCount=38 nearestApproach=0.0000mm
+T7 seg[8] hitCount=17 nearestApproach=0.0000mm
+T7 seg[9] hitCount=3 nearestApproach=0.0000mm
+T7 seg[10] hitCount=0 nearestApproach=18.4178mm
+T7 seg[11] hitCount=0 nearestApproach=21.9661mm
+T7 seg[12] hitCount=0 nearestApproach=40.1989mm
+T7 seg[13] hitCount=0 nearestApproach=15.0434mm
+T7 seg[14] hitCount=0 nearestApproach=6.8789mm
+T7 seg[15] hitCount=0 nearestApproach=9.7070mm
+T7 seg[16] hitCount=5 nearestApproach=0.0000mm
+T7 seg[17] hitCount=5 nearestApproach=1.8350mm
+T7 seg[18] hitCount=8 nearestApproach=0.0000mm
+T7 seg[19] hitCount=33 nearestApproach=0.0000mm
+T7 seg[20] hitCount=25 nearestApproach=0.0000mm
+T7 seg[21] hitCount=4 nearestApproach=3.7341mm
+T7 seg[22] hitCount=4 nearestApproach=17.6676mm
+T7 seg[23] hitCount=6 nearestApproach=45.8360mm
+T7 seg[24] hitCount=6 nearestApproach=75.2199mm
+T7 seg[25] hitCount=0 nearestApproach=83.3699mm
+T7 seg[26] hitCount=0 nearestApproach=90.1928mm
+T7 seg[27] hitCount=0 nearestApproach=90.1929mm
+T7 seg[28] hitCount=0 nearestApproach=83.3701mm
+T7 seg[29] hitCount=6 nearestApproach=75.2201mm
+T7 seg[30] hitCount=6 nearestApproach=45.8429mm
+T7 seg[31] hitCount=4 nearestApproach=17.6682mm
+T7 seg[32] hitCount=4 nearestApproach=3.7343mm
+T7 seg[33] hitCount=25 nearestApproach=0.0000mm
+T7 seg[34] hitCount=35 nearestApproach=0.0000mm
+T7 seg[35] hitCount=10 nearestApproach=0.0000mm
+T7 seg[36] hitCount=5 nearestApproach=1.8350mm
+T7 seg[37] hitCount=5 nearestApproach=0.0000mm
+T7 seg[38] hitCount=0 nearestApproach=9.7070mm
+T7 seg[39] hitCount=0 nearestApproach=6.8790mm
+T7 seg[40] hitCount=0 nearestApproach=15.0436mm
+T7 seg[41] hitCount=0 nearestApproach=90.1922mm
+T7 seg[42] hitCount=0 nearestApproach=83.3694mm
+T7 seg[43] hitCount=6 nearestApproach=75.2194mm
+T7 seg[44] hitCount=6 nearestApproach=45.8424mm
+T7 seg[45] hitCount=4 nearestApproach=17.6684mm
+T7 seg[46] hitCount=4 nearestApproach=3.7343mm
+T7 seg[47] hitCount=25 nearestApproach=0.0000mm
+T7 seg[48] hitCount=35 nearestApproach=0.0000mm
+T7 seg[49] hitCount=10 nearestApproach=0.0000mm
+T7 seg[50] hitCount=5 nearestApproach=1.8350mm
+T7 seg[51] hitCount=5 nearestApproach=0.0000mm
+T7 seg[52] hitCount=0 nearestApproach=9.7070mm
+T7 seg[53] hitCount=0 nearestApproach=6.8791mm
+T7 seg[54] hitCount=0 nearestApproach=15.0437mm
+T7 seg[55] hitCount=0 nearestApproach=40.1979mm
+T7 seg[56] hitCount=0 nearestApproach=21.9665mm
+T7 seg[57] hitCount=0 nearestApproach=18.4179mm
+T7 seg[58] hitCount=3 nearestApproach=0.0000mm
+T7 seg[59] hitCount=16 nearestApproach=0.0000mm
+T7 seg[60] hitCount=37 nearestApproach=0.0000mm
+T7 seg[61] hitCount=48 nearestApproach=7.7160mm
+T7 seg[62] hitCount=38 nearestApproach=0.0000mm
+T7 seg[63] hitCount=17 nearestApproach=0.0000mm
+T7 seg[64] hitCount=3 nearestApproach=0.0000mm
+T7 seg[65] hitCount=0 nearestApproach=18.4180mm
+T7 seg[66] hitCount=0 nearestApproach=21.9658mm
+T7 seg[67] hitCount=0 nearestApproach=40.1981mm
+T7 seg[68] hitCount=0 nearestApproach=90.1927mm
+T7 seg[69] hitCount=0 nearestApproach=83.3698mm
+T7 seg[70] hitCount=6 nearestApproach=75.2199mm
+T7 seg[71] hitCount=6 nearestApproach=45.8428mm
+T7 seg[72] hitCount=4 nearestApproach=17.6688mm
+T7 seg[73] hitCount=4 nearestApproach=3.7347mm
+T7 seg[74] hitCount=25 nearestApproach=0.0000mm
+T7 seg[75] hitCount=35 nearestApproach=0.0000mm
+T7 seg[76] hitCount=10 nearestApproach=0.0000mm
+T7 seg[77] hitCount=3 nearestApproach=1.8354mm
+T7 seg[78] hitCount=3 nearestApproach=0.0000mm
+T7 seg[79] hitCount=0 nearestApproach=9.7072mm
+T7 seg[80] hitCount=0 nearestApproach=6.8791mm
+T7 seg[81] hitCount=0 nearestApproach=15.0435mm
+T7: 发射 1230 次（5 种子 × 82 段 × 3 瞄准点）; 直库段 seg[6]=48 seg[20]=25 seg[33]=25 seg[47]=25 seg[61]=48 seg[74]=25 ; 未命中段数=32; guardTrips=0; energyGainViolations=0; 最大嵌入量=0.00006mm; 冻结发射数=93
+T7 未命中 seg[0]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=10（seg[4,5,19,43,45]）、未触达=4；段中点到最近袋心=87.87 mm、最近净接近量（球心距−r）=40.199 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 40.199 mm）
+T7 未命中 seg[1]: 瞄准该段的 15 次发射：穿袋冻结=5、先命中它段=8（seg[3,4,5,19,43,45]）、未触达=2；段中点到最近袋心=76.01 mm、最近净接近量（球心距−r）=21.968 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 21.968 mm）
+T7 未命中 seg[2]: 瞄准该段的 15 次发射：穿袋冻结=6、先命中它段=6（seg[4,43]）、未触达=3；段中点到最近袋心=69.25 mm、最近净接近量（球心距−r）=18.418 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 18.418 mm）
+T7 未命中 seg[10]: 瞄准该段的 15 次发射：穿袋冻结=6、先命中它段=7（seg[7,34,70]）、未触达=2；段中点到最近袋心=69.25 mm、最近净接近量（球心距−r）=18.418 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 18.418 mm）
+T7 未命中 seg[11]: 瞄准该段的 15 次发射：穿袋冻结=5、先命中它段=9（seg[6,7,8,33,34,70,72]）、未触达=1；段中点到最近袋心=76.01 mm、最近净接近量（球心距−r）=21.966 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 21.966 mm）
+T7 未命中 seg[12]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=10（seg[6,7,33,70,72]）、未触达=4；段中点到最近袋心=87.87 mm、最近净接近量（球心距−r）=40.199 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 40.199 mm）
+T7 未命中 seg[13]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=4（seg[16,18,74,75]）、未触达=10；段中点到最近袋心=88.54 mm、最近净接近量（球心距−r）=15.043 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[14]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=3（seg[16,19,60]）、未触达=11；段中点到最近袋心=76.66 mm、最近净接近量（球心距−r）=6.879 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[15]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=3（seg[19]）、未触达=12；段中点到最近袋心=70.04 mm、最近净接近量（球心距−r）=9.707 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[25]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=0（无）、未触达=15；段中点到最近袋心=76.36 mm、最近净接近量（球心距−r）=83.370 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[26]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=0（无）、未触达=15；段中点到最近袋心=88.14 mm、最近净接近量（球心距−r）=90.193 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[27]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=0（无）、未触达=15；段中点到最近袋心=88.14 mm、最近净接近量（球心距−r）=90.193 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[28]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=0（无）、未触达=15；段中点到最近袋心=76.36 mm、最近净接近量（球心距−r）=83.370 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[38]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=4（seg[33,50]）、未触达=11；段中点到最近袋心=70.04 mm、最近净接近量（球心距−r）=9.707 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[39]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=3（seg[33,36,61]）、未触达=11；段中点到最近袋心=76.66 mm、最近净接近量（球心距−r）=6.879 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[40]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=4（seg[34,36,47,48]）、未触达=10；段中点到最近袋心=88.54 mm、最近净接近量（球心距−r）=15.044 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[41]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=0（无）、未触达=15；段中点到最近袋心=88.38 mm、最近净接近量（球心距−r）=90.192 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[42]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=0（无）、未触达=15；段中点到最近袋心=76.60 mm、最近净接近量（球心距−r）=83.369 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[52]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=4（seg[36,47]）、未触达=11；段中点到最近袋心=69.57 mm、最近净接近量（球心距−r）=9.707 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[53]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=3（seg[6,47,50]）、未触达=11；段中点到最近袋心=76.19 mm、最近净接近量（球心距−r）=6.879 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[54]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=4（seg[33,34,48,50]）、未触达=10；段中点到最近袋心=88.07 mm、最近净接近量（球心距−r）=15.044 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[55]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=10（seg[29,31,59,60,74]）、未触达=4；段中点到最近袋心=88.00 mm、最近净接近量（球心距−r）=40.198 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 40.198 mm）
+T7 未命中 seg[56]: 瞄准该段的 15 次发射：穿袋冻结=5、先命中它段=9（seg[29,31,58,59,60,74,75]）、未触达=1；段中点到最近袋心=76.15 mm、最近净接近量（球心距−r）=21.966 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 21.966 mm）
+T7 未命中 seg[57]: 瞄准该段的 15 次发射：穿袋冻结=6、先命中它段=7（seg[29,59,75]）、未触达=2；段中点到最近袋心=69.39 mm、最近净接近量（球心距−r）=18.418 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 18.418 mm）
+T7 未命中 seg[65]: 瞄准该段的 15 次发射：穿袋冻结=6、先命中它段=7（seg[23,48,62]）、未触达=2；段中点到最近袋心=69.39 mm、最近净接近量（球心距−r）=18.418 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 18.418 mm）
+T7 未命中 seg[66]: 瞄准该段的 15 次发射：穿袋冻结=5、先命中它段=9（seg[21,23,47,48,61,62,63]）、未触达=1；段中点到最近袋心=76.15 mm、最近净接近量（球心距−r）=21.966 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 21.966 mm）
+T7 未命中 seg[67]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=10（seg[21,23,47,61,62]）、未触达=4；段中点到最近袋心=88.00 mm、最近净接近量（球心距−r）=40.198 mm、射线全遮挡=True；判读=未触达（射线可达，但 72 步内轨迹未进入接触带；最近净接近量 40.198 mm）
+T7 未命中 seg[68]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=0（无）、未触达=15；段中点到最近袋心=88.38 mm、最近净接近量（球心距−r）=90.193 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[69]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=0（无）、未触达=15；段中点到最近袋心=76.60 mm、最近净接近量（球心距−r）=83.370 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[79]: 瞄准该段的 15 次发射：穿袋冻结=0、先命中它段=4（seg[16,74]）、未触达=11；段中点到最近袋心=69.57 mm、最近净接近量（球心距−r）=9.707 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[80]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=3（seg[5,74,77]）、未触达=11；段中点到最近袋心=76.19 mm、最近净接近量（球心距−r）=6.879 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+T7 未命中 seg[81]: 瞄准该段的 15 次发射：穿袋冻结=1、先命中它段=4（seg[18,19,75,77]）、未触达=10；段中点到最近袋心=88.07 mm、最近净接近量（球心距−r）=15.044 mm、射线全遮挡=True；判读=网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1063" name="PoolSimulatorTests" fullname="Billiards.Tests.PoolSimulatorTests" classname="Billiards.Tests.PoolSimulatorTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.014668" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1064" name="T1_ContactComponentDecomposition_IsConserved" fullname="Billiards.Tests.PoolSimulatorTests.T1_ContactComponentDecomposition_IsConserved" methodname="T1_ContactComponentDecomposition_IsConserved" classname="Billiards.Tests.PoolSimulatorTests" runstate="Runnable" seed="566297168" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.002588" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T1 30°: v_out·n=0.799999952 (exp 0.8, relerr 7.451E-008); v_out·t=-1.55884588 (exp -1.55884588, relerr 0.000E+000)
+T1 60°: v_out·n=1.38564074 (exp 1.38564086, relerr 8.603E-008); v_out·t=-0.9 (exp -0.9, relerr 0.000E+000)
+]]></output>
+            </test-case>
+            <test-case id="1065" name="T2_RestitutionPerturbation_ChangesNormalComponent_ByAnalyticDelta" fullname="Billiards.Tests.PoolSimulatorTests.T2_RestitutionPerturbation_ChangesNormalComponent_ByAnalyticDelta" methodname="T2_RestitutionPerturbation_ChangesNormalComponent_ByAnalyticDelta" classname="Billiards.Tests.PoolSimulatorTests" runstate="Runnable" seed="401203922" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.002284" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T2: v_out·n(e=1.0)=1, v_out·n(e=0.8)=0.799999952, Δ=0.200000048 (解析期望 0.2)
+]]></output>
+            </test-case>
+            <test-case id="1066" name="T3_SpecularAngle_IsConserved_WhenRestitutionAndFrictionAreOne" fullname="Billiards.Tests.PoolSimulatorTests.T3_SpecularAngle_IsConserved_WhenRestitutionAndFrictionAreOne" methodname="T3_SpecularAngle_IsConserved_WhenRestitutionAndFrictionAreOne" classname="Billiards.Tests.PoolSimulatorTests" runstate="Runnable" seed="20689099" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.006852" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T3: 30 个组合（6 库 × 5 角），最大角度偏差 = 2.670E-004°（判据 < 1.0°）。
+]]></output>
+            </test-case>
+            <test-case id="1067" name="T6_SubStepCount_IsDerived_NotHardCoded" fullname="Billiards.Tests.PoolSimulatorTests.T6_SubStepCount_IsDerived_NotHardCoded" methodname="T6_SubStepCount_IsDerived_NotHardCoded" classname="Billiards.Tests.PoolSimulatorTests" runstate="Runnable" seed="1025297738" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.000744" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[T6: MaxBallSpeed=8, SubSteps=5, dt=0.0166666675, dtSub=0.00333333341, nA=5, nB=4, 判据A比值=4.666084, 判据B比值=3.72678018, a_max=5, ceil探针 k=5
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1068" name="TableConfigTests" fullname="Billiards.Tests.TableConfigTests" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" testcasecount="24" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:38Z" duration="1.209121" total="24" passed="24" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1077" name="AllCoordinates_AreFinite" fullname="Billiards.Tests.TableConfigTests.AllCoordinates_AreFinite" methodname="AllCoordinates_AreFinite" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="939646470" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.000752" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1089" name="AxisMapping_RoundTrips" fullname="Billiards.Tests.TableConfigTests.AxisMapping_RoundTrips" methodname="AxisMapping_RoundTrips" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1337699239" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.000346" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1074" name="CaptureRadius_FollowsCaptureNoteInvariant" fullname="Billiards.Tests.TableConfigTests.CaptureRadius_FollowsCaptureNoteInvariant" methodname="CaptureRadius_FollowsCaptureNoteInvariant" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="616351327" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.000368" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1073" name="Config_IsConsistentWithPoolConstants" fullname="Billiards.Tests.TableConfigTests.Config_IsConsistentWithPoolConstants" methodname="Config_IsConsistentWithPoolConstants" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1926336041" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.000578" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1086" name="Config_MatchesReference_IndexAligned" fullname="Billiards.Tests.TableConfigTests.Config_MatchesReference_IndexAligned" methodname="Config_MatchesReference_IndexAligned" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="94415072" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.002111" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1080" name="CushionEndpointsBoundingBox_MatchesBaseline" fullname="Billiards.Tests.TableConfigTests.CushionEndpointsBoundingBox_MatchesBaseline" methodname="CushionEndpointsBoundingBox_MatchesBaseline" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1897197737" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.000445" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1083" name="FootSpot_IsOnLongAxis" fullname="Billiards.Tests.TableConfigTests.FootSpot_IsOnLongAxis" methodname="FootSpot_IsOnLongAxis" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="948423523" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:37Z" duration="0.000425" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1092" name="Mesh_SegmentAndPocketEndpointsAlignWithVertices" fullname="Billiards.Tests.TableConfigTests.Mesh_SegmentAndPocketEndpointsAlignWithVertices" methodname="Mesh_SegmentAndPocketEndpointsAlignWithVertices" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="257366864" result="Passed" start-time="2026-10-13 11:28:37Z" end-time="2026-10-13 11:28:38Z" duration="1.181756" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1091" name="Mesh_UnderAxisCorrection_MatchesReferenceBounds" fullname="Billiards.Tests.TableConfigTests.Mesh_UnderAxisCorrection_MatchesReferenceBounds" methodname="Mesh_UnderAxisCorrection_MatchesReferenceBounds" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1400018882" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.003122" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1090" name="ModelAxisCorrection_MapsModelUpToUnityUp_AndPreservesChirality" fullname="Billiards.Tests.TableConfigTests.ModelAxisCorrection_MapsModelUpToUnityUp_AndPreservesChirality" methodname="ModelAxisCorrection_MapsModelUpToUnityUp_AndPreservesChirality" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="665347740" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000478" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1081" name="OpeningRadius_EqualsRuntimeInscribedRadius" fullname="Billiards.Tests.TableConfigTests.OpeningRadius_EqualsRuntimeInscribedRadius" methodname="OpeningRadius_EqualsRuntimeInscribedRadius" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1430344289" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000326" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1079" name="PocketCenters_LieOutsideInnerRimRectangle" fullname="Billiards.Tests.TableConfigTests.PocketCenters_LieOutsideInnerRimRectangle" methodname="PocketCenters_LieOutsideInnerRimRectangle" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="281595965" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000350" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1087" name="PocketChirality_MatchesExpectedPattern" fullname="Billiards.Tests.TableConfigTests.PocketChirality_MatchesExpectedPattern" methodname="PocketChirality_MatchesExpectedPattern" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1901577170" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.001024" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1071" name="PocketCount_MatchesReference" fullname="Billiards.Tests.TableConfigTests.PocketCount_MatchesReference" methodname="PocketCount_MatchesReference" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1197982973" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000227" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1075" name="PocketGeometry_MouthWiderThanThroat" fullname="Billiards.Tests.TableConfigTests.PocketGeometry_MouthWiderThanThroat" methodname="PocketGeometry_MouthWiderThanThroat" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="571705411" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.001709" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1072" name="PocketKinds_AreFourCornersTwoSides" fullname="Billiards.Tests.TableConfigTests.PocketKinds_AreFourCornersTwoSides" methodname="PocketKinds_AreFourCornersTwoSides" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1538740061" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000349" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1078" name="Pockets_OccupyFourQuadrantsAndTwoSides" fullname="Billiards.Tests.TableConfigTests.Pockets_OccupyFourQuadrantsAndTwoSides" methodname="Pockets_OccupyFourQuadrantsAndTwoSides" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1233961139" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.001693" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1082" name="Provenance_RecordsSourceShaAndCounts" fullname="Billiards.Tests.TableConfigTests.Provenance_RecordsSourceShaAndCounts" methodname="Provenance_RecordsSourceShaAndCounts" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="946884093" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000240" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1085" name="ReferenceFiles_AgreeOnRandomAccessPocketFields" fullname="Billiards.Tests.TableConfigTests.ReferenceFiles_AgreeOnRandomAccessPocketFields" methodname="ReferenceFiles_AgreeOnRandomAccessPocketFields" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="570241845" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000304" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1084" name="ReferenceFiles_AreMutuallyConsistent" fullname="Billiards.Tests.TableConfigTests.ReferenceFiles_AreMutuallyConsistent" methodname="ReferenceFiles_AreMutuallyConsistent" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1181205134" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000489" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1070" name="SegmentCount_MatchesReference" fullname="Billiards.Tests.TableConfigTests.SegmentCount_MatchesReference" methodname="SegmentCount_MatchesReference" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="410954599" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000210" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1088" name="SegmentPerimeter_IsCounterClockwise_MirrorDetector" fullname="Billiards.Tests.TableConfigTests.SegmentPerimeter_IsCounterClockwise_MirrorDetector" methodname="SegmentPerimeter_IsCounterClockwise_MirrorDetector" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="698266341" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.001430" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1076" name="Segments_AreNonDegenerateAndInsideEnvelope" fullname="Billiards.Tests.TableConfigTests.Segments_AreNonDegenerateAndInsideEnvelope" methodname="Segments_AreNonDegenerateAndInsideEnvelope" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1043616413" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.001354" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1069" name="TableConfig_AssetIsGenerated" fullname="Billiards.Tests.TableConfigTests.TableConfig_AssetIsGenerated" methodname="TableConfig_AssetIsGenerated" classname="Billiards.Tests.TableConfigTests" runstate="Runnable" seed="1838615887" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000204" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1093" name="TableImporterErrorPathTests" fullname="Billiards.Tests.TableImporterErrorPathTests" classname="Billiards.Tests.TableImporterErrorPathTests" runstate="Runnable" testcasecount="8" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.007046" total="8" passed="8" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1097" name="NullPockets_Throws" fullname="Billiards.Tests.TableImporterErrorPathTests.NullPockets_Throws" methodname="NullPockets_Throws" classname="Billiards.Tests.TableImporterErrorPathTests" runstate="Runnable" seed="1837082945" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.001696" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1095" name="NullSegments_Throws" fullname="Billiards.Tests.TableImporterErrorPathTests.NullSegments_Throws" methodname="NullSegments_Throws" classname="Billiards.Tests.TableImporterErrorPathTests" runstate="Runnable" seed="620011096" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000316" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1101" name="OpeningRadiusNonPositive_Throws" fullname="Billiards.Tests.TableImporterErrorPathTests.OpeningRadiusNonPositive_Throws" methodname="OpeningRadiusNonPositive_Throws" classname="Billiards.Tests.TableImporterErrorPathTests" runstate="Runnable" seed="1580561731" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000301" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1098" name="PocketMouthLengthNotTwo_Throws" fullname="Billiards.Tests.TableImporterErrorPathTests.PocketMouthLengthNotTwo_Throws" methodname="PocketMouthLengthNotTwo_Throws" classname="Billiards.Tests.TableImporterErrorPathTests" runstate="Runnable" seed="1107272836" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000366" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1100" name="PocketRadiusNonPositive_Throws" fullname="Billiards.Tests.TableImporterErrorPathTests.PocketRadiusNonPositive_Throws" methodname="PocketRadiusNonPositive_Throws" classname="Billiards.Tests.TableImporterErrorPathTests" runstate="Runnable" seed="2071662886" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000317" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1099" name="PocketThroatNormalMissing_Throws" fullname="Billiards.Tests.TableImporterErrorPathTests.PocketThroatNormalMissing_Throws" methodname="PocketThroatNormalMissing_Throws" classname="Billiards.Tests.TableImporterErrorPathTests" runstate="Runnable" seed="706296502" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000284" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1094" name="ValidTopology_PassesValidation" fullname="Billiards.Tests.TableImporterErrorPathTests.ValidTopology_PassesValidation" methodname="ValidTopology_PassesValidation" classname="Billiards.Tests.TableImporterErrorPathTests" runstate="Runnable" seed="1624411094" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000896" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1096" name="WrongSegmentCount_Throws" fullname="Billiards.Tests.TableImporterErrorPathTests.WrongSegmentCount_Throws" methodname="WrongSegmentCount_Throws" classname="Billiards.Tests.TableImporterErrorPathTests" runstate="Runnable" seed="1489553953" result="Passed" start-time="2026-10-13 11:28:38Z" end-time="2026-10-13 11:28:38Z" duration="0.000411" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Saving results to: C:/Users/hp/AppData/LocalLow/DefaultCompany/Idea35 Pool Room\TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>
