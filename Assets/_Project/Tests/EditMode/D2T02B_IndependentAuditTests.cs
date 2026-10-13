@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using Billiards.Core;
 using Billiards.Diagnostics;
+using Billiards.EditorTools;
 using Billiards.Table;
 using NUnit.Framework;
 using UnityEditor;
@@ -28,7 +29,10 @@ namespace Billiards.Tests
         private const string ModelPath = "Assets/_Project/Art/Models/PoolTable_Normalized.fbx";
         private const string RefAPath = "Docs/Reference/table-metadata-reference.json";
         private const string RefBPath = "Docs/Reference/gameplay-markers-reference.json";
-        private const string AuditOutPath = "Docs/Reports/d2t02b-mesh-audit.json";
+        /// <summary>证据文件名。**单源**：入库相对路径由它拼出，避免同一文件名写两份字面量。</summary>
+        private const string AuditFileName = "d2t02b-mesh-audit.json";
+
+        private const string AuditOutPath = "Docs/Reports/" + AuditFileName;
 
         private static string ProjectRoot => Path.GetDirectoryName(Application.dataPath);
 
@@ -320,6 +324,9 @@ namespace Billiards.Tests
                 }
             }
 
+            // ⚠ 顺序有意为之（D4-C3 的硬要求）：证据落盘在**所有 Assert.\* 之前**调用，
+            //   而 `WriteAudit` 内部**不含任何断言** ⇒ 即使未给 `-outputDir` 跳过落盘，
+            //   下面这 3 条断言仍**必然**执行。跳过 ≠ 跳过检查。
             WriteAudit(bestPerm, bestErr, secondPerm, secondPermErr, signMin, signMax, chosenErr,
                 verts.Count, endpoints.Count, results);
 
@@ -358,6 +365,27 @@ namespace Billiards.Tests
             float signMin, float signMax, float chosenErr, int vertCount, int endpointCount,
             List<(string perm, string signs, string desc, float worst)> all)
         {
+            // ⚠ 本方法内**没有任何 Assert.\***；调用方（`[Test]` 主体）的全部断言都写在
+            //   `WriteAudit(...)` **之后**（见调用点注释）。故此处的 `return` 只跳过"落盘"，
+            //   结构上不可能跳过任何断言（D4-C3 的硬要求）。
+            //
+            // D4-C3 / D1b：**先在 try 之前**显式处理"跳过"。旧版把"写失败"与"从未尝试写"都吞进 catch
+            //（catch 里只有 Debug.LogWarning）⇒ 二者无法区分，本身是假 PASS 隐患。
+            //
+            // 路径也改走单点实现（铁律 16）：旧版自己拼 `Path.Combine(ProjectRoot, …)`，
+            // 那是**绝对入库路径**、`-outputDir` 重定向不了 —— 复核方实测该文件确被重写过
+            //（mtime 更新，只因无时间戳字段才逐字节不变）。
+            string path = ReportOutput.ResolveTestEvidencePathOrNull(AuditFileName);
+            if (path == null)
+            {
+                string skipMessage = "D2T02B: 未给 -outputDir ⇒ 跳过证据写入（R3-5：测试不得产生仓库改动）。"
+                    + " 入库路径 " + AuditOutPath + " 未被触碰。";
+                // 两个通道都发：`TestContext.WriteLine` → NUnit 结果 XML；`Debug.Log` → Unity `-logFile`。
+                TestContext.WriteLine(skipMessage);
+                Debug.Log(skipMessage);
+                return;
+            }
+
             try
             {
                 var sb = new StringBuilder();
@@ -383,9 +411,12 @@ namespace Billiards.Tests
 
                 sb.AppendLine("  ]");
                 sb.AppendLine("}");
-                string path = Path.Combine(ProjectRoot, AuditOutPath.Replace('/', Path.DirectorySeparatorChar));
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                // 目录创建已在 ReportOutput.ResolveTestEvidencePathOrNull 内完成（单点实现，铁律 16）。
                 File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+                // 两个通道都发（与"跳过"分支对称）：XML 通道 + Unity 日志通道。
+                string writtenMessage = "D2T02B: 证据写入 " + path;
+                TestContext.WriteLine(writtenMessage);
+                Debug.Log(writtenMessage);
             }
             catch (System.Exception e)
             {

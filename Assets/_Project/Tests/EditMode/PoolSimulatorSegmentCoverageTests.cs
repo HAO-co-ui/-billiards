@@ -679,9 +679,28 @@ namespace Billiards.Tests
             sb.Append("  ]").Append(nl);
             sb.Append("}").Append(nl);
 
-            string path = ReportOutput.ResolveReportPath(ReportRelativePath, "d4-segment-coverage.json");
-            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
-            TestContext.WriteLine("T7: 证据写入 " + path);
+            // D4-C3 / D1a：证据落盘**只在显式给了 `-outputDir` 时**发生（R3-5）。
+            // 刻意**不用 `return`** —— 写成"写/不写"的二分，结构上**不可能**跳过上面任何一条断言。
+            // （本写入位于本测试所有 Assert.* **之后**；若将来有人在它后面加断言，会立刻被这条注释与
+            //   评审的"写入必须是最后一步"口径抓到。）
+            string path = ReportOutput.ResolveTestEvidencePathOrNull("d4-segment-coverage.json");
+            if (path == null)
+            {
+                string skipMessage = "T7: 未给 -outputDir ⇒ 跳过证据写入（R3-5：测试不得产生仓库改动）。"
+                    + " 入库路径 " + ReportRelativePath + " 未被触碰；全部断言已执行完毕。";
+                // 两个通道都发：`TestContext.WriteLine` → NUnit 结果 XML；`Debug.Log` → Unity `-logFile`。
+                // （只发前者时，日志里看不到 ⇒ 会被误判成"修复没生效"；这是复核时的实际踩坑点。）
+                TestContext.WriteLine(skipMessage);
+                Debug.Log(skipMessage);
+            }
+            else
+            {
+                File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+                // 两个通道都发（与"跳过"分支对称）：XML 通道 + Unity 日志通道。
+                string writtenMessage = "T7: 证据写入 " + path;
+                TestContext.WriteLine(writtenMessage);
+                Debug.Log(writtenMessage);
+            }
         }
 
         private static bool AllStraightHit(int[] hitCount)
