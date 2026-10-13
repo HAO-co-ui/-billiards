@@ -1,0 +1,73 @@
+{
+  "schema": "idea35.d2t03b-confirm.v1",
+  "task": "D2-T03B R1e 三层度量独立确认",
+  "reviewer": "quality-lead",
+  "commit": "4e1c717078391c5cbe0850acce14562813cb614d",
+  "verdict": "PASS_WITH_CONCERNS",
+  "blocksDay4": false,
+  "anchors": {
+    "stage1_commit": "4e1c717078391c5cbe0850acce14562813cb614d",
+    "stage1_headEqualsCommit": true,
+    "stage1_blob_match": "10/10",
+    "stage2_gitStatusFrozenPathsEmpty": true,
+    "note": "两段式锚点均通过；复核对象未移动。"
+  },
+  "checklist_1to7": {
+    "1_three_layers_present": {"status": "PASS", "evidence": "AXL-04/05=L1, AXL-07=L2, AXL-06=L3 (TableIntegrityValidator.cs:678-715)"},
+    "2_shared_implementation": {"status": "PASS_WITH_CONCERN", "evidence": "validator 3x mesh.Metrics.Measure + test 4x _metrics.Measure 均走 MeshAlignmentMetrics；但校验器残留死代码几何副本（AccumulateVertexRatio 不可达，~120 行）", "concern": "C1"},
+    "3_L2_blind_along_edge_documented_and_pinned": {"status": "PASS", "evidence": "AXL-07 detail 写明沿边全盲；测试 L2_IsBlindAlongEdgeDirection 断言；我方复跑 ±10.89mm -> 0.0598 um"},
+    "4_L1_not_used_as_displacement_judge": {"status": "PASS", "evidence": "AXL-04/05 detail 明写不作位移判据；判据归 AXL-06"},
+    "5_delta_scan_persisted_three_groups": {"status": "PASS", "evidence": "MeshAlignmentSensitivityTests 5 项含单点/整体/局部；我方复跑 整体/局部 盲带=（无）"},
+    "6_detail_threat_class_wording": {"status": "PASS", "evidence": "AXL-06 detail 逐字含威胁类表述"},
+    "7_theoretical_bound_0p5_archived_only": {"status": "PASS", "evidence": "代码 k=0.0958；detail 注明 0.5 仅留档"}
+  },
+  "checklist_8_reruns": {
+    "editmode_tests": {"status": "PASS", "observed": "53/53 passed, 0 failed", "breakdown": {"PoolConstantsTests": 13, "TableConfigTests": 24, "D2T02B_IndependentAuditTests": 6, "ModelOrientationTests": 5, "MeshAlignmentSensitivityTests": 5}, "self_run": true, "artifact": "Docs/Reports/d2t03b-editmode-tests.xml"},
+    "table_data_entry": {"status": "NOT_RUN", "reason": "C2 冲突：会覆盖已提交证据 day2-verification.json 且经 Apply() 重建 Main.unity/Materials/Prefabs，违反'落临时路径/不覆盖证据/工作区==HEAD'"},
+    "day3_entry": {"status": "NOT_RUN", "reason": "同 C2"}
+  },
+  "checklist_9to12": {
+    "9_Llocal_cannot_be_threshold_basis": {
+      "status": "REPRODUCED",
+      "my_span_mm": {"min": 3.56, "median": 15.58, "max": 1169.03, "gt_100mm_count": 22, "n": 188},
+      "engineer_reported": "4 端点 15.1/22.3/40.8/55.5~604.3 mm",
+      "conclusion": "量级一致，成立；T=k*L_local 可达 ~112mm -> 检查恒真。已留档 D2-T03 §7"
+    },
+    "10_assertion_set_nonvacuous": {
+      "status": "DISCREPANCY",
+      "finding": "所称 (2)'至少一个端点抓到 1 mm' 与 (3)'2 mm 在所有采样端点均检出' 在 R1e MeshAlignmentSensitivityTests.cs 中不存在",
+      "actual_assertions": ["Undisplaced 三层不误报", "SinglePointScan: bands.Count>0（存在上盲带）", "WholeSetRigidShift: 无>1mm上带", "LocalRegionShift: 无>1mm上带", "L2 沿边盲"],
+      "doc_inconsistency": "35-A_Day3...md:318 仍写 (1)(2)(3) 且称'3 项'，与现 5 项不符",
+      "concern": "C3"
+    },
+    "11_face_metric_not_fully_blind": {
+      "status": "COUNTEREXAMPLE_FOUND",
+      "guard_fix_confirmed": "TriDistSq 含 InsideXZ 内部判定 + 退化守卫(|projArea2|>=1e-12f)；换名不换实已修正",
+      "counterexample": {"endpoint": [-0.07156636, 0.6854957], "displacement": "+X 1mm", "face_mm": 0.4579, "undisplaced_face_mm": 0.0, "L1_tol_mm": 0.1},
+      "corrected_wording": "L1 对足迹内沿面滑动盲；对掉出网格(含袋孔)敏感",
+      "design_conclusion_unchanged": true,
+      "concern": "C4"
+    },
+    "12_main_unity_equivalence_and_generated": {
+      "status": "CONFIRMED",
+      "content_equivalence": {"lines_old_new": [533, 533], "objects_old_new": [21, 21], "object_names": ["Directional Light", "Floor", "Main Camera", "PlayfieldRoot", "Room"], "names_equal": true, "classid_multiset_equal": true, "fileid_renumbered": "16/21", "order_changed": true, "diff_lines": "168/168"},
+      "generated_artifact": {"evidence": "Day3VisualSetup: NewScene(EmptyScene)@236 + SaveScene(MainScenePath)@301", "validator_rebuilds": "Day3Validator.ValidateFromCommandLine 首句 Day3VisualSetup.Apply()@64"},
+      "implication_confirmed": "手工编辑 Main.unity 不会幸存；其 diff 为噪声不可作评审依据",
+      "adr_recommendation": "值得写入 ADR"
+    },
+    "13_g3_ledger_refresh": {"status": "DONE", "evidence": "刷新后 G3 PASS；台账含 TableIntegrityValidator.cs=b185f790b332359b"}
+  },
+  "concerns": [
+    {"id": "C1", "severity": "中", "text": "校验器残留死代码几何副本（AccumulateVertexRatio 不可达）⇒ 口径分叉隐患"},
+    {"id": "C2", "severity": "中(流程冲突)", "text": "校验入口重跑会覆盖已提交证据并重建冻结场景 ⇒ 与'落临时路径/不覆盖证据/工作区==HEAD'冲突，故未跑"},
+    {"id": "C3", "severity": "低(文档不一致)", "text": "所称断言(2)/(3)不在 R1e 代码；Day3 记录 stale"},
+    {"id": "C4", "severity": "低(文案过强)", "text": "'面点完全盲'有反例（1mm->0.4579mm）"},
+    {"id": "C5", "severity": "信息", "text": "退化守卫用 float 比 1e-12（面积量纲），当前无影响"}
+  ],
+  "notVerified": [
+    "表数据/Day-3 校验入口未独立复跑（C2 冲突）—— 33/33、22/22 仅核了已提交证据的内容自洽",
+    "Main.unity 重跑的非幂等性未实测（仅由 NewScene+SaveScene 与两版 fileID 差异推断）",
+    "L_local 复现用 FBX 原始网格而非 Unity 拆分网格（几何等价，数值非逐位同）",
+    "面点反例仅在 +X 方向复现，未穷举方向/端点"
+  ]
+}
