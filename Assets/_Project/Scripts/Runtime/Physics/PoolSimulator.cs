@@ -7,7 +7,7 @@ using UnityEngine;
 namespace Billiards.Physics
 {
     /// <summary>
-    /// 自研二维定长步进台球物理内核（Day 4 切片 A：单球 + 球-库边 + 袋喉越界冻结）。
+    /// 自研二维定长步进台球物理内核（单球 + 球-库边 + 袋喉越界冻结）。
     ///
     /// 设计要点（每条都对应一个可失败的判别测试，见 spec §2）：
     ///  1. **定长步进**：外部只调 <see cref="Step"/>，内部固定 1/120 s，再细分为
@@ -35,7 +35,7 @@ namespace Billiards.Physics
         /// <summary>
         /// 单个子步内 TOI 迭代次数上限。超过即计 <see cref="ToiIterationGuardTrips"/> 并截断该子步（不静默）。
         ///
-        /// **D4-VERIFY-02 / 切片 C ② 的 R-C 修复后由 16 提升为 128**：原 16 在"球楔死在凹袋角、
+        /// **R-C 修复后迭代预算由 16 提升为 128**：原 16 在"球楔死在凹袋角、
         /// 以 nm 级间隙反复微接触"时不足（实测 `ToiIterationGuardTrips = 1810`，326/1230 次发射）。
         /// 配合 <see cref="StoppedSpeedEpsilon"/> 与"零时间推进即停"，实测 `guardTrips` 变化：
         /// `1810（原）→ 1196（仅近零速度）→ 339（+零时间推进即停）→ 3（预算 64）→ 0（预算 128）`，
@@ -58,8 +58,8 @@ namespace Billiards.Physics
 
         /// <summary>
         /// 子步数推导所用的前瞻加速度上界 <c>a_max = 5 m/s²</c>。
-        /// 这是**前瞻声明值**：Day 4 的实际 <c>rollingDeceleration</c> 为 0，
-        /// 该上界用于给未来的滚动阻力留出子步数余量，不参与本切片的实际积分。
+        /// 这是**前瞻声明值**：实际的 <c>rollingDeceleration</c> 为 0，
+        /// 该上界用于给未来的滚动阻力留出子步数余量，不参与实际的滚动积分。
         /// </summary>
         public const float MaxRollingDeceleration = 5f;
 
@@ -69,7 +69,7 @@ namespace Billiards.Physics
         private const float SubStepCeilEpsilon = 1e-5f;
 
         /// <summary>
-        /// 视为"已停止"的速度阈值，m/s。**R-C 修复（D4-VERIFY-02 / 切片 C ② 诊断）**。
+        /// 视为"已停止"的速度阈值，m/s。**R-C 修复（实测依据见下）**。
         ///
         /// 依据实测：球被两侧袋角段同时接触时，接触解算把速度按 `e^{2k}` **几何衰减**
         /// （实测 `speedAfterResolve` 4.969e-9 → 4.025e-9 → …，逐次 ×0.81 = e²），
@@ -325,7 +325,7 @@ namespace Billiards.Physics
                 }
 
                 // ★ R-C 修复（第二半）：**连续两次"零时间推进"的接触 ⇒ 持续接触/楔死**。
-                // 依据实测（切片 C ② 诊断，d4-rc-diagnosis.json）：球被两侧袋角段同时接触时
+                // 依据实测（空转诊断，d4-rc-diagnosis.json）：球被两侧袋角段同时接触时
                 // `earliest = 0`、`remaining` 一步不减，接触解算只把速度乘 e^k，**不产生自由飞行时间**
                 // ⇒ 再迭代只会重解同一批 t=0 接触，直至耗尽 MaxToiIterations（实测 1810 次）。
                 // 一次 t=0 接触是合法的（球恰在区间起点接触、解算后即分离，下一迭代无接触）；

@@ -10,7 +10,7 @@ namespace Billiards.Core
     ///
     /// 单位约定：1 Unity unit = 1 米。Unity 没有显式的单位设置，该约定由本类的常量
     /// 与 FBX 导入缩放（1:1）共同保证，并由 PoolConstantsTests 与
-    /// TableIntegrityValidator（Day 2）断言。
+    /// TableIntegrityValidator 断言。
     ///
     /// 精度说明：统一使用 float。在米制尺度下 float 的相对精度约 1e-7，
     /// 即 1.27 m 处的绝对分辨率约 0.12 微米，远低于球半径 28.575 毫米所要求的精度。
@@ -101,7 +101,7 @@ namespace Billiards.Core
 
         // ---- 溯源标识 ---------------------------------------------------------
 
-        /// <summary>规范球桌网格三角面数，用于 Day 2 导入校验。</summary>
+        /// <summary>规范球桌网格三角面数，用于表导入校验（TableIntegrityValidator）。</summary>
         public const int SourceTableTriangles = 19954;
 
         /// <summary>规范球桌 FBX 的均匀缩放系数（导出时已应用）。</summary>

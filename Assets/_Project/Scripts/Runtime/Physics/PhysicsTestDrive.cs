@@ -15,7 +15,7 @@ namespace Billiards.Physics
     ///  2. **内核不读时间**：<c>Time.*</c> 只在本 MonoBehaviour 侧读；喂进内核的只有整数步。
     ///     <see cref="PoolSimulator"/> 内部无任何 <c>Time</c>/<c>Random</c> 引用。
     ///  3. **坐标只经唯一转换点**：球位走 <see cref="PoolGeometry.PhysicsBallToUnity"/>（R5-2）。
-    ///  4. 本类是**调试驱动**，不是最终交互：瞄准与力度属 Day 8–10，这里只求"能看到球动"。
+    ///  4. 本类是**调试驱动**，不是最终交互：瞄准与力度属交互层，这里只求"能看到球动"。
     /// </summary>
     [AddComponentMenu("Billiards/Physics Test Drive")]
     public sealed class PhysicsTestDrive : MonoBehaviour

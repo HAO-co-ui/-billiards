@@ -13,12 +13,12 @@ namespace Billiards.Diagnostics
     /// **铁律**：本项目球物理由自研二维定长步进模拟器驱动，**禁止 Unity PhysX**
     /// （任何 `Rigidbody`/`Collider` 都意味着有人误接入了 PhysX，会破坏确定性与手感一致性）。
     ///
-    /// **本类是全工程唯一的实现**：`SCN-04`（Day 1 验证器）、`SCN-06`（Day 3 验证器）
+    /// **本类是全工程唯一的实现**：`SCN-04`（`BilliardsProjectVerifier`）、`SCN-06`（`MaterialVisualValidator`）
     /// 与 `PhysicsBanGuardTests`（EditMode 测试）**全部调用它**。
     ///
     /// **历史（为什么要有这个类）**：`SCN-04` 与 `SCN-06` 原本各写一份实现，且**已经分叉** ——
     /// `SCN-04` 用固定路径 `MainScenePath`，`SCN-06` 用 `SceneManager.GetActiveScene()`（可能扫错对象）；
-    /// 且两者**都只扫场景、不扫 prefab**，而工程有 18 个 prefab 且 Day 4/5 正是从它们实例化球。
+    /// 且两者**都只扫场景、不扫 prefab**，而工程有 18 个 prefab，球正是从它们实例化的。
     /// 现收敛为单点实现，并**把 prefab 纳入扫描**。
     ///
     /// **唯一的计数原语是 `CountInHierarchy(GameObject, …)`**：场景（`CountInScene`）与 prefab
