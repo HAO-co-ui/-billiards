@@ -68,7 +68,7 @@ namespace Billiards.EditorTools
 
             // 网格精度：碰撞轮廓必须与渲染网格严格对齐，关闭压缩。
             importer.meshCompression = ModelImporterMeshCompression.Off;
-            importer.isReadable = true;                  // 供 Validator 逐顶点核对（Day 2 必需）
+            importer.isReadable = true;                  // 供校验器逐顶点核对所必需
             importer.importNormals = ModelImporterNormals.Import;
             importer.importTangents = ModelImporterTangents.CalculateMikk; // 法线贴图需要正确切线
             importer.generateSecondaryUV = false;
