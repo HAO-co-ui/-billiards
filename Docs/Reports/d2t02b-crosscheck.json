@@ -118,6 +118,7 @@
  "reverseCasesMissed": [],
  "check4_tests": {
   "command": "Unity.exe -batchmode -projectPath <proj> -runTests -testPlatform EditMode -testResults Docs/Reports/d2t02b-editmode-tests.xml -logFile Logs/d2t02b-tests.log",
+  "observedRunUtc": "2026-10-13T04:12:14Z",
   "total": 43,
   "passed": 43,
   "failed": 0,
@@ -126,7 +127,8 @@
    "TableConfigTests": 24,
    "D2T02B_IndependentAuditTests": 6
   },
-  "note": "team-lead 预期 35，实际 37（实现者原有）+ 6（QA 新增）= 43。"
+  "coversFrozenRevision": "是。该运行(04:12Z)晚于 engineering-lead 04:05-04:07Z 的容差修改；TableConfigTests.cs=650d2e01 即冻结版。实现者自报 37/37（13+24）由本次复核独立复现。",
+  "note": "team-lead 预期‘35/35’过时；实现者原有为 37，加 QA 新增 6 = 43。另：QA 测试文件首版(12:08)曾编译失败(CS0136)，已于 12:11 修复；**12:11 之前该 6 项从未真正运行**——本结论仅基于 12:12 的真实运行。"
  },
  "check5_axisTransform": {
   "secondTransformSearch": {
@@ -215,11 +217,95 @@
   "normalGreenMean": 125.73,
   "normalGreenMeanIsWeakDiscriminant": "翻转后绿均值约 129.3，同样接近中性；该指标不能区分是否翻转。不翻转的结论主要依据 OpenGL 约定链，非视觉结论 → Day3 A/B 复核。"
  },
+ "anchorsActuallyObserved": {
+  "TableIntegrityValidator.cs": {
+   "sha256_16": "8180ddd528eabc51",
+   "bytes": 46632
+  },
+  "TableDataImporter.cs": {
+   "sha256_16": "19c6b8320f3b05ea",
+   "bytes": 17844
+  },
+  "BilliardsAssetPostprocessor.cs": {
+   "sha256_16": "7f62fd04a59c144a",
+   "bytes": 9009
+  },
+  "TableConfig.cs": {
+   "sha256_16": "7fcf7a98cf26510a",
+   "bytes": 7909
+  },
+  "PoolGeometry.cs": {
+   "sha256_16": "b3f05bf52727508e",
+   "bytes": 8563
+  },
+  "TableConfig.asset": {
+   "sha256_16": "d7b0962a3c21c349",
+   "bytes": 13446
+  },
+  "TableConfigTests.cs": {
+   "sha256_16": "650d2e0190eae0a1",
+   "bytes": 24939
+  },
+  "D2T02B_IndependentAuditTests.cs": {
+   "sha256_16": "27494a89393d418c",
+   "bytes": 17320
+  },
+  "note": "team-lead 首次给出的指纹表中 TableIntegrityValidator.cs(67b8b15e/45727) 与 TableConfigTests.cs(b50be06f/24596) 为**过期值**；此处为实测当前值（validator 8180ddd5，TableConfigTests 650d2e01）。TableConfig.asset 未变，D2-T02A 比对结论继续有效。"
+ },
+ "check8_dat09_dat10": {
+  "DAT09_cushionEndpointsBBox_asset": "x[-1.334342800, 1.334343000] y[-0.699095300, 0.699095300]",
+  "DAT09_vs_double_baseline_maxErr_m": 8.9e-08,
+  "DAT09_selfLimitationConfirmed": {
+   "x_asymmetry_m": 2e-07,
+   "canCatchMirror": false,
+   "canCatchAxisSwap": true,
+   "aspect": 1.9087
+  },
+  "DAT09_note": "实现者报 err=0（float32 域 vs PoolConstants float 常量）；我对照 double 源得 8.9e-8 m（float32 打印舍入），均 PASS。自我限定（抓轴交换/缩放、不抓镜像）成立。",
+  "DAT10_opening_eq_inscribed_source_maxDelta": 0.0,
+  "DAT10_pass": true
+ },
+ "check9_axlFalsifiableTest": {
+  "question": "AXL-04 的 0.2613 mm 是‘轮廓近似残差’还是别的？",
+  "method": "直接解析 FBX 二进制取顶点+三角形（绕过 Unity），对同一 188 端点分别测：最近*顶点*距离 vs 最近*三角形面上点*距离。",
+  "endpointToNearestVertex_worst_mm": 0.26133,
+  "endpointToNearestSurfacePoint_worst_mm": 0.0,
+  "surfaceDistDistribution": {
+   ">1e-6m": 0,
+   ">1e-5m": 0,
+   ">1e-4m": 0,
+   ">1e-3m": 0,
+   "of": 188
+  },
+  "worstEndpointContainingTriangle_edges_mm": [
+   2.5075,
+   3.5576,
+   2.5569
+  ],
+  "verdict": "‘轮廓近似残差’解释被**证伪**：88/188 端点→最近网格面距离 = 0.000000 m（精确贴合）。0.2613 mm 完全来自 AXL-04 采用**最近离散顶点**的采样下限（最坏端点落在边长 2.5~3.6 mm 的三角形内）。",
+  "engineering_lead_explanation": "FALSIFIED",
+  "team_lead_tolerance_ruling_0p5mm_independent_judgment": "0.5 mm 作为‘最近顶点’度量的门控不算错（当前余量 1.9×），但**脆弱且弱**：(1) 该度量对真实错位有 ~0.26 mm 盲区；(2) 阈值绑定网格细分密度，重导出网格若变粗会误报。**建议改用‘最近网格面点’度量**（当前精确为 0），阈值收紧到 **1e-4 m**，恢复真实检出能力。"
+ },
+ "check10_fbxDirectParse": {
+  "version": 7400,
+  "geometryNodes": 1,
+  "vertexCount": 10572,
+  "matchesSourceClaim": true,
+  "rawBbox": "min=(-1.412686,-0.797634,-0.863517) max=(1.412409,0.797634,0.061022)",
+  "unityMeshBbox_fromProbe": "min=(-1.412409,-0.797634,-0.863517) max=(1.412686,0.797634,0.061022)",
+  "conclusion": "FBX 原始 X[-1.412686,+1.412409] → Unity 网格 X[-1.412409,+1.412686]，**独立确认 Unity 仅对 X 取反**（手性转换），Y/Z 不变。此前提此前属推断，现已由 FBX 直解 + 网格 bbox 双证。",
+  "closesD2T02A_gap": "D2-T02A 未核 ‘JSON vs 真实网格’；现已用 FBX 直解复核：48 候选最优 perm021 @0.2611mm、次优 640.722mm，与实现者一致。"
+ },
  "concerns": [
   {
    "id": "C1",
    "severity": "中",
    "text": "AXL-04/05（水平面最近顶点）对水平符号/手性不敏感（sign spread 0.27 µm），单独不能证明手性；手性实际由 AXL-02 包围盒不对称 + det=+1 钉死。建议修正 AXL-04 detail 文案，勿据此宣称证明轴向。"
+  },
+  {
+   "id": "C6",
+   "severity": "中",
+   "text": "AXL-04/05 的度量本身偏弱：用‘最近离散顶点’而非‘最近网格面点’，对真实错位有 ~0.26 mm 盲区（实测端点→网格面 = 0.000000 m，0.2613 mm 纯属顶点采样下限）。‘轮廓近似残差’解释已被证伪。建议改用最近面点度量并将容差收紧至 1e-4 m。"
   },
   {
    "id": "C2",

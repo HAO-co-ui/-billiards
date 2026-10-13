@@ -29,6 +29,22 @@ Unity.exe -batchmode -runTests -testPlatform EditMode ...   # [4]测试
 - F: 原始 `table-metadata-reference.json` sha256 = `ba60fc20…364398`
 ⇒ 资产 ← 入库副本 ← F: 原始，**链条无损**。（注意：D2-T02A 已证 `gameplay-markers` 是 `table-metadata` 的同源产物。）
 
+### 0.1 锚点指纹（**实测**，非采信）
+复核期间复核对象被移动过（校验器 29→31、测试 35→37）。下表为我**实际计算的当前值**，用于锚定"本结论对应哪个版本"：
+
+| 文件 | sha256[:16] | 字节 |
+| --- | --- | --- |
+| `TableConfig.asset` | `d7b0962a3c21c349` | 13,446 |
+| `TableConfigTests.cs` | `650d2e0190eae0a1` | 24,939 |
+| `TableIntegrityValidator.cs` | `8180ddd528eabc51` | 46,632 |
+| `TableDataImporter.cs` | `19c6b8320f3b05ea` | 17,844 |
+| `BilliardsAssetPostprocessor.cs` | `7f62fd04a59c144a` | 9,009 |
+| `TableConfig.cs` | `7fcf7a98cf26510a` | 7,909 |
+| `PoolGeometry.cs` | `b3f05bf52727508e` | 8,563 |
+| `D2T02B_IndependentAuditTests.cs`（我新增） | `27494a89393d418c` | 17,320 |
+
+⚠️ team-lead 首次给的指纹表中 `TableIntegrityValidator.cs`(`67b8b15e`/45,727) 与 `TableConfigTests.cs`(`b50be06f`/24,596) 为**过期值**（我实测为 `8180ddd5`/46,632 与 `650d2e01`/24,939，与 engineering-lead 的列表一致）。**`TableConfig.asset` 未变** ⇒ D2-T02A 的数据比对结论继续有效。
+
 ---
 
 ## 1. 数据落地正确性（索引对齐逐字段，1e-5 m）
@@ -96,12 +112,23 @@ Unity.exe -batchmode -runTests -testPlatform EditMode ...   # [4]测试
 Unity.exe -batchmode -projectPath "<proj>" -runTests -testPlatform EditMode \
   -testResults Docs/Reports/d2t02b-editmode-tests.xml -logFile Logs/d2t02b-tests.log
 ```
-**结果：43 / 43 PASS（0 failed）**，`Docs/Reports/d2t02b-editmode-tests.xml`：
+**观察到的运行**（我自跑，非复用实现者 xml；**只报真实运行并观察到的结果**）：
+
+| 运行(UTC) | 结果 | 说明 |
+| --- | --- | --- |
+| 04:08 | **37/37 PASS** | 未加我的测试（13+24），作基线 |
+| 04:10 | 编译失败(CS0136) | 我新增测试首版 `best` 名冲突 → 整程序集中止，**此 6 项当时从未运行** |
+| 04:11 | 42/43 | 编译修复后；轴枚举测试的断言写错（把"次优符号变体"当成"次优排列"），**1 项 FAIL** |
+| **04:12** | **43/43 PASS** | 断言修正后；**本次即最终证据** |
+
+**最终结果：43 / 43 PASS（0 failed）**（`Docs/Reports/d2t02b-editmode-tests.xml`，`start-time 04:12:43Z`）：
 - `PoolConstantsTests` 13（Day 1 回归）
-- `TableConfigTests` 24
+- `TableConfigTests` 24（**哈希 `650d2e01` = 容差改到 0.5mm 后的冻结版**）
 - `D2T02B_IndependentAuditTests` 6（QA 新增）
 
-> **与 team-lead 预期的差异**：您说"35/35"。**实测实现者原有为 37**（13 + 24），加我新增 6 项 = **43**。不是 35。请以 XML 为准。（首次运行我未加测试时确为 37/37。）
+> **覆盖的修订版本**：该 04:12Z 运行**晚于** engineering-lead 04:05–04:07Z 的容差修改 ⇒ 覆盖的是当前冻结修订。**实现者自报的 37/37（13+24）由此获得复核方独立复现**（team-lead 已确认）。
+> **与 team-lead 预期的差异**：您说"35/35"。**实测实现者原有为 37**（13 + 24），加我新增 6 = **43**。不是 35。
+> **纪律留痕**：我一度把"写了 6 项检查"与"跑通 6 项"混同——首版**编译不过**，6 项实际从未执行。以上表格区分了"写"与"跑"，最终只以 04:12Z 的真实运行取证。
 
 ---
 
