@@ -224,6 +224,16 @@ T6 的不变量式保证它一旦被改动，子步数推导会同步失败（�
 0.2–0.5 m/s²）。它只影响 `SubSteps` 的下界。若 Day 7 实测 `a` 超 5，判据 3 失败 ⇒ 提示重推子步数；
 若远低于 5，则 `SubSteps` 可能偏保守（浪费算力，不影响正确性）。**不构成正确性风险。**
 
+**设计边界（v2.2 追加，来自切片 C 实测）**：判据 B 的不等式**结构自守卫** ——
+`MaxRollingDeceleration` 调大时 `SubSteps` 会由 `DeriveSubSteps` 同步重推，
+故"调大 a_max 就会破坏不等式"**并不成立**（实测 a_max = 20 时 `½·20·(dt/9)² = 8.573e-6 ≤ 5e-5` 仍成立）。
+⇒ **真正需要断言的是判据 B 分支的"活体"**（`DeriveSubSteps(2) == 2` —— v = 2 时判据 A 只需 1 子步，
+故该结果只可能由 B 给出）。这条断言由切片 C 的 `D-2` 覆盖；
+**若删掉判据 B，全套 85 条测试中只有 D-2 能抓到它**（T6 抓不到，因 a_max = 5 时 B 不支配 —— 这正是"算过、没验过"）。
+
+**允许上界**：`a_max` 不能无限上调。a_max = 20（SubSteps 9）时不等式余量仅 **1.15×**（4.340e-5 ≤ 5e-5）。
+⇒ **`MaxRollingDeceleration` 的允许上界由该不等式反推，不得凭手感上调。**
+
 
 ### 2.2 接触法向来自接触几何 —— 但归纳不闭合，两件事必须分开说
 
@@ -327,7 +337,27 @@ namespace Billiards.Physics
     public sealed class PoolSimulator
     {
         public const float FixedDeltaTime = 1f / 120f;
-        public const int   MaxToiIterations = 16;
+        /// <summary>
+        /// 单个子步内"推进到接触 → 解算 → 继续"的迭代上限。
+        ///
+        /// **v2.1 → v2.2 由 16 上调为 128**，依据是切片 C 的分层实测（其余条件逐一叠加）：
+        /// ```
+        /// 档 0  原实现（速度用精确零比较、预算 16）      guardTrips = 1810（326/1230 次发射触发）
+        /// 档 A  + 近零速度即停 StoppedSpeedEpsilon=1e-6   guardTrips = 1196
+        /// 档 B  + 连续两次零时间推进即停                  guardTrips =  339
+        /// 档 C  + 预算 64                                 guardTrips =    3
+        /// 档 D  + 预算 128  ← 交付态                      guardTrips =    0
+        /// ```
+        /// **关键**：A/B 两档修掉的是"解算无法分离球"引发的空转（(乙)：earliest 恒为 0、remaining 一步不减）；
+        /// 剩下的 339 经逐迭代记录定性为 (甲) —— `earliest` 为正且递增（5.5e-6 → 1.4e-4）、`remaining` 递减，
+        /// 即球楔死在凹袋角、以约 24 nm 间隙反复微接触，**每次消耗的是真实时间**。
+        /// ⇒ 收紧预算会在真实场景上误报，故上调至 128 覆盖该场景。
+        ///
+        /// **它仍是活的硬门**：若有场景需要 >128 次迭代，守卫会再次触发 —— 那正是它该做的。
+        /// 修前/修后对照已证明本改动**不改变任何可观测物理量**
+        /// （maxPenetration 逐位相同 6.146729e-08 m；82 段命中数逐段相同；32 个未命中段相同）。
+        /// </summary>
+        public const int   MaxToiIterations = 128;
         public const float ToiTimeEpsilon   = 1e-9f;   // 同刻接触归并窗口
         public const float ToiRemainingEpsilon = 1e-9f; // 子步剩余时间终止阈值
 
@@ -382,7 +412,8 @@ Day 4 依赖的**全部**常量及其真源。实现时不得自行造值。
 | **`MaxBallSpeed`** | **`PoolConstants`** | **需新增** | **8 m/s**（未经策划确认） |
 | `FixedDeltaTime` | `PoolSimulator` | 本 spec 定义 | 1/120 s |
 | `SubSteps` | `PoolSimulator`（推导） | 本 spec 定义 | 3 |
-| `MaxToiIterations` / `ToiTimeEpsilon` / `ToiRemainingEpsilon` | `PoolSimulator` | 本 spec 定义 | 16 / 1e-9 s / 1e-9 s |
+| `MaxToiIterations` / `ToiTimeEpsilon` / `ToiRemainingEpsilon` | `PoolSimulator` | 本 spec 定义 | **128** / 1e-9 s / 1e-9 s（128 的推导见 §2.3） |
+| `StoppedSpeedEpsilon` | `PoolSimulator` | 本 spec 定义 | **1e-6 m/s**（R-C 修复：速度近零即置零并停止；远高于 5e-9 残差、远低于任何玩法相关速度） |
 | `cushionRestitution` / `cushionTangentialFriction` | `PhysicsParams` | 本 spec 定义 | Day 4 取值见 T1（测试注入）；正式值 Day 7 |
 | `rollingDeceleration` | `PhysicsParams` | 本 spec 定义 | Day 4 = 0 |
 | `a_max`（仅 T6 断言用） | `PoolSimulator` 常量 | 本 spec 定义 | 5 m/s²（§2.1） |
@@ -641,7 +672,10 @@ if |v_t_vec| > 0:
 | 7 | T7 六条直库段命中 | 每段 > 0 次 |
 | 8 | T8 / T9 / T10 | 无 NaN、逐位一致、解析误差 ≤ 1e-9 |
 | 9 | **T11 / T12 位移精确性** | 误差 ≤ **1e-6 m** / **1e-9** |
-| 10 | `ToiIterationGuardTrips` / `EnergyGainViolations` | **全部 == 0**（硬断言，全测试族） |
+| 10 | `ToiIterationGuardTrips` / `EnergyGainViolations` | **全部 == 0**（硬断言，全测试族）。
+**v2.2 注**：本条此前**不可达**（R-C 缺陷使 guardTrips = 1810）。修 R-C 后实测归零 ⇒ **本条按原样保留为硬断言，不加范围限定**。
+T7 已按本条把守卫升级为硬门（原先只在 §5 作为产出项记录）。
+**若将来再次出现 guardTrips ≠ 0，先查"解算是否无法分离球"，而不是放宽本条。** |
 | 11 | `PocketProximityEvents` | **分级**：T1–T5、T8–T12 硬断言 **== 0**；T7 **报告 + 逐点枚举**；T13 硬断言 **≥ 1** |
 | 12 | EditMode 测试总数 | 全绿；总数 = 实测基线 **53** + 本 spec 新增 |
 | 13 | T14（Day 4 口径，a = 0） | 漂移 **== 0** |
