@@ -90,6 +90,16 @@
 - Unity 官方文档《为 Unity 准备资源 · 法线贴图方向》明写：Unity 读取切线空间法线贴图为
   **红色 X+ = Right、绿色 Y+ = Up**，即 **OpenGL 约定**。
 - 本贴图来自 glTF/three.js 管线（`gameplay-markers.coordinates.world` 自述 three.js / right-handed）
+
+> ⚠️ **勘误（D3-T02 核验，判定 CONCERNS）：本条"来自 glTF/three.js 管线"被证伪。**
+> 实测：法线贴图源头是**第三方下载包** `D:\BaiduNetdiskDownload\Textures\pool_table_low_pool_table_mat_Normal.png`；
+> glTF/Blender 只是**再打包容器**（交付贴图与 `table.glb` 内嵌图逐字节相同）。
+> **替代证据**：`Blender_Audit_and_Export.md:51` 与 `normalized_table.json` 的 `Normal_OpenGL_Tangent`
+> 节点名 ⇒ **管线明确声明 OpenGL tangent**（可核"声称"，不可核"内容"）。
+> **本节结论的承重结构因此改变**：承重的只有「**美术管线声明 + Unity 规格**」，
+> **独缺"贴图内容实测"** —— 而该贴图为可平铺细节图、**无几何真值 ⇒ 内容级判定在源头即不可得**。
+> **统一措辞**："依美术管线声明(OpenGL tangent) + Unity 约定 ⇒ 不翻转；**方向未经内容级实测**"。**不得写"方向已确认"。**
+> Day-7 感知级复核（已知凸起受光 A/B）**保留**，它是唯一可能给出内容级判据的场合。
   且经 Blender 导出（Blender 默认烘焙/导出同为 OpenGL）。**两端约定一致 → 无需翻转。**
 - 这一条之所以是决定性的：本贴图是**细节/可平铺型**法线（并非从本桌高模烘焙），
   因此"正确的凹凸方向"**由约定定义，而不是由几何真值定义** —— 没有可供比对的高模。

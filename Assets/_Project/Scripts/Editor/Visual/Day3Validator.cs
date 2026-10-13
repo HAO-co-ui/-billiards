@@ -27,9 +27,11 @@ namespace Billiards.EditorTools
         [MenuItem("Billiards/Verify/Validate Day-3 Visuals (materials/scene/camera)", false, 401)]
         public static void ValidateInteractive()
         {
-            Day3VisualSetup.Apply();
+            // ⚠ R2：**不重建被校验对象** —— 校验“仓库里既有的 Main.unity”，而不是自己刚造的。
             SetupReport report = RunAll();
-            string path = report.WriteToDisk(ReportFileName);
+            string path = ResolveReportPath("Docs/Reports/" + ReportFileName, ReportFileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, JsonUtility.ToJson(report, true), new UTF8Encoding(false));
             Debug.Log(report.ToConsoleSummary());
             Debug.Log("验收报告已写入：" + path);
         }
@@ -37,9 +39,11 @@ namespace Billiards.EditorTools
         /// <summary>只构建 + 渲染（用于迭代 A/B 取景），不写报告。</summary>
         public static void RenderOnlyFromCommandLine()
         {
+            _outputDirOverride = CommandLineArgs.Get("-outputDir");
             int exit = 0;
             try
             {
+                // 本入口**故意**保留 Apply()：它是“构建+渲染”的迭代工具，**不是校验入口**。
                 Day3VisualSetup.Apply();
                 RenderAll();
             }
@@ -57,11 +61,14 @@ namespace Billiards.EditorTools
 
         public static void ValidateFromCommandLine()
         {
+            _outputDirOverride = CommandLineArgs.Get("-outputDir");
             int exitCode;
             SetupReport report = null;
             try
             {
-                Day3VisualSetup.Apply();
+                // ⚠ R2：**不调用 Day3VisualSetup.Apply()**。校验器一旦重建被校验对象，
+                // 就只能证明“生成器自洽”，不能证明“被提交的场景是对的”。
+                // 需要重建场景时，请单独运行 Billiards/Visual/Build Day-3 Materials, Scene & Prefabs。
                 report = RunAll();
                 exitCode = report.failCount > 0 ? 1 : 0;
             }
@@ -74,7 +81,9 @@ namespace Billiards.EditorTools
             if (report != null)
             {
                 report.schema = "billiards.day3-verification.v1";
-                string path = report.WriteToDisk(ReportFileName);   // 先落盘
+                string path = ResolveReportPath("Docs/Reports/" + ReportFileName, ReportFileName);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, JsonUtility.ToJson(report, true), new UTF8Encoding(false));
                 Debug.Log(report.ToConsoleSummary());
                 Debug.Log("验收报告已写入：" + path);
                 Debug.Log("DAY3_RESULT=" + report.overallStatus
@@ -700,9 +709,36 @@ namespace Billiards.EditorTools
             return mean;
         }
 
+        /// <summary>由 `-outputDir` 指定的输出根；空 = 写默认入库路径。</summary>
+        private static string _outputDirOverride;
+
         private static string TestRootPath(string relative)
         {
+            if (!string.IsNullOrEmpty(_outputDirOverride))
+            {
+                string rel = relative.StartsWith("Docs/Reports/")
+                    ? relative.Substring("Docs/Reports/".Length)
+                    : Path.GetFileName(relative);
+                string full = Path.Combine(_outputDirOverride, rel.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(full));
+                return full;
+            }
+
             return Path.Combine(SetupReport.ProjectRoot, relative.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        /// <summary>解析报告输出路径（`-outputDir` 可绝对或相对项目根）。</summary>
+        public static string ResolveReportPath(string defaultRelative, string fileName)
+        {
+            string dir = CommandLineArgs.Get("-outputDir");
+            if (string.IsNullOrEmpty(dir))
+            {
+                return ProjectPaths.ToFullPath(defaultRelative);
+            }
+
+            return Path.IsPathRooted(dir)
+                ? Path.Combine(dir, fileName)
+                : ProjectPaths.ToFullPath(dir.TrimEnd('/') + "/" + fileName);
         }
 
         // ── helpers ────────────────────────────────────────────────────────

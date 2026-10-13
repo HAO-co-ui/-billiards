@@ -104,6 +104,22 @@ namespace Billiards.EditorTools
             Debug.Log("验收报告已写入：" + path);
         }
 
+        /// <summary>命令行可选参数 `-outputDir &lt;path&gt;`（绝对或相对项目根）。未给则写默认入库路径。</summary>
+        public static string ResolveReportPath(string defaultRelative, string fileName)
+        {
+            string dir = CommandLineArgs.Get("-outputDir");
+            if (string.IsNullOrEmpty(dir))
+            {
+                return ProjectPaths.ToFullPath(defaultRelative);
+            }
+
+            string full = Path.IsPathRooted(dir)
+                ? Path.Combine(dir, fileName)
+                : ProjectPaths.ToFullPath(dir.TrimEnd('/') + "/" + fileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(full));
+            return full;
+        }
+
         public static void ValidateFromCommandLine()
         {
             int exitCode;
@@ -111,7 +127,18 @@ namespace Billiards.EditorTools
 
             try
             {
-                TableDataImporter.Import();   // 幂等；确保 TableConfig 为最新
+                // ⚠ R2 原则：**校验器不得重建被校验对象**。
+                // 只在产物缺失时生成；存在则一律校验既有产物 —— 否则校验的只是“生成器自洽”，
+                // 证明不了“被提交的那个对象是对的”。
+                if (!ProjectPaths.Exists(TableDataImporter.OutputAssetPath))
+                {
+                    Debug.Log("[R2] TableConfig.asset 缺失 ⇒ 生成一次");
+                    TableDataImporter.Import();
+                }
+                else
+                {
+                    Debug.Log("[R2] TableConfig.asset 已存在 ⇒ **不重建**，校验既有产物");
+                }
                 report = RunAll();
                 exitCode = report.failCount > 0 ? 1 : 0;
             }
@@ -124,7 +151,9 @@ namespace Billiards.EditorTools
             if (report != null)
             {
                 report.schema = "billiards.day2-verification.v1";
-                string path = report.WriteToDisk(ReportFileName);   // 先落盘
+                string path = ResolveReportPath("Docs/Reports/" + ReportFileName, ReportFileName);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, JsonUtility.ToJson(report, true), new UTF8Encoding(false));
                 Debug.Log(report.ToConsoleSummary());
                 Debug.Log("验收报告已写入：" + path);
                 Debug.Log("DAY2_RESULT=" + report.overallStatus
@@ -678,7 +707,8 @@ namespace Billiards.EditorTools
             report.Add(worstFaceSeg < SurfacePointTolerance
                 ? CheckResult.Ok("AXL-04", "L1 82 段端点落在网格面上（端点→最近面内点）",
                     $"< {SurfacePointTolerance:E0} m", $"实测 {worstFaceSeg * 1000f:F6} mm",
-                    "**只验落在网格面上**；对沿面内滑动**全盲**（点仍在面上），**不作位移判据**。"
+                    "**只验落在网格面上**；**对足迹内滑动盲**（点仍在网格内），"
+                    + "但**对掉出网格（袋孔、掉出外轮廓）敏感** —— **不作位移判据**。"
                     + "此前的 0.26 mm 来自旧口径“最近顶点”的采样下限，非几何错位。")
                 : CheckResult.Fail("AXL-04", "L1 82 段端点落在网格面上（端点→最近面内点）",
                     $"< {SurfacePointTolerance:E0} m", $"实测 {worstFaceSeg * 1000f:F6} mm"));
@@ -715,21 +745,6 @@ namespace Billiards.EditorTools
                     $"≤ k = {VertexRatioTolerance:F4}", $"实测算比 {worstRatio:F4}；L_local={localAtWorst * 1000f:F3} mm"));
         }
 
-        /// <summary>记录"端点→最近顶点 / 局部顶点间距"最坏的那次查询（供 AXL-06 使用）。</summary>
-        private static void AccumulateVertexRatio(MeshSet mesh, Vector3 query,
-            ref float worstVertex, ref float worstLocalEdge, ref float worstRatio)
-        {
-            float dv = mesh.NearestHorizontalDistance(query);
-            mesh.NearestHorizontalDistanceToSurface(query, out float localEdge);
-            float ratio = dv / Mathf.Max(localEdge, 1e-9f);
-            if (ratio > worstRatio)
-            {
-                worstRatio = ratio;
-                worstVertex = dv;
-                worstLocalEdge = localEdge;
-            }
-        }
-
         private class MeshSet
         {
             /// <summary>顶点已应用唯一模型侧转换（<see cref="PoolGeometry.ModelVertexToUnity"/>），处于 Unity 世界坐标。</summary>
@@ -743,104 +758,6 @@ namespace Billiards.EditorTools
 
             public int TriangleCount => Triangles.Count / 3;
 
-            /// <summary>查询点到最近**顶点**的水平(XZ)距离。</summary>
-            public float NearestHorizontalDistance(Vector3 query)
-            {
-                float best = float.MaxValue;
-                for (int i = 0; i < Vertices.Count; i++)
-                {
-                    float dx = Vertices[i].x - query.x;
-                    float dz = Vertices[i].z - query.z;
-                    float d = dx * dx + dz * dz;
-                    if (d < best) best = d;
-                }
-
-                return Mathf.Sqrt(best);
-            }
-
-            /// <summary>
-            /// 查询点到最近**网格面点**的水平(XZ)距离（点到三角形在 XZ 投影的最短距离）。
-            /// 同时给出该最近三角形的**最长边**（网格在此处的特征间距），用于导出 AXL-06 的阈值。
-            /// </summary>
-            public float NearestHorizontalDistanceToSurface(Vector3 query, out float nearestTriangleLongestEdge)
-            {
-                float best = float.MaxValue;
-                nearestTriangleLongestEdge = 0f;
-
-                for (int t = 0; t + 2 < Triangles.Count; t += 3)
-                {
-                    Vector3 a = Vertices[Triangles[t]];
-                    Vector3 b = Vertices[Triangles[t + 1]];
-                    Vector3 c = Vertices[Triangles[t + 2]];
-
-                    float d = PointToTriangleHorizontalSqr(query, a, b, c);
-                    if (d < best)
-                    {
-                        best = d;
-                        nearestTriangleLongestEdge = Mathf.Max(
-                            Vector3.Distance(a, b),
-                            Mathf.Max(Vector3.Distance(b, c), Vector3.Distance(c, a)));
-                    }
-                }
-
-                return Mathf.Sqrt(best);
-            }
-
-            private static float PointToTriangleHorizontalSqr(Vector3 q, Vector3 a, Vector3 b, Vector3 c)
-            {
-                // 只用 XZ 分量（物理是二维的）。
-                // 注意：**必须先判内部** —— 点在三角形内（含边）时面距离为 0；
-                // 若只取"到三条边的最小距离"，则对内部点会返回正值，等于"换名不换实"（仍是边/顶点度量）。
-                if (IsInsideTriangleXZ(q, a, b, c))
-                {
-                    return 0f;
-                }
-
-                return Mathf.Min(
-                    PointToSegmentHorizontalSqr(q, a, b),
-                    Mathf.Min(PointToSegmentHorizontalSqr(q, b, c), PointToSegmentHorizontalSqr(q, c, a)));
-            }
-
-            /// <summary>XZ 平面上的点是否落在三角形内（含边、含退化三角形上的共线情形）。</summary>
-            private static bool IsInsideTriangleXZ(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
-            {
-            // 退化三角形（XZ 投影面积为 0，如竖直面）：不能判「内部」，否则任意点都返回 0 距离。
-            float projArea2 = (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
-            if (Mathf.Abs(projArea2) < 1e-12f)
-            {
-                return false;
-            }
-
-                float d1 = Cross2(p, a, b);
-                float d2 = Cross2(p, b, c);
-                float d3 = Cross2(p, c, a);
-                bool hasNeg = d1 < 0f || d2 < 0f || d3 < 0f;
-                bool hasPos = d1 > 0f || d2 > 0f || d3 > 0f;
-                return !(hasNeg && hasPos);
-            }
-
-            private static float Cross2(Vector3 p, Vector3 a, Vector3 b)
-            {
-                return (a.x - p.x) * (b.z - p.z) - (a.z - p.z) * (b.x - p.x);
-            }
-
-            private static float PointToSegmentHorizontalSqr(Vector3 q, Vector3 a, Vector3 b)
-            {
-                float ax = a.x, az = a.z, bx = b.x, bz = b.z;
-                float dx = bx - ax, dz = bz - az;
-                float len2 = dx * dx + dz * dz;
-                if (len2 <= 1e-18f)
-                {
-                    float px = q.x - ax, pz = q.z - az;
-                    return px * px + pz * pz;
-                }
-
-                float t = ((q.x - ax) * dx + (q.z - az) * dz) / len2;
-                t = Mathf.Clamp01(t);
-                float cx = ax + t * dx, cz = az + t * dz;
-                float ex = q.x - cx, ez = q.z - cz;
-                return ex * ex + ez * ez;
-            }
         }
 
         private static MeshSet LoadMeshes(string fbxPath)

@@ -123,6 +123,16 @@ Unity 把 Y-up FBX 转为左手系时**只对 X 取反**（标准做法），因
 - **Unity 官方文档**（《为 Unity 准备资源》·法线贴图方向）明写：Unity 读取切线空间法线贴图为
   **红色 X+ = Right、绿色 Y+ = Up**，即 **OpenGL 约定**。
 - 本贴图的来源管线是 glTF/three.js（OpenGL 约定），Blender 默认烘焙/导出同为 **OpenGL 约定** → 一致。
+
+> ⚠️ **勘误（D3-T02 核验，判定 CONCERNS）：上述"来源管线是 glTF/three.js"不成立。**
+> 实测：`texture_sources` + `Table/Editable/README.md` **逐字**证明法线源头是
+> **第三方下载包** `D:\BaiduNetdiskDownload\Textures\pool_table_low_pool_table_mat_Normal.png`（4096²→2048²）；
+> glTF/Blender 只是**再打包容器**（交付贴图与 `table.glb` 内嵌图**逐字节相同**，2651324 B）。
+> **替代证据（更具体且可核）**：`09_Reports/blender/Blender_Audit_and_Export.md:51` 逐字写
+> "法线源为 **OpenGL tangent convention**"；`normalized_table.json` 的法线输入节点名为 `Normal_OpenGL_Tangent`
+> ⇒ **管线明确声明 OpenGL tangent**（可核"声称"，不可核"内容"）。
+> **统一措辞**："依美术管线声明(OpenGL tangent) + Unity 约定 ⇒ 不翻转；**方向未经内容级实测**"。**不得写"方向已确认"。**
+> 该贴图为可平铺细节图、**无几何真值** ⇒ 内容级判定**在源头即不可得**，留 Day-7 感知级复核。
 - 实测 `table_normal.png`（2048², RGB8）：绿通道均值 **125.7**（中性 128）、蓝通道 251.6，
   符合"切线空间法线、多数法线朝前"的形态，与 OpenGL/中性自洽。
 - 结论：`flipGreenChannel = false`，并在 `BilliardsAssetPostprocessor` 中**显式写死**（不依赖手点）。

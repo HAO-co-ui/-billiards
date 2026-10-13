@@ -1,0 +1,63 @@
+{
+  "schema": "idea35.d3t02-normal-provenance.v1",
+  "task": "D3-T02 法线贴图来源与约定链核验",
+  "reviewer": "quality-lead",
+  "verdict": "CONCERNS",
+  "summary": "原'约定链'(来自glTF/three.js)的来源一环被证伪：法线贴图实为第三方下载包；但找到更具体的可核替代证据(交付管线声明 OpenGL tangent)。贴图实际约定无法从现有材料判定 => '不翻转'是声明级推断，非实测。",
+  "measured": {
+    "J1_delivered_equals_glb_bytes": {
+      "table_normal.png": {"delivered_bytes": 2651324, "delivered_sha256_16": "06b6be45fc9d69e6", "glb_bytes": 2651324, "glb_sha256_16": "06b6be45fc9d69e6", "byte_identical": true},
+      "table_basecolor.jpg": {"bytes": 747747, "sha256_16": "8c2d636bbc1eb6d6", "byte_identical": true},
+      "table_net_rgba.png": {"bytes": 980294, "sha256_16": "4bc68962480ee3ff", "byte_identical": true},
+      "glb": {"path": "F:/工作文件/idea35_台球/03_Models_模型/GLB/table.glb", "version": 2, "bytes": 5927772, "extensionsUsed": null, "images": 4}
+    },
+    "J2_source_is_third_party_download": {
+      "texture_sources_normal": {
+        "name": "Normal",
+        "source": "D:\\BaiduNetdiskDownload\\Textures\\pool_table_low_pool_table_mat_Normal.png",
+        "source_size": [4096, 4096],
+        "derived_size": [2048, 2048],
+        "source_bytes": 9814265,
+        "sha256_recorded": "e4ea481c471bacb125e18024134a093623c44394c101d8d91bafd3cba2312ef5",
+        "note": "该 sha256 为交付方记录，复核方未实测（D: 不可达）"
+      },
+      "readme_verbatim": "来源：D:\\BaiduNetdiskDownload\\Pool Table.fbx 与 D:\\BaiduNetdiskDownload\\Textures 中五张 pool_table_low_pool_table_mat_* 贴图。",
+      "conclusion": "法线贴图源头是第三方下载资产包，与 glTF/three.js 无关；glTF 仅为再打包容器。"
+    },
+    "J3_pipeline_declares_opengl": {
+      "blender_audit_verbatim": "法线源为 OpenGL tangent convention；引擎法线绿色通道需求要结合实际进口设置测试。",
+      "blender_node_name": "Normal_OpenGL_Tangent",
+      "node_appears_for_materials": ["PoolTable_Opaque_PBR.001", "PoolTable_Nets_AlphaMask_PBR"],
+      "source_report": "09_Reports/blender/Blender_Audit_and_Export.md:51, 09_Reports/blender/normalized_table.json:494/505",
+      "pipeline_defers_to_engine": "美术侧原文明确把引擎绿色通道判定让给'实际进口设置测试' => 美术侧不主张已敲定方向"
+    }
+  },
+  "not_determinable": {
+    "D_texture_actual_convention": "无法判定：贴图为细节/可平铺型，无几何真值；内容中无'已知凹凸'可对照。可用证据仅为'声明'(J3)与先验。",
+    "implication": "'不翻转'是声明级推断，不是实测结论。"
+  },
+  "criteria_and_blindspots": [
+    {"id": "J1", "catches": "打包之后对 PNG 的替换/再编辑", "blind": "打包之前既存的约定问题"},
+    {"id": "J2", "catches": "来源归属；证伪'来自glTF'类误述", "blind": "第三方原图的实际约定"},
+    {"id": "J3", "catches": "管线声明了什么", "blind": "声明是否与内容一致（若原图实为DirectX却被标注OpenGL，J3 照样通过）"},
+    {"id": "J4", "catches": "引擎期望什么（Unity G=+Y up）", "blind": "与贴图实际约定无关"},
+    {"id": "DECISIVE_UNCAUGHT", "catches": null, "blind": "第三方原图为 DirectX 被误标 OpenGL —— 现有任何判据都抓不到（缺的是源头信息，不是检查）"}
+  ],
+  "evidence_strength": {
+    "original_chain_glTF_threejs_opengl": "REFUTED (来源被证伪)",
+    "pipeline_declares_opengl": "MEDIUM (是声明，不可核内容是否一致)",
+    "unity_spec_green_up": "STRONG (对引擎期望成立)",
+    "day3_visual_ab": "NOT_LOAD_BEARING (B1: 无几何真值，两版各自自洽)"
+  },
+  "recommendations": [
+    "把'贴图来自 glTF/three.js'从记录中更正为'第三方下载包 + 管线再打包'，防后来者据此重推",
+    "结论统一表述为'依美术管线声明(OpenGL tangent)+Unity 约定 => 不翻转；方向未经内容级实测'，不得写成'方向已确认'",
+    "保留 Day-7 感知级复核（已知凸起受光 A/B）—— 唯一可能给出内容级判据的场合",
+    "若日后取得第三方资产包原始说明，可把'无法判定'升级为'有据可依'"
+  ],
+  "notVerified": [
+    "D:\\BaiduNetdiskDownload 与 D:\\idea美术资产详解 不可达 => 未独立核验 4096 源图 sha256 (采信交付方记录)",
+    "未独立验证 Blender/glTF 导出器是否对法线做过转换（本机无 Blender/工程）=> '容器不改变内容'属推断",
+    "第三方原图真实约定不可判定，且不因任何新增检查而可判定"
+  ]
+}
