@@ -1,0 +1,54 @@
+{
+    "schema": "billiards.day4-verification.v1",
+    "generatedAtUtc": "2026-10-13T10:35:31.8187187Z",
+    "unityVersion": "6000.0.49f1",
+    "activeBuildTarget": "StandaloneWindows64",
+    "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
+    "isBatchMode": true,
+    "passCount": 5,
+    "warnCount": 0,
+    "failCount": 0,
+    "overallStatus": "PASS",
+    "checks": [
+        {
+            "id": "D4-SCN-01",
+            "title": "灰盒场景 PhysicsGreybox.unity 存在",
+            "expected": "Assets/_Project/Scenes/PhysicsGreybox.unity",
+            "actual": "Assets/_Project/Scenes/PhysicsGreybox.unity",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "D4-SCN-02",
+            "title": "场景内 CushionGizmo / PhysicsTestDrive 各恰有 1 个",
+            "expected": "1 / 1（且根对象数 > 0）",
+            "actual": "PhysicsGreybox.unity：rootObjects=1 CushionGizmo=1 PhysicsTestDrive=1",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "D4-PHY-01",
+            "title": "Runtime/Physics/ 源码无 Rigidbody/Collider 名字（含字符串字面量，只跳注释行）",
+            "expected": "scanned > 0 且 hits == 0",
+            "actual": "scanned=6 file(s), commentLinesSkipped=262 → hits=0",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "D4-BAN-01",
+            "title": "Scenes + Prefabs 无 Rigidbody/Collider（含新灰盒场景）",
+            "expected": "0 / 0，且扫描非空转",
+            "actual": "scene=2 prefab=18 → Rigidbody=0 Collider=0",
+            "status": "PASS",
+            "detail": "复用 `PhysicsBanAudit` 单点实现（铁律 16）；扫描范围含本切片新增的 PhysicsGreybox.unity。"
+        },
+        {
+            "id": "D4-BLD-01",
+            "title": "build list 场景数 == 1（灰盒场景未被注册）",
+            "expected": "仅 Assets/_Project/Scenes/Main.unity",
+            "actual": "Assets/_Project/Scenes/Main.unity [enabled]",
+            "status": "PASS",
+            "detail": "R-J：灰盒场景**刻意不注册**。若注册，Day 1 的 SCN-02（build list 恰含 Main.unity）会失败、其 26/26 证据作废。"
+        }
+    ]
+}

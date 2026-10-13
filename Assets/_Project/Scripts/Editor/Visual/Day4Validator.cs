@@ -190,15 +190,32 @@ namespace Billiards.EditorTools
         // ── 源码级：Physics/ 下不得出现 PhysX 组件类型 ──────────────────────
 
         /// <summary>
-        /// 定点检查 <c>Runtime/Physics/**.cs</c> 的**源码文本**里不出现 <c>Rigidbody</c> / <c>Collider</c>
-        /// 标识符。与 <c>PhysicsBanGuardTests.RuntimeAssembly_DoesNotReferencePhysXModule</c>
-        /// （程序集引用级）互补：那一条拦"来源"（引用 PhysX 模块），本条拦"直接写组件类型"这一更浅的入口。
+        /// 定点检查 <c>Runtime/Physics/**.cs</c> 的**源码文本**里不出现 <c>Rigidbody</c> / <c>Collider</c> 标识符。
+        /// **只跳过注释行**（行首空白之后以 <c>//</c> 起头，含 <c>///</c>），**不跳过字符串字面量**。
+        ///
+        /// <para>
+        /// **为什么必须保留字符串**：本检查的**唯一独有覆盖**是「字符串编码的 PhysX 类型名」——
+        /// <c>Type.GetType("UnityEngine.Rigidbody, UnityEngine.PhysicsModule")</c> 这类写法
+        /// **不产生任何编译期引用**（程序集级检查看不见它），但文本里出现了该名字 ⇒ 只有本检查抓得到。
+        /// **跳过字符串 = 等于把这个检查删掉。**
+        /// </para>
+        /// <para>
+        /// 本检查**接受**「字符串里出现这两个词」的假阳性 —— **那是本检查的覆盖来源，不是缺陷**。
+        /// **不得**与 <c>PhysicsBanGuardTests.RuntimeAssembly_DoesNotReferencePhysXModule</c> 合并：
+        /// 后者抓编译期类型引用（抓不到字符串形态），本检查抓文本名字（抓不到纯 <c>Physics.</c> 调用）——
+        /// **两者两向互补**。若真要合并，合并后的实现必须**同时**扫类型引用与字符串名字。
+        /// </para>
+        /// <para>
+        /// 刻意**不**剥离行尾注释：那需要真正的词法分析（字符串里可能含 <c>"//"</c>，例如 URL），
+        /// 朴素切割会误删字符串内容 —— 而字符串恰是本检查的覆盖来源。故只跳**整行注释**。
+        /// </para>
         /// </summary>
         private static void VerifyPhysicsSourcesArePhysXFree(SetupReport report)
         {
             string dir = ProjectPaths.ToFullPath(PhysicsSourceDir);
             var hits = new List<string>();
             int scanned = 0;
+            int commentLinesSkipped = 0;
 
             if (Directory.Exists(dir))
             {
@@ -213,6 +230,14 @@ namespace Billiards.EditorTools
                     foreach (string text in File.ReadLines(file))
                     {
                         line++;
+
+                        // 只跳过**整行注释**（见上方 doc 注释：不剥离行尾注释）。
+                        if (text.TrimStart().StartsWith("//", StringComparison.Ordinal))
+                        {
+                            commentLinesSkipped++;
+                            continue;
+                        }
+
                         if (pattern.IsMatch(text))
                         {
                             hits.Add(Path.GetFileName(file) + ":" + line);
@@ -222,13 +247,13 @@ namespace Billiards.EditorTools
             }
 
             bool ok = scanned > 0 && hits.Count == 0;
-            string actual = $"scanned={scanned} file(s) → hits={hits.Count}"
+            string actual = $"scanned={scanned} file(s), commentLinesSkipped={commentLinesSkipped} → hits={hits.Count}"
                             + (hits.Count > 0 ? " [" + string.Join(", ", hits) + "]" : string.Empty);
 
             report.Add(ok
-                ? CheckResult.Ok("D4-PHY-01", "Runtime/Physics/ 源码无 Rigidbody/Collider 类型引用",
+                ? CheckResult.Ok("D4-PHY-01", "Runtime/Physics/ 源码无 Rigidbody/Collider 名字（含字符串字面量，只跳注释行）",
                     "scanned > 0 且 hits == 0", actual)
-                : CheckResult.Fail("D4-PHY-01", "Runtime/Physics/ 源码无 Rigidbody/Collider 类型引用",
+                : CheckResult.Fail("D4-PHY-01", "Runtime/Physics/ 源码无 Rigidbody/Collider 名字（含字符串字面量，只跳注释行）",
                     "scanned > 0 且 hits == 0", actual));
         }
 
