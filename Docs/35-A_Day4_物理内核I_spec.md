@@ -733,7 +733,7 @@ T7 已按本条把守卫升级为硬门（原先只在 §5 作为产出项记录
 （后者已由 Day 3 验收 22/22 冻结）。
 
 > **明文禁令（H-6，v2 只写「不动」未给禁令）**：
-> **`Day4PhysicsSetup` 严禁把 `PhysicsGreybox.unity` 写入 `EditorBuildSettings`。**
+> **`GreyboxSceneSetup` 严禁把 `PhysicsGreybox.unity` 写入 `EditorBuildSettings`。**
 > 理由：Day 1 的验收项 **`SCN-02`** 断言 build list 中恰好只有 `Main.unity` 一个场景。
 > 一旦加入灰盒场景，**Day 1 的 26/26 会变成 25/26，其验收证据立即作废** ——
 > 而 Day 1 是本卡全部后续工作的基准。灰盒场景**通过编辑器直接双击打开即可**，无需进 build list。
@@ -770,8 +770,8 @@ T7 已按本条把守卫升级为硬门（原先只在 §5 作为产出项记录
 | 5 | `Runtime/Physics/CushionGizmo.cs` | 运行时代码 |
 | 6 | `Runtime/Physics/PhysicsTestDrive.cs` | 运行时代码 |
 | 7 | `Runtime/Core/PoolConstants.cs` **增补 `MaxBallSpeed`** | 运行时代码（改动既有文件） |
-| 8 | `Editor/Visual/Day4PhysicsSetup.cs` | 编辑器脚本（幂等建场景） |
-| 9 | `Editor/Visual/Day4Validator.cs` | 编辑器脚本（验收门） |
+| 8 | `Editor/Visual/GreyboxSceneSetup.cs` | 编辑器脚本（幂等建场景） |
+| 9 | `Editor/Visual/PhysicsValidator.cs` | 编辑器脚本（验收门） |
 | 10 | `Tests/EditMode/PoolSimulatorTests.cs`（T1–T4、T8–T13） | 测试 |
 | 11 | `Tests/EditMode/PoolSimulatorInvariantTests.cs`（T5–T7、T14） | 测试 |
 | 12 | `Scenes/PhysicsGreybox.unity` | 场景（代码生成） |
@@ -821,11 +821,11 @@ Day 4 不改动它，仅在 spec 中留档。
 
 | 入口 | 职责 | 禁止 |
 | --- | --- | --- |
-| `Day4PhysicsSetup.cs` | **只生成**（建 `PhysicsGreybox.unity`），幂等 | 不得调用任何校验逻辑；不得写 `EditorBuildSettings` |
-| `Day4Validator.cs` | **只校验**（跑 T1–T14 的产物与证据断言） | **不得调用生成入口**（R2 铁律：校验器不得重建被校验对象） |
+| `GreyboxSceneSetup.cs` | **只生成**（建 `PhysicsGreybox.unity`），幂等 | 不得调用任何校验逻辑；不得写 `EditorBuildSettings` |
+| `PhysicsValidator.cs` | **只校验**（跑 T1–T14 的产物与证据断言） | **不得调用生成入口**（R2 铁律：校验器不得重建被校验对象） |
 
 两者的报告路径都必须走 `ProjectPaths.ResolveReportPath`（R2 已确立），
-且 `Day4Validator` 额外承担一条 **R-J 断言：`EditorBuildSettings` 中启用的场景数 == 1（且为 `Main.unity`）**。
+且 `PhysicsValidator` 额外承担一条 **R-J 断言：`EditorBuildSettings` 中启用的场景数 == 1（且为 `Main.unity`）**。
 
 ---
 

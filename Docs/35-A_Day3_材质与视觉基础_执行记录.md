@@ -32,8 +32,8 @@
 | 14 | 本执行记录 | `Docs/35-A_Day3_材质与视觉基础_执行记录.md` |
 
 构建器（配置即代码，菜单 + `-executeMethod` 双入口）：
-`Assets/_Project/Scripts/Editor/Visual/Day3VisualSetup.cs`（材质/场景/Prefab）、
-`Assets/_Project/Scripts/Editor/Visual/Day3Validator.cs`（验收 + 渲染）、
+`Assets/_Project/Scripts/Editor/Visual/MaterialVisualSetup.cs`（材质/场景/Prefab）、
+`Assets/_Project/Scripts/Editor/Visual/MaterialVisualValidator.cs`（验收 + 渲染）、
 `Assets/_Project/Scripts/Editor/Visual/BilliardsPropsAssetPostprocessor.cs`（道具导入规则，**新增类，未触碰 Day-2 冻结件**）。
 
 ---
@@ -193,7 +193,7 @@ CAM-01..02（相机）、LGT-01（灯光）、RND-01（渲染落盘）、NAB-01�
 复现：
 ```bash
 Unity.exe -quit -batchmode -projectPath "<root>" \
-  -executeMethod Billiards.EditorTools.Day3Validator.ValidateFromCommandLine
+  -executeMethod Billiards.EditorTools.MaterialVisualValidator.ValidateFromCommandLine
 ```
 
 ---
@@ -373,7 +373,7 @@ Unity.exe -quit -batchmode -projectPath "<root>" \
 | `Editor/TableImport/TableIntegrityValidator.cs` | `dd1d58bd07331b7b` | `65ce6c51e37682c6` |
 | `Tests/EditMode/TableConfigTests.cs` | `d7ea306e49636f36` | `650d2e0190eae0a1` |
 | `Tests/EditMode/ModelOrientationTests.cs` | `d124c313a29af6a2` | （新增） |
-| `Editor/Visual/Day3Validator.cs` | `a900f64e732d6c16` | — |
+| `Editor/Visual/MaterialVisualValidator.cs` | `a900f64e732d6c16` | — |
 | `Docs/adr/ADR-0001-…md` | `4df51440d09a57c5` | — |
 | `Data/TableConfig.asset` | `d7b0962a3c21c349` | **同（未变）** |
 

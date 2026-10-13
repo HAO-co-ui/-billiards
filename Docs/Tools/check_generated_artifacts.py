@@ -140,7 +140,7 @@ MANIFEST = [
          reads=[f"{TEX}/table_metallic.png", f"{TEX}/table_roughness.png"],
          content="packed_mask"),
     dict(path="Docs/Reports/d2t02b-mesh-audit.json", klass="A",
-         generator="Assets/_Project/Tests/EditMode/D2T02B_IndependentAuditTests.cs",
+         generator="Assets/_Project/Tests/EditMode/MeshAlignmentAuditTests.cs",
          reads=["Assets/_Project/Data/TableConfig.asset", FBX], content=None),
     dict(path="Docs/Reports/day2-axis-probe.json", klass="A",
          generator="Assets/_Project/Scripts/Editor/TableImport/AxisProbe.cs",
@@ -152,7 +152,7 @@ MANIFEST = [
          generator="Assets/_Project/Scripts/Editor/TableImport/TableIntegrityValidator.cs",
          reads=["<Unity project>"], content=None),
     dict(path="Docs/Reports/day3-verification.json", klass="A",
-         generator="Assets/_Project/Scripts/Editor/Visual/Day3VisualSetup.cs",
+         generator="Assets/_Project/Scripts/Editor/Visual/MaterialVisualSetup.cs",
          reads=["<Unity project>"], content=None),
     dict(path="Docs/Reports/day2-import.json", klass="A",
          generator="Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs",
@@ -197,7 +197,7 @@ def guard_G1_B_content(root, mods, with_fbx):
                 "Assets/_Project/Scripts/Runtime/Core/PoolGeometry.cs",
                 "Assets/_Project/Data/TableConfig.asset",
                 "Assets/_Project/Tests/EditMode/TableConfigTests.cs",
-                "Assets/_Project/Tests/EditMode/D2T02B_IndependentAuditTests.cs"]:
+                "Assets/_Project/Tests/EditMode/MeshAlignmentAuditTests.cs"]:
         p = os.path.join(root, rel)
         if os.path.exists(p):
             anchors[os.path.basename(rel)] = {"sha256_16": sha256_file(p)[:16], "bytes": os.path.getsize(p)}
@@ -564,7 +564,7 @@ def self_test():
                 "Assets/_Project/Scripts/Runtime/Table/TableConfig.cs",
                 "Assets/_Project/Scripts/Runtime/Core/PoolGeometry.cs",
                 "Assets/_Project/Tests/EditMode/TableConfigTests.cs",
-                "Assets/_Project/Tests/EditMode/D2T02B_IndependentAuditTests.cs"]:
+                "Assets/_Project/Tests/EditMode/MeshAlignmentAuditTests.cs"]:
             src = os.path.join(REPO, rel)
             if not os.path.exists(src):
                 continue

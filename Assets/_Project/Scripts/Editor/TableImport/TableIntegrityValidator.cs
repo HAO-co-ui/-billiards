@@ -44,7 +44,7 @@ namespace Billiards.EditorTools
         // 以下同名常量是指向单值源的**编译期别名**（`const` 可引用 `const`）。之所以保留别名而不
         // 直接把本文件内 ~50 处引用改成 `MeshAlignmentTolerances.X`：**改动面越小，越不容易改错**；
         // 而"值只有一个来源"这一实质已达成 —— 改值只需改 `MeshAlignmentTolerances` 一处。
-        // 同时 `Day3Validator` 的 `TableIntegrityValidator.BoundsTolerance` 继续可用。
+        // 同时 `MaterialVisualValidator` 的 `TableIntegrityValidator.BoundsTolerance` 继续可用。
         //
         // 容差策略与三层各自的盲区、推导依据，全部集中写在 `MeshAlignmentTolerances` 的 doc-comment。
 
@@ -127,7 +127,7 @@ namespace Billiards.EditorTools
 
         /// <summary>
         /// 薄转发 → <see cref="ReportOutput.ResolveReportPath"/>（**唯一实现**，铁律 16）。
-        /// 本方法此前是独立实现，与 `Day3Validator` 的同名方法**已分叉**（见 `ReportOutput` 类注释）。
+        /// 本方法此前是独立实现，与 `MaterialVisualValidator` 的同名方法**已分叉**（见 `ReportOutput` 类注释）。
         /// </summary>
         public static string ResolveReportPath(string defaultRelative, string fileName)
             => ReportOutput.ResolveReportPath(defaultRelative, fileName);

@@ -13,7 +13,7 @@ namespace Billiards.EditorTools
     /// <summary>
     /// Day 4 验收门（**只校验，不生成**）。
     ///
-    /// R2 铁律：**本类绝不调用 <see cref="Day4PhysicsSetup"/>** —— 校验器一旦重建被校验对象，
+    /// R2 铁律：**本类绝不调用 <see cref="GreyboxSceneSetup"/>** —— 校验器一旦重建被校验对象，
     /// 就只能证明"生成器自洽"，不能证明"仓库里那份场景是对的"。需要重建请单独跑
     /// `Billiards/Visual/Build Day-4 Physics Greybox Scene`。
     ///
@@ -30,7 +30,7 @@ namespace Billiards.EditorTools
     ///  · <c>D4-BLD-01</c> build list 场景数 == 1（且为 <c>Main.unity</c>）—— R-J 断言，
     ///    防止灰盒场景被误注册而作废 Day 1 的 <c>SCN-02</c> 证据
     /// </summary>
-    public static class Day4Validator
+    public static class PhysicsValidator
     {
         public const string ReportFileName = "d4-verification.json";
         public const string SchemaId = "billiards.day4-verification.v1";
@@ -118,21 +118,21 @@ namespace Billiards.EditorTools
         public static GreyboxScan ScanGreyboxScene()
         {
             var scan = new GreyboxScan { Detail = string.Empty };
-            scan.SceneFileExists = ProjectPaths.Exists(Day4PhysicsSetup.ScenePath);
+            scan.SceneFileExists = ProjectPaths.Exists(GreyboxSceneSetup.ScenePath);
             if (!scan.SceneFileExists)
             {
-                scan.Detail = "场景文件不存在：" + Day4PhysicsSetup.ScenePath;
+                scan.Detail = "场景文件不存在：" + GreyboxSceneSetup.ScenePath;
                 return scan;
             }
 
-            string full = ProjectPaths.ToFullPath(Day4PhysicsSetup.ScenePath);
+            string full = ProjectPaths.ToFullPath(GreyboxSceneSetup.ScenePath);
             bool opened = false;
 
-            Scene scene = SceneManager.GetSceneByPath(Day4PhysicsSetup.ScenePath);
+            Scene scene = SceneManager.GetSceneByPath(GreyboxSceneSetup.ScenePath);
             if (!scene.IsValid() || !scene.isLoaded)
             {
                 scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(
-                    Day4PhysicsSetup.ScenePath, UnityEditor.SceneManagement.OpenSceneMode.Additive);
+                    GreyboxSceneSetup.ScenePath, UnityEditor.SceneManagement.OpenSceneMode.Additive);
                 opened = true;
             }
 
@@ -165,9 +165,9 @@ namespace Billiards.EditorTools
 
             report.Add(scan.SceneFileExists
                 ? CheckResult.Ok("D4-SCN-01", "灰盒场景 PhysicsGreybox.unity 存在",
-                    Day4PhysicsSetup.ScenePath, Day4PhysicsSetup.ScenePath)
+                    GreyboxSceneSetup.ScenePath, GreyboxSceneSetup.ScenePath)
                 : CheckResult.Fail("D4-SCN-01", "灰盒场景 PhysicsGreybox.unity 存在",
-                    Day4PhysicsSetup.ScenePath, "未找到"));
+                    GreyboxSceneSetup.ScenePath, "未找到"));
 
             if (!scan.SceneFileExists)
             {

@@ -23,7 +23,7 @@ namespace Billiards.Tests
     ///
     /// 本文件只读取资产与参考数据、只写 Docs/Reports 下的证据文件，绝不修改任何实现代码或资产。
     /// </summary>
-    public class D2T02B_IndependentAuditTests
+    public class MeshAlignmentAuditTests
     {
         private const string ConfigPath = "Assets/_Project/Data/TableConfig.asset";
         private const string ModelPath = "Assets/_Project/Art/Models/PoolTable_Normalized.fbx";

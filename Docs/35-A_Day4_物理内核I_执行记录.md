@@ -34,14 +34,14 @@
 
 | # | 产出物 | 路径 |
 | --- | --- | --- |
-| 8 | 场景生成（幂等） | `Scripts/Editor/Visual/Day4PhysicsSetup.cs` |
-| 9 | 验收门 | `Scripts/Editor/Visual/Day4Validator.cs` |
+| 8 | 场景生成（幂等） | `Scripts/Editor/Visual/GreyboxSceneSetup.cs` |
+| 9 | 验收门 | `Scripts/Editor/Visual/PhysicsValidator.cs` |
 | 10 | 内核单测 | `Tests/EditMode/PoolSimulatorTests.cs`（T1/T2/T3/T6） |
 | 11 | 不变量测试 | `Tests/EditMode/PoolSimulatorInvariantTests.cs`（T5a/T5b） |
 | 12 | 积分格式测试 | `Tests/EditMode/PoolSimulatorIntegralFormatTests.cs`（T11a/T11b/T12/D-2） |
 | 13 | 口袋与多球测试 | `Tests/EditMode/PoolSimulatorPocketAndMultiBallTests.cs`（T13a/T13b/D-3） |
 | 14 | 全段覆盖测试 | `Tests/EditMode/PoolSimulatorSegmentCoverageTests.cs`（T7） |
-| 15 | 灰盒场景测试 | `Tests/EditMode/Day4GreyboxTests.cs`（×5） |
+| 15 | 灰盒场景测试 | `Tests/EditMode/GreyboxSceneTests.cs`（×5） |
 | 16 | 灰盒场景 | `Assets/_Project/Scenes/PhysicsGreybox.unity`（sha1 `aa09ad097b095400a02357d82e926dea24cbf777`） |
 
 ### 证据与工具
@@ -138,7 +138,7 @@ Day 4 新增 **19 条**（66 → **85**）：
 | --- | --- | --- | --- |
 | `PoolSimulatorTests` | 4 | T1 分量分解 / T2 e 扰动 / T3 镜面角 / T6 子步不变量 | T1 用 **e=0.8、μ=0.9**（都不是 1）且**带符号**断言；T3 明确声明**测不出 e/μ 错误** |
 | `PoolSimulatorInvariantTests` | 2 | T5a 无穿透 / T5b **负对照** | T5b 必须复用生产推进路径 |
-| `Day4GreyboxTests` | 5 | 累加器边界 / 负路径 / 场景结构 | 场景结构断言与验收器**共用单点** |
+| `GreyboxSceneTests` | 5 | 累加器边界 / 负路径 / 场景结构 | 场景结构断言与验收器**共用单点** |
 | `PoolSimulatorIntegralFormatTests` | 4 | T11a / **T11b** / T12 / D-2 | 见 §3.1；D-2 断言**判据 B 分支活体** |
 | `PoolSimulatorPocketAndMultiBallTests` | 3 | T13a 冻结 / T13b 负例 / D-3 多球 | T13b 防"恒冻结"；D-3 装 **16 球** |
 | `PoolSimulatorSegmentCoverageTests` | 1 | T7 全 82 段 | 见下 |
@@ -284,7 +284,7 @@ C# 名字查找**先逐层查外层命名空间、命中即停，早于 `using`*
 | 1 | **76 段袋角/弧段未 100% 覆盖**：命中 50/82。**20 段属"网侧"（越过袋喉平面）⇒ 归 Day 6 袋口捕获范围**；12 段射线可达但未进入接触带 | 已知并量化，非缺陷 |
 | 2 | **12 段未触达**：需要针对性发射方案（从袋口内侧/近距离对准） | 归 Day 6 或后续切片 |
 | 3 | `d4-rc-diagnosis.json` 为**一次性快照**（探针已删） | 刻意为之：不把诊断探针永久化进生产代码（合 R1-2） |
-| 4 | **PlayMode 未接真实 `FixedUpdate`**：`Day4GreyboxTests` 只单测了累加器纯函数 | 帧率无关性**未验**，属 Day 8 前必做 |
+| 4 | **PlayMode 未接真实 `FixedUpdate`**：`GreyboxSceneTests` 只单测了累加器纯函数 | 帧率无关性**未验**，属 Day 8 前必做 |
 | 5 | `MaxRollingDeceleration = 5` 是**前瞻声明值**，其判据 B 的推导在 Day 4 无运行时观测 | Day 7 引入滚阻后生效 |
 | 6 | 冻结分辨率为**子步级**：`CheckPocketProximity` 每子步末才跑 ⇒ 球可在子步内越喉平面最多 `v·dt_sub` | 实测越界 4.9377 mm（上界 5.5556 mm，占 88.9%）；Day 6 需评估是否收紧 |
 | 7 | 灰盒场景**不入 build list**（`D4-BLD-01` 断言仅 `Main.unity`） | 设计意图：Day 1 `SCN-02` 保命；灰盒用编辑器打开 |

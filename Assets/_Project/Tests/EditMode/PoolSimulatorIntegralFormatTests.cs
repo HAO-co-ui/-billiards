@@ -381,7 +381,7 @@ namespace Billiards.Tests
 
         /// <summary>
         /// **D4-GAP-02-3：用独立字面量钉住两个契约常量** —— 它们此前只被"间接"约束，改动后**全套件照过**：
-        ///  · `FixedDeltaTime`：此前唯一的间接钉住是 `Day4GreyboxTests` 的 `WholeSteps(0.02f, Step) == 2`，
+        ///  · `FixedDeltaTime`：此前唯一的间接钉住是 `GreyboxSceneTests` 的 `WholeSteps(0.02f, Step) == 2`，
         ///    它只把 dt 约束到区间 **`(1/150, 1/100]`**（能抓 1/60，**抓不住精确值**）⇒ 改成 1/110 全套件仍绿；
         ///  · `SubSteps`（= `DeriveSubSteps(PoolConstants.MaxBallSpeed)`）：此前**完全没有**字面量锚
         ///    （源码与注释里只有 "SubSteps=3" 这类**散文**），改 `MaxBallSpeed` / 判据系数后无人报警。

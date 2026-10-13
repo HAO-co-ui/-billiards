@@ -15,7 +15,7 @@ namespace Billiards.EditorTools
     /// 同时本脚本本身也是这套配置的文档与回归入口。
     ///
     /// 幂等：任意次数执行结果一致。
-    /// 命令行入口：-executeMethod Billiards.EditorTools.BilliardsProjectSetup.ApplyDay1FromCommandLine
+    /// 命令行入口：-executeMethod Billiards.EditorTools.BilliardsProjectSetup.ApplyProjectConfigFromCommandLine
     /// </summary>
     public static class BilliardsProjectSetup
     {
@@ -46,9 +46,9 @@ namespace Billiards.EditorTools
         };
 
         [MenuItem("Billiards/Setup/Apply Day-1 Project Configuration", false, 100)]
-        public static void ApplyDay1Interactive()
+        public static void ApplyProjectConfigInteractive()
         {
-            SetupReport report = ApplyDay1(interactive: true);
+            SetupReport report = ApplyProjectConfig(interactive: true);
             Debug.Log(report.ToConsoleSummary());
             EditorUtility.DisplayDialog(
                 "Billiards Day-1 Setup",
@@ -59,7 +59,7 @@ namespace Billiards.EditorTools
         }
 
         [MenuItem("Billiards/Setup/Verify Day-1 Configuration", false, 101)]
-        public static void VerifyDay1Interactive()
+        public static void VerifyProjectConfigInteractive()
         {
             SetupReport report = BilliardsProjectVerifier.RunAll();
             string path = report.WriteToDisk();
@@ -73,14 +73,14 @@ namespace Billiards.EditorTools
         }
 
         /// <summary>命令行入口：应用配置 → 验收 → 写报告 → 按结果设置退出码。</summary>
-        public static void ApplyDay1FromCommandLine()
+        public static void ApplyProjectConfigFromCommandLine()
         {
             SetupReport report;
             int exitCode;
 
             try
             {
-                report = ApplyDay1(interactive: false);
+                report = ApplyProjectConfig(interactive: false);
                 Debug.Log(report.ToConsoleSummary());
                 exitCode = report.failCount > 0 ? 1 : 0;
             }
@@ -107,7 +107,7 @@ namespace Billiards.EditorTools
             }
         }
 
-        public static SetupReport ApplyDay1(bool interactive)
+        public static SetupReport ApplyProjectConfig(bool interactive)
         {
             AssetDatabase.Refresh();
 

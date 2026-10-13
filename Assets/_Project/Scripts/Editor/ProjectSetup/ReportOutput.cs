@@ -7,13 +7,13 @@ namespace Billiards.EditorTools
     ///
     /// **为什么要有这个类**（D4-FIX-03 E1）：此前 Day2 与 Day3 各写了一份 `ResolveReportPath`，
     /// **签名相同、逻辑几乎相同，但已经分叉** ——
-    /// `TableIntegrityValidator` 的版本调用 <c>Directory.CreateDirectory</c>，`Day3Validator` 的**没有**。
+    /// `TableIntegrityValidator` 的版本调用 <c>Directory.CreateDirectory</c>，`MaterialVisualValidator` 的**没有**。
     /// 后果：`-outputDir` 指向一个不存在的目录时，Day2 能写、Day3 会失败。
     /// 之前没暴露**只是因为测试目录恰好已存在**（调用顺序的巧合，不是设计）——
     /// 与 `SCN-04`/`SCN-06` 是同一类缺陷（本工程第五次）。
     ///
     /// 本类同时补上 **Day1** —— Day1 此前**完全没有 `-outputDir`**，
-    /// 其入口 `ApplyDay1FromCommandLine` 是「Apply + Verify 合一」，
+    /// 其入口 `ApplyProjectConfigFromCommandLine` 是「Apply + Verify 合一」，
     /// 跑一次校验就会**覆写已入库的 `Docs/Reports/day1-verification.json`**，
     /// 导致复核方无法独立复跑 Day1（只能靠自报）。
     /// </summary>
@@ -65,7 +65,7 @@ namespace Billiards.EditorTools
         /// <item>**(a) 二分在所有断言之后**（只跳过最后一步落盘）。实例：
         /// <c>PoolSimulatorSegmentCoverageTests.WriteReport</c>。</item>
         /// <item>**(b) 把落盘封进不含任何断言的 `void` 方法**，其内部 `return` 只退出自身，
-        /// 调用方的断言在调用它**之后**。实例：<c>D2T02B_IndependentAuditTests.WriteAudit</c>。
+        /// 调用方的断言在调用它**之后**。实例：<c>MeshAlignmentAuditTests.WriteAudit</c>。
         /// **此形态一旦被塞入断言即静默失效**（跳过落盘 == 跳过检查），故该方法内须常驻一句警示。</item>
         /// </list>
         /// <para>

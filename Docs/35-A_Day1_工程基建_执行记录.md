@@ -223,7 +223,7 @@ dotnet build _verify_compile.csproj
 
 1. 编译产物 `Billiards-Verify.dll` 中确认存在：`PoolConstants`、`BilliardsLayers`、
    `BilliardsProjectVerifier`、`BilliardsProjectSetup`、`PoolConstantsTests`、
-   `ApplyDay1FromCommandLine`、`ApplyDay1Interactive`、`RequiredGameplayActions`、
+   `ApplyProjectConfigFromCommandLine`、`ApplyProjectConfigInteractive`、`RequiredGameplayActions`、
    `TableTestAssembly_IsWired`、`CaptureRadius_IsOpeningRadiusMinusBallRadiusMinusTwoMillimetres` 等符号。
 2. 编译前若不含通配符替换，`ReadmeEditor.cs` 是唯一编译目标，上述类型均不存在。
 
@@ -253,7 +253,7 @@ ProjectSettings/ 被本次操作修改的文件                  → 无
 ```
 Unity.exe -quit -batchmode \
   -projectPath "E:\Unity_Deve\Unity_Project\Billiards game" \
-  -executeMethod Billiards.EditorTools.BilliardsProjectSetup.ApplyDay1FromCommandLine \
+  -executeMethod Billiards.EditorTools.BilliardsProjectSetup.ApplyProjectConfigFromCommandLine \
   -logFile "Logs\day1-batch.log"
 ```
 

@@ -9,12 +9,12 @@ namespace Billiards.Tests
     ///
     /// 两条独立的判据：
     ///  1. <see cref="PhysicsTestDrive.WholeSteps"/> —— 累加器折算的边界语义（纯函数，可失败）；
-    ///  2. 灰盒场景结构扫描 —— 与 <see cref="Day4Validator"/> **共用同一实现**
+    ///  2. 灰盒场景结构扫描 —— 与 <see cref="PhysicsValidator"/> **共用同一实现**
     ///     （`ScanGreyboxScene`，铁律 16 单点），并带**非空转证据**（根对象数 &gt; 0，R4-3）。
     ///
     /// 本测试**只读**：不写 Assets、不保存场景、不产生仓库改动（R3-5）。
     /// </summary>
-    public class Day4GreyboxTests
+    public class GreyboxSceneTests
     {
         private const float Step = PoolSimulator.FixedDeltaTime;
 
@@ -61,9 +61,9 @@ namespace Billiards.Tests
         [Test]
         public void PhysicsGreyboxScene_HasExactlyOneGizmoAndOneDrive_NonVacuous()
         {
-            Day4Validator.GreyboxScan scan = Day4Validator.ScanGreyboxScene();
+            PhysicsValidator.GreyboxScan scan = PhysicsValidator.ScanGreyboxScene();
 
-            Assert.IsTrue(scan.SceneFileExists, "灰盒场景必须存在：" + Day4PhysicsSetup.ScenePath);
+            Assert.IsTrue(scan.SceneFileExists, "灰盒场景必须存在：" + GreyboxSceneSetup.ScenePath);
             Assert.Greater(scan.RootObjectCount, 0,
                 "扫描非空转：场景必须至少扫到 1 个根对象（否则下面的 1/1 断言恒真）。");
             Assert.AreEqual(1, scan.GizmoCount, "CushionGizmo 必须恰有 1 个。" + scan.Detail);

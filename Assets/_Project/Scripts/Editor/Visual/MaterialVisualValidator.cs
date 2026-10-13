@@ -18,7 +18,7 @@ namespace Billiards.EditorTools
     /// 与 Day 1/2 同源同风格：只读为主、全部结论带 expected/actual、报告先落盘再退出。
     /// 渲染在批处理下用 RenderTexture + EncodeToPNG 落盘到 `Docs/Reports/`。
     /// </summary>
-    public static class Day3Validator
+    public static class MaterialVisualValidator
     {
         public const string ReportFileName = "day3-verification.json";
         public const string AbDir = "Docs/Reports/day3-normal-ab";
@@ -45,7 +45,7 @@ namespace Billiards.EditorTools
             try
             {
                 // 本入口**故意**保留 Apply()：它是“构建+渲染”的迭代工具，**不是校验入口**。
-                Day3VisualSetup.Apply();
+                MaterialVisualSetup.Apply();
                 RenderAll();
             }
             catch (Exception ex)
@@ -67,7 +67,7 @@ namespace Billiards.EditorTools
             SetupReport report = null;
             try
             {
-                // ⚠ R2：**不调用 Day3VisualSetup.Apply()**。校验器一旦重建被校验对象，
+                // ⚠ R2：**不调用 MaterialVisualSetup.Apply()**。校验器一旦重建被校验对象，
                 // 就只能证明“生成器自洽”，不能证明“被提交的场景是对的”。
                 // 需要重建场景时，请单独运行 Billiards/Visual/Build Day-3 Materials, Scene & Prefabs。
                 report = RunAll();
@@ -118,9 +118,9 @@ namespace Billiards.EditorTools
 
         private static void VerifyMaterials(SetupReport report)
         {
-            Material body = LoadMat(Day3VisualSetup.BodyMaterialPath);
+            Material body = LoadMat(MaterialVisualSetup.BodyMaterialPath);
             bool bodyOk = body != null
-                          && body.shader != null && body.shader.name == Day3VisualSetup.UrpLitShaderName
+                          && body.shader != null && body.shader.name == MaterialVisualSetup.UrpLitShaderName
                           && body.GetTexture("_BaseMap") != null
                           && body.GetTexture("_BumpMap") != null
                           && body.GetTexture("_MetallicGlossMap") != null
@@ -144,9 +144,9 @@ namespace Billiards.EditorTools
                     + $"kwAlphaTest={body.IsKeywordEnabled("_ALPHATEST_ON")}, "
                     + $"smoothChannel={body.GetFloat("_SmoothnessTextureChannel")}, surface={body.GetFloat("_Surface")}"));
 
-            Material nets = LoadMat(Day3VisualSetup.NetsMaterialPath);
+            Material nets = LoadMat(MaterialVisualSetup.NetsMaterialPath);
             bool netsOk = nets != null
-                          && nets.shader != null && nets.shader.name == Day3VisualSetup.UrpLitShaderName
+                          && nets.shader != null && nets.shader.name == MaterialVisualSetup.UrpLitShaderName
                           && Mathf.Approximately(nets.GetFloat("_AlphaClip"), 1f)
                           && Mathf.Approximately(nets.GetFloat("_Cutoff"), BilliardsAssetPostprocessor.NetAlphaCutoff)
                           && Mathf.Approximately(nets.GetFloat("_Cull"), 0f)
@@ -160,26 +160,26 @@ namespace Billiards.EditorTools
                     "alphaClip=1, cutoff=0.5, cull=0", DescribeMat(nets)));
 
             int ballsOk = 0;
-            for (int i = 0; i < Day3VisualSetup.BallCount; i++)
+            for (int i = 0; i < MaterialVisualSetup.BallCount; i++)
             {
-                Material bm = LoadMat($"{Day3VisualSetup.BallsMaterialDir}/{Day3VisualSetup.BallName(i)}.mat");
-                if (bm != null && bm.shader != null && bm.shader.name == Day3VisualSetup.UrpLitShaderName
+                Material bm = LoadMat($"{MaterialVisualSetup.BallsMaterialDir}/{MaterialVisualSetup.BallName(i)}.mat");
+                if (bm != null && bm.shader != null && bm.shader.name == MaterialVisualSetup.UrpLitShaderName
                     && bm.GetTexture("_BaseMap") != null && !bm.IsKeywordEnabled("_ALPHATEST_ON"))
                 {
                     ballsOk++;
                 }
             }
 
-            report.Add(ballsOk == Day3VisualSetup.BallCount
+            report.Add(ballsOk == MaterialVisualSetup.BallCount
                 ? CheckResult.Ok("MAT-03", $"16 个球材质齐备且指向各自 BaseColor", "16/16", ballsOk + "/16")
                 : CheckResult.Fail("MAT-03", $"16 个球材质齐备且指向各自 BaseColor", "16/16", ballsOk + "/16"));
 
-            Material cue = LoadMat(Day3VisualSetup.CueMaterialPath);
+            Material cue = LoadMat(MaterialVisualSetup.CueMaterialPath);
             report.Add(cue != null && cue.GetTexture("_BaseMap") != null
                 ? CheckResult.Ok("MAT-04", "球杆材质存在且含 BaseColor", "存在", "存在")
                 : CheckResult.Fail("MAT-04", "球杆材质存在且含 BaseColor", "存在", DescribeMat(cue)));
 
-            Material floor = LoadMat(Day3VisualSetup.FloorMaterialPath);
+            Material floor = LoadMat(MaterialVisualSetup.FloorMaterialPath);
             report.Add(floor != null
                 ? CheckResult.Ok("MAT-05", "地面材质存在（最小布景）", "存在", "存在")
                 : CheckResult.Fail("MAT-05", "地面材质存在（最小布景）", "存在", "缺失"));
@@ -205,16 +205,16 @@ namespace Billiards.EditorTools
 
         private static void VerifyScene(SetupReport report)
         {
-            if (!ProjectPaths.Exists(Day3VisualSetup.MainScenePath))
+            if (!ProjectPaths.Exists(MaterialVisualSetup.MainScenePath))
             {
-                report.Add(CheckResult.Fail("SCN-01", "Main.unity 存在", Day3VisualSetup.MainScenePath, "未找到"));
+                report.Add(CheckResult.Fail("SCN-01", "Main.unity 存在", MaterialVisualSetup.MainScenePath, "未找到"));
                 return;
             }
 
             Scene scene = SceneManager.GetActiveScene();
-            if (scene.path != Day3VisualSetup.MainScenePath)
+            if (scene.path != MaterialVisualSetup.MainScenePath)
             {
-                scene = EditorSceneManager.OpenScene(Day3VisualSetup.MainScenePath, OpenSceneMode.Single);
+                scene = EditorSceneManager.OpenScene(MaterialVisualSetup.MainScenePath, OpenSceneMode.Single);
             }
 
             GameObject playfield = FindRoot(scene, "PlayfieldRoot");
@@ -285,7 +285,7 @@ namespace Billiards.EditorTools
                 for (int i = 0; i < sub; i++)
                 {
                     Material assigned = i < mr.sharedMaterials.Length ? mr.sharedMaterials[i] : null;
-                    Material want = i == 1 ? LoadMat(Day3VisualSetup.NetsMaterialPath) : LoadMat(Day3VisualSetup.BodyMaterialPath);
+                    Material want = i == 1 ? LoadMat(MaterialVisualSetup.NetsMaterialPath) : LoadMat(MaterialVisualSetup.BodyMaterialPath);
                     if (assigned != want)
                     {
                         materialOk = false;
@@ -325,31 +325,31 @@ namespace Billiards.EditorTools
         private static void VerifyPrefabs(SetupReport report)
         {
             int found = 0;
-            for (int i = 0; i < Day3VisualSetup.BallCount; i++)
+            for (int i = 0; i < MaterialVisualSetup.BallCount; i++)
             {
-                string p = $"{Day3VisualSetup.BallsPrefabDir}/{Day3VisualSetup.BallName(i)}.prefab";
+                string p = $"{MaterialVisualSetup.BallsPrefabDir}/{MaterialVisualSetup.BallName(i)}.prefab";
                 if (ProjectPaths.Exists(p) && AssetDatabase.LoadAssetAtPath<GameObject>(p) != null)
                 {
                     found++;
                 }
             }
 
-            report.Add(found == Day3VisualSetup.BallCount
+            report.Add(found == MaterialVisualSetup.BallCount
                 ? CheckResult.Ok("PRB-01", "16 个球 Prefab 齐备", "16/16", found + "/16")
                 : CheckResult.Fail("PRB-01", "16 个球 Prefab 齐备", "16/16", found + "/16"));
 
-            bool baseOk = ProjectPaths.Exists(Day3VisualSetup.BaseBallPrefabPath)
-                          && AssetDatabase.LoadAssetAtPath<GameObject>(Day3VisualSetup.BaseBallPrefabPath) != null;
-            bool cueOk = ProjectPaths.Exists(Day3VisualSetup.CuePrefabPath)
-                         && AssetDatabase.LoadAssetAtPath<GameObject>(Day3VisualSetup.CuePrefabPath) != null;
+            bool baseOk = ProjectPaths.Exists(MaterialVisualSetup.BaseBallPrefabPath)
+                          && AssetDatabase.LoadAssetAtPath<GameObject>(MaterialVisualSetup.BaseBallPrefabPath) != null;
+            bool cueOk = ProjectPaths.Exists(MaterialVisualSetup.CuePrefabPath)
+                         && AssetDatabase.LoadAssetAtPath<GameObject>(MaterialVisualSetup.CuePrefabPath) != null;
             report.Add(baseOk && cueOk
                 ? CheckResult.Ok("PRB-02", "BallPrefab 基座 + 球杆 Prefab 存在", "均存在", "均存在")
                 : CheckResult.Fail("PRB-02", "BallPrefab 基座 + 球杆 Prefab 存在", "均存在",
                     $"base={baseOk}, cue={cueOk}"));
 
             GameObject ball0 = AssetDatabase.LoadAssetAtPath<GameObject>(
-                $"{Day3VisualSetup.BallsPrefabDir}/{Day3VisualSetup.BallName(0)}.prefab");
-            Material want0 = LoadMat($"{Day3VisualSetup.BallsMaterialDir}/{Day3VisualSetup.BallName(0)}.mat");
+                $"{MaterialVisualSetup.BallsPrefabDir}/{MaterialVisualSetup.BallName(0)}.prefab");
+            Material want0 = LoadMat($"{MaterialVisualSetup.BallsMaterialDir}/{MaterialVisualSetup.BallName(0)}.mat");
             bool ballMatOk = false;
             bool layerOk = false;
             if (ball0 != null)
@@ -376,7 +376,7 @@ namespace Billiards.EditorTools
         private static void VerifyPropGeometry(SetupReport report)
         {
             // 球半径 == PoolConstants.BallRadius
-            Mesh ballMesh = FirstMesh($"{Day3VisualSetup.BallsModelDir}/{Day3VisualSetup.BallName(0)}.fbx");
+            Mesh ballMesh = FirstMesh($"{MaterialVisualSetup.BallsModelDir}/{MaterialVisualSetup.BallName(0)}.fbx");
             float ballRadius = 0f;
             if (ballMesh != null)
             {
@@ -390,7 +390,7 @@ namespace Billiards.EditorTools
                 : CheckResult.Fail("GEO-01", "球网格半径 = PoolConstants.BallRadius", PoolConstants.BallRadius.ToString("R"),
                     ballRadius.ToString("R")));
 
-            Mesh cueMesh = FirstMesh(Day3VisualSetup.CueModelPath);
+            Mesh cueMesh = FirstMesh(MaterialVisualSetup.CueModelPath);
             string cueAxis = "<none>";
             float cueLen = 0f;
             if (cueMesh != null)
@@ -410,15 +410,15 @@ namespace Billiards.EditorTools
                     $"{cueLen:F4} m（长轴 = {cueAxis}）"));
 
             int fbxCount = 0;
-            for (int i = 0; i < Day3VisualSetup.BallCount; i++)
+            for (int i = 0; i < MaterialVisualSetup.BallCount; i++)
             {
-                if (ProjectPaths.Exists($"{Day3VisualSetup.BallsModelDir}/{Day3VisualSetup.BallName(i)}.fbx"))
+                if (ProjectPaths.Exists($"{MaterialVisualSetup.BallsModelDir}/{MaterialVisualSetup.BallName(i)}.fbx"))
                 {
                     fbxCount++;
                 }
             }
 
-            report.Add(fbxCount == Day3VisualSetup.BallCount
+            report.Add(fbxCount == MaterialVisualSetup.BallCount
                 ? CheckResult.Ok("GEO-03", "16 个球 FBX 已导入", "16/16", fbxCount + "/16")
                 : CheckResult.Fail("GEO-03", "16 个球 FBX 已导入", "16/16", fbxCount + "/16"));
         }
@@ -450,15 +450,15 @@ namespace Billiards.EditorTools
                 return;
             }
 
-            float posErr = Vector3.Distance(cam.transform.position, Day3VisualSetup.CameraPosition);
+            float posErr = Vector3.Distance(cam.transform.position, MaterialVisualSetup.CameraPosition);
             bool paramsOk = posErr < 1e-3f
-                            && Mathf.Abs(cam.fieldOfView - Day3VisualSetup.CameraFov) < 0.01f
+                            && Mathf.Abs(cam.fieldOfView - MaterialVisualSetup.CameraFov) < 0.01f
                             && cam.nearClipPlane > 0f;
 
             report.Add(paramsOk
-                ? CheckResult.Ok("CAM-01", "主相机参数符合设定", $"pos={Day3VisualSetup.CameraPosition}, fov={Day3VisualSetup.CameraFov}",
+                ? CheckResult.Ok("CAM-01", "主相机参数符合设定", $"pos={MaterialVisualSetup.CameraPosition}, fov={MaterialVisualSetup.CameraFov}",
                     $"pos={cam.transform.position}, fov={cam.fieldOfView}", "俯视带俯角；俯视截图即由该相机渲染。")
-                : CheckResult.Fail("CAM-01", "主相机参数符合设定", $"pos={Day3VisualSetup.CameraPosition}, fov={Day3VisualSetup.CameraFov}",
+                : CheckResult.Fail("CAM-01", "主相机参数符合设定", $"pos={MaterialVisualSetup.CameraPosition}, fov={MaterialVisualSetup.CameraFov}",
                     $"pos={cam.transform.position}, fov={cam.fieldOfView}"));
 
             // 球桌是否完整落在视锥内（用世界包围盒 8 角投影到视口）
@@ -499,12 +499,12 @@ namespace Billiards.EditorTools
 
             Light sun = RenderSettings.sun;
             bool lightOk = sun != null && sun.type == LightType.Directional
-                           && Mathf.Abs(sun.intensity - Day3VisualSetup.SunIntensity) < 1e-3f
+                           && Mathf.Abs(sun.intensity - MaterialVisualSetup.SunIntensity) < 1e-3f
                            && RenderSettings.ambientMode != AmbientMode.Skybox;
             report.Add(lightOk
-                ? CheckResult.Ok("LGT-01", "主光 + 环境光已配置", $"dir light, intensity={Day3VisualSetup.SunIntensity}",
+                ? CheckResult.Ok("LGT-01", "主光 + 环境光已配置", $"dir light, intensity={MaterialVisualSetup.SunIntensity}",
                     $"intensity={sun.intensity}, ambient={RenderSettings.ambientMode}, color={sun.color}")
-                : CheckResult.Fail("LGT-01", "主光 + 环境光已配置", $"dir light, intensity={Day3VisualSetup.SunIntensity}",
+                : CheckResult.Fail("LGT-01", "主光 + 环境光已配置", $"dir light, intensity={MaterialVisualSetup.SunIntensity}",
                     sun == null ? "<无 RenderSettings.sun>" : $"intensity={sun.intensity}, ambient={RenderSettings.ambientMode}"));
         }
 
@@ -603,7 +603,7 @@ namespace Billiards.EditorTools
             Material original = originalMats[bodyIndex];
             var abMaterial = new Material(original);
 
-            byte[] png = File.ReadAllBytes(ProjectPaths.ToFullPath(Day3VisualSetup.NormalTex));
+            byte[] png = File.ReadAllBytes(ProjectPaths.ToFullPath(MaterialVisualSetup.NormalTex));
 
             Texture2D asIs = MakeNormalVariant(png, false);
             Texture2D flipped = MakeNormalVariant(png, true);

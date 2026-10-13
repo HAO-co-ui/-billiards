@@ -26,7 +26,7 @@ namespace Billiards.EditorTools
     ///    应用时只能作用于该视觉 root，物理保持规范米制。
     ///  · 不手改 ProjectSettings/*.asset；场景/材质全部走官方 API。
     /// </summary>
-    public static class Day3VisualSetup
+    public static class MaterialVisualSetup
     {
         public const string UrpLitShaderName = "Universal Render Pipeline/Lit";
 
@@ -55,7 +55,7 @@ namespace Billiards.EditorTools
 
         public const int BallCount = 16;
 
-        // 相机与灯光参数（Day3Validator 会读回核对）
+        // 相机与灯光参数（MaterialVisualValidator 会读回核对）
         public static readonly Vector3 CameraPosition = new Vector3(0f, 3.05f, -0.88f);
         public static readonly Vector3 CameraTarget = new Vector3(0f, 0f, 0f);
         public const float CameraFov = 37f;

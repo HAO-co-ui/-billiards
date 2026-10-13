@@ -27,11 +27,11 @@ namespace Billiards.EditorTools
     ///     将来若确需注册，必须作为独立变更同时修订 Day 1 验收口径，不得夹带在 Day 4 内。
     ///  2. **严禁**修改 <c>Assets/_Project/Scenes/Main.unity</c>（已被 Day 3 验收 22/22 冻结）。
     ///
-    /// 另：本文件只生成、**不校验**（生成/校验入口分离，R2）；校验见 <see cref="Day4Validator"/>。
+    /// 另：本文件只生成、**不校验**（生成/校验入口分离，R2）；校验见 <see cref="PhysicsValidator"/>。
     /// 场景内**不得出现任何碰撞体/刚体**（自研物理铁律 R5-1，场景内白球由
     /// <c>GameObject.CreatePrimitive</c> 生成后立即移除其自带的碰撞体）。
     /// </summary>
-    public static class Day4PhysicsSetup
+    public static class GreyboxSceneSetup
     {
         public const string ScenePath = "Assets/_Project/Scenes/PhysicsGreybox.unity";
         public const string ScenesDir = "Assets/_Project/Scenes";
@@ -72,7 +72,7 @@ namespace Billiards.EditorTools
         /// **逐字节必然不同**（实测两次重建 sha1 不同，而结构与数值完全一致）。
         /// 因此唯一在本工程可判定的"幂等"是：**已存在即不改写**，重复运行 sha1 不变。
         /// 这也与工程标准 R5-4「产物缺失才生成，存在则只校验」一致 —— 场景是否仍然正确由
-        /// <see cref="Day4Validator"/> 判定，不由生成器偷偷修复。
+        /// <see cref="PhysicsValidator"/> 判定，不由生成器偷偷修复。
         ///
         /// 需要强制重建（改了生成逻辑时）请用 <see cref="Rebuild"/>。
         /// </summary>
