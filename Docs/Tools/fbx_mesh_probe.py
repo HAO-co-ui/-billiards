@@ -284,5 +284,131 @@ def main():
             print(f"      ⇒ 端点本身在网格面上(tri距离={bestd*1000:.6f}mm)，'0.26mm' 是**离散顶点采样下限**，非几何错位。")
 
 
+def load_mesh():
+    """返回 (vertexCount, allv[x,y,z...], tris=[(verts, polys), ...], version)。供注入复现复用。"""
+    version, root = parse_fbx(FBX)
+    geo = list(iter_nodes(root, "Geometry"))
+    allv = []
+    tris = []
+    for gi, g in enumerate(geo):
+        verts = pvi = None
+        for c in g.children:
+            if c.name == "Vertices" and c.props and isinstance(c.props[0], list):
+                verts = c.props[0]
+            if c.name == "PolygonVertexIndex" and c.props and isinstance(c.props[0], list):
+                pvi = c.props[0]
+        if not verts:
+            continue
+        allv.extend([(verts[i], verts[i+1], verts[i+2]) for i in range(0, len(verts), 3)])
+        if pvi:
+            polys = []
+            cur = []
+            for idx in pvi:
+                if idx < 0:
+                    cur.append(~idx)
+                    for k in range(1, len(cur) - 1):
+                        polys.append((cur[0], cur[k], cur[k+1]))
+                    cur = []
+                else:
+                    cur.append(idx)
+            tris.append((verts, polys))
+    return len(allv), allv, tris, version
+
+
+def recompute_metrics(endpoints):
+    """供生成物守卫复用：返回 48 候选最优/次优 与 两种对齐度量（不打印）。"""
+    version, root = parse_fbx(FBX)
+    geo = list(iter_nodes(root, "Geometry"))
+    meshes = []
+    for gi, g in enumerate(geo):
+        verts = pvi = None
+        for c in g.children:
+            if c.name == "Vertices" and c.props and isinstance(c.props[0], list):
+                verts = c.props[0]
+            if c.name == "PolygonVertexIndex" and c.props and isinstance(c.props[0], list):
+                pvi = c.props[0]
+        if verts:
+            meshes.append((gi, verts, pvi))
+    allv = []
+    tris = []
+    for gi, verts, pvi in meshes:
+        allv.extend([(verts[i], verts[i+1], verts[i+2]) for i in range(0, len(verts), 3)])
+        if pvi:
+            polys = []
+            cur = []
+            for idx in pvi:
+                if idx < 0:
+                    cur.append(~idx)
+                    for k in range(1, len(cur) - 1):
+                        polys.append((cur[0], cur[k], cur[k+1]))
+                    cur = []
+                else:
+                    cur.append(idx)
+            tris.append((verts, polys))
+
+    perms = [(0,1,2),(0,2,1),(1,0,2),(1,2,0),(2,0,1),(2,1,0)]
+    res = []
+    for perm in perms:
+        for s0 in (1,-1):
+            for s1 in (1,-1):
+                for s2 in (1,-1):
+                    worst = 0.0
+                    for (ex, ey) in endpoints:
+                        best = 1e18
+                        for v in allv:
+                            d = (s0*v[perm[0]] - ex)**2 + (s2*v[perm[2]] - ey)**2
+                            if d < best: best = d
+                        if best > worst: worst = best
+                    res.append(("".join(map(str, perm)), f"{s0},{s1},{s2}", math.sqrt(worst)))
+    res.sort(key=lambda x: x[2])
+    perm_best = {}
+    for p, s, w in res:
+        if p not in perm_best or w < perm_best[p]:
+            perm_best[p] = w
+    pl = sorted(perm_best.items(), key=lambda kv: kv[1])
+
+    # chosen transform (-m.x, m.z, m.y): horizontal (x,z) = (-v0, v1)
+    chosen = [(-v[0], v[1]) for v in allv]
+    def nearest_vertex(px, py):
+        b = 1e18
+        for (cx, cz) in chosen:
+            d = (cx-px)**2 + (cz-py)**2
+            if d < b: b = d
+        return math.sqrt(b)
+    def seg_d2(px,py,ax,ay,bx,by):
+        dx,dy = bx-ax, by-ay; L = dx*dx+dy*dy
+        if L == 0: return (px-ax)**2+(py-ay)**2
+        t = max(0.0, min(1.0, ((px-ax)*dx+(py-ay)*dy)/L))
+        return (px-(ax+t*dx))**2 + (py-(ay+t*dy))**2
+    def ptri(px,py,ax,ay,bx,by,cx,cy):
+        def sg(x1,y1,x2,y2,x3,y3): return (x1-x3)*(y2-y3)-(x2-x3)*(y1-y3)
+        d1=sg(px,py,ax,ay,bx,by); d2=sg(px,py,bx,by,cx,cy); d3=sg(px,py,cx,cy,ax,ay)
+        neg=(d1<0)or(d2<0)or(d3<0); pos=(d1>0)or(d2>0)or(d3>0)
+        if not (neg and pos): return 0.0
+        return min(seg_d2(px,py,ax,ay,bx,by), seg_d2(px,py,bx,by,cx,cy), seg_d2(px,py,cx,cy,ax,ay))
+    def nearest_tri(px, py):
+        b = 1e18
+        for verts, polys in tris:
+            for (i0,i1,i2) in polys:
+                ax=-verts[3*i0]; az=verts[3*i0+1]
+                bx=-verts[3*i1]; bz=verts[3*i1+1]
+                cx=-verts[3*i2]; cz=verts[3*i2+1]
+                d = ptri(px,py,ax,az,bx,bz,cx,cz)
+                if d < b: b = d
+        return math.sqrt(b)
+
+    worst_v = max(nearest_vertex(x, y) for (x, y) in endpoints)
+    worst_t = max(nearest_tri(x, y) for (x, y) in endpoints)
+    return {
+        "version": version,
+        "vertexCount": len(allv),
+        "bestPermutation": pl[0][0], "bestWorstErrorMm": pl[0][1] * 1000.0,
+        "secondPermutation": pl[1][0], "secondPermutationWorstMm": pl[1][1] * 1000.0,
+        "chosenWorstMm": next(w for p, s, w in res if p == "021" and s == "-1,1,1") * 1000.0,
+        "endpointToNearestVertex_worst_mm": worst_v * 1000.0,
+        "endpointToNearestSurfacePoint_worst_mm": worst_t * 1000.0,
+    }
+
+
 if __name__ == "__main__":
     main()

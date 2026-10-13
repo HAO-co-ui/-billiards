@@ -1,0 +1,55 @@
+{
+ "schema": "idea35.generator-fingerprints.v1",
+ "recordedAt": "2026-10-13T04:33:18.334809+00:00",
+ "note": "生成器逻辑指纹台账：生成器源码 sha 变化即视为『逻辑漂移』，需人工复核后刷新本台账。",
+ "generators": {
+  "Docs/Tools/verify_collision_data.py": {
+   "sha256": "4aaeeba5f18873b44fa0490b5c2c6a378bdf9fadfa740285dd4019fdd3da0215",
+   "bytes": 28629,
+   "stamp": null,
+   "verifiedWith": "Docs/Reports/d2t02a-baseline.json"
+  },
+  "Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs": {
+   "sha256": "19c6b8320f3b05ea13c36acef820dbd44007fad90795a7391d64aff9d14504b1",
+   "bytes": 17844,
+   "stamp": null,
+   "verifiedWith": "Docs/Reports/day2-import.json"
+  },
+  "Assets/_Project/Scripts/Editor/Import/TableTextureChannelPacker.cs": {
+   "sha256": "cc64c689abd04ccaf608ec452f965bc01e123b1cbdf93e9f4a7982c8e8b91315",
+   "bytes": 5784,
+   "stamp": null,
+   "verifiedWith": "Assets/_Project/Art/Textures/table_metallic_roughness.png"
+  },
+  "Assets/_Project/Tests/EditMode/D2T02B_IndependentAuditTests.cs": {
+   "sha256": "27494a89393d418c279d43265c006f37449045c746afdc33e938ae787c075d7d",
+   "bytes": 17320,
+   "stamp": null,
+   "verifiedWith": "Docs/Reports/d2t02b-mesh-audit.json"
+  },
+  "Assets/_Project/Scripts/Editor/TableImport/AxisProbe.cs": {
+   "sha256": "31dc1667388af60f537bba01c96cf407198d1b22e32f546c7623a2a7d7ce45d1",
+   "bytes": 8810,
+   "stamp": null,
+   "verifiedWith": "Docs/Reports/day2-axis-probe.json"
+  },
+  "Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsProjectVerifier.cs": {
+   "sha256": "df2bd933088e317dd105a63ba69fcb3039967489c29c281e8ab61becd40c4f07",
+   "bytes": 18875,
+   "stamp": null,
+   "verifiedWith": "Docs/Reports/day1-verification.json"
+  },
+  "Assets/_Project/Scripts/Editor/TableImport/TableIntegrityValidator.cs": {
+   "sha256": "65ce6c51e37682c679b560cc116402c6ac985f3960131aab2e9feab013704b81",
+   "bytes": 46971,
+   "stamp": null,
+   "verifiedWith": "Docs/Reports/day2-verification.json"
+  },
+  "Assets/_Project/Scripts/Editor/Visual/Day3VisualSetup.cs": {
+   "sha256": "c274d498a59b6724d29c57cb7dcb873b2adaa959b4f2c17b6e9d3fb4a97690d9",
+   "bytes": 20223,
+   "stamp": null,
+   "verifiedWith": "Docs/Reports/day3-verification.json"
+  }
+ }
+}

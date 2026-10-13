@@ -1,0 +1,77 @@
+{
+ "schema": "idea35.generated-artifact-guard.v1",
+ "generatedAtUtc": "2026-10-13T04:43:52.133095+00:00",
+ "withFbx": true,
+ "summary": {
+  "pass": 5,
+  "fail": 2,
+  "skip": 0
+ },
+ "findings": [
+  {
+   "guard": "G1(B内容)",
+   "status": "PASS",
+   "message": "d2t02b-crosscheck.json 与重算结果一致",
+   "detail": []
+  },
+  {
+   "guard": "G1b(B-FBX内容)",
+   "status": "PASS",
+   "message": "check5/9/10 与 FBX 重算一致（best=021@0.2611mm, surface=0.000000mm）",
+   "detail": []
+  },
+  {
+   "guard": "G2(A源指纹)",
+   "status": "PASS",
+   "message": "TableConfig.asset sourceSha256 == 入库副本 == F: 原始",
+   "detail": []
+  },
+  {
+   "guard": "G3(A逻辑指纹)",
+   "status": "FAIL",
+   "message": "生成器逻辑已变：Assets/_Project/Scripts/Editor/TableImport/TableIntegrityValidator.cs（台账 65ce6c51e37682c6 → 现 dd1d58bd07331b7b）",
+   "detail": [
+    "受影响生成物：Docs/Reports/day2-verification.json"
+   ]
+  },
+  {
+   "guard": "G4a(A内容-baseline)",
+   "status": "PASS",
+   "message": "baseline == 从源重算",
+   "detail": []
+  },
+  {
+   "guard": "G4b(A内容-packedmask)",
+   "status": "PASS",
+   "message": "packed == R:metallic/A:1-roughness/G=B=0（逐像素）",
+   "detail": []
+  },
+  {
+   "guard": "G5(证据快照vs现行)",
+   "status": "FAIL",
+   "message": "证据内嵌指纹已与现行仓库不符 3 处（上游变动 ⇒ 快照过期，需刷新或注明）",
+   "detail": [
+    "TableIntegrityValidator.cs: 证据=8180ddd528eabc51/46632 现行=dd1d58bd07331b7b/53697",
+    "PoolGeometry.cs: 证据=b3f05bf52727508e/8563 现行=80a346d5dcda64e0/10370",
+    "TableConfigTests.cs: 证据=650d2e0190eae0a1/24939 现行=0dc63b6b05b96752/28876"
+   ]
+  }
+ ],
+ "blindSpots": {
+  "G1(B内容) 未覆盖字段": [
+   "verdict / concerns[].text / 各 *_interpretation / *_note —— 属作者结论文字，非机器可重算",
+   "check3_reverseCases 的逐条 verdict/fired —— 需重跑注入harness；本轮未纳入（见 §漏报场景）",
+   "check5_axisTransform 的 48 候选数值、check9 AXL 两度量、check10 FBX —— 依赖 FBX 重算，需 --with-fbx",
+   "check6_fieldCoverage 的定性结论（rail 保留等）—— 部分可机检（rail=82），其余为分析文字"
+  ],
+  "G2/G3(A源/逻辑指纹) 未覆盖": [
+   "只能证明『生成器源码未变』，不能证明『生成逻辑语义正确』（改注释也会使指纹变 → 假阳性）",
+   "台账本身若被误更新，守卫随之失效（台账需人工审查后更新）"
+  ],
+  "G4(A内容) 未覆盖": [
+   "TableConfig.asset 的内容正确性需 Unity 重生成 → 本轮只做文件层（源sha+逻辑指纹），内容重算留 hook",
+   "day1/2/3-verification.json、*-tests.xml、day2-axis-probe.json 等内容依赖 Unity 运行 → 未重算",
+   "PNG 重算仅覆盖 packed mask；normal/basecolor/net 的『内容正确性』未重算"
+  ]
+ }
+}
