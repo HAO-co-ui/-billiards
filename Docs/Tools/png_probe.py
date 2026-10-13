@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-png_probe.py -- D2-T02B 独立材质复核（纯 Python PNG 解码，不用实现者脚本）
+png_probe.py -- 独立材质复核（纯 Python PNG 解码，不用实现者脚本）
 ================================================================================
 1) 解码 table_metallic_roughness.png，校验 R=Metallic、A=1−Roughness、G=B=0。
    与源 table_metallic.png / table_roughness.png 逐像素比对。

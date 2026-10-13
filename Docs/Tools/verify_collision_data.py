@@ -6,7 +6,7 @@ verify_collision_data.py  --  Idea #35 (台球) 碰撞几何独立基线 / 校�
 角色：QA (quality-lead / 严守真)
 用途：
   1) 独立读取美术交付包的两份原始 JSON，交叉比对（82 段库边 + 6 袋 + 桌面标量）。
-  2) 独立重算并落盘"期望值基线"（d2t02a-baseline.json），供后续 D2-T02B
+  2) 独立重算并落盘"期望值基线"（d2t02a-baseline.json），供后续候选
      比对 Unity 侧 TableConfig 落地结果。
   3) 提供可复用的校验原语（compare_candidate / validate_* ），
      把比对对象从原始 JSON 换成 Unity 导出的数据即可复用。
@@ -47,7 +47,7 @@ GM_PATH = os.path.join(SRC_DIR, "gameplay-markers-reference.json")
 # 基线输出
 OUT_BASELINE = r"E:/Unity_Deve/Unity_Project/Billiards game/Docs/Reports/d2t02a-baseline.json"
 
-# 容差（米）。用于等价判定与 D2-T02B 的候选比对。
+# 容差（米）。用于等价判定与候选比对。
 TOL_EXACT = 1e-12     # 期望"逐位相同"
 TOL_GEOM = 1e-6       # 几何量：1 微米
 TOL_POINT = 1e-5      # 逐点比对默认容差（10 微米）。
@@ -402,7 +402,7 @@ def compare_sources(tm, gm):
 
 
 # ---------------------------------------------------------------------------
-# 3) 校验原语（供 D2-T02B 复用；把候选换成 Unity 导出数据）
+# 3) 校验原语（供候选比对复用；把候选换成 Unity 导出数据）
 # ---------------------------------------------------------------------------
 def _as_xy(d):
     """容忍 {x,y} 或 [x,y] 或 {x,z}(Unity 水平面) 三种写法。"""
@@ -418,7 +418,7 @@ def _as_xy(d):
 def compare_candidate(candidate, baseline, tol=TOL_POINT):
     """
     将"候选实现数据"与基线比对。
-    candidate 结构约定（D2-T02B 从 Unity 导出时遵循）：
+    candidate 结构约定（候选从 Unity 导出时遵循）：
       {
         "table":   {"inner_length":..,"inner_width":..,"ball_radius":..,
                     "half_length":..,"half_width":..,"nose_height":..,"cloth_y":..},
@@ -541,7 +541,7 @@ def validate_structure(baseline, candidate):
 
 def run_full_verification(candidate, baseline, tol=TOL_POINT):
     """
-    D2-T02B 入口：值比对 + 结构/手性/尺度校验合一。
+    候选比对入口：值比对 + 结构/手性/尺度校验合一。
     返回 dict：{"value_findings":[...], "structure_findings":[...], "pass":bool}
     """
     v = compare_candidate(candidate, baseline, tol=tol)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-d2t02b_crosscheck.py -- D2-T02B 独立复核：TableConfig.asset ↔ D2-T02A 基线
+d2t02b_crosscheck.py -- 独立复核：TableConfig.asset ↔ 碰撞几何基线
 ================================================================================
 只读解析 Assets/_Project/Data/TableConfig.asset（Unity YAML），与
 Docs/Reports/d2t02a-baseline.json 做**索引对齐、逐字段**比对（float32 域）。

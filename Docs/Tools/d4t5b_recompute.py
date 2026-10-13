@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""D4 切片A —— T5b 负对照数值的**独立复算**（不依赖 Unity、不写仓库、可重跑）。
+"""物理内核 T5b 负对照数值的**独立复算**（不依赖 Unity、不写仓库、可重跑）。
 
 用途
 ====
@@ -70,7 +70,7 @@ SUB_STEPS = 3               # DeriveSubSteps(PoolConstants.MaxBallSpeed = 8)
 DT_SUB = DT / SUB_STEPS     # PoolSimulator.SubStepDeltaTime = 1/360
 R = 0.028575                # PoolConstants.BallRadius
 
-A = 0.0                     # rollingDeceleration（Day 4 = 0）
+A = 0.0                     # rollingDeceleration（= 0，无滚动减速）
 E = 0.9                     # cushionRestitution
 MU = 0.8                    # cushionTangentialFriction
 SPEED = 8.0                 # PoolConstants.MaxBallSpeed

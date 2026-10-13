@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""D4 spec 复核：独立重算（不读探针结论，直接从原始 JSON 重算）。"""
+"""物理内核 spec 复核：独立重算（不读探针结论，直接从原始 JSON 重算）。"""
 import json, math, hashlib, sys, io, os
 try:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""D4 spec 复核 第二批：§1.4 证据、袋口几何、逃逸反例、22.2mm 判别力。"""
+"""物理内核 spec 复核（续）：§1.4 证据、袋口几何、逃逸反例、22.2mm 判别力。"""
 import json, math, sys, io, os
 try:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")

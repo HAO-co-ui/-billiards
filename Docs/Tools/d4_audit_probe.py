@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""D4-AUDIT-02：验证若干"是否在复述实现/循环论证"的怀疑（可重跑）。"""
+"""验证若干"是否在复述实现/循环论证"的怀疑（可重跑）。"""
 import sys, io
 try:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
