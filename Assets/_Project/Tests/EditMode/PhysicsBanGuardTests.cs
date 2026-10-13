@@ -116,8 +116,13 @@ namespace Billiards.Tests
 
         /// <summary>
         /// 代码级守卫：`Billiards.Runtime` **不得引用 `UnityEngine.PhysicsModule`**。
-        /// 覆盖 `SCN-04`/`SCN-06` 抓不到的那一类 —— 例如有人为实现瞄准射线写 `Physics.Raycast`：
+        /// 覆盖 `SCN-04`/`SCN-06` 抓不到的那一类 —— 例如有人为实现瞄准射线调用 Unity 的射线检测：
         /// 那**不会新增任何 Rigidbody**（场景检查仍全绿），却把 PhysX 拖进了运行时依赖。
+        ///
+        /// **写法提醒（本工程特有）**：调用 Unity 物理 API 必须**全限定**（如 `UnityEngine.Physics.Raycast`），
+        /// 因为 `Billiards.Physics` 会遮蔽 `UnityEngine.Physics` —— 在 `Billiards.*` 内**裸写未限定的那个命名空间名**，
+        /// 名字查找会先命中 `Billiards.Physics`，于是 CS0234（找不到该成员）。
+        /// 依据：`Docs/工程标准.md` R1-3a。
         /// </summary>
         [Test]
         public void RuntimeAssembly_DoesNotReferencePhysXModule()
