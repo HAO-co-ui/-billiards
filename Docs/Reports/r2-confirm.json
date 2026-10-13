@@ -65,7 +65,8 @@
     "day3_SCN03_detail": "球桌不得再叠加手动旋转：唯一模型侧修正在 PoolGeometry"
   },
   "concerns": [
-    {"id": "C2-1", "severity": "中", "text": "ValidateInteractive([MenuItem] 名 Validate) 仍无条件 Import() => 交互校验路径仍'先重建再校验'", "fix": "加 ProjectPaths.Exists 守卫，或改名以自证非纯校验"},
+    {"id": "C2-1", "severity": "中", "text": "ValidateInteractive([MenuItem] 名 Validate) 仍无条件 Import() => 交互校验路径仍'先重建再校验'。这是本修订 7f05e39 的真实缺陷，不因'已知 R3 将结构性修复'而压掉。", "fix": "两入口共用同一前置条件 helper（治根因：两入口各写一份前置条件），或至少加 ProjectPaths.Exists 守卫"},
+    {"id": "C2-1b", "severity": "信息", "text": "菜单路径(:98) 用 report.WriteToDisk 而非 ResolveReportPath => 不感知 -outputDir，与 CLI 口径不一致（engineering-lead 亦独立指出）", "fix": "R3 一并统一"},
     {"id": "C2-2", "severity": "低-中", "text": "TableIntegrityValidator.cs:47-51 类头注释仍是被证伪的'轮廓近似残差'+旧 AXL-04/05 语义；:61 doc-comment 仍写'全盲'", "fix": "同步为 L1/L2/L3 与'足迹内盲/掉出网格敏感'；删除已证伪表述（防重推）"},
     {"id": "C2-3", "severity": "信息", "text": "R2 不变量若声明为全仓库 git status 一致，会被 MEMORY.md 干扰", "fix": "不变量限定作用域"}
   ],
