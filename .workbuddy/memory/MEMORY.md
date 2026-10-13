@@ -54,3 +54,33 @@
 ## 工作流约定
 - 排期文档置于 `Docs/`（工程根目录下，Unity 不导入）。
 - 交付物迭代：`Docs/35-A_击球手感_制作排期.md` 为 35-A 的主排期文件，变更直接改此文件。
+- 执行记录按天落在 `Docs/35-A_DayN_*.md`。
+
+## 工程配置的铁律（Day 1 建立，务必遵守）
+1. **绝不用手改 `ProjectSettings/*.asset`。** Unity 把工程设置常驻内存，编辑器运行期间手改磁盘
+   YAML 会在它下次写回时被静默覆盖（实测：`ProjectSettings.asset` 在编辑器启动时被自动重写）。
+   一切配置改动写进 `Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsProjectSetup.cs`，
+   通过官方 API 应用。该脚本幂等、可复现，并且是这套配置的唯一文档。
+2. **验收与配置同源**：`BilliardsProjectVerifier.cs` 提供 26 项检查，配置器执行后自动调用。
+   命令见 `BilliardsProjectSetup.ApplyDay1FromCommandLine`（也可用菜单 `Billiards → Setup → ...`）。
+3. **判断资产是否存在必须查文件系统**（`ProjectPaths.Exists`），不要用
+   `AssetDatabase.LoadAssetAtPath<Object>() != null`。后者在资产因依赖脚本被删而变为
+   "不可反序列化"时返回 null，会造成**清理与验收同时静默失效**的假通过。
+4. **`Temp/UnityLockfile` 陈旧残留**会让批处理在"加载程序集"后静默退出（退出码 1、日志无错）。
+   无 Unity 进程运行时可直接删除该文件后重试。
+5. 批处理下 `EditorSceneManager.NewScene` 必须用 `NewSceneMode.Single`（起始场景未命名未保存，
+   Additive 会被拒）。
+
+## 已建立的可复用资产
+- `PoolConstants.cs`（Runtime/Core）：**单位制与几何硬指标的唯一真源**。改数值必须同步
+  `PoolConstantsTests`，否则测试会拦下（13 项，已全绿）。
+- `BilliardsLayers.cs`（Editor）：Layer 索引与名称的唯一真源。
+- `ProjectSetupReport.cs`：验收结果模型 + JSON 报告 + `ProjectPaths` 路径工具。
+- `Docs/Tools/generate_input_actions.py`：输入映射生成器，可重跑、可追溯。
+- 验收证据固定在 `Docs/Reports/day1-verification.json` 与 `day1-editmode-tests.xml`。
+
+## 版本控制
+- Git 仓库已初始化（`main` 分支），首个提交 `f3e29ea`。
+- **刻意不使用自定义 Tag**：物体身份由组件表达（类型安全、可重构、拼错会编译失败）。
+  验收项 `LYR-03` 持续断言自定义 Tag 数为 0，请勿破坏该约定。
+- `.gitattributes` 为 `* text=auto eol=lf`（Unity 本就写 LF，强制 CRLF 会制造 diff 噪音）。
