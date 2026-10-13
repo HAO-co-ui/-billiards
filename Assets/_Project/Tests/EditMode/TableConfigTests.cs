@@ -25,9 +25,14 @@ namespace Billiards.Tests
         private const string ModelPath = "Assets/_Project/Art/Models/PoolTable_Normalized.fbx";
         private const string ConfigPath = "Assets/_Project/Data/TableConfig.asset";
 
-        // 容差**不再本地复制**，一律走单源 `MeshAlignmentTolerances`（铁律 16）。
-        // 历史：此处曾复制 1e-4 / 0.0958 两个字面量，并在注释里写"必须与校验器一致"——
-        // 靠注释维持一致必然分叉，已收敛到单源。
+        // 容差**已收敛到单源** `MeshAlignmentTolerances`（铁律 16）—— 本文件原有 16 处字面量，
+        // 按**语义**归入三类：IndexAligned(5) / Bounds(6) / TransformIdentity(8)。
+        // `TransformIdentity` 与 `IndexAligned` 数值同为 1e-5 但**语义不同**（几何自检 vs 数据比对），
+        // 故分列而不合并 —— **数值巧合不是合并的理由**。
+        //
+        // 历史：此处曾复制 1e-4 / 0.0958 字面量，并在注释里写"必须与校验器一致"——
+        // 靠注释维持一致必然分叉。第一次"收敛"只改了本段注释、**未改下面的 16 处**，
+        // 于是注释声称的状态与实际相反（已被独立复核 D4-VERIFY-01 的 D1 抓到）。
 
         private static TableConfig _config;
         private static TableMetaDto _a;
@@ -203,10 +208,10 @@ namespace Billiards.Tests
                 max = Vector2.Max(max, Vector2.Max(s.a, s.b));
             }
 
-            Assert.AreEqual(PoolGeometry.CushionEndpointsMin.x, min.x, 1e-5f);
-            Assert.AreEqual(PoolGeometry.CushionEndpointsMin.y, min.y, 1e-5f);
-            Assert.AreEqual(PoolGeometry.CushionEndpointsMax.x, max.x, 1e-5f);
-            Assert.AreEqual(PoolGeometry.CushionEndpointsMax.y, max.y, 1e-5f);
+            Assert.AreEqual(PoolGeometry.CushionEndpointsMin.x, min.x, MeshAlignmentTolerances.IndexAligned);
+            Assert.AreEqual(PoolGeometry.CushionEndpointsMin.y, min.y, MeshAlignmentTolerances.IndexAligned);
+            Assert.AreEqual(PoolGeometry.CushionEndpointsMax.x, max.x, MeshAlignmentTolerances.IndexAligned);
+            Assert.AreEqual(PoolGeometry.CushionEndpointsMax.y, max.y, MeshAlignmentTolerances.IndexAligned);
         }
 
         [Test]
@@ -284,7 +289,7 @@ namespace Billiards.Tests
         {
             // 独立复核建议的最强判据：索引对齐 + 逐字段 + 1e-5 m 容差。
             // 可一次性拦下镜像、180° 旋转、双重缩放、细微端点偏移等自洽检查放行的错误。
-            const float tol = 1e-5f;
+            const float tol = MeshAlignmentTolerances.IndexAligned;
             Assert.AreEqual(_a.collision.segments.Length, Config.SegmentCount);
 
             for (int i = 0; i < _a.collision.segments.Length; i++)
@@ -452,21 +457,21 @@ namespace Billiards.Tests
 
             // 保距（纯旋转，无缩放）
             var probe = new Vector3(0.3f, -0.7f, 1.1f);
-            Assert.AreEqual(probe.magnitude, PoolGeometry.ModelVertexToUnity(probe).magnitude, 1e-5f);
+            Assert.AreEqual(probe.magnitude, PoolGeometry.ModelVertexToUnity(probe).magnitude, MeshAlignmentTolerances.TransformIdentity);
 
             // 分量式函数与四元数式等价（保证两条 API 不会漂移）
             Vector3 q = PoolGeometry.ModelOrientation * probe;
             Vector3 f = PoolGeometry.ModelVertexToUnity(probe);
-            Assert.AreEqual(q.x, f.x, 1e-5f);
-            Assert.AreEqual(q.y, f.y, 1e-5f);
-            Assert.AreEqual(q.z, f.z, 1e-5f);
+            Assert.AreEqual(q.x, f.x, MeshAlignmentTolerances.TransformIdentity);
+            Assert.AreEqual(q.y, f.y, MeshAlignmentTolerances.TransformIdentity);
+            Assert.AreEqual(q.z, f.z, MeshAlignmentTolerances.TransformIdentity);
 
             // 行列式 = +1：必须是纯旋转而非镜像，否则会翻转三角形绕序/法线。
             Vector3 ex = PoolGeometry.ModelVertexToUnity(Vector3.right);
             Vector3 ey = PoolGeometry.ModelVertexToUnity(Vector3.up);
             Vector3 ez = PoolGeometry.ModelVertexToUnity(Vector3.forward);
             float det = Vector3.Dot(Vector3.Cross(ex, ey), ez);
-            Assert.AreEqual(1f, det, 1e-5f, "轴修正必须保手性（det=+1）。");
+            Assert.AreEqual(1f, det, MeshAlignmentTolerances.TransformIdentity, "轴修正必须保手性（det=+1）。");
         }
 
         [Test]
@@ -485,12 +490,12 @@ namespace Billiards.Tests
             }
 
             // 世界包围盒 = 转换链推导的期望（含模型自带朝向；X 端为源端的镜像，符号被钉住）
-            Assert.AreEqual(PoolGeometry.WorldBoundsMin.x, min.x, 1e-4f, "世界长轴 −X 端不符。");
-            Assert.AreEqual(PoolGeometry.WorldBoundsMax.x, max.x, 1e-4f, "世界长轴 +X 端不符。");
-            Assert.AreEqual(PoolGeometry.WorldBoundsMin.y, min.y, 1e-4f, "世界最小 Y 应为桌腿底。");
-            Assert.AreEqual(PoolGeometry.WorldBoundsMax.y, max.y, 1e-4f, "世界最大 Y 应为库顶。");
-            Assert.AreEqual(PoolGeometry.WorldBoundsMin.z, min.z, 1e-4f);
-            Assert.AreEqual(PoolGeometry.WorldBoundsMax.z, max.z, 1e-4f);
+            Assert.AreEqual(PoolGeometry.WorldBoundsMin.x, min.x, MeshAlignmentTolerances.Bounds, "世界长轴 −X 端不符。");
+            Assert.AreEqual(PoolGeometry.WorldBoundsMax.x, max.x, MeshAlignmentTolerances.Bounds, "世界长轴 +X 端不符。");
+            Assert.AreEqual(PoolGeometry.WorldBoundsMin.y, min.y, MeshAlignmentTolerances.Bounds, "世界最小 Y 应为桌腿底。");
+            Assert.AreEqual(PoolGeometry.WorldBoundsMax.y, max.y, MeshAlignmentTolerances.Bounds, "世界最大 Y 应为库顶。");
+            Assert.AreEqual(PoolGeometry.WorldBoundsMin.z, min.z, MeshAlignmentTolerances.Bounds);
+            Assert.AreEqual(PoolGeometry.WorldBoundsMax.z, max.z, MeshAlignmentTolerances.Bounds);
 
             // 长轴必须是 X
             Assert.Greater(max.x - min.x, max.z - min.z, "长轴应为 Unity X。");

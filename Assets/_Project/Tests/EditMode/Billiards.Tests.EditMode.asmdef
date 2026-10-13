@@ -5,7 +5,8 @@
         "Billiards.Runtime",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
-        "Billiards.Diagnostics"
+        "Billiards.Diagnostics",
+        "Billiards.Editor"
     ],
     "includePlatforms": [
         "Editor"

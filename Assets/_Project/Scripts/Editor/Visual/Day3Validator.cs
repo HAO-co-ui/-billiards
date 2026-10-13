@@ -738,19 +738,13 @@ namespace Billiards.EditorTools
             return Path.Combine(SetupReport.ProjectRoot, relative.Replace('/', Path.DirectorySeparatorChar));
         }
 
-        /// <summary>解析报告输出路径（`-outputDir` 可绝对或相对项目根）。</summary>
+        /// <summary>
+        /// 薄转发 → <see cref="ReportOutput.ResolveReportPath"/>（**唯一实现**，铁律 16）。
+        /// 本方法此前是独立实现，**缺 `Directory.CreateDirectory`**，与 `TableIntegrityValidator`
+        /// 的同名方法已分叉（`-outputDir` 指向不存在目录时本版会失败）。
+        /// </summary>
         public static string ResolveReportPath(string defaultRelative, string fileName)
-        {
-            string dir = CommandLineArgs.Get("-outputDir");
-            if (string.IsNullOrEmpty(dir))
-            {
-                return ProjectPaths.ToFullPath(defaultRelative);
-            }
-
-            return Path.IsPathRooted(dir)
-                ? Path.Combine(dir, fileName)
-                : ProjectPaths.ToFullPath(dir.TrimEnd('/') + "/" + fileName);
-        }
+            => ReportOutput.ResolveReportPath(defaultRelative, fileName);
 
         // ── helpers ────────────────────────────────────────────────────────
 

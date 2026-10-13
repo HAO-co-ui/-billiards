@@ -1,12 +1,18 @@
 namespace Billiards.Diagnostics
 {
     /// <summary>
-    /// 网格对齐与数据比对的**容差单值源**（铁律 16：同一不变量的检查/常量必须单点实现）。
+    /// 比对与几何自检的**容差单值源**（铁律 16：同一不变量的检查/常量必须单点实现）。
     ///
     /// **为什么需要它**：这些容差原本只有 <c>TableIntegrityValidator</c> 是真源，
-    /// 而 EditMode 测试把它们**复制成字面量 ≥3 处**（<c>TableConfigTests</c>、<c>MeshAlignmentSensitivityTests</c>、
-    /// <c>ModelOrientationTests</c>），三处注释都写着"必须与 TableIntegrityValidator 一致" ——
+    /// 而 EditMode 测试把它们**复制成字面量多处**（<c>TableConfigTests</c>、<c>MeshAlignmentSensitivityTests</c>、
+    /// <c>ModelOrientationTests</c>），注释写着"必须与 TableIntegrityValidator 一致" ——
     /// **靠注释维持一致 = 一定会分叉**。现收敛到本类，Editor 与 Tests 共同引用同一份值。
+    ///
+    /// ⚠ **不是所有测试里的浮点容差都该进本类。** 判据是「**它是否需要与别处保持一致**」：
+    ///  · 需要一致（跨文件表达同一判据）⇒ 进本类（<see cref="IndexAligned"/>、<see cref="Bounds"/>、
+    ///    <see cref="TransformIdentity"/>、三层度量）。
+    ///  · 仅在本文件内自洽的经验阈值（如某些审计专用上界）⇒ **保持本地**，并在该处注明理由。
+    /// **把语义不同的容差硬塞进同一个常量，是"看起来单源"的假收敛。**
     ///
     /// **容差策略**（采纳独立复核 D2-T02A 的实测结论）：
     /// 顺序无关（集合/最近邻）比对下，全量镜像/180° 旋转与真值只差
@@ -25,6 +31,17 @@ namespace Billiards.Diagnostics
 
         /// <summary>③ 世界包围盒容差（= 转换链推导期望）：0.1 mm。缩放/旋转错误会远超此值。</summary>
         public const float Bounds = 1e-4f;
+
+        /// <summary>
+        /// **几何自检容差 = 1e-5**：同一几何量的两种算法／两种表示必须一致。
+        /// 覆盖：轴修正行列式 det = +1（保手性）、纯旋转保距、分量式 API 与四元数式 API 等价、
+        /// 判决量（角袋 x 向不对称）复现。
+        ///
+        /// **为什么与 <see cref="IndexAligned"/> 分开**：两者数值同为 1e-5，但**语义不同** ——
+        /// `IndexAligned` 是"两份数据必须逐字段一致"，本项是"同一个几何量的两种算法必须一致"。
+        /// 混用会让将来任一方调整时误伤另一方。**数值巧合不是合并的理由。**
+        /// </summary>
+        public const float TransformIdentity = 1e-5f;
 
         /// <summary>
         /// **L1（必要条件层）** 端点 → 最近**面内点**（含内部与边）的容差 = **1e-4 m**。

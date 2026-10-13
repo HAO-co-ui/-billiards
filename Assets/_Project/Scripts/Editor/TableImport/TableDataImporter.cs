@@ -295,7 +295,17 @@ namespace Billiards.EditorTools
             AssetDatabase.Refresh();
         }
 
-        private static void ValidateTopology(TableMetaDto meta, string source)
+        /// <summary>
+        /// 拓扑合法性校验：段数 / 袋数 / 袋字段完整性 / 袋半径正性。
+        ///
+        /// **为什么是 <c>public</c>**（D4-FIX-03 D2）：这原本是 <c>private</c>，于是**错误路径完全不可测** ——
+        /// 唯一的调用者 <c>Import()</c> 用**写死的文件路径**，测试无法注入畸形输入。
+        /// 「不可测的错误处理等于没有错误处理」。本方法是**纯函数**（只读 DTO、无副作用、无 I/O），
+        /// 故直接开放给测试，用注入式 DTO 覆盖每一条 <c>throw</c>。
+        /// **不得**把它改回 private 或让它产生副作用。
+        /// </summary>
+        /// <exception cref="InvalidDataException">任一拓扑约束被违反。</exception>
+        public static void ValidateTopology(TableMetaDto meta, string source)
         {
             if (meta.collision.segments == null || meta.collision.segments.Length != PoolConstants.CushionSegmentCount)
             {

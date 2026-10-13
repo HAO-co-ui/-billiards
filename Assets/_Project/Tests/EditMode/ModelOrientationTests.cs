@@ -34,7 +34,7 @@ namespace Billiards.Tests
             Vector3 ey = PoolGeometry.ModelOrientation * Vector3.up;
             Vector3 ez = PoolGeometry.ModelOrientation * Vector3.forward;
             float det = Vector3.Dot(Vector3.Cross(ex, ey), ez);
-            Assert.AreEqual(1f, det, 1e-5f, "朝向常量必须是纯旋转，否则会翻转三角形绕序。");
+            Assert.AreEqual(1f, det, MeshAlignmentTolerances.TransformIdentity, "朝向常量必须是纯旋转，否则会翻转三角形绕序。");
         }
 
         [Test]
@@ -99,7 +99,7 @@ namespace Billiards.Tests
             // 判决量：X 端不对称应恰为 2.77e-4 m 量级，且**远大于**任何数值容差（0.1 mm）
             float asym = Mathf.Max(Mathf.Abs(min.x), Mathf.Abs(max.x))
                        - Mathf.Min(Mathf.Abs(min.x), Mathf.Abs(max.x));
-            Assert.AreEqual(CornerAsymmetry, asym, 1e-5f,
+            Assert.AreEqual(CornerAsymmetry, asym, MeshAlignmentTolerances.TransformIdentity,
                 "角袋 x 向不对称是「朝向是否被翻转」的判决量");
             Assert.Greater(asym, MeshAlignmentTolerances.Bounds, "判决量必须大于容差，否则判据无判别力");
         }
@@ -130,7 +130,7 @@ namespace Billiards.Tests
 
             Assert.Greater(err, MeshAlignmentTolerances.Bounds,
                 "翻转朝向常量后检查**必须**失败；若这里通过了，说明该检查没有判别力（形同虚设）。");
-            Assert.AreEqual(CornerAsymmetry, err, 1e-5f,
+            Assert.AreEqual(CornerAsymmetry, err, MeshAlignmentTolerances.TransformIdentity,
                 "失败的偏差量应等于角袋 x 向不对称（判决量），以此证明判据确实抓的是朝向。");
         }
 

@@ -162,10 +162,14 @@ namespace Billiards.EditorTools
             isBatchMode = Application.isBatchMode;
         }
 
+        /// <summary>
+        /// 写验收报告。**支持 `-outputDir`**（D4-FIX-03 E1）——
+        /// 此前写死 `Docs/Reports/`，于是 Day1 的 CLI 入口跑一次就**覆写已入库证据**，
+        /// 复核方无法独立复跑 Day1（只能靠自报）。现走 <see cref="ReportOutput.ResolveReportPath"/> 单点。
+        /// </summary>
         public string WriteToDisk(string fileName = "day1-verification.json")
         {
-            Directory.CreateDirectory(ReportsDirectory);
-            string path = Path.Combine(ReportsDirectory, fileName);
+            string path = ReportOutput.ResolveReportPath("Docs/Reports/" + fileName, fileName);
             File.WriteAllText(path, JsonUtility.ToJson(this, true), new System.Text.UTF8Encoding(false));
             return path;
         }

@@ -125,21 +125,12 @@ namespace Billiards.EditorTools
             Debug.Log("验收报告已写入：" + path);
         }
 
-        /// <summary>命令行可选参数 `-outputDir &lt;path&gt;`（绝对或相对项目根）。未给则写默认入库路径。</summary>
+        /// <summary>
+        /// 薄转发 → <see cref="ReportOutput.ResolveReportPath"/>（**唯一实现**，铁律 16）。
+        /// 本方法此前是独立实现，与 `Day3Validator` 的同名方法**已分叉**（见 `ReportOutput` 类注释）。
+        /// </summary>
         public static string ResolveReportPath(string defaultRelative, string fileName)
-        {
-            string dir = CommandLineArgs.Get("-outputDir");
-            if (string.IsNullOrEmpty(dir))
-            {
-                return ProjectPaths.ToFullPath(defaultRelative);
-            }
-
-            string full = Path.IsPathRooted(dir)
-                ? Path.Combine(dir, fileName)
-                : ProjectPaths.ToFullPath(dir.TrimEnd('/') + "/" + fileName);
-            Directory.CreateDirectory(Path.GetDirectoryName(full));
-            return full;
-        }
+            => ReportOutput.ResolveReportPath(defaultRelative, fileName);
 
         public static void ValidateFromCommandLine()
         {
