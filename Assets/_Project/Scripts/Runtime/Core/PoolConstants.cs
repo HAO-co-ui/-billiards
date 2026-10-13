@@ -30,6 +30,14 @@ namespace Billiards.Core
         /// <summary>球直径，米。</summary>
         public const float BallDiameter = BallRadius * 2f;
 
+        /// <summary>
+        /// 母球/目标球初速上界，8 m/s。依据策划卡「初速 2–8 m/s」的**上界**。
+        /// **该值未经策划确认**：策划卡只给出区间，8 为取其上界作为物理内核的
+        /// 子步数推导输入（见 PoolSimulator.DeriveSubSteps）。若策划最终确认另一下界，
+        /// 只需改此常量，子步数会随之重新推导。
+        /// </summary>
+        public const float MaxBallSpeed = 8f;
+
         // ---- 硬指标：台面（内库内沿之间）---------------------------------------
 
         /// <summary>台面长轴内沿间距，2.54 m（9 尺台 100 英寸）。</summary>

@@ -207,7 +207,9 @@ namespace Billiards.EditorTools
             {
                 for (int j = i; j < BilliardsLayers.Indices.Length; j++)
                 {
-                    Physics.IgnoreLayerCollision(
+                    // 必须全限定：Runtime 新增的命名空间 Billiards.Physics 会遮蔽 UnityEngine.Physics
+                    // （在 Billiards.* 命名空间层级内，标识符 Physics 先解析到 Billiards.Physics）。
+                    UnityEngine.Physics.IgnoreLayerCollision(
                         BilliardsLayers.Indices[i],
                         BilliardsLayers.Indices[j],
                         true);

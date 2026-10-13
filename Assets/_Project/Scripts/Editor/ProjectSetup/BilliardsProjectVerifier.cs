@@ -104,7 +104,8 @@ namespace Billiards.EditorTools
                 {
                     int a = BilliardsLayers.Indices[i];
                     int b = BilliardsLayers.Indices[j];
-                    if (!Physics.GetIgnoreLayerCollision(a, b))
+                    // 必须全限定：Runtime 新增的命名空间 Billiards.Physics 会遮蔽 UnityEngine.Physics。
+                    if (!UnityEngine.Physics.GetIgnoreLayerCollision(a, b))
                     {
                         colliding.Add(a + "-" + b);
                     }
