@@ -8,17 +8,17 @@ using UnityEngine;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// Day 4 切片 C —— **积分格式（端点精确）与子步推导（判据 B）** 验证。
+    /// **积分格式（端点精确）与子步推导（判据 B）** 验证。
     ///
-    /// 补 `Docs/Reviews/D4-Day4独立复核.md` §三 / §7.3 D-2 指出的三处零覆盖：
+    /// 补 `Docs/Reviews/D4-Day4独立复核.md` §三 / §7.3 指出的三处零覆盖：
     ///  1. spec §5 T11 自由飞行位移精确性（a=0 与 a≠0 合成档）；
     ///  2. spec §5 T12 终点精确性有限差分自检（位移法 == 速度法）；
-    ///  3. D-2：`MaxRollingDeceleration` / 判据 B 的子步数推导从未被执行过。
+    ///  3. `MaxRollingDeceleration` / 判据 B 的子步数推导从未被执行过。
     ///
     /// ## 判别力预算（为什么容差是这么定的）
     ///
     /// 前向欧拉 `p += v·Δ` 相对端点精确（梯形）在 **恒定减速度** 下的单子步位移差为 `½·a·Δ²·v̂`，
-    /// 累积 `N` 子步 ⇒ 位移误差 `½·a·Δ·T·v̂`。**实测（注入永久前向欧拉，Run B）**：
+    /// 累积 `N` 子步 ⇒ 位移误差 `½·a·Δ·T·v̂`。**实测（注入永久前向欧拉）**：
     ///
     /// | 用例 | 前向欧拉实测误差 | 本条容差（SubSteps=3） | 倍数 |
     /// | --- | --- | --- | --- |
@@ -35,7 +35,7 @@ namespace Billiards.Tests
     /// 而「子步数取错 / 漏子步 / 误用 dt」这类**纯位移 bug** 的误差 = `|v|·(dt − dt_sub) ≈ 8.2e-3 m`
     /// ⇒ 比 T11 容差大 **~900 倍**。⇒ **容差在 1e-6…1e-5 之间判别力等价**，无需卡到 1e-6。
     ///
-    /// ## 容差为什么必须由 `SubSteps` 派生（V-2 的统一修法）
+    /// ## 容差为什么必须由 `SubSteps` 派生（统一修法）
     ///
     /// 固定容差 1e-6 会与 `SubSteps` 耦合：**实测把 `MaxRollingDeceleration` 5→20（SubSteps 3→4）后，
     /// T11a（a=0，与前向欧拉无关）误差从 6.563e-7 升到 1.462e-6 ⇒ 假失败**。
@@ -55,7 +55,7 @@ namespace Billiards.Tests
         private const string ConfigPath = "Assets/_Project/Data/TableConfig.asset";
 
         /// <summary>
-        /// **自由飞行位移容差模型（由 `SubSteps` 派生，不硬编码）** —— V-2 的统一修法。
+        /// **自由飞行位移容差模型（由 `SubSteps` 派生，不硬编码）** —— 统一修法。
         ///
         /// 模型：跑 <paramref name="steps"/> 步、每步 <paramref name="subSteps"/> 个子步 ⇒ `N = steps·subSteps`
         /// 次位置加法；本用例量级 `|p| ≈ 0.8 m` 处 float32 ULP ≈ `9.6e-8 m`；舍入按随机游走累积 ⇒ 量级 `√N·ULP`。
@@ -64,7 +64,7 @@ namespace Billiards.Tests
         /// **为什么容差可以放宽**：本用例要抓的失效模式是「子步数取错 / 漏子步 / 误用 dt」，
         /// 其位移误差 = `|v|·(dt − dt_sub) ≈ 1.4765 × 5.556e-3 ≈ 8.2e-3 m`
         /// ⇒ **比容差大 ~900 倍**（SubSteps=3）。**1e-6 与 1e-5 之间的任何值判别力等价**，
-        /// 而 1e-6 会与 `SubSteps` 耦合（V-2 实测：SubSteps=4 时误差 1.462e-6 > 1e-6 假失败）。
+        /// 而 1e-6 会与 `SubSteps` 耦合（实测：SubSteps=4 时误差 1.462e-6 > 1e-6 假失败）。
         /// </summary>
         private static float FreeFlightTolerance(int steps, int subSteps)
         {
@@ -144,7 +144,7 @@ namespace Billiards.Tests
         // ── T11b：a = 1.0 合成档（关键：唯一能让积分格式"可观测"的档）──────
 
         /// <summary>
-        /// 同初态，**合成** `a = 1.0 m/s²`（不依赖 Day 7 滚阻），跑 T = 0.5 s。
+        /// 同初态，**合成** `a = 1.0 m/s²`（不依赖滚阻标定），跑 T = 0.5 s。
         /// 断言末位移 = `p₀ + v·T − ½·a·T²·v̂`，容差由 <see cref="FreeFlightTolerance"/> 按 `SubSteps` 派生。
         ///
         /// **本档是唯一对积分格式敏感的用例**：a=0 时 `AverageVelocity` 直接返回 v，
@@ -251,10 +251,10 @@ namespace Billiards.Tests
                 $"；前向欧拉预估 a·dt/(2n)={forwardEulerVelocityDiff:E3} m/s（= 本容差的 {forwardEulerVelocityDiff / tolV:F0} 倍）");
         }
 
-        // ── D-2：判据 B 的子步数推导 ──────────────────────────────────────
+        // ── 判据 B 的子步数推导 ──────────────────────────────────────
 
         /// <summary>
-        /// 复核 D-2：`MaxRollingDeceleration` 与判据 B 的推导**从未被执行过**（Day 4 a 恒 0）。
+        /// `MaxRollingDeceleration` 与判据 B 的推导**从未被执行过**（此前 a 恒 0）。
         ///
         /// 断言两件事：
         ///  1. **生产不等式** `½·a_max·dt_sub² ≤ ContactArcErrorBound`（spec §6 判据 3 的式子）；
@@ -262,7 +262,7 @@ namespace Billiards.Tests
         ///     则结果只可能来自判据 B ⇒ 断言 `DeriveSubSteps(vA1) == max(1, nB)`，
         ///     其中 `nB` 由 `dt`、`ContactArcErrorBound`、`MaxRollingDeceleration` 在本测试内算出。
         ///
-        /// ## ⚠ 本用例的覆盖面必须准确表述（D4-GAP-02-2a 修正措辞）
+        /// ## ⚠ 本用例的覆盖面必须准确表述
         ///
         /// 上面的"在测试内独立算出"**只对"独立于常量的取值"成立，对"独立于公式"不成立** —— 两者不是一回事：
         /// 本用例把生产 `DeriveSubSteps` 的判据 B 式子**逐字重抄**进测试，故它
@@ -270,10 +270,10 @@ namespace Billiards.Tests
         /// ⇒ **本用例验证的是"判据 B 分支是活的"（没被删掉、没被短路），不验证该公式本身正确。**
         /// 公式无关的那一半由
         /// <see cref="D2b_JudgementB_SufficiencyAndMinimality_AreFormulaAgnostic"/> 承担：
-        /// 两者**两向互补**（本用例对"任何公式改动"是 fail-closed；D2b 抓"公式错但自洽"），
+        /// 两者**两向互补**（本用例对"任何公式改动"是 fail-closed；性质断言抓"公式错但自洽"），
         /// 与 `D4-PHY-01` ↔ 汇编级 PhysX 检查是**同一个模式**。**两者都不得删**（铁律 4）。
         ///
-        /// **判别力实测（Run E）**：临时删掉 `DeriveSubSteps` 里的判据 B 分支 ⇒ 本断言 FAIL
+        /// **判别力实测**：临时删掉 `DeriveSubSteps` 里的判据 B 分支 ⇒ 本断言 FAIL
         /// （`DeriveSubSteps(vA1)` 变 1）。这是判据 B 的**活体检测** —— 否则就是"算过、没验过"。
         ///
         /// 说明：不等式 (1) 本身**结构自守卫**（a_max 调大时 `SubSteps` 同步由 `DeriveSubSteps` 重推，
@@ -295,7 +295,7 @@ namespace Billiards.Tests
                 $"D-2：½·a_max·dt_sub² = {lhs:E3} m 超过弧误差界 {bound:E3} m。");
 
             // (2) 判据 B 分支活体：期望值在本测试内算出（**独立于常量的取值**，但**不**独立于公式 ——
-            //     见本测试 doc：本断言对"公式写错"是盲的，那由 D2b 的性质断言覆盖）。
+            //     见本测试 doc：本断言对"公式写错"是盲的，那由性质断言覆盖）。
             float halfDiameter = PoolConstants.BallDiameter * 0.5f;
             float vA1 = 0.9f * halfDiameter / dt;                       // 判据 A 的比值 = 0.9 ⇒ nA = 1
             float dtForArc = Mathf.Sqrt((2f * bound) / aMax);
@@ -314,10 +314,10 @@ namespace Billiards.Tests
                 $"vA1={vA1:R} m/s ⇒ DeriveSubSteps={actual}（期望 max(1,nB)={expected}）; SubSteps={sim.SubSteps}");
         }
 
-        // ── D4-GAP-02-2b：判据 B 的"充分性 + 最小性"性质断言（**公式无关**）────
+        // ── 判据 B 的"充分性 + 最小性"性质断言（**公式无关**）────
 
         /// <summary>
-        /// **D4-GAP-02-2b：判据 B 的"必要性 + 最小性"性质断言（公式无关）**。
+        /// **判据 B 的"必要性 + 最小性"性质断言（公式无关）**。
         ///
         /// 设 `n = DeriveSubSteps(vA1)`。因 `vA1` 使判据 A 的比值 = 0.9 ⇒ `nA = 1`，
         /// 故 `n` 只可能来自判据 B ⇒ 下面两条性质**与判据 B 的写法无关**，只与
@@ -377,10 +377,10 @@ namespace Billiards.Tests
                 $"最小性 {minLhsReport:E3} > {bound:E3}（n≥2 时检查 n−1）✓");
         }
 
-        // ── D4-GAP-02-3：定长步与子步数的**字面量**钉住 ──────────────────────
+        // ── 定长步与子步数的**字面量**钉住 ──────────────────────
 
         /// <summary>
-        /// **D4-GAP-02-3：用独立字面量钉住两个契约常量** —— 它们此前只被"间接"约束，改动后**全套件照过**：
+        /// **用独立字面量钉住两个契约常量** —— 它们此前只被"间接"约束，改动后**全套件照过**：
         ///  · `FixedDeltaTime`：此前唯一的间接钉住是 `GreyboxSceneTests` 的 `WholeSteps(0.02f, Step) == 2`，
         ///    它只把 dt 约束到区间 **`(1/150, 1/100]`**（能抓 1/60，**抓不住精确值**）⇒ 改成 1/110 全套件仍绿；
         ///  · `SubSteps`（= `DeriveSubSteps(PoolConstants.MaxBallSpeed)`）：此前**完全没有**字面量锚
@@ -406,7 +406,7 @@ namespace Billiards.Tests
             Assert.AreEqual(subSteps, sim.SubSteps,
                 "D4-GAP-02-3：实例 SubSteps 与 DeriveSubSteps(MaxBallSpeed) 不一致（两处推导已分叉）。");
 
-            // ⚠ 必须落在 **float32 域**比较，用 `"R"` 串（本工程既有惯例，见 D-3 的逐位比较）：
+            // ⚠ 必须落在 **float32 域**比较，用 `"R"` 串（本工程既有惯例，见逐位比较）：
             //   `Assert.AreEqual(float, float, 0f)` 会选中 **double** 重载；而 C# 允许浮点运算**以高于结果
             //   类型的精度**进行 ⇒ 左侧 `FixedDeltaTime / subSteps` 可能带着"多出来的中间位"直接当 double 传入，
             //   右侧 `SubStepDeltaTime` 则是 **float 字段存储后**再拓宽 ⇒ 二者差 1 ULP 以下也判失败。

@@ -9,9 +9,9 @@ using UnityEngine;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// Day 4 切片 C —— **袋喉冻结（T13）** 与 **多球遍历顺序确定性（D-3）**。
+    /// **袋喉冻结（T13）** 与 **多球遍历顺序确定性**。
     ///
-    /// 补 `Docs/Reviews/D4-Day4独立复核.md` §7.2（袋喉冻结路径零覆盖）与 §7.3 D-3（多球遍历顺序未测）。
+    /// 补 `Docs/Reviews/D4-Day4独立复核.md` §7.2（袋喉冻结路径零覆盖）与 §7.3（多球遍历顺序未测）。
     ///
     /// 判别力声明：
     ///  · T13a 正向 —— `PocketProximityEvents` 在旧套件里**只被断言 `== 0`**，冻结分支
@@ -21,7 +21,7 @@ namespace Billiards.Tests
     ///  · **T13c 正向（补 T13a 盲带）** —— 同构探针，速度取 2.5 ⇒ 越界子步 **101**（`%3=2`）
     ///    ⇒ 对"袋喉检查由每子步改成每 3 子步"敏感。**T13a 与 T13c 不可互相替代**（铁律 4）。
     ///  · T13b 负向 —— 台面正中滚动的球**不得**触发冻结，防"恒冻结"式假通过。
-    ///  · D-3 —— 旧套件**全部只装 1 球**；本用例装 16 球，同初态跑两次逐位比较，
+    ///  · 多球确定性 —— 旧套件**全部只装 1 球**；本用例装 16 球，同初态跑两次逐位比较，
     ///    并**读取源码**断言热路径无非确定性容器 / 重排算子 / 并行。
     ///    ⚠ 源码断言是**禁用清单（denylist）**：**"没出现这些词" ≠ "确定性已证明"**（见其 doc）。
     /// </summary>
@@ -48,14 +48,14 @@ namespace Billiards.Tests
         /// 断言：`PocketProximityEvents ≥ 1`；末速 `== 0`（冻结）；再 Step() 若干次位置**逐位不变**；
         /// 末态在喉平面**进网侧**。并**量化冻结分辨率**：实际越界量 vs 理论上界 `v·dt_sub`。
         ///
-        /// ## ⚠ 本探针存在**周期性盲带**（D4-GAP-02-4a：显式声明，铁律 12）
+        /// ## ⚠ 本探针存在**周期性盲带**（显式声明，铁律 12）
         ///
         /// **算术原因**：本档 `v = 2 m/s`、`dt_sub = dt/SubSteps = (1/120)/3 = 1/360 s`
         /// ⇒ 每子步走 `2/360 m`；起点到喉平面 `0.6950635 m` ⇒ 越界发生在第
         /// `ceil(0.6950635 × 360 / 2) = ceil(125.11) = **126**` 个子步。
         /// **`126 % 3 == 0`（可被 3 整除）** ⇒ 若把袋喉检查从"每子步"改成"**每 3 子步**"，
         /// 采样点**恰好落回同一子步** ⇒ 冻结位置**逐位相同** ⇒ **本用例观测不到该突变**
-        /// （D4-GAP-01 实测：每 3 子步仍 Passed，每 4 子步才 FAIL；因为 `126 % 4 = 2 ≠ 0`）。
+        /// （实测：每 3 子步仍 Passed，每 4 子步才 FAIL；因为 `126 % 4 = 2 ≠ 0`）。
         ///
         /// ⇒ **不得**把本用例引用为"袋喉检查周期正确性"的检出保证。
         /// 该盲带由 <see cref="T13c_PocketProximity_SameBound_AtNonDivisibleCrossingSubStep"/> 补上：
@@ -121,7 +121,7 @@ namespace Billiards.Tests
         // ── T13c：第二个正向探针 —— 越界子步索引**不被 3 整除**（补 T13a 的周期盲带）──
 
         /// <summary>
-        /// **D4-GAP-02-4b**：与 <see cref="T13a_PocketProximity_FreezesBall_AndStopsIntegration"/> 同构，
+        /// 与 <see cref="T13a_PocketProximity_FreezesBall_AndStopsIntegration"/> 同构，
         /// 唯一区别是速度取 `2.5 m/s` ⇒ 越界子步索引 `ceil(0.6950635 × 360 / 2.5) = ceil(100.09) = **101**`，
         /// **`101 % 3 = 2 ≠ 0`** ⇒ 对「袋喉检查由**每子步**改成**每 3 子步**」这一突变**敏感**
         /// （而 T13a 的索引 126 可被 3 整除 ⇒ 对它**盲**，见 T13a 的 doc）。
@@ -224,7 +224,7 @@ namespace Billiards.Tests
                 $"T13b: 60 步后台面内位置={sim.Balls[0].position:R}, 速度={sim.Balls[0].velocity:R}, events={sim.PocketProximityEvents}（应为 0）");
         }
 
-        // ── D-3：多球遍历顺序确定性 ───────────────────────────────────────
+        // ── 多球遍历顺序确定性 ───────────────────────────────────────
 
         /// <summary>
         /// 装 **16 球**（4×4 网格，|x| ≥ 0.20 避开中袋缺口，速度指向长库以制造多次接触），
@@ -335,7 +335,7 @@ namespace Billiards.Tests
         /// 结构性确定性守卫：热路径源码**代码**（已剔除注释）不得含无序容器 / 重排算子 / 并行（R5-3）。
         /// 读取的是**被测源码文件本身**（非影子副本）。
         ///
-        /// ## ⚠ 这是**禁用清单（denylist）**，**不是充分证据**（D4-GAP-02-5，铁律 12）
+        /// ## ⚠ 这是**禁用清单（denylist）**，**不是充分证据**（铁律 12）
         ///
         /// **"没出现这些词" ≠ "确定性已被证明"**：清单只能拦**列出来的**写法。未列出的等价形态
         /// （自写哈希容器、`ICollection`/`IEnumerable` 的意外迭代、排序后重排、`AsParallel()` 等
@@ -346,7 +346,7 @@ namespace Billiards.Tests
         /// <see cref="D3_SixteenBalls_TraversalOrder_IsBitIdentical"/> 的 16 球双跑逐位比较）；
         /// 本断言是它的**结构性补充**，两者**互补、都不可删**（铁律 4）。
         ///
-        /// **脆性说明（D4-GAP-02-6）**：下面的**正证据**改为**空白归一化**后匹配，
+        /// **脆性说明**：下面的**正证据**改为**空白归一化**后匹配，
         /// 并接受 `i++` / `++i` / `i += 1` 三种**语义完全等价**的写法 ——
         /// 旧版直接 `Contains("for (int i = 0; i < _balls.Length; i++)")`，
         /// 只把 `i++` 改成 `++i` 就会**假失败**。
@@ -375,7 +375,7 @@ namespace Billiards.Tests
             {
                 "Dictionary<", "HashSet<", "SortedDictionary<", "SortedSet<", "Hashtable",
                 "OrderBy", "GroupBy", "ToLookup", "Random",
-                // D4-GAP-02-5 补齐三项（此前缺失 ⇒ 清单不完备）：
+                // 补齐三项（此前缺失 ⇒ 清单不完备）：
                 "ToDictionary<", "ToHashSet<", "Parallel."
             };
 
@@ -386,7 +386,7 @@ namespace Billiards.Tests
                     "遍历顺序不再只由数组下标决定（违反 R5-3）。");
             }
 
-            // 正证据：状态推进以 for **升序**循环。空白归一化 + 接受三种等价自增写法（D4-GAP-02-6）。
+            // 正证据：状态推进以 for **升序**循环。空白归一化 + 接受三种等价自增写法。
             string compact = WhitespaceStripped(code);
             string[] acceptedLoops =
             {
@@ -413,7 +413,7 @@ namespace Billiards.Tests
         }
 
         /// <summary>
-        /// 去掉全部空白字符（空格 / Tab / CR / LF），用于"结构性存在性"匹配（D4-GAP-02-6）。
+        /// 去掉全部空白字符（空格 / Tab / CR / LF），用于"结构性存在性"匹配。
         /// 只服务于**正证据**那一处的等价写法容忍；禁用清单的匹配仍用原始文本（避免造出假阴性）。
         /// </summary>
         private static string WhitespaceStripped(string text)

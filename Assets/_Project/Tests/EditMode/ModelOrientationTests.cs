@@ -6,9 +6,9 @@ using UnityEngine;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// Day 3 / ADR-0001 §9：**模型朝向常量**与"物理帧 ↔ 世界坐标"不变量的测试。
+    /// ADR-0001 §9：**模型朝向常量**与"物理帧 ↔ 世界坐标"不变量的测试。
     ///
-    /// 背景：Day 2 曾把 `PhysicsToUnity` 定为 `(px, h, py)`，但它**只与网格局部顶点比对过**，
+    /// 背景：表数据管线曾把 `PhysicsToUnity` 定为 `(px, h, py)`，但它**只与网格局部顶点比对过**，
     /// 从未与"实例化后的世界坐标"比对，因而漏掉了模型根节点自带的 `Rx≈270°`
     /// （= <see cref="PoolGeometry.ModelOrientation"/>），使两者相差绕 Y 的 180°。
     /// 本组测试把该不变量钉死，并**证明它可以被证伪**（翻转朝向常量必然失败）。
@@ -115,7 +115,7 @@ namespace Billiards.Tests
             Vector3 correctMin = PoolGeometry.WorldBoundsMin;
             Vector3 correctMax = PoolGeometry.WorldBoundsMax;
 
-            // "翻转朝向"= 在正确姿态上再多转绕 Y 的 180° —— 这正是 Day 2 漏掉 ModelOrientation 时的实际误差。
+            // "翻转朝向"= 在正确姿态上再多转绕 Y 的 180° —— 这正是当初只比对网格局部顶点、漏掉 ModelOrientation 时的实际误差。
             // （若改用 Rx(+90°) 代替 Rx(−90°)，会把桌子翻成头朝下，偏差达 0.80 m；那不是本项目的既有错误形态，故不采用。）
             Quaternion flipped = Quaternion.Euler(0f, 180f, 0f) * PoolGeometry.ModelOrientation;
             Vector3 flippedMin = BoundsCornerWith(flipped, false, false, false);

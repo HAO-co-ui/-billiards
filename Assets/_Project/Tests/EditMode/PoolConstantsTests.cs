@@ -4,7 +4,7 @@ using NUnit.Framework;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// Day 1 验收测试：证明 EditMode 测试链路可用，且 PoolConstants 与美术交付包的
+    /// 验收测试：证明 EditMode 测试链路可用，且 PoolConstants 与美术交付包的
     /// 实测数据自洽。这些断言是后续所有几何/物理工作的基准，一旦被改动即说明
     /// 单位制或数据源发生了非预期变化。
     /// </summary>
@@ -14,7 +14,7 @@ namespace Billiards.Tests
 
         /// <summary>
         /// 原版用 <c>Assert.Pass</c>：**恒真、永不失败 ⇒ 零判别力**
-        /// （D4-AUDIT-01 查实为全工程唯一一处）。它想表达"测试程序集接线正常"，
+        /// （全工程唯一一处）。它想表达"测试程序集接线正常"，
         /// 而**编译通过本身**已保证该点，故断言恒真。
         ///
         /// 现改为**可失败且有意义**的形式：断言 `PoolConstants` **真的位于 `Billiards.Runtime` 程序集**，

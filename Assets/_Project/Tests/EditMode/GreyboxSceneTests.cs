@@ -5,7 +5,7 @@ using NUnit.Framework;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// Day 4 切片 B（灰盒场景 + 场景驱动）的守卫测试。
+    /// 灰盒场景与场景驱动的守卫测试。
     ///
     /// 两条独立的判据：
     ///  1. <see cref="PhysicsTestDrive.WholeSteps"/> —— 累加器折算的边界语义（纯函数，可失败）；

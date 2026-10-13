@@ -12,7 +12,7 @@ using UnityEngine;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// D2-T02B 独立复核专用（QA 新增，不改实现代码）。
+    /// 网格对齐独立复核专用（QA 新增，不改实现代码）。
     ///
     /// 目的：现有 37 项测试**全部是正向断言**——它们只能证明"当前数据通过"，
     /// 不能证明"错误数据会被拦下"。本文件补上两类：
@@ -324,7 +324,7 @@ namespace Billiards.Tests
                 }
             }
 
-            // ⚠ 顺序有意为之（D4-C3 的硬要求）：证据落盘在**所有 Assert.\* 之前**调用，
+            // ⚠ 顺序有意为之（硬要求）：证据落盘在**所有 Assert.\* 之前**调用，
             //   而 `WriteAudit` 内部**不含任何断言** ⇒ 即使未给 `-outputDir` 跳过落盘，
             //   下面这 3 条断言仍**必然**执行。跳过 ≠ 跳过检查。
             WriteAudit(bestPerm, bestErr, secondPerm, secondPermErr, signMin, signMax, chosenErr,
@@ -367,9 +367,9 @@ namespace Billiards.Tests
         {
             // ⚠ 本方法内**没有任何 Assert.\***；调用方（`[Test]` 主体）的全部断言都写在
             //   `WriteAudit(...)` **之后**（见调用点注释）。故此处的 `return` 只跳过"落盘"，
-            //   结构上不可能跳过任何断言（D4-C3 的硬要求）。
+            //   结构上不可能跳过任何断言（硬要求）。
             //
-            // D4-C3 / D1b：**先在 try 之前**显式处理"跳过"。旧版把"写失败"与"从未尝试写"都吞进 catch
+            // **先在 try 之前**显式处理"跳过"。旧版把"写失败"与"从未尝试写"都吞进 catch
             //（catch 里只有 Debug.LogWarning）⇒ 二者无法区分，本身是假 PASS 隐患。
             //
             // 路径也改走单点实现（铁律 16）：旧版自己拼 `Path.Combine(ProjectRoot, …)`，

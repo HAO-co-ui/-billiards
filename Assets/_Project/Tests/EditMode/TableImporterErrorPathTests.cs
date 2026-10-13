@@ -9,7 +9,7 @@ namespace Billiards.Tests
     /// <summary>
     /// **错误路径**测试：注入畸形 DTO，断言 <see cref="TableDataImporter.ValidateTopology"/> 抛异常。
     ///
-    /// **为什么需要这个文件**（D4-FIX-03 D2）：本工程此前 <c>Assert.Throws</c> **全工程 = 0 处** ——
+    /// **为什么需要这个文件**：本工程此前 <c>Assert.Throws</c> **全工程 = 0 处** ——
     /// 即**所有错误处理都从未被测试过**。根因是 <c>ValidateTopology</c> 原本是 <c>private</c>，
     /// 唯一调用者 <c>Import()</c> 用写死的文件路径，测试无法注入畸形输入 ⇒ **错误路径不可测**。
     /// 本轮把它开放为 <c>public</c> 纯函数，因此这里可以逐条覆盖它的每个 <c>throw</c>。

@@ -9,9 +9,9 @@ namespace Billiards.Tests
     /// <summary>
     /// **自研物理铁律的自动执行守卫**（铁律 18：新增守卫优先进测试套件）。
     ///
-    /// 背景（D4-AUDIT-01 查实）：该铁律原先只有 `SCN-04`（Day 1 验证器）/ `SCN-06`（Day 3 验证器）两份守卫，
+    /// 背景：该铁律原先只有 `SCN-04`（工程配置入口）/ `SCN-06`（MaterialVisualValidator）两份守卫，
     /// 而本工程**没有 CI** ⇒ **没人点菜单就不跑**（"有守卫" ≠ "守卫会跑"）。
-    /// 更严重的是两份守卫**只扫场景、不扫 prefab**，而工程有 18 个 prefab 且 Day 4/5 正是从它们实例化球 ——
+    /// 更严重的是两份守卫**只扫场景、不扫 prefab**，而工程有 18 个 prefab 且物理内核正是从它们实例化球 ——
     /// 一个 `Rigidbody` 挂在球 prefab 上，过去**所有守卫继续全绿，确定性静默崩坏**。
     ///
     /// 本测试把守卫**拉进 `-runTests`**，使其自动执行；并覆盖 prefab。
@@ -139,10 +139,10 @@ namespace Billiards.Tests
             }
         }
 
-        // ── c) 分层守卫：诊断代码不得回到 Runtime（守 A1 的整改）─────────────
+        // ── c) 分层守卫：诊断代码不得回到 Runtime（守分层整改）─────────────
 
         /// <summary>
-        /// **守 A1**：`MeshAlignmentMetrics` / `TableReference` 等诊断代码**必须待在 Editor-only 程序集**。
+        /// **分层守卫**：`MeshAlignmentMetrics` / `TableReference` 等诊断代码**必须待在 Editor-only 程序集**。
         /// 它们 Runtime 内零消费者；回到 Runtime 就会被编进玩家构建
         ///（整改前实测 667/1118 行 = 60% 不是运行时资产）。本测试防其回归。
         /// </summary>

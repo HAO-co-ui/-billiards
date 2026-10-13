@@ -11,14 +11,14 @@ using UnityEngine;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// Day 2 验收测试：把"碰撞数据落地 + 美术资源导入"的硬指标变成 EditMode 断言。
+    /// 数据完整性验收测试：把"碰撞数据落地 + 美术资源导入"的硬指标变成 EditMode 断言。
     ///
     /// 三条主线：
     ///  1) TableConfig（运行时真源）与参考数据、PoolConstants 自洽；
     ///  2) A/B 两份源文件逐点一致（不自行选一份了事）；
     ///  3) 轴向转换只做一次且可判据 —— 用**世界包围盒**（转换链推导）+ 三层网格对齐断言。
     ///
-    /// 这些断言是 Day 4+ 物理内核的几何基准；一旦数据源或单位制被改动，这里会先报。
+    /// 这些断言是物理内核的几何基准；一旦数据源或单位制被改动，这里会先报。
     /// </summary>
     public class TableConfigTests
     {
@@ -32,7 +32,7 @@ namespace Billiards.Tests
         //
         // 历史：此处曾复制 1e-4 / 0.0958 字面量，并在注释里写"必须与校验器一致"——
         // 靠注释维持一致必然分叉。第一次"收敛"只改了本段注释、**未改下面的 16 处**，
-        // 于是注释声称的状态与实际相反（已被独立复核 D4-VERIFY-01 的 D1 抓到）。
+        // 于是注释声称的状态与实际相反（已被独立复核抓到）。
 
         private static TableConfig _config;
         private static TableMetaDto _a;
@@ -198,7 +198,7 @@ namespace Billiards.Tests
         [Test]
         public void CushionEndpointsBoundingBox_MatchesBaseline()
         {
-            // 交叉核对轴向/缩放（独立复核 D2-T02A 基线：x[-1.334342835,+1.334342911] / y[-0.699095331,+0.699095331]）。
+            // 交叉核对轴向/缩放（独立复核基线：x[-1.334342835,+1.334342911] / y[-0.699095331,+0.699095331]）。
             // 注意该包围盒 x 左右不对称仅 7.6e-8 m，故它抓轴交换/缩放，**不是镜像判据**（镜像由 CHR-01/CHR-02/CMP-03 负责）。
             var min = new Vector2(float.MaxValue, float.MaxValue);
             var max = new Vector2(float.MinValue, float.MinValue);

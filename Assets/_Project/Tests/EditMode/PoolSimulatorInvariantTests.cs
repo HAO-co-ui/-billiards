@@ -8,14 +8,14 @@ using UnityEngine;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// Day 4 物理内核 I 的**穿透性不变量**测试（spec 切片 A：T5a / T5b）。
+    /// 物理内核的**穿透性不变量**测试（spec：T5a / T5b）。
     ///
     /// T5a（正）断言高速正撞 6 条直库时**全轨迹零穿透**；
     /// T5b（负对照）把 TOI 换成"子步末采样"（<see cref="PoolSimulator.DisableToiForDiagnosticsOnly"/>，
     /// 复用同一条生产推进路径，仅替换接触检测），断言最大嵌入量 ≥ **0.9·v·dt_sub**，
     /// 从而证明 T5a 的 1e-5 m 上界**确有判别力**（不是恒真）。
     ///
-    /// **起点与阈值均由 `v` / `dt_sub` 派生**（V-3 的统一修法）：旧版硬编码"球心距库面 30 mm"
+    /// **起点与阈值均由 `v` / `dt_sub` 派生**（统一修法）：旧版硬编码"球心距库面 30 mm"
     /// + 阈值 `0.5·v·dt_sub` 在 `SubSteps=4` 时失效（实测嵌入量 7.046 mm &lt; 8.333 mm）。
     /// 现由 <see cref="StartClearance"/> 把接触采样相位钉在 Step 末的最坏相位 ⇒ 阈值可稳写为 `0.9·v·dt_sub`。
     ///
@@ -33,12 +33,12 @@ namespace Billiards.Tests
         private const int Steps = 8;
 
         /// <summary>
-        /// 起点球心距库面的距离，**由 `v` 与 `dt_sub` 派生出"最坏相位"**（V-3 的统一修法，不硬编码）。
+        /// 起点球心距库面的距离，**由 `v` 与 `dt_sub` 派生出"最坏相位"**（统一修法，不硬编码）。
         ///
         /// 动机：禁用 TOI（T5b 负对照）时，接触**只在子步末**被检测 ⇒
         /// 「一个子步内越过的量」= `v·dt_sub` 的**相位函数**：
         /// 旧硬编码起点（球心距库面 30 mm）在 SubSteps=3 时实测只占 `0.5·v·dt_sub` 阈值的 84.6%，
-        /// **SubSteps=4 时掉到 42.3% ⇒ 负对照"无判别力"而失败**（V-3）。
+        /// **SubSteps=4 时掉到 42.3% ⇒ 负对照"无判别力"而失败**。
         ///
         /// 构造：令球在第 `(SubSteps−1)` 个子步末仍**恰在接触带外**（球心距 = `r + 余量`），
         /// 第 `SubSteps` 个子步末越过带面 ⇒ 该 **Step 末**（= 第 `SubSteps` 个子步末，正是外部测量的采样点）
@@ -73,7 +73,7 @@ namespace Billiards.Tests
                 (Vector2 a, Vector2 b, Vector2 mid, Vector2 nrm) = SegmentFrame(seg);
                 var sim = new PoolSimulator(_config, Params());
                 float dtSub = sim.SubStepDeltaTime;
-                Vector2 start = mid + nrm * StartClearance(Speed, dtSub, sim.SubSteps); // 由 v/dt_sub 派生（V-3）
+                Vector2 start = mid + nrm * StartClearance(Speed, dtSub, sim.SubSteps); // 由 v/dt_sub 派生
                 Vector2 v0 = -nrm * Speed; // 正撞：沿内法向反向朝库面
 
                 sim.LoadBalls(new[] { new BallState { position = start, velocity = v0 } });

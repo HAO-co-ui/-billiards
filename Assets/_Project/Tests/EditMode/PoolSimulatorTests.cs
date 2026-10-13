@@ -8,7 +8,7 @@ using UnityEngine;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// Day 4 物理内核 I 的**接触关系与子步不变量**测试（spec 切片 A：T1 / T2 / T3 / T6）。
+    /// 物理内核的**接触关系与子步不变量**测试（spec：T1 / T2 / T3 / T6）。
     ///
     /// 判别力声明（每条测试都能失败，见工程标准 R3-1/R3-2）：
     ///  · T1 分量分解守恒 —— 期望值由**解析式**给出（<c>v_out·n = −e·(v_in·n)</c>、
@@ -160,7 +160,7 @@ namespace Billiards.Tests
             float dtSub = dt / sim.SubSteps;
             float halfDiameter = PoolConstants.BallDiameter * 0.5f;
 
-            // 两条判据的需求子步数（在本测试内**由生产常量独立算得**，不硬编码 —— 与 V-4 同规则）。
+            // 两条判据的需求子步数（在本测试内**由生产常量独立算得**，不硬编码）。
             int nA = CeilWithEpsilon((PoolConstants.MaxBallSpeed * dt) / halfDiameter);
             float dtForArc = PoolMath.Sqrt((2f * PoolSimulator.ContactArcErrorBound) / PoolSimulator.MaxRollingDeceleration);
             int nB = CeilWithEpsilon(dt / dtForArc);
@@ -181,7 +181,7 @@ namespace Billiards.Tests
 
             // 4) ceil 语义：比值**恰为整数**时取该整数（不以 < 取代，也不截断）。
             //    探针速度**由 nB 派生**（取 k = nB + 1 使判据 A 需求严格大于 B、即 A 主导）——
-            //    这样 SubSteps 变化（如 MaxRollingDeceleration 5→20）时探针随之调整，不假失败（V-4）。
+            //    这样 SubSteps 变化（如 MaxRollingDeceleration 5→20）时探针随之调整，不假失败。
             int k = nB + 1;
             float vExactK = k * halfDiameter / dt;           // 判据 A 的比值恰好 = k
             Assert.AreEqual(k, PoolSimulator.DeriveSubSteps(vExactK),
@@ -197,7 +197,7 @@ namespace Billiards.Tests
             Assert.Less(halfStepTravel, fullStepTravel);
 
             // 6) 当前 MaxBallSpeed 下推导值应 = max(1, max(nA, nB))：**由生产常量独立重算**，
-            //    而非写死 3（写死会与 MaxRollingDeceleration 耦合 —— V-4 同源）。
+            //    而非写死 3（写死会与 MaxRollingDeceleration 耦合）。
             int expectedN = Mathf.Max(1, Mathf.Max(nA, nB));
             Assert.AreEqual(expectedN, sim.SubSteps,
                 $"T6-6：MaxBallSpeed={PoolConstants.MaxBallSpeed} 时推导子步数应为 max(1,max(nA={nA},nB={nB}))={expectedN}。");
