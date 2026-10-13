@@ -11,7 +11,7 @@ using UnityEngine.SceneManagement;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// Day 4 灰盒物理场景的**幂等**构建器（配置即代码，与 Day 1/2/3 同一哲学）。
+    /// 灰盒物理场景的**幂等**构建器（配置即代码，与工程配置/数据导入/材质视觉同一哲学）。
     ///
     /// 产出 <c>Assets/_Project/Scenes/PhysicsGreybox.unity</c>：
     ///  · <c>CushionGizmo</c> 宿主（引用 <c>TableConfig.asset</c>，绘制 82 段库边）
@@ -21,11 +21,11 @@ namespace Billiards.EditorTools
     ///
     /// ── 两条明文禁令（spec §8 H-6 / §10.3）─────────────────────────────────
     ///  1. **严禁**把本场景写入 <c>EditorBuildSettings</c>。
-    ///     理由：Day 1 验收项 <c>SCN-02</c> 断言 build list 中**恰好**只有 <c>Main.unity</c>；
-    ///     一旦注册灰盒场景，Day 1 的 26/26 会变成 25/26、其验收证据立即作废。
+    ///     理由：工程配置验收项 <c>SCN-02</c> 断言 build list 中**恰好**只有 <c>Main.unity</c>；
+    ///     一旦注册灰盒场景，工程配置验收的 26/26 会变成 25/26、其验收证据立即作废。
     ///     灰盒场景**用编辑器直接双击打开**即可，不需要进 build list。
-    ///     将来若确需注册，必须作为独立变更同时修订 Day 1 验收口径，不得夹带在 Day 4 内。
-    ///  2. **严禁**修改 <c>Assets/_Project/Scenes/Main.unity</c>（已被 Day 3 验收 22/22 冻结）。
+    ///     若确需注册，必须作为独立变更同时修订工程配置验收口径，不得夹带在物理场景变更内。
+    ///  2. **严禁**修改 <c>Assets/_Project/Scenes/Main.unity</c>（已被材质视觉验收 22/22 冻结）。
     ///
     /// 另：本文件只生成、**不校验**（生成/校验入口分离，R2）；校验见 <see cref="PhysicsValidator"/>。
     /// 场景内**不得出现任何碰撞体/刚体**（自研物理铁律 R5-1，场景内白球由

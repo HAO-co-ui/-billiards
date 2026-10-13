@@ -163,9 +163,9 @@ namespace Billiards.EditorTools
         }
 
         /// <summary>
-        /// 写验收报告。**支持 `-outputDir`**（D4-FIX-03 E1）——
-        /// 此前写死 `Docs/Reports/`，于是 Day1 的 CLI 入口跑一次就**覆写已入库证据**，
-        /// 复核方无法独立复跑 Day1（只能靠自报）。现走 <see cref="ReportOutput.ResolveReportPath"/> 单点。
+        /// 写验收报告。**支持 `-outputDir`** ——
+        /// 此前写死 `Docs/Reports/`，于是工程配置入口跑一次 CLI 就**覆写已入库证据**，
+        /// 复核方无法独立复跑工程配置入口（只能靠自报）。现走 <see cref="ReportOutput.ResolveReportPath"/> 单点。
         /// </summary>
         public string WriteToDisk(string fileName = "day1-verification.json")
         {

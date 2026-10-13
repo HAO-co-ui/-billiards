@@ -11,7 +11,7 @@ using UnityEngine.SceneManagement;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// Day 3「材质与视觉基础」的可复现构建器（配置即代码，与 Day 1/2 同一哲学）。
+    /// 材质与视觉基础的可复现构建器（配置即代码，与工程配置/数据导入同一哲学）。
     ///
     /// 产出：
     ///  · 桌体材质（URP Lit / Opaque）  · 袋网材质（URP Lit / Alpha Clipping, cutoff 0.5, 双面）
@@ -21,8 +21,8 @@ namespace Billiards.EditorTools
     ///
     /// 硬约束遵守：
     ///  · 唯一坐标转换点 = <see cref="PoolGeometry"/>，本类**不做任何轴/手性/缩放转换**；
-    ///    球桌模型不再叠加手动旋转（Day 2 的模型侧修正已由导入与 PoolGeometry 承担）。
-    ///  · `PlayfieldVisualScale`（1.2）**今日不应用**，仅预留 scale=1 的 PlayfieldRoot 供 Day 8 挂载；
+    ///    球桌模型不再叠加手动旋转（模型侧修正已由导入与 PoolGeometry 承担）。
+    ///  · `PlayfieldVisualScale`（1.2）**本类不应用**，仅预留 scale=1 的 PlayfieldRoot 供后续视觉缩放层挂载；
     ///    应用时只能作用于该视觉 root，物理保持规范米制。
     ///  · 不手改 ProjectSettings/*.asset；场景/材质全部走官方 API。
     /// </summary>
@@ -235,7 +235,7 @@ namespace Billiards.EditorTools
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // 1) 视觉根（scale=1 预留；Day 8 才把 1.2 挂到这里，且只影响视觉）
+            // 1) 视觉根（scale=1 预留；后续才把 1.2 挂到这里，且只影响视觉）
             var playfield = new GameObject("PlayfieldRoot");
             playfield.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             playfield.transform.localScale = Vector3.one;

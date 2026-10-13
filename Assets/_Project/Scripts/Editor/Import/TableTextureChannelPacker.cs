@@ -9,7 +9,7 @@ namespace Billiards.EditorTools
     /// 把**分离的** Metallic / Roughness 单通道灰度图打包成 URP Lit 需要的
     /// <c>_MetallicGlossMap</c>：R = Metallic，A = Smoothness = 1 − Roughness。
     ///
-    /// 这是排期风险登记册 R2 的核心问题：美术包给的是分离贴图（Metallic 1024²、
+    /// 这是风险登记册 R2 的核心问题：美术包给的是分离贴图（Metallic 1024²、
     /// Roughness 1024²），而 URP Lit 的金属度贴图要求 R 通道存金属度、A 通道存光滑度。
     /// 直接分别接两张图是接不上的（URP Lit 没有独立的 roughness 输入）。
     ///

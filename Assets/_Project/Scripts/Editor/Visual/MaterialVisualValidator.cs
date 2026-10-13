@@ -13,9 +13,9 @@ using UnityEngine.SceneManagement;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// Day 3 验收器：材质 / 场景 / Prefab / 灯光 / 相机 的可判据检查 + 渲染证据（俯视图、法线 A/B 对比图）。
+    /// 材质视觉验收器：材质 / 场景 / Prefab / 灯光 / 相机 的可判据检查 + 渲染证据（俯视图、法线 A/B 对比图）。
     ///
-    /// 与 Day 1/2 同源同风格：只读为主、全部结论带 expected/actual、报告先落盘再退出。
+    /// 与工程配置/数据完整性验收器同源同风格：只读为主、全部结论带 expected/actual、报告先落盘再退出。
     /// 渲染在批处理下用 RenderTexture + EncodeToPNG 落盘到 `Docs/Reports/`。
     /// </summary>
     public static class MaterialVisualValidator
@@ -69,7 +69,7 @@ namespace Billiards.EditorTools
             {
                 // ⚠ R2：**不调用 MaterialVisualSetup.Apply()**。校验器一旦重建被校验对象，
                 // 就只能证明“生成器自洽”，不能证明“被提交的场景是对的”。
-                // 需要重建场景时，请单独运行 Billiards/Visual/Build Day-3 Materials, Scene & Prefabs。
+                // 需要重建场景时，请单独运行 MaterialVisualSetup 的构建入口（Visual 菜单）。
                 report = RunAll();
                 exitCode = report.failCount > 0 ? 1 : 0;
             }
@@ -300,7 +300,7 @@ namespace Billiards.EditorTools
                     $"子网格={subMeshes}，materialOk={materialOk}"));
 
             // 自研物理铁律守卫 —— **单点实现**（`PhysicsBanAudit`），与 SCN-04 共用（铁律 16）。
-            // ① 扫描范围由「仅当前场景」扩到「Scenes + Prefabs 全量」：Day 4/5 正是从这 18 个 prefab 实例化球，
+            // ① 扫描范围由「仅当前场景」扩到「Scenes + Prefabs 全量」：物理与玩法层正是从这 18 个 prefab 实例化球，
             //    一个 Rigidbody 挂在球 prefab 上过去**不会被任何检查发现**。
             // ② 改用**固定路径**（`ScanAll()` 内部用文件系统枚举），**不再用 `SceneManager.GetActiveScene()`** ——
             //    旧写法一旦当前活动场景不是预期场景就会扫错对象，过去的安全只是调用顺序的巧合。

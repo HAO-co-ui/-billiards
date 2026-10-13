@@ -4,16 +4,16 @@ using UnityEngine;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// 球与球杆的导入设置即代码（Day 3）。
+    /// 球与球杆的导入设置即代码。
     ///
-    /// 为什么不复用 Day 2 的 <see cref="BilliardsAssetPostprocessor"/>：那个类按**精确路径**只处理球桌，
-    /// 且它是 Day 2 复核后的冻结件。新增道具单独成类，边界清晰、互不干扰（两个后处理器都按路径前缀守卫）。
+    /// 为什么不复用球桌的 <see cref="BilliardsAssetPostprocessor"/>：那个类按**精确路径**只处理球桌，
+    /// 且它已是复核后的冻结件。新增道具单独成类，边界清晰、互不干扰（两个后处理器都按路径前缀守卫）。
     ///
     /// 关键决策与球桌同源：
     ///  · `useFileScale=false + globalScale=1` → 顶点按米直接用。实测球 FBX 顶点包围盒正是 ±0.028575 m
     ///    （== `PoolConstants.BallRadius`），即文件内已是米制，禁用文件缩放可杜绝 100×/0.01× 的尺度事故。
-    ///  · `materialImportMode=None` → 不自动建材质，Day 3 统一手建 URP Lit（球各自一张 BaseColor）。
-    ///  · `isReadable=true` → 供校验器逐顶点核对球半径与球杆杆尖/杆向（Day 3 验收需要）。
+    ///  · `materialImportMode=None` → 不自动建材质，由材质视觉方案统一手建 URP Lit（球各自一张 BaseColor）。
+    ///  · `isReadable=true` → 供校验器逐顶点核对球半径与球杆杆尖/杆向（材质视觉验收需要）。
     /// </summary>
     public class BilliardsPropsAssetPostprocessor : AssetPostprocessor
     {

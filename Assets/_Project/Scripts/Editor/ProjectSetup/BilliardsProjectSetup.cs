@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// Day 1「工程基建与决策固化」的可执行落地方案。
+    /// 工程基建与决策固化的可执行落地方案。
     ///
     /// 为什么用脚本而不是直接改 ProjectSettings/*.asset：
     /// Unity 编辑器把工程设置常驻在内存，编辑器运行期间手改磁盘上的 YAML 会在

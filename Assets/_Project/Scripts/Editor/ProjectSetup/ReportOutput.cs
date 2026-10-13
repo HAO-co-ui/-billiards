@@ -5,24 +5,24 @@ namespace Billiards.EditorTools
     /// <summary>
     /// **报告输出路径的唯一实现**（铁律 16）。
     ///
-    /// **为什么要有这个类**（D4-FIX-03 E1）：此前 Day2 与 Day3 各写了一份 `ResolveReportPath`，
+    /// **为什么要有这个类**：此前 TableIntegrityValidator 与 MaterialVisualValidator 各写了一份 `ResolveReportPath`，
     /// **签名相同、逻辑几乎相同，但已经分叉** ——
     /// `TableIntegrityValidator` 的版本调用 <c>Directory.CreateDirectory</c>，`MaterialVisualValidator` 的**没有**。
-    /// 后果：`-outputDir` 指向一个不存在的目录时，Day2 能写、Day3 会失败。
+    /// 后果：`-outputDir` 指向一个不存在的目录时，前者能写、后者会失败。
     /// 之前没暴露**只是因为测试目录恰好已存在**（调用顺序的巧合，不是设计）——
     /// 与 `SCN-04`/`SCN-06` 是同一类缺陷（本工程第五次）。
     ///
-    /// 本类同时补上 **Day1** —— Day1 此前**完全没有 `-outputDir`**，
+    /// 本类同时补上**工程配置入口** —— 它此前**完全没有 `-outputDir`**，
     /// 其入口 `ApplyProjectConfigFromCommandLine` 是「Apply + Verify 合一」，
     /// 跑一次校验就会**覆写已入库的 `Docs/Reports/day1-verification.json`**，
-    /// 导致复核方无法独立复跑 Day1（只能靠自报）。
+    /// 导致复核方无法独立复跑工程配置入口（只能靠自报）。
     /// </summary>
     public static class ReportOutput
     {
         /// <summary>
         /// 解析报告输出路径。命令行给 `-outputDir &lt;path&gt;`（绝对或相对项目根）则写到那里，
         /// 否则写默认的相对入库路径（如 `Docs/Reports/day1-verification.json`）。
-        /// **目录不存在时会创建** —— 这是本单点实现与 Day3 旧版的唯一差别，务必保留。
+        /// **目录不存在时会创建** —— 这是本单点实现与 MaterialVisualValidator 旧版的唯一差别，务必保留。
         /// </summary>
         /// <param name="defaultRelative">未给 `-outputDir` 时的入库路径（相对项目根）。</param>
         /// <param name="fileName">输出文件名（`-outputDir` 生效时用于拼接）。</param>
@@ -42,7 +42,7 @@ namespace Billiards.EditorTools
         }
 
         /// <summary>
-        /// **测试专用**入口（D4-C3 / D1）：**只在命令行显式给出 `-outputDir` 时**返回证据输出路径，
+        /// **测试专用**入口：**只在命令行显式给出 `-outputDir` 时**返回证据输出路径，
         /// **否则返回 <c>null</c>**。**绝不回落到入库路径。**
         ///
         /// <para>
@@ -73,7 +73,7 @@ namespace Billiards.EditorTools
         /// 评审按这条不变量判，不要按「二分必须在最后」的字面判。
         /// </para>
         /// <para>
-        /// **注意**：<see cref="ResolveReportPath"/> 的**回落行为保持不变** —— Day1/2/3/4 四个验收器的
+        /// **注意**：<see cref="ResolveReportPath"/> 的**回落行为保持不变** —— 四个验收器（工程配置 / 数据完整性 / 材质视觉 / 物理）的
         /// `-executeMethod` 入口靠它把证据写进 `Docs/Reports/`，那是**设计意图**，不是缺陷。
         /// </para>
         /// </summary>

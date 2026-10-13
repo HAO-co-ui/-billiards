@@ -4,21 +4,21 @@ using UnityEngine;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// 导入设置即代码 —— 与 Day 1 同一哲学（配置即代码、可复现、可评审、可 diff）。
+    /// 导入设置即代码 —— 与工程配置入口同一哲学（配置即代码、可复现、可评审、可 diff）。
     ///
     /// 为什么不用 Inspector 手点：手点的导入设置无法评审、无法回滚、新机器 clone 后丢失，
     /// 且"某个贴图忘了改 sRGB"这类缺陷不会编译失败、只会在渲染时静默出错。
     /// 这里把球桌模型与 5 张贴图的每一项导入设置都固化。
     ///
-    /// 关键决策（详见 Day 2 报告）：
+    /// 关键决策（详见数据与美术导入执行记录）：
     ///  · 模型 useFileScale=false + globalScale=1 → 顶点按米直接用，杜绝二次缩放。
     ///    源 FBX 顶点已是米制（bbox 长 2.825 m），由 Validator 断言。
-    ///  · 模型不自动建材质（materialImportMode=None）：Day 3 按通道方案（Metallic R + Smoothness A）
+    ///  · 模型不自动建材质（materialImportMode=None）：由材质视觉方案按通道（Metallic R + Smoothness A）
     ///    手工建 URP Lit 材质，避免生成半错材质误导。
     ///  · 法线贴图**不翻转绿通道**：依据 Unity 官方文档（绿色通道 Y+ = Up，即 OpenGL 约定）
     ///    与 Blender 默认导出（OpenGL 约定）一致；实测该贴图绿通道均值 125.7 ≈ 中性 128，自洽。
     ///  · Metallic/Roughness 是分离的单通道灰度图，URP Lit 需要打包过的
-    ///    Metallic(R)+Smoothness(A)；由 TableTextureChannelPacker 生成，属 Day 3 风险 R2 的提前处置。
+    ///    Metallic(R)+Smoothness(A)；由 TableTextureChannelPacker 生成，属视觉方案风险 R2 的提前处置。
     /// </summary>
     public class BilliardsAssetPostprocessor : AssetPostprocessor
     {
@@ -73,7 +73,7 @@ namespace Billiards.EditorTools
             importer.importTangents = ModelImporterTangents.CalculateMikk; // 法线贴图需要正确切线
             importer.generateSecondaryUV = false;
 
-            // 材质：Day 3 手工建 URP Lit。今天不自动生成，避免半错材质。
+            // 材质：由材质视觉方案手工建 URP Lit。此处不自动生成，避免半错材质。
             importer.materialImportMode = ModelImporterMaterialImportMode.None;
 
             importer.animationType = ModelImporterAnimationType.None;

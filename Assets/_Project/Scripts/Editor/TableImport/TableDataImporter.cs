@@ -22,7 +22,7 @@ namespace Billiards.EditorTools
     ///    内容未变时不重写资产（避免无意义的 mtime 抖动与 diff 噪音）。
     ///  · **严格校验**。解析后立即核对 82 段 / 6 袋与关键标量，任何不符抛出带上下文的异常，
     ///    绝不静默产出半成品——把"碰撞数据错了"这类后果严重的错误挡在最早的一步。
-    ///  · 菜单与 -executeMethod 双入口，走同一段代码（与 Day 1 同一哲学：配置即代码）。
+    ///  · 菜单与 -executeMethod 双入口，走同一段代码（与工程配置入口同一哲学：配置即代码）。
     ///
     /// 数据来源（入库副本，非运行时内容，不会进构建）：
     ///    Docs/Reference/table-metadata-reference.json   （段/袋几何权威源）
@@ -140,7 +140,7 @@ namespace Billiards.EditorTools
             ValidateTopology(meta, TableJsonPath);
 
             // 单一真源交叉核对（段与袋逐点比对）。不一致时**不自行选一份了事**，直接抛错，
-            // 让人工介入——见 Day 2 任务书要求。
+            // 让人工介入——见数据导入任务书要求。
             GameplayMarkersDto gameplay = JsonUtility.FromJson<GameplayMarkersDto>(gameplayJson);
             if (gameplay == null)
             {
@@ -298,7 +298,7 @@ namespace Billiards.EditorTools
         /// <summary>
         /// 拓扑合法性校验：段数 / 袋数 / 袋字段完整性 / 袋半径正性。
         ///
-        /// **为什么是 <c>public</c>**（D4-FIX-03 D2）：这原本是 <c>private</c>，于是**错误路径完全不可测** ——
+        /// **为什么是 <c>public</c>**：这原本是 <c>private</c>，于是**错误路径完全不可测** ——
         /// 唯一的调用者 <c>Import()</c> 用**写死的文件路径**，测试无法注入畸形输入。
         /// 「不可测的错误处理等于没有错误处理」。本方法是**纯函数**（只读 DTO、无副作用、无 I/O），
         /// 故直接开放给测试，用注入式 DTO 覆盖每一条 <c>throw</c>。

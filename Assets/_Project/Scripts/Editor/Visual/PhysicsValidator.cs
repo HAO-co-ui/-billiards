@@ -11,11 +11,11 @@ using UnityEngine.SceneManagement;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// Day 4 验收门（**只校验，不生成**）。
+    /// 物理验收门（**只校验，不生成**）。
     ///
     /// R2 铁律：**本类绝不调用 <see cref="GreyboxSceneSetup"/>** —— 校验器一旦重建被校验对象，
     /// 就只能证明"生成器自洽"，不能证明"仓库里那份场景是对的"。需要重建请单独跑
-    /// `Billiards/Visual/Build Day-4 Physics Greybox Scene`。
+    /// <see cref="GreyboxSceneSetup"/> 的构建入口（Visual 菜单）。
     ///
     /// 产出 <c>Docs/Reports/d4-verification.json</c>（可用 <c>-outputDir</c> 重定向，走
     /// <see cref="ReportOutput.ResolveReportPath"/> 单点），沿用
@@ -28,7 +28,7 @@ namespace Billiards.EditorTools
     ///  · <c>D4-BAN-01</c> Scenes + Prefabs 全量扫描无 Rigidbody/Collider（复用
     ///    <see cref="PhysicsBanAudit"/> 单点实现，铁律 16）
     ///  · <c>D4-BLD-01</c> build list 场景数 == 1（且为 <c>Main.unity</c>）—— R-J 断言，
-    ///    防止灰盒场景被误注册而作废 Day 1 的 <c>SCN-02</c> 证据
+    ///    防止灰盒场景被误注册而作废工程配置验收的 <c>SCN-02</c> 证据
     /// </summary>
     public static class PhysicsValidator
     {

@@ -11,7 +11,7 @@ using UnityEngine.SceneManagement;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// Day 1 工程配置验收器。只读（唯一例外：为统计 Rigidbody 会以叠加方式临时打开主场景，
+    /// 工程配置验收器。只读（唯一例外：为统计 Rigidbody 会以叠加方式临时打开主场景，
     /// 随后立即关闭，不影响当前打开的场景）。所有结论都带 expected / actual，便于回溯。
     /// </summary>
     public static class BilliardsProjectVerifier
