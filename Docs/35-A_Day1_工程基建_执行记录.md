@@ -3,10 +3,12 @@
 | 项 | 值 |
 | --- | --- |
 | 计划工时 | 7 h |
+| 实际投入 | 约 8 h（含 2 项非计划内产出与 4 个缺陷的排查修复） |
 | 执行日期 | 2026-10-13 |
 | 对应排期 | `Docs/35-A_击球手感_制作排期.md` → Day 1 |
 | 工程 | `E:\Unity_Deve\Unity_Project\Billiards game` |
 | 环境 | Unity 6000.0.49f1 + URP 17.0.4，Windows 桌面 |
+| 结论 | **完成**。工程配置验收 26/26 PASS，EditMode 测试 13/13 PASS，首次提交 `f3e29ea` |
 
 ---
 
@@ -244,25 +246,27 @@ ProjectSettings/ 被本次操作修改的文件                  → 无
 
 ---
 
-## 八、待执行：Unity 内配置应用与验收
+## 八、Unity 内配置应用与验收（已执行）
 
-因为 Unity 编辑器持有工程锁（`Temp/UnityLockfile`），配置应用必须在 Unity 内执行一次。
+配置应用通过批处理模式执行，命令如下（配置代码与菜单入口是同一段代码）：
 
-**两种执行方式（任选其一）**：
+```
+Unity.exe -quit -batchmode \
+  -projectPath "E:\Unity_Deve\Unity_Project\Billiards game" \
+  -executeMethod Billiards.EditorTools.BilliardsProjectSetup.ApplyDay1FromCommandLine \
+  -logFile "Logs\day1-batch.log"
+```
 
-1. **关闭 Unity 后由批处理自动执行并提交**（推荐，全程可追溯）
-   ```
-   Unity.exe -quit -batchmode -projectPath "<工程路径>" \
-             -executeMethod Billiards.EditorTools.BilliardsProjectSetup.ApplyDay1FromCommandLine \
-             -logFile -
-   ```
-2. **在 Unity 内点菜单**：`Billiards → Setup → Apply Day-1 Project Configuration`
+### 执行结果
 
-两种方式执行的是**同一段代码**，结果一致。
+| 项 | 结果 |
+| --- | --- |
+| 配置应用 + 验收 | **退出码 0，PASS 26 / WARN 0 / FAIL 0** |
+| EditMode 测试 | **退出码 0，13 / 13 Passed**（耗时 0.049 s） |
+| 报告产物 | `Docs/Reports/day1-verification.json`、`Docs/Reports/day1-editmode-tests.xml` |
+| 首次提交 | `f3e29ea`（94 个文件，最大 31 KB，无大二进制误入库） |
 
-验收结果写入 `Docs/Reports/day1-verification.json`（含 21 项检查的 expected / actual / status）。
-
-### 验收项清单
+### 验收项清单（全部 PASS）
 
 | 编号 | 检查 |
 | --- | --- |
@@ -275,9 +279,77 @@ ProjectSettings/ 被本次操作修改的文件                  → 无
 | TGT-01 | 活动构建目标 = StandaloneWindows64 |
 | RUN-01 | 配置应用流程无异常 |
 
+### 输入资产迁移验证
+
+`INP-02` 确认 `Assets/_Project/Settings/Input/Billiards.inputactions` 的 GUID 仍为
+`052faaac586de48259a63d0c4782560b`，与 `EditorBuildSettings` 中项目级动作的 config object 指向一致。
+即 `AssetDatabase.MoveAsset` 如预期保留了 GUID，项目级输入引用未失效。
+
 ---
 
-## 九、与排期的偏差
+## 九、执行中发现并修复的四个缺陷
+
+这一节单独列出，因为它们比"全部通过"更有价值——其中两个是**验收器自身的缺陷**，
+会直接损害后续所有验证结论的可信度。
+
+### 缺陷 1：批处理模式下无法用 Additive 方式新建场景
+
+```
+InvalidOperationException: Cannot create a new scene additively with an untitled scene unsaved.
+  at BilliardsProjectSetup.EnsureMainScene
+```
+
+批处理模式下 Unity 起始于一个"未命名且未保存"的空场景，此状态下 `NewSceneMode.Additive` 被拒绝。
+改为 `NewSceneMode.Single`（替换空场景），在批处理与交互两种模式下都成立。
+
+### 缺陷 2：`Temp/UnityLockfile` 陈旧残留导致批处理静默失败
+
+首次尝试时批处理在"加载程序集"后立即退出，退出码 1，日志无任何错误信息。
+排查发现 `Temp/UnityLockfile` 仍存在（0 字节，时间戳为上一次运行），而**没有任何 Unity 进程在运行**。
+陈旧锁使新进程误判"工程已被占用"而静默退出。
+
+处置：删除陈旧锁文件后重试即成功。该情形在编辑器异常退出后会复现，
+`Docs` 中记录处置方法，避免再次误判为代码问题。
+
+### 缺陷 3（验收器缺陷）：用 `AssetDatabase` 做存在性判断会产生**假通过**
+
+`CleanupTemplateLeftovers` 与验收项 `SCN-03` 都用
+`AssetDatabase.LoadAssetAtPath<Object>(path) != null` 判断资产是否存在。
+
+问题：`Assets/Readme.asset` 依赖 `TutorialInfo/Scripts/Readme.cs`。清理顺序把 `TutorialInfo`
+排在前面，脚本一被删除，`Readme.asset` 就进入**无法反序列化**状态，`LoadAssetAtPath` 返回 `null`。
+后果是**清理逻辑跳过它、验收逻辑同时报告"已移除"** —— 两个缺陷互相掩盖，
+`SCN-03` 报出 PASS 而文件仍实实在在留在磁盘上。
+
+**假通过比假失败危险得多**，因为它会让后续所有"验收通过"失去意义。
+
+修复：新增 `ProjectPaths.Exists()`（直接查文件系统），清理与验收同时改用它；
+并新增 `ProjectPaths.DeleteOnDisk()` 作为 `AssetDatabase.DeleteAsset` 拒绝处理时的兜底；
+同时调整清理顺序，把依赖方（`Readme.asset`）排在提供方（`TutorialInfo`）之前。
+
+修复后磁盘层面复核确认：`TutorialInfo` / `Readme.asset` / `Scenes` / `InputSystem_Actions.inputactions` 均已不存在。
+
+### 缺陷 4（测试缺陷）：我自己把偏差量级写错了一个数量级
+
+`PoolConstantsTests` 首版把长宽比偏差写成 `1.72e-5`，实际为 `1.714e-4`（相差 10 倍），
+断言当场失败。这个数字不是随手抄的，是我在推算 `2 - 2.54/1.270108866` 时算错的。
+
+修复方式不是把容差放宽，而是**改成从"短轴相对误差"推导**：
+
+```csharp
+float widthRelativeError = (PoolConstants.ClothInnerWidth - 1.27f) / 1.27f;
+float expectedRatio = 2f * (1f - widthRelativeError);
+```
+
+推导式与实测比例在 float32 下**逐位相同（差值 0.0）**。这样断言不再依赖人工换算，
+同类错误不可能再发生。
+
+> 附带确认：短轴 0.109 mm 的实测偏差相对量为 8.57e-5，与长宽比偏差 1.714e-4 自洽
+> （比值偏差 ≈ 2 × 相对宽度误差），说明数据源内部一致。
+
+---
+
+## 十、与排期的偏差
 
 | 项 | 排期 | 实际 | 说明 |
 | --- | --- | --- | --- |
@@ -292,7 +364,7 @@ Day 2 的 `TableIntegrityValidator`。
 
 ---
 
-## 十、下一步
+## 十一、下一步
 
 Day 2（数据落地与美术导入）：
 
