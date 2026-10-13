@@ -122,7 +122,7 @@ evidence = {
     "endpointToNearestSurfacePoint_worst_mm": 0.0,
     "surfaceDistDistribution": {">1e-6m": 0, ">1e-5m": 0, ">1e-4m": 0, ">1e-3m": 0, "of": 188},
     "worstEndpointContainingTriangle_edges_mm": [2.5075, 3.5576, 2.5569],
-    "verdict": "‘轮廓近似残差’解释被**证伪**：88/188 端点→最近网格面距离 = 0.000000 m（精确贴合）。0.2613 mm 完全来自 AXL-04 采用**最近离散顶点**的采样下限（最坏端点落在边长 2.5~3.6 mm 的三角形内）。",
+    "verdict": "‘轮廓近似残差’解释被**证伪**：188/188 端点→最近网格面距离 = 0.000000 m（精确贴合）。0.2613 mm 完全来自 AXL-04 采用**最近离散顶点**的采样下限（最坏端点落在边长 2.5~3.6 mm 的三角形内）。",
     "engineering_lead_explanation": "FALSIFIED",
     "team_lead_tolerance_ruling_0p5mm_independent_judgment": "0.5 mm 作为‘最近顶点’度量的门控不算错（当前余量 1.9×），但**脆弱且弱**：(1) 该度量对真实错位有 ~0.26 mm 盲区；(2) 阈值绑定网格细分密度，重导出网格若变粗会误报。**建议改用‘最近网格面点’度量**（当前精确为 0），阈值收紧到 **1e-4 m**，恢复真实检出能力。"
   },
