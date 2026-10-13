@@ -32,8 +32,17 @@ namespace Billiards.Physics
         /// <summary>固定步长，1/120 s。外部每次 <see cref="Step"/> 推进的时间。</summary>
         public const float FixedDeltaTime = 1f / 120f;
 
-        /// <summary>单个子步内 TOI 迭代次数上限。超过即计 <see cref="ToiIterationGuardTrips"/> 并截断该子步（不静默）。</summary>
-        public const int MaxToiIterations = 16;
+        /// <summary>
+        /// 单个子步内 TOI 迭代次数上限。超过即计 <see cref="ToiIterationGuardTrips"/> 并截断该子步（不静默）。
+        ///
+        /// **D4-VERIFY-02 / 切片 C ② 的 R-C 修复后由 16 提升为 128**：原 16 在"球楔死在凹袋角、
+        /// 以 nm 级间隙反复微接触"时不足（实测 `ToiIterationGuardTrips = 1810`，326/1230 次发射）。
+        /// 配合 <see cref="StoppedSpeedEpsilon"/> 与"零时间推进即停"，实测 `guardTrips` 变化：
+        /// `1810（原）→ 1196（仅近零速度）→ 339（+零时间推进即停）→ 3（预算 64）→ 0（预算 128）`，
+        /// 且 `EnergyGainViolations = 0`、最大嵌入 6.147e-08 m、85/85 测试全绿。
+        /// 128 仍是**有限**安全网（配合两个即停判据，循环不会无进展空转），仅覆盖"真实多次接触链"。
+        /// </summary>
+        public const int MaxToiIterations = 128;
 
         /// <summary>同刻接触归并窗口，秒。|t − earliest| ≤ 该值视为同刻接触。</summary>
         public const float ToiTimeEpsilon = 1e-9f;
@@ -58,6 +67,20 @@ namespace Billiards.Physics
         /// 推导子步数时对"比值恰为整数"的浮点舍入保护。见 <see cref="DeriveSubSteps"/>。
         /// </summary>
         private const float SubStepCeilEpsilon = 1e-5f;
+
+        /// <summary>
+        /// 视为"已停止"的速度阈值，m/s。**R-C 修复（D4-VERIFY-02 / 切片 C ② 诊断）**。
+        ///
+        /// 依据实测：球被两侧袋角段同时接触时，接触解算把速度按 `e^{2k}` **几何衰减**
+        /// （实测 `speedAfterResolve` 4.969e-9 → 4.025e-9 → …，逐次 ×0.81 = e²），
+        /// **永不为精确 0**。原实现用**精确零**比较判停止（`velocity.x == 0f && velocity.y == 0f`）
+        /// ⇒ 永不触发 ⇒ 同一批 `t = 0` 接触被反复重解 16 次后被 <see cref="MaxToiIterations"/> 截断
+        /// （实测 `ToiIterationGuardTrips = 1810`，`zeroEarliestRatio = 0.6495`，`remaining` 一步不减）。
+        ///
+        /// `1e-6 m/s`（= 1 µm/s，1 秒位移 1 µm，可忽略）**远高于**该残差（~5e-9）、
+        /// **远低于**任何玩法相关速度 ⇒ 用近零阈值取代精确零，既消除空转又不改变可观测物理。
+        /// </summary>
+        public const float StoppedSpeedEpsilon = 1e-6f;
 
         // ── 只读几何缓存（构造时摊平，顺序 = 资源顺序）──────────────────────
 
@@ -105,6 +128,7 @@ namespace Billiards.Physics
 
         /// <summary>当前球状态（只读视图）。返回元素为值类型副本。</summary>
         public IReadOnlyList<BallState> Balls => _balls;
+
 
         // ── 构造 ──────────────────────────────────────────────────────────
 
@@ -241,8 +265,11 @@ namespace Billiards.Physics
             float dt = SubStepDeltaTime;
             BallState ball = _balls[index];
 
-            if (ball.velocity.x == 0f && ball.velocity.y == 0f)
+            // R-C 修复：近零速度即视为停止（原用精确零判据，几何衰减永不达零 ⇒ 空转）。
+            if (Length(ball.velocity) <= StoppedSpeedEpsilon)
             {
+                ball.velocity = Vector2.zero;
+                _balls[index] = ball;
                 return;
             }
 
@@ -251,6 +278,7 @@ namespace Billiards.Physics
 
             float remaining = dt;
             int iterations = 0;
+            bool previousIterationWasZeroTime = false; // R-C 修复用
 
             while (remaining > ToiRemainingEpsilon)
             {
@@ -288,10 +316,28 @@ namespace Billiards.Physics
 
                 ResolveContact(ref ball, _contactGroup);
 
-                if (ball.velocity.x == 0f && ball.velocity.y == 0f)
+                // R-C 修复：接触后若速度已降至近零，明确置零并结束该子步
+                // （原用精确零比较，几何衰减永不达零 ⇒ 同一批 t=0 接触被重解 16 次后截断）。
+                if (Length(ball.velocity) <= StoppedSpeedEpsilon)
+                {
+                    ball.velocity = Vector2.zero;
+                    break;
+                }
+
+                // ★ R-C 修复（第二半）：**连续两次"零时间推进"的接触 ⇒ 持续接触/楔死**。
+                // 依据实测（切片 C ② 诊断，d4-rc-diagnosis.json）：球被两侧袋角段同时接触时
+                // `earliest = 0`、`remaining` 一步不减，接触解算只把速度乘 e^k，**不产生自由飞行时间**
+                // ⇒ 再迭代只会重解同一批 t=0 接触，直至耗尽 MaxToiIterations（实测 1810 次）。
+                // 一次 t=0 接触是合法的（球恰在区间起点接触、解算后即分离，下一迭代无接触）；
+                // **连续两次** t=0 才说明解算无法把球分离出去 ⇒ 该子步已无自由飞行时间，结束。
+                // （若某次是真实入射，解算后速度朝外 ⇒ 下一迭代不再产生 t=0 接触，不会误触发。）
+                bool zeroTimeAdvance = earliest <= ToiTimeEpsilon;
+                if (zeroTimeAdvance && previousIterationWasZeroTime)
                 {
                     break;
                 }
+
+                previousIterationWasZeroTime = zeroTimeAdvance;
 
                 // 接触后按新速度重取均速。
                 vAvg = AverageVelocity(ball.velocity, a, remaining);

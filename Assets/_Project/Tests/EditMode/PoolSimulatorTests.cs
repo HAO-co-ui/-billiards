@@ -158,6 +158,12 @@ namespace Billiards.Tests
             PoolSimulator sim = new PoolSimulator(_config, Params(0.9f, 0.9f));
             float dt = PoolSimulator.FixedDeltaTime;
             float dtSub = dt / sim.SubSteps;
+            float halfDiameter = PoolConstants.BallDiameter * 0.5f;
+
+            // 两条判据的需求子步数（在本测试内**由生产常量独立算得**，不硬编码 —— 与 V-4 同规则）。
+            int nA = CeilWithEpsilon((PoolConstants.MaxBallSpeed * dt) / halfDiameter);
+            float dtForArc = PoolMath.Sqrt((2f * PoolSimulator.ContactArcErrorBound) / PoolSimulator.MaxRollingDeceleration);
+            int nB = CeilWithEpsilon(dt / dtForArc);
 
             // 1) 契约：SubSteps 是 DeriveSubSteps(MaxBallSpeed) 的推导值。
             Assert.AreEqual(PoolSimulator.DeriveSubSteps(PoolConstants.MaxBallSpeed), sim.SubSteps,
@@ -168,18 +174,21 @@ namespace Billiards.Tests
                 0.5f * PoolConstants.BallDiameter + 1e-9f,
                 "T6-2：v_max·dt_sub 超过半个球直径。");
 
-            // 3) 接触弦-弧误差界：½·a_max·dt_sub² ≤ 5e-5 m（a_max = 5）。
-            Assert.LessOrEqual(0.5f * 5f * dtSub * dtSub, 5e-5f + 1e-12f,
-                "T6-3：半个子步的弦高误差超过 5e-5 m。");
+            // 3) 接触弦-弧误差界：½·a_max·dt_sub² ≤ ContactArcErrorBound（**用生产常量，不写字面量 5**）。
+            Assert.LessOrEqual(0.5f * PoolSimulator.MaxRollingDeceleration * dtSub * dtSub,
+                PoolSimulator.ContactArcErrorBound + 1e-12f,
+                "T6-3：半个子步的弦高误差超过 ContactArcErrorBound。");
 
             // 4) ceil 语义：比值**恰为整数**时取该整数（不以 < 取代，也不截断）。
-            float halfDiameter = PoolConstants.BallDiameter * 0.5f;
-            float vExact3 = 3f * halfDiameter / dt;          // 判据 A 的比值恰好 = 3.0
-            Assert.AreEqual(3, PoolSimulator.DeriveSubSteps(vExact3),
-                "T6-4：比值恰为 3 时应取 3（ceil 语义），取 4 说明用了 (int)r+1 或 < 取代。");
-            float vJustAbove3 = 3.0005f * halfDiameter / dt; // 比值略大于 3
-            Assert.AreEqual(4, PoolSimulator.DeriveSubSteps(vJustAbove3),
-                "T6-4：比值略大于 3 应取 4（不得截断为 3）。");
+            //    探针速度**由 nB 派生**（取 k = nB + 1 使判据 A 需求严格大于 B、即 A 主导）——
+            //    这样 SubSteps 变化（如 MaxRollingDeceleration 5→20）时探针随之调整，不假失败（V-4）。
+            int k = nB + 1;
+            float vExactK = k * halfDiameter / dt;           // 判据 A 的比值恰好 = k
+            Assert.AreEqual(k, PoolSimulator.DeriveSubSteps(vExactK),
+                $"T6-4：比值恰为 {k} 时应取 {k}（ceil 语义），取 {k + 1} 说明用了 (int)r+1 或 < 取代。");
+            float vJustAboveK = (k + 0.0005f) * halfDiameter / dt; // 比值略大于 k
+            Assert.AreEqual(k + 1, PoolSimulator.DeriveSubSteps(vJustAboveK),
+                $"T6-4：比值略大于 {k} 应取 {k + 1}（不得截断为 {k}）。");
 
             // 5) 半个子步位移严格小于一个子步位移且为正。
             float halfStepTravel = 0.5f * PoolConstants.MaxBallSpeed * dtSub;
@@ -187,15 +196,25 @@ namespace Billiards.Tests
             Assert.Greater(halfStepTravel, 0f);
             Assert.Less(halfStepTravel, fullStepTravel);
 
-            // 6) 当前 MaxBallSpeed = 8 下推导值应为 3（A 得 3、B 得 2）。
-            Assert.AreEqual(3, sim.SubSteps, "T6-6：MaxBallSpeed=8 时推导子步数应为 3。");
+            // 6) 当前 MaxBallSpeed 下推导值应 = max(1, max(nA, nB))：**由生产常量独立重算**，
+            //    而非写死 3（写死会与 MaxRollingDeceleration 耦合 —— V-4 同源）。
+            int expectedN = Mathf.Max(1, Mathf.Max(nA, nB));
+            Assert.AreEqual(expectedN, sim.SubSteps,
+                $"T6-6：MaxBallSpeed={PoolConstants.MaxBallSpeed} 时推导子步数应为 max(1,max(nA={nA},nB={nB}))={expectedN}。");
 
             TestContext.WriteLine(
                 $"T6: MaxBallSpeed={PoolConstants.MaxBallSpeed}, SubSteps={sim.SubSteps}, dt={dt:R}, dtSub={dtSub:R}, " +
-                $"判据A比值={(PoolConstants.MaxBallSpeed * dt) / halfDiameter:R}, 判据B比值={(dt / PoolMath.Sqrt((2f * 5e-5f) / 5f)):R}");
+                $"nA={nA}, nB={nB}, 判据A比值={(PoolConstants.MaxBallSpeed * dt) / halfDiameter:R}, " +
+                $"判据B比值={(dt / dtForArc):R}, a_max={PoolSimulator.MaxRollingDeceleration:R}, ceil探针 k={k}");
         }
 
         // ── 测试辅助（独立于被测代码的期望值/度量）──────────────────────────
+
+        /// <summary>复刻内核的 ceil 语义（比值恰为整数时取该整数；减 1e-5 做浮点保护）。</summary>
+        private static int CeilWithEpsilon(float ratio)
+        {
+            return Mathf.CeilToInt(ratio - 1e-5f);
+        }
 
         private static PhysicsParams Params(float e, float mu, float a = 0f)
         {

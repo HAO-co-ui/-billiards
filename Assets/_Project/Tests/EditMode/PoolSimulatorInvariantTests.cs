@@ -12,8 +12,12 @@ namespace Billiards.Tests
     ///
     /// T5a（正）断言高速正撞 6 条直库时**全轨迹零穿透**；
     /// T5b（负对照）把 TOI 换成"子步末采样"（<see cref="PoolSimulator.DisableToiForDiagnosticsOnly"/>，
-    /// 复用同一条生产推进路径，仅替换接触检测），断言最大嵌入量 ≥ ½·v·dt_sub = 11.111 mm，
+    /// 复用同一条生产推进路径，仅替换接触检测），断言最大嵌入量 ≥ **0.9·v·dt_sub**，
     /// 从而证明 T5a 的 1e-5 m 上界**确有判别力**（不是恒真）。
+    ///
+    /// **起点与阈值均由 `v` / `dt_sub` 派生**（V-3 的统一修法）：旧版硬编码"球心距库面 30 mm"
+    /// + 阈值 `0.5·v·dt_sub` 在 `SubSteps=4` 时失效（实测嵌入量 7.046 mm &lt; 8.333 mm）。
+    /// 现由 <see cref="StartClearance"/> 把接触采样相位钉在 Step 末的最坏相位 ⇒ 阈值可稳写为 `0.9·v·dt_sub`。
     ///
     /// 嵌入量度量（<see cref="DistancePointToSegment"/>）在本文件**独立实现**，
     /// 不复用被测内核的任何几何函数。
@@ -27,7 +31,26 @@ namespace Billiards.Tests
 
         private const float Speed = 8f;
         private const int Steps = 8;
-        private const float GapFromCushion = 0.03f; // 起点球心距库面 30 mm
+
+        /// <summary>
+        /// 起点球心距库面的距离，**由 `v` 与 `dt_sub` 派生出"最坏相位"**（V-3 的统一修法，不硬编码）。
+        ///
+        /// 动机：禁用 TOI（T5b 负对照）时，接触**只在子步末**被检测 ⇒
+        /// 「一个子步内越过的量」= `v·dt_sub` 的**相位函数**：
+        /// 旧硬编码起点（球心距库面 30 mm）在 SubSteps=3 时实测只占 `0.5·v·dt_sub` 阈值的 84.6%，
+        /// **SubSteps=4 时掉到 42.3% ⇒ 负对照"无判别力"而失败**（V-3）。
+        ///
+        /// 构造：令球在第 `(SubSteps−1)` 个子步末仍**恰在接触带外**（球心距 = `r + 余量`），
+        /// 第 `SubSteps` 个子步末越过带面 ⇒ 该 **Step 末**（= 第 `SubSteps` 个子步末，正是外部测量的采样点）
+        /// 的嵌入量 ≈ `v·dt_sub`。**该构造对任意 `SubSteps` 成立** ⇒ 阈值可稳写为 `0.9·v·dt_sub`。
+        /// </summary>
+        private static float StartClearance(float v, float dtSub, int subSteps)
+        {
+            const float phaseMargin = 0.02f;   // 第 (subSteps−1) 个采样点恰落在带外 r + 0.02·v·dt_sub 处
+            return PoolConstants.BallRadius
+                 + (subSteps - 1) * v * dtSub
+                 + phaseMargin * v * dtSub;
+        }
 
         private static TableConfig _config;
 
@@ -48,10 +71,11 @@ namespace Billiards.Tests
             foreach (int seg in StraightSegments)
             {
                 (Vector2 a, Vector2 b, Vector2 mid, Vector2 nrm) = SegmentFrame(seg);
-                Vector2 start = mid + nrm * GapFromCushion;
+                var sim = new PoolSimulator(_config, Params());
+                float dtSub = sim.SubStepDeltaTime;
+                Vector2 start = mid + nrm * StartClearance(Speed, dtSub, sim.SubSteps); // 由 v/dt_sub 派生（V-3）
                 Vector2 v0 = -nrm * Speed; // 正撞：沿内法向反向朝库面
 
-                var sim = new PoolSimulator(_config, Params());
                 sim.LoadBalls(new[] { new BallState { position = start, velocity = v0 } });
 
                 float maxPenetration = 0f;
@@ -113,15 +137,17 @@ namespace Billiards.Tests
             foreach (int seg in StraightSegments)
             {
                 (Vector2 a, Vector2 b, Vector2 mid, Vector2 nrm) = SegmentFrame(seg);
-                Vector2 start = mid + nrm * GapFromCushion;
-                Vector2 v0 = -nrm * Speed; // 与 T5a 完全同一发射
 
                 var sim = new PoolSimulator(_config, Params());
                 sim.DisableToiForDiagnosticsOnly = true;
+                float dtSub = sim.SubStepDeltaTime;
+                // 与 T5a 完全同一发射（起点由 v/dt_sub 派生的"最坏相位"，见 StartClearance）。
+                Vector2 start = mid + nrm * StartClearance(Speed, dtSub, sim.SubSteps);
+                Vector2 v0 = -nrm * Speed;
                 sim.LoadBalls(new[] { new BallState { position = start, velocity = v0 } });
 
-                float dtSub = sim.SubStepDeltaTime;
-                float threshold = 0.5f * Speed * dtSub; // ½·v·dt_sub（当前 = 11.111 mm）
+                // 阈值由 v 与 dt_sub 派生（不硬编码）：最坏相位下嵌入量 ≈ v·dt_sub ⇒ 取 0.9·v·dt_sub 仍留余量。
+                float threshold = 0.9f * Speed * dtSub;
 
                 float maxPenetration = 0f;
                 for (int s = 0; s < Steps; s++)
@@ -137,7 +163,7 @@ namespace Billiards.Tests
 
                 Assert.GreaterOrEqual(maxPenetration, threshold,
                     $"T5b seg[{seg}]：禁用 TOI 后最大嵌入量 {maxPenetration * 1000f:F6} mm " +
-                    $"仍小于 ½·v·dt_sub = {threshold * 1000f:F6} mm —— 负对照无判别力。");
+                    $"仍小于 0.9·v·dt_sub = {threshold * 1000f:F6} mm —— 负对照无判别力。");
 
                 perSegment.Append($"seg[{seg}]={maxPenetration * 1000f:F2}mm ");
                 thresholdLogged = threshold;
@@ -148,7 +174,7 @@ namespace Billiards.Tests
             }
 
             TestContext.WriteLine(
-                $"T5b: 阈值 ½·v·dt_sub = {thresholdLogged * 1000f:F4} mm；各库最大嵌入量 {perSegment}；worst={worst * 1000f:F4} mm。");
+                $"T5b: 阈值 0.9·v·dt_sub = {thresholdLogged * 1000f:F4} mm；各库最大嵌入量 {perSegment}；worst={worst * 1000f:F4} mm。");
 
             // 判别力对比：T5a 上界 1e-5 m 与 T5b 实测差 ≥ 3 个数量级。
             Assert.Greater(worst, 1e-5f * 100f,
