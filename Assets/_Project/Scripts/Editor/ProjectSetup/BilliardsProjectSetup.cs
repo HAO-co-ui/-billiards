@@ -45,20 +45,20 @@ namespace Billiards.EditorTools
             "Assets/TutorialInfo",
         };
 
-        [MenuItem("Billiards/Setup/Apply Day-1 Project Configuration", false, 100)]
+        [MenuItem("Billiards/Setup/Apply Project Configuration", false, 100)]
         public static void ApplyProjectConfigInteractive()
         {
             SetupReport report = ApplyProjectConfig(interactive: true);
             Debug.Log(report.ToConsoleSummary());
             EditorUtility.DisplayDialog(
-                "Billiards Day-1 Setup",
+                "Billiards Project Setup",
                 string.Format("配置已应用并验收。\n\nPASS {0}  WARN {1}  FAIL {2}\n结论：{3}\n\n报告：{4}",
                     report.passCount, report.warnCount, report.failCount, report.overallStatus,
                     System.IO.Path.Combine(SetupReport.ReportsDirectory, "day1-verification.json")),
                 "OK");
         }
 
-        [MenuItem("Billiards/Setup/Verify Day-1 Configuration", false, 101)]
+        [MenuItem("Billiards/Setup/Verify Project Configuration", false, 101)]
         public static void VerifyProjectConfigInteractive()
         {
             SetupReport report = BilliardsProjectVerifier.RunAll();
@@ -66,7 +66,7 @@ namespace Billiards.EditorTools
             Debug.Log(report.ToConsoleSummary());
             Debug.Log("验收报告已写入：" + path);
             EditorUtility.DisplayDialog(
-                "Billiards Day-1 Verify",
+                "Billiards Project Verify",
                 string.Format("验收完成。\n\nPASS {0}  WARN {1}  FAIL {2}\n结论：{3}",
                     report.passCount, report.warnCount, report.failCount, report.overallStatus),
                 "OK");
@@ -86,7 +86,7 @@ namespace Billiards.EditorTools
             }
             catch (System.Exception ex)
             {
-                Debug.LogError("Day-1 配置应用过程中抛出异常：" + ex);
+                Debug.LogError("工程配置应用过程中抛出异常：" + ex);
                 exitCode = 2;
                 report = null;
             }
@@ -124,7 +124,7 @@ namespace Billiards.EditorTools
             AssetDatabase.Refresh();
 
             SetupReport report = BilliardsProjectVerifier.RunAll();
-            report.Add(CheckResult.Ok("RUN-01", "Day-1 配置应用流程执行完毕",
+            report.Add(CheckResult.Ok("RUN-01", "工程配置应用流程执行完毕",
                 "无异常抛出", "无异常", "各步骤均为幂等操作，可重复执行。"));
             report.Finalise();
             return report;
