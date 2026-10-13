@@ -1,6 +1,6 @@
 {
  "schema": "idea35.generator-fingerprints.v1",
- "recordedAt": "2026-10-13T05:19:52.054687+00:00",
+ "recordedAt": "2026-10-13T05:35:22.010930+00:00",
  "note": "生成器逻辑指纹台账：生成器源码 sha 变化即视为『逻辑漂移』，需人工复核后刷新本台账。",
  "generators": {
   "Docs/Tools/verify_collision_data.py": {
@@ -40,8 +40,8 @@
    "verifiedWith": "Docs/Reports/day1-verification.json"
   },
   "Assets/_Project/Scripts/Editor/TableImport/TableIntegrityValidator.cs": {
-   "sha256": "b185f790b332359b5967e37bafcc2e738cfeb3360274683b2ca2497460e173b4",
-   "bytes": 57548,
+   "sha256": "69aa3ce6099430f7e799c83dc4ab9975383a7b87bab6d372f75d7fa8d5f99667",
+   "bytes": 54001,
    "stamp": null,
    "verifiedWith": "Docs/Reports/day2-verification.json"
   },

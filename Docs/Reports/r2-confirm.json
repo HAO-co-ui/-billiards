@@ -1,0 +1,78 @@
+{
+  "schema": "idea35.r2-confirm.v1",
+  "task": "R2 独立确认（-outputDir 不变量 + 独立重算 33/33、22/22）",
+  "reviewer": "quality-lead",
+  "commit": "7f05e39a2d130000b7e74debf47e83610906b95e",
+  "verdict": "PASS_WITH_CONCERNS",
+  "blocksDay4": false,
+  "anchor": {
+    "criterion": "git diff 7f05e39 -- <7 冻结路径>",
+    "result": "EMPTY (成立)",
+    "note": "R2 代码改动亦含于前一提交 ef206d1；以 7f05e39 为最终态核验。"
+  },
+  "independent_recompute": {
+    "day2_table_data": {"pass": 33, "warn": 0, "fail": 0, "checks": 33, "overall": "PASS", "exitCode": 0},
+    "day3_visual": {"pass": 22, "warn": 0, "fail": 0, "checks": 22, "overall": "PASS", "exitCode": 0},
+    "matchesTeamLeadReference": true,
+    "outputDirUsed": "E:/tmp_r2out2 (仓库外)",
+    "outputsAllInTempDir": true,
+    "outputs": ["day2-verification.json", "day3-verification.json", "day3-normal-ab/", "day3-top-view.png", "day3-perspective.png", "1.log", "2.log"]
+  },
+  "core_invariant": {
+    "scope": "Assets + Docs",
+    "pre_status_hash": "e3b0c44298fc1c14",
+    "post_status_hash": "e3b0c44298fc1c14",
+    "result": "HOLDS",
+    "note": "两个校验入口未改动 Assets/ 或 Docs/ 下任何文件。"
+  },
+  "fullRepoStatusDelta": {
+    "changed": true,
+    "onlyChange": ".workbuddy/memory/MEMORY.md",
+    "attributableToValidators": false,
+    "evidence": ["git diff 7f05e39 -- <冻结路径> = 空", "git diff 7f05e39 -- Docs/Reports/ = 空"],
+    "recommendation": "R2 不变量应限定作用域（Assets+Docs 或显式冻结集），否则被非相关文件干扰"
+  },
+  "code_checks": {
+    "1_outputDir_used_by_both_entries": {"status": "PASS", "evidence": "CommandLineArgs.Get(\"-outputDir\"); TableIntegrityValidator.ResolveReportPath:108-121; Day3Validator._outputDirOverride:42/64/713/717-722"},
+    "2_day3_validation_no_Apply": {"status": "PASS", "evidence": "ValidateFromCommandLine:62 直接 RunAll()；Apply() 仅在 RenderOnlyFromCommandLine:47（注释：不是校验入口）与菜单"},
+    "3_dead_code_removed": {"status": "PASS", "evidence": "AccumulateVertexRatio/NearestHorizontalDistanceToSurface/PointToTriangleHorizontalSqr/PointToSegmentHorizontalSqr/Cross2 全部不命中"},
+    "4_second_instance_fixed": {"status": "PASS_CLI", "evidence": "ValidateFromCommandLine:133 带 ProjectPaths.Exists 守卫 + else 日志'不重建，校验既有产物'"},
+    "4b_line96_judgment": {
+      "location": "TableIntegrityValidator.ValidateInteractive() [MenuItem \"Billiards/Verify/Validate Table Data & Art (Day 2)\"] :96",
+      "verdict": "RESIDUAL (不是独立的导入入口)",
+      "reasoning": ["入口自名 Validate，非 Import", "另有独立导入菜单 Billiards/Data/Import Table Reference Data => 此处 Import 冗余", "按团队标准(仅非校验入口可保留重建)，名为 Validate 却重建 => 违反 R2 原则", "=> Editor 点该菜单仍会先重建 TableConfig.asset 再校验 => 同缺陷的交互形态仍在"],
+      "concern": "C2-1"
+    }
+  },
+  "legacy_followups": {
+    "C4_wording": {
+      "status": "PARTIAL",
+      "fixed": "AXL-04 detail:710-711 已改为'对足迹内滑动盲；对掉出网格(袋孔、掉出外轮廓)敏感；不作位移判据'",
+      "not_synced": ["SurfacePointTolerance doc-comment:61 仍写'对沿面内滑动全盲'", "类头注释 :47-51 仍是被证伪的'轮廓近似残差' + 旧 AXL-04/05(最近顶点/0.5mm) 语义"],
+      "concern": "C2-2"
+    },
+    "SCN04_semantics_upgraded": {
+      "status": "PASS",
+      "my_independent_value": "err=1.192E-007 m (PASS)",
+      "matchesTeamLead": true,
+      "evidence": "Day3Validator SCN-04 由 ComputeWorldBounds(table) 取场景既有实例；ValidateFromCommandLine 不再 Apply(); detail 显示 rootRot=(270.02,0,0)/rootPos=(0,0,0)/lossyScale=(1..)",
+      "meaning": "该 PASS 现在意味'已提交的 Main.unity 是对的'，而非'我们刚生成的东西自洽'"
+    }
+  },
+  "g3_ledger": {"status": "REFRESHED", "g3_after": "PASS", "tableintegrityvalidator_sha16": "69aa3ce6099430f7"},
+  "other_evidence": {
+    "day2_AXL": {"AXL-01": "19954 tri/13934 vert", "AXL-02": "err=8.568E-008 m", "AXL-03": "X=2.825094>Z=1.595269", "AXL-04": "0.000000 mm", "AXL-05": "0.000000 mm", "AXL-06": "ratio 0.0479 / k 0.0958 (2.00x) / T=0.523mm / L_local=5.455mm", "AXL-07": "0.3086 um"},
+    "day3_SCN03_detail": "球桌不得再叠加手动旋转：唯一模型侧修正在 PoolGeometry"
+  },
+  "concerns": [
+    {"id": "C2-1", "severity": "中", "text": "ValidateInteractive([MenuItem] 名 Validate) 仍无条件 Import() => 交互校验路径仍'先重建再校验'", "fix": "加 ProjectPaths.Exists 守卫，或改名以自证非纯校验"},
+    {"id": "C2-2", "severity": "低-中", "text": "TableIntegrityValidator.cs:47-51 类头注释仍是被证伪的'轮廓近似残差'+旧 AXL-04/05 语义；:61 doc-comment 仍写'全盲'", "fix": "同步为 L1/L2/L3 与'足迹内盲/掉出网格敏感'；删除已证伪表述（防重推）"},
+    {"id": "C2-3", "severity": "信息", "text": "R2 不变量若声明为全仓库 git status 一致，会被 MEMORY.md 干扰", "fix": "不变量限定作用域"}
+  ],
+  "notVerified": [
+    "未验证 -outputDir 相对路径分支（全程绝对路径）",
+    "未验证 RenderOnlyFromCommandLine 将来不被误当校验入口",
+    "未逐提交复原 ef206d1/7f05e39 的代码归属",
+    "未复跑 EditMode 测试（本轮聚焦两个校验入口；R1e 时已自跑 53/53）"
+  ]
+}
