@@ -59,6 +59,20 @@ namespace Billiards.EditorTools
         /// ⇒ 调用点必须写成"写不写"的二分，且该二分必须位于**所有断言之后**。
         /// </para>
         /// <para>
+        /// 落地有**两种**合规形态 —— 本注释原先只写第一种，与已落地的第二例不符，已更正：
+        /// </para>
+        /// <list type="bullet">
+        /// <item>**(a) 二分在所有断言之后**（只跳过最后一步落盘）。实例：
+        /// <c>PoolSimulatorSegmentCoverageTests.WriteReport</c>。</item>
+        /// <item>**(b) 把落盘封进不含任何断言的 `void` 方法**，其内部 `return` 只退出自身，
+        /// 调用方的断言在调用它**之后**。实例：<c>D2T02B_IndependentAuditTests.WriteAudit</c>。
+        /// **此形态一旦被塞入断言即静默失效**（跳过落盘 == 跳过检查），故该方法内须常驻一句警示。</item>
+        /// </list>
+        /// <para>
+        /// 两种形态的**共同不变量只有一条：跳过落盘 ⇒ 没有任何断言被跳过**。
+        /// 评审按这条不变量判，不要按「二分必须在最后」的字面判。
+        /// </para>
+        /// <para>
         /// **注意**：<see cref="ResolveReportPath"/> 的**回落行为保持不变** —— Day1/2/3/4 四个验收器的
         /// `-executeMethod` 入口靠它把证据写进 `Docs/Reports/`，那是**设计意图**，不是缺陷。
         /// </para>
