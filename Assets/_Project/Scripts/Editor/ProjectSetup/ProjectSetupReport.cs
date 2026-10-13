@@ -162,10 +162,10 @@ namespace Billiards.EditorTools
             isBatchMode = Application.isBatchMode;
         }
 
-        public string WriteToDisk()
+        public string WriteToDisk(string fileName = "day1-verification.json")
         {
             Directory.CreateDirectory(ReportsDirectory);
-            string path = Path.Combine(ReportsDirectory, "day1-verification.json");
+            string path = Path.Combine(ReportsDirectory, fileName);
             File.WriteAllText(path, JsonUtility.ToJson(this, true), new System.Text.UTF8Encoding(false));
             return path;
         }

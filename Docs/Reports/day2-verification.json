@@ -1,0 +1,262 @@
+{
+    "schema": "billiards.day2-verification.v1",
+    "generatedAtUtc": "2026-10-13T04:16:08.7126623Z",
+    "unityVersion": "6000.0.49f1",
+    "activeBuildTarget": "StandaloneWindows64",
+    "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
+    "isBatchMode": true,
+    "passCount": 31,
+    "warnCount": 0,
+    "failCount": 0,
+    "overallStatus": "PASS",
+    "checks": [
+        {
+            "id": "REF-02",
+            "title": "TableConfig 资产存在且可加载",
+            "expected": "Assets/_Project/Data/TableConfig.asset",
+            "actual": "TableConfig",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "REF-01",
+            "title": "参考数据已入库 Docs/Reference",
+            "expected": "两份 JSON 均存在",
+            "actual": "Docs/Reference/table-metadata-reference.json + Docs/Reference/gameplay-markers-reference.json",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "REF-03",
+            "title": "资产记录的源 sha256 与实际文件一致",
+            "expected": "ba60fc204c155881127b500bcce2f388066151757984659f89e681c2ef364398",
+            "actual": "ba60fc204c155881127b500bcce2f388066151757984659f89e681c2ef364398",
+            "status": "PASS",
+            "detail": "确保运行时几何可追溯到入库的源数据。"
+        },
+        {
+            "id": "DAT-01",
+            "title": "库边/袋角/弧段数 = 82",
+            "expected": "82",
+            "actual": "82",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "DAT-02",
+            "title": "袋口数 = 6",
+            "expected": "6",
+            "actual": "6",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "DAT-03",
+            "title": "与 PoolConstants（单位制唯一真源）一致",
+            "expected": "无偏差",
+            "actual": "全部一致",
+            "status": "PASS",
+            "detail": "内库 2.54 / 1.270108866、球半径 0.028575、台呢 y=0、袋口半径等公共标量逐项核对。"
+        },
+        {
+            "id": "DAT-04",
+            "title": "袋口构成 = 4 角袋 + 2 中袋",
+            "expected": "corner=4, side=2",
+            "actual": "corner=4, side=2",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "DAT-05",
+            "title": "线段非退化且端点落在球桌包络内",
+            "expected": "无零长段、无越界端点",
+            "actual": "minLen=0.00428634463",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "DAT-06",
+            "title": "袋口捕获半径不变式 capture = opening − 球半径 − 2mm",
+            "expected": "< 1e-6",
+            "actual": "1.863E-009",
+            "status": "PASS",
+            "detail": "同时证明球半径与袋口参数出自同一次测量。"
+        },
+        {
+            "id": "DAT-07",
+            "title": "袋口 mouth 宽 > throat 宽 > 0",
+            "expected": "全部成立",
+            "actual": "全部成立",
+            "status": "PASS",
+            "detail": "袋口呈收口形状，是捕获得以\"先过喉再判进\"的几何前提。"
+        },
+        {
+            "id": "DAT-08",
+            "title": "6 袋均带 captureNote 捕获规则",
+            "expected": "非空",
+            "actual": "非空",
+            "status": "PASS",
+            "detail": "captureNote 不可省略：仅当球心穿过袋喉、朝网方向后才判捕获。"
+        },
+        {
+            "id": "DAT-09",
+            "title": "库边端点包围盒 = 独立复核基线",
+            "expected": "x[-1.334343000,1.334343000] y[-0.699095300,0.699095300]",
+            "actual": "err=0.000E+000 m",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "DAT-10",
+            "title": "openingRadius == runtimeInscribedRadius（源不变式）",
+            "expected": "< 1e-9",
+            "actual": "0.000E+000",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "CMP-01",
+            "title": "两份源 JSON（A/B）逐点一致",
+            "expected": "段/袋端点、半径、全局标量均一致",
+            "actual": "segments 82/82  pockets 6/6  mismatches 0  maxDelta 0.000E+000 m",
+            "status": "PASS",
+            "detail": "任务书要求不自行选一份了事；此处给出逐点比对结论。"
+        },
+        {
+            "id": "CMP-02",
+            "title": "A/B 比对精度（最大偏差）",
+            "expected": "≤ 1e-9 m（float 逐位）",
+            "actual": "0.000E+000 m",
+            "status": "PASS",
+            "detail": "段端点 0.000E+000 / 袋中心 0.000E+000 / mouth 0.000E+000 / throat 0.000E+000 / 半径 0.000E+000 / 全局标量 0.000E+000"
+        },
+        {
+            "id": "CMP-03",
+            "title": "TableConfig 与源 JSON 索引对齐逐点一致",
+            "expected": "索引对齐、逐字段、容差 1E-005 m",
+            "actual": "maxDelta 0.000E+000 m",
+            "status": "PASS",
+            "detail": "该判据（± 索引对齐逐点）可一次性拦下镜像/180°旋转/双重缩放/细微端点偏移等自洽检查放行的错误。"
+        },
+        {
+            "id": "CHR-01",
+            "title": "袋口局部手性符号模式 [+,-,-,-,+,+]（= 复核 C4，镜像自检）",
+            "expected": "1,-1,-1,-1,1,1",
+            "actual": "1,-1,-1,-1,1,1",
+            "status": "PASS",
+            "detail": "cross(mouth0→mouth1, mouthCenter→throatCenter) 的符号。proper 旋转下不变，水平面镜像会整列翻转。"
+        },
+        {
+            "id": "CHR-02",
+            "title": "库边拼接轮廓绕向 = CCW（= 复核 C3，镜像自检）",
+            "expected": "shoelace>0 且 ≈ 3.1443",
+            "actual": "shoelace/2=3.144285, gap=177.8 mm",
+            "status": "PASS",
+            "detail": "水平面镜像会翻转绕向符号；与 CHR-01 一起构成不依赖基线的手性自检。"
+        },
+        {
+            "id": "AXL-01",
+            "title": "从 FBX 读取的三角面数 = 源 19954",
+            "expected": "19954",
+            "actual": "19954 三角面 / 13934 顶点",
+            "status": "PASS",
+            "detail": "源 FBX 顶点 10572；Unity 按法线/UV 拆分为 13934，属正常。"
+        },
+        {
+            "id": "AXL-02",
+            "title": "轴修正后网格包围盒 = 源 bounds_runtime",
+            "expected": "±0.1 mm",
+            "actual": "err=0.000E+000 m",
+            "status": "PASS",
+            "detail": "worldMin=(-1.41, -0.86, -0.80) worldMax=(1.41, 0.06, 0.80)；X 不对称符号被钉住（-1.412686 vs +1.412409），可判手性未翻转。"
+        },
+        {
+            "id": "AXL-03",
+            "title": "网格长轴 = Unity X（短轴 = Z）",
+            "expected": "X > Z",
+            "actual": "X=2.825094 > Z=1.595269",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "AXL-04",
+            "title": "82 段端点与网格顶点对齐（水平面）",
+            "expected": "实测值（阈值 0.50 mm）",
+            "actual": "实测 0.2613 mm",
+            "status": "PASS",
+            "detail": "余量 1.91×；该实测值为“82 段直线段逼近曲率袋角”的轮廓近似残差（非误差）。本检查只验证**水平面端点对齐**；它**不能**单独证明手性/未镜像 —— 最优轴排列内 8 个符号变体的误差跨度仅约 0.27 µm，镜像变体甚至略优。手性由 AXL-02（包围盒不对称：X 端 -1.412686/+1.412409、Y 端腿底 -0.8635/库顶 +0.0610）与“模型修正必须是纯旋转 det=+1”共同钉死。"
+        },
+        {
+            "id": "AXL-05",
+            "title": "6 袋 mouth/throat 端点与网格顶点对齐（水平面）",
+            "expected": "实测值（阈值 0.50 mm）",
+            "actual": "实测 0.2231 mm",
+            "status": "PASS",
+            "detail": "余量 2.24×；离线实测 mouth = 0、throat ≤ 0.22 mm；本条是\"袋口落在网格袋口上\"的可判据版本。"
+        },
+        {
+            "id": "IMP-01",
+            "title": "模型导入设置即代码",
+            "expected": "useFileScale=false, globalScale=1, readable, no compression, no auto-material, MikkTSpace",
+            "actual": "全部符合",
+            "status": "PASS",
+            "detail": "杜绝二次缩放；材质留待 Day 3 手建。"
+        },
+        {
+            "id": "IMP-02",
+            "title": "法线贴图类型与绿通道约定",
+            "expected": "NormalMap, sRGB=false, flipGreen=False",
+            "actual": "NormalMap, sRGB=false, flipGreen=False",
+            "status": "PASS",
+            "detail": "Unity 官方：绿色 Y+ = Up（OpenGL）；Blender 默认导出 OpenGL；实测绿均值 125.7≈中性。故不翻转。"
+        },
+        {
+            "id": "IMP-03",
+            "title": "BaseColor 为 sRGB 颜色贴图",
+            "expected": "sRGB=true",
+            "actual": "sRGB=true",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "IMP-04",
+            "title": "袋网贴图保留 Alpha（供 Alpha Clipping）",
+            "expected": "alphaFromInput + sRGB",
+            "actual": "符合",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "IMP-05",
+            "title": "Metallic/Roughness 为线性且可读（供通道打包）",
+            "expected": "sRGB=false, readable=true",
+            "actual": "符合",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "ART-01",
+            "title": "5 张贴图存在且尺寸符合规格",
+            "expected": "见明细",
+            "actual": "table_basecolor.jpg=2048×2048; table_normal.png=2048×2048; table_net_rgba.png=2048×2048; table_roughness.png=1024×1024; table_metallic.png=1024×1024;",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "ART-02",
+            "title": "球桌 FBX 存在",
+            "expected": "Assets/_Project/Art/Models/PoolTable_Normalized.fbx",
+            "actual": "Assets/_Project/Art/Models/PoolTable_Normalized.fbx",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "ART-03",
+            "title": "Metallic-Roughness 打包贴图已生成（R2 提前处置）",
+            "expected": "Assets/_Project/Art/Textures/table_metallic_roughness.png",
+            "actual": "存在",
+            "status": "PASS",
+            "detail": ""
+        }
+    ]
+}

@@ -1,0 +1,229 @@
+# D2-T02B · TableConfig 落地交叉复核
+
+| 项 | 值 |
+| --- | --- |
+| 任务 | D2-T02B（被 D2-T01 阻塞，已解除） |
+| 复核人 | quality-lead · 严守真（独立于实现者） |
+| 复核对象 | `Assets/_Project/Data/TableConfig.asset`（纯文本 Unity YAML，13,446 B）—— **直接解析原始构件，不接受任何中间导出** |
+| 独立基线 | `Docs/Reports/d2t02a-baseline.json`（D2-T02A 产出） |
+| **整体判定** | **PASS_WITH_CONCERNS**（数据落地逐位精确、43/43 测试通过、全工程仅一处轴变换；5 项非阻塞 CONCERN） |
+| **是否阻塞 Day 3** | **不阻塞** |
+| 产出物 | 本报告 · `Docs/Reports/d2t02b-crosscheck.json` · `Docs/Reports/d2t02b-editmode-tests.xml` · `Docs/Reports/d2t02b-mesh-audit.json` · 新增 QA 测试 `Assets/_Project/Tests/EditMode/D2T02B_IndependentAuditTests.cs` |
+
+> 纪律：仅只读解析资产 + 新增测试；**未修改任何实现代码或资产**。所有结论附命令与真实输出。
+
+---
+
+## 0. 复核方法与证据链
+
+```
+PY = C:/Users/hp/.workbuddy/binaries/python/versions/3.13.12/python.exe
+$PY Docs/Tools/d2t02b_crosscheck.py     # [1]数据比对 [2]CHR-01 [3]CHR-02 [4]反向用例实跑
+$PY Docs/Tools/png_probe.py             # [7]贴图独立解码
+Unity.exe -batchmode -runTests -testPlatform EditMode ...   # [4]测试
+```
+
+**溯源链（独立核验，全部相等）**：
+- 资产记录 `sourceSha256 = ba60fc20…364398`
+- `Docs/Reference/table-metadata-reference.json` sha256 = `ba60fc20…364398`（**与 F: 原始文件逐字节相同**）
+- F: 原始 `table-metadata-reference.json` sha256 = `ba60fc20…364398`
+⇒ 资产 ← 入库副本 ← F: 原始，**链条无损**。（注意：D2-T02A 已证 `gameplay-markers` 是 `table-metadata` 的同源产物。）
+
+---
+
+## 1. 数据落地正确性（索引对齐逐字段，1e-5 m）
+
+解析 `TableConfig.asset`：**82 段 / 6 袋**，`rail` 标签齐全。
+
+| 指标 | 值 |
+| --- | --- |
+| 原始 maxDelta（asset 解析值 − baseline 双精度） | **1.0577e-07 m**（0.106 µm），最坏处 `seg[61].b.x` |
+| float32 域 maxDelta（asset − float32(baseline)） | **5.381e-08 m** |
+| **解析值经 float32 舍入后 ≠ baseline(float32) 的点数** | **0** |
+| 1e-6 容差下 findings | **0** |
+
+**结论：落地误差 = 0（真实错误为零）。**
+原始 0.106 µm 的差值是**纯 float32 打印舍入**：资产里的十进制字符串（如 `-1.3343427`）解析后四舍五入到 float32，**与真值的 float32 逐位相同（全部 170 个点无一例外）**。这正是 team-lead 要求区分的"存储舍入 vs 真实错误"——**是存储舍入，不是错误**。
+（对照：内库 `innerWidth` 资产 `1.2701088` vs 真值 `1.270108866174597`；float32(1.270108866174597)=1.2701088，完全吻合。）
+
+---
+
+## 2. 手性 / 绕向自检（独立复算，未用实现者脚本）
+
+- **CHR-01 袋口局部手性符号 = [1,−1,−1,−1,1,1]**，与期望一致 → **PASS**。
+- **CHR-02 库边拼接绕向 shoelace/2 = 3.144285（CCW）**，gap = 177.8 mm → **PASS**。
+
+**关于 CHR-02"改后判据是否变弱成恒真"的追问（team-lead 重点）**：
+我**实跑注入**证明它**不是恒真**：对资产施加水平面镜像后，shoelace 变为 **−3.1443（符号翻转）** → CHR-02 会 FAIL（见 §3 RC-4）。所以"sign>0 且 ≈3.1443"这一改法**仍能抓镜像**，判据有力。
+**但**：CHR-02 是 **proper 旋转不变量**——对 90°/180° 旋转**不响应**（符合几何事实，非缺陷）。且它依赖段 `a→b` 点序被保留、且拼接起点取自文件内首个 rail，故其 shoelace **数值**依赖文件 rail 顺序（当前确定，但非起点不变）；这是它作为"量级"断言的一个轻微脆弱点，已在 §6 C1 备注。
+
+---
+
+## 3. 反向用例实跑（RC-1..RC-7，真实观察拦截/漏检）
+
+复刻实现的四项判据（**CMP-03** 索引对齐逐字段 1e-5 / **DAT-03** 公共标量 vs PoolConstants / **CHR-01** 手性 / **CHR-02** 绕向），把 RC 注入解析后的数据集实跑：
+
+| 用例 | 注入 | 结果 | 触发判据 |
+| --- | --- | --- | --- |
+| clean | 无 | **PASS（应通过）** | 无 |
+| RC-1 | `seg[40].b.x += 1mm` | **拦截** | CMP-03(vio=1, Δ=1.0e-3) |
+| RC-2 | `ballRadius=0.03` | **拦截** | **DAT-03**(Δ=1.42e-3) |
+| RC-3 | `pocket[0].captureRadius=1.0` | **拦截** | CMP-03(Δ=9.69e-1) |
+| **RC-4** | 全量 `x→−x`（水平面镜像） | **拦截** | **CMP-03(Δ=2.67m) + CHR-01 + CHR-02(−3.1443)** |
+| RC-5 | 全量 90° 旋转 | **拦截** | CMP-03(Δ=2.06m) |
+| **RC-6** | 全量 180° 旋转 | **拦截** | **CMP-03(Δ=2.91m)**（仅此一条） |
+| RC-7 | 全量 ×1.2 | **拦截** | CMP-03(Δ=0.291m) + CHR-02(4.5278) |
+
+**漏检项：无。7 个反向用例全部被拦截。**
+
+**team-lead 重点问答**：
+- **RC-4（水平面镜像）是否被抓到、被哪条抓？** 是。被 **三条**抓：CMP-03（索引对齐逐点 2.67 m）+ **CHR-01**（手性整列翻转）+ **CHR-02**（绕向翻号）。这正是 D2-T02A 所强调的"镜像必须靠手性/绕向或逐点基线"，实现者已补齐。
+- **RC-6（180° 旋转）？** 被抓，但**仅由 CMP-03**（索引对齐）抓到。CHR-01/CHR-02 对 proper 旋转不响应——**符合几何事实**（180° 旋转保手性、保绕向），不是判据缺陷。结论：**只要 CMP-03 在位，180° 旋转无漏网**；若去掉 CMP-03，则无任何自包含判据能抓 180°（本桌近自对称）。
+
+**落地为 EditMode 测试（已新增，未改实现代码）**：`D2T02B_IndependentAuditTests.cs` 中 4 项负向/变异测试直接喂给**实现者自己的纯函数 `ReferenceCrossCheck.Compare`** 一个被损坏的输入，断言它**报错**：
+- `CrossCheck_DetectsMirroredB`（镜像 B）→ 断言 `!Identical` 且端点误差 > 1 m
+- `CrossCheck_DetectsScaledB`（×1.2 B）
+- `CrossCheck_DetectsSingleEndpointOffsetB`（单点偏移 1 mm）
+- `ChiralityProbe_FlipsUnderHorizontalMirror` / `WindingProbe_FlipsSignUnderHorizontalMirror`
+全部 **Passed** ⇒ 证明判据"有牙"，不是恒真。
+
+---
+
+## 4. 独立重跑测试
+
+命令（自跑，未复用实现者 xml）：
+```
+Unity.exe -batchmode -projectPath "<proj>" -runTests -testPlatform EditMode \
+  -testResults Docs/Reports/d2t02b-editmode-tests.xml -logFile Logs/d2t02b-tests.log
+```
+**结果：43 / 43 PASS（0 failed）**，`Docs/Reports/d2t02b-editmode-tests.xml`：
+- `PoolConstantsTests` 13（Day 1 回归）
+- `TableConfigTests` 24
+- `D2T02B_IndependentAuditTests` 6（QA 新增）
+
+> **与 team-lead 预期的差异**：您说"35/35"。**实测实现者原有为 37**（13 + 24），加我新增 6 项 = **43**。不是 35。请以 XML 为准。（首次运行我未加测试时确为 37/37。）
+
+---
+
+## 5. 轴向"只做一次"的实质检验（team-lead 最关心项之一）
+
+### 5.1 独立复现实现者的 48 候选枚举（未调用其脚本）
+我用自己的枚举 + 我 D2-T02A 的基线端点，独立复算（`d2t02b-mesh-audit.json`）：
+
+| | 我的复算 | 实现者报告 |
+| --- | --- | --- |
+| 最优排列 | **021** | 021 |
+| 最优误差 | **0.2611 mm** | 0.26114 mm |
+| 次优排列 | **012 @ 640.722 mm** | 640.722 mm |
+| 所选变换 `(−m.x, m.z, m.y)` 误差 | **0.2613 mm** | 0.26127 mm |
+
+**数字逐位吻合，独立复现成立。**
+
+### 5.2 🔎 我发现的实质性问题：**端点对齐判据对"水平符号/手性"不敏感**
+在最优排列 021 内，**8 个符号变体的误差跨度仅 0.00027 mm（0.27 µm）**：
+
+```
+rank1 021 sign(-1,-1,-1) = 0.26114 mm   ← 数值最优，但它是"上轴翻转"的镜像（腿朝上）
+rank4 021 sign(-1, 1, 1) = 0.26127 mm   ← 实现者所选（正确，det=+1）
+```
+其中 **rank1 的 `sign(-1,1,1)` 之镜像 `(-1,·,-1)` = 0.26114 mm 甚至略优于所选**。
+
+**含义**：`AXL-04/AXL-05`（水平面最近顶点）**单独不能证明轴向正确/未镜像**——镜像变换在近对称的桌面上同样"对齐"到 0.26 mm。**真正把变换钉死的是别的证据**：
+1. **`AXL-02` 包围盒不对称**：X 端 `−1.412686` vs `+1.412409`（0.277 mm 不对称）→ 钉死 X 符号；Y 端腿底 `−0.8635` vs 顶 `+0.0610` → 钉死"上"方向；
+2. **修正必须是纯旋转（det=+1）**（`ModelAxisCorrection_MapsModelUpToUnityUp_AndPreservesChirality` 已断言）→ 钉死短轴符号。
+
+⇒ **变换本身正确且唯一**（三项约束联立唯一解）。**但 `AXL-04` 的 detail 文案"同时证明轴向映射正确"属过度声明**——它只证明了"排列"与亚毫米对齐，符号证据在 AXL-02。**建议**：修正该文案，并在 AXL-02 旁明确"X 不对称符号 + det=+1 才是手性判据"。→ **CONCERN C1（中）**。
+
+### 5.3 是否存在第二处轴/手性/缩放变换？—— **否**
+全工程 `Assets/_Project/**/*.cs` 搜索 `new Vector3` / `localScale` / `.scale=` / `Quaternion` / `Euler` / `Rotation` / `Instantiate` / `SetParent`，坐标变换**全部集中在 `PoolGeometry.cs` 一处**：
+- `PhysicsToUnity = (px, h, py)`、`UnityToPhysics`、`ModelVertexToUnity = (−m.x, m.z, m.y)`、四元数 `ModelAxisCorrection`；
+- **无任何 `localScale` 或 `.scale` 赋值**；
+- 场景 `Main.unity` 仅 1 相机 + 1 平行光（scale 均 1），**尚无球桌对象**；
+- FBX 导入设置（`.meta` 实证）：`bakeAxisConversion: 0`、`globalScale: 1`、`useFileScale: 0` → **导入器不做二次转换/缩放**。
+- `PoolConstants.PlayfieldVisualScale = 1.2f` **已定义但全工程未使用**（grep：仅定义处 + 测试断言）→ **当前不存在双重缩放**。
+
+⇒ **"只做一次"成立**。美术文档最担心的"双重转换"在代码层面不存在。（提醒：球桌尚未入场景，`ModelAxisCorrection` 目前仅被测试调用；Day 3 instantiate 时须确保恰好应用一次。→ CONCERN C4。）
+
+---
+
+## 6. 字段覆盖审计
+
+### 6.1 两个疑点的结论
+- **`rail` 是否被静默丢弃？——没有，保留完好。** `TableConfig.asset` 中每段都带 `rail`（`end_negative` / `long_negative_positive` / … 共 6 类，与源一致）。**team-lead 的 grep `rail:` 得 0 属误报**（字段确实存在，可能是 grep 模式/编码问题）。对 Day 4–7 物理内核与 Day 6 库边音效差异化**无影响**。
+- **`lowestY` 归属？——合理。** 它以 `legBottomY = −0.86351675` 落在 `TableConfig`（源 `lowest_y`），同时也在 `PoolConstants.TableLegBottomY`。作为"全局硬指标"放 `PoolConstants`、作为溯源副本放 `TableConfig`，二者由 `ConsistencyErrors()` 断言一致。**归属合理，非"该进未进"。**
+
+### 6.2 源字段 → TableConfig 覆盖审计
+- **完整落地**：`rail`、`captureNote`、`throatNormal`、`throatCenter`、`mouthWidth`、`throatWidth`、`openingRadius`、`captureRadius`、`ballRadius`、内库 4 标量、`cloth_y`、`nose_height`、`lowest_y`、`bounds_runtime`、溯源 5 项、`footSpot`、`offTableHalfExtents`。
+- **改名后落地（非丢失）**：`runtimeCenter→center`、`runtimeMouth[0/1]→mouthA/B`、`runtimeThroat[0/1]→throatA/B`、`runtimeThroatCenter→throatCenter`、`runtimeThroatNormal→throatNormal`、`runtimeMouthWidth→mouthWidth`、`runtimeThroatWidth→throatWidth`。
+- **未落地（逐类理由）**：
+  - 源空间测量明细：`sourceInnerRim/sourceCenter/sourceProjectedMin|Max|InscribedRadius/sourceMouth/sourceThroat` —— 建模中间量，非运行时需要；
+  - 运行时测量明细：`runtimeInnerRim`（12 点袋网内沿）、`runtimeProjectedMin|MaxRadius`、`runtimeInscribedRadius` —— 校验器 DAT-10 改为**直接读源 JSON** 复算（未把值搬进资产，避免双份漂移）；`runtimeInscribedRadius == openingRadius` 已由 openingRadius 承载；
+  - 建模元数据：`meshComponent`、`topRimFaceCount`；
+  - 冗余：`recommendedCaptureRadius`（`== captureRadius`）；
+  - **坐标语义字符串**：`coordinate_mapping`、`collision_coordinates`、`notes` —— **仅存于代码注释，未随资产持久化**（→ CONCERN C5，追踪性略弱）。
+- **净影响**：**无 gameplay 关键字段丢失**。`runtimeInnerRim` 若 Day 3 需渲染袋网开口可考虑补入（网格本身已含该几何，非硬需求）。
+
+---
+
+## 7. 材质与导入设置
+
+### 7.1 通道打包（独立解码，纯 Python，未用实现者脚本）
+`table_metallic_roughness.png`（1024²）逐像素核对：
+- **R == 源 metallic：不匹配像素 = 0 / 1,048,576（maxΔ=0）**
+- **A == 255 − 源 roughness：不匹配像素 = 0 / 1,048,576（maxΔ=0）**
+- **G≠0 像素 = 0；B≠0 像素 = 0**
+⇒ **打包精确无误**（R=Metallic、A=Smoothness、G=B=0），与 URP Lit 的 Metallic-Alpha 约定完全一致。
+
+### 7.2 尺寸与导入设置
+尺寸全部符合规格（BaseColor/Normal/Net 2048²、Metallic/Roughness/Packed 1024²）；法线 `textureType=NormalMap`、`sRGB=false`、`flipGreen=false`；袋网 `alphaFromInput + sRGB`（供 Alpha Clipping，cutoff 0.5 在材质侧）；Metallic/Roughness 线性且 `readable`（供打包）。**FBX 无二次缩放**（见 §5.3）。
+
+### 7.3 法线绿通道（独立复算 + 结论评估）
+- **独立复算绿均值 = 125.73**（实现者称 125.7，吻合）；R=127.42、B=251.59。
+- **但对三条依据的评估（team-lead 要求）**：
+  - "Unity 官方：绿 Y+ = Up" —— ✅ 真实且相关；
+  - "Blender 默认导出 OpenGL" —— ✅ 一般成立，但**本资产是否如此导出未独立证实**（Blender 也可导出 DirectX）；
+  - "**实测绿均值 125.7≈中性**" —— ⚠️ **判别力弱**：翻转后绿均值约 **129.3**，**同样接近中性**。该指标**不能区分是否翻转**。
+  ⇒ "不翻转"的结论**主要靠约定链**，非视觉定论。**该结论被实现者正确标注为"非视觉定论、留 Day 3 A/B"，我认同这一残余风险处置**（归入 CONCERN C2，低）。
+
+---
+
+## 8. 补齐 D2-T02A 未验证项：JSON vs 真实网格贴合
+
+**已独立复现**（`d2t02b-mesh-audit.json`，我自己的 48 候选枚举，未用实现者脚本）：
+- 段端点对齐最优 **0.2611 mm**（实现者 AXL-04 报 0.2613 mm）——**独立复现**；
+- 袋口 mouth/throat 对齐：实现者 AXL-05 报 0.2231 mm；我的整体 worst（含段+袋口，188 端点）为 **0.2611 mm**，与之一致（袋口 mouth 实测为 0）。
+
+⇒ **"物理数据 ↔ 渲染网格"贴合在 0.26 mm 量级，已由我独立复现确认**，D2-T02A 的"未核对 JSON vs 网格"缺口**已补齐**。
+⚠️ 但须附注 §5.2 的发现：**该贴合度（0.26 mm）与桌面镜像不对称（0.28 mm）同量级**，故"贴合良好"**不能**作为"未镜像"的证明。
+
+---
+
+## 9. 整体判定与 CONCERN 清单
+
+### 判定：**PASS_WITH_CONCERNS** · 不阻塞 Day 3
+
+**PASS 项**：数据落地逐位精确（真实误差 0）｜CHR-01/CHR-02 通过且非恒真｜7 个反向用例零漏检｜43/43 测试通过｜全工程唯一轴变换、无双重转换/缩放｜通道打包逐像素精确｜溯源链无损｜网格贴合 0.26 mm 独立复现。
+
+| ID | 严重度 | CONCERN | 建议 |
+| --- | --- | --- | --- |
+| C1 | **中** | `AXL-04/05` 水平面最近顶点对**水平符号/手性不敏感**（sign spread 0.27 µm），镜像同样"对齐"0.26 mm；其 detail 文案"证明轴向映射正确"属**过度声明**。手性实际由 `AXL-02` 包围盒不对称 + `det=+1` 钉死。 | 修正 AXL-04 文案；在 AXL-02 明确"X 不对称 + det=+1 是手性判据"。**无需改实现逻辑**（变换本身正确）。 |
+| C2 | 低 | 法线绿通道"不翻转"主要靠约定链；绿均值 125.7 对是否翻转**无判别力**。 | 维持 Day 3 受光 A/B 定论（实现者已标注）。 |
+| C3 | 低 | `CMP-03` 只逐点比对段与袋，**未直接比对全局标量**（innerWidth 等）；标量由 `DAT-03` 对照 PoolConstants 覆盖（间接）。 | 可选：CMP-03 增补全局标量 vs 源 JSON 的直接断言。 |
+| C4 | 信息 | `PlayfieldVisualScale=1.2` 已定义但**未使用**；球桌尚未入场景，`ModelAxisCorrection` 仅测试调用。 | Day 3 instantiate 时确保轴修正**恰好应用一次**、1.2× **仅作用于视觉 root**。 |
+| C5 | 信息 | 坐标语义字符串（`coordinate_mapping`/`collision_coordinates`）未随资产持久化，仅在代码注释。 | 可选：入 asset 或 Day 1 文档，便于日后审计。 |
+
+**修复归属**：C1/C3/C5 为文案或可选增强；C2/C4 为 Day 3 处置项。**均不阻塞 Day 3，无人需即刻返工。**
+
+---
+
+## 10. 我未能验证 / 不确定的部分（诚实边界）
+
+1. **源 FBX 二进制未独立解析**：我的 48 候选枚举基于 **Unity 导入后的网格**（`m.vertices`），而非直接解析 `PoolTable_Normalized.fbx`。这足以验证"Unity 管线内轴映射正确"，但未独立确认"FBX 文件本身"的轴约定（实现者称其离线解析过 FBX 二进制）。若需硬独立性可后续直接解析 FBX。
+2. **Unity 导入器"仅翻转 X"这一前提**：我由包围盒不对称**佐证**（meshLocalX=−srcX、meshLocalZ=+srcY、meshLocalY 对称无信息），但"Unity 只翻 X 不翻 Y"这一行为的**机制**未从源码/文档层面证实；short-axis 符号（s2=+1）依赖此前提 + det=+1。风险低，但属推断。
+3. **Normal 绿通道的"正确朝向"未做视觉判定**（无渲染环境）；仅完成数值复算与依据评估。
+4. **我新增的 6 项 QA 测试**：其中负向测试直接调用实现者纯函数 `ReferenceCrossCheck.Compare`（真实验证其有牙）；手性/绕向两项探针为**我自己的判据复现**（非实现者私有校验器内部），已在代码注释与本报告中如实标注。
+5. **未运行 Play/运行时**：所有验证均为 EditMode / 静态；运行时物理与手感的最终确认属 Day 4+。
+
+---
+
+*附：可复用件 — `Docs/Tools/d2t02b_crosscheck.py`（资产解析+比对+CHR+反向用例）、`Docs/Tools/png_probe.py`（纯 Python PNG 解码/通道核对）、`Assets/_Project/Tests/EditMode/D2T02B_IndependentAuditTests.cs`（负向+枚举审计，43 项测试的一部分）。*

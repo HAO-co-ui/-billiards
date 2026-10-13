@@ -1,0 +1,373 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd731676d111d6040b2a05a8f6c07cb3, type: 3}
+  m_Name: TableConfig
+  m_EditorClassIdentifier: 
+  sourceFileName: table-metadata-reference.json
+  sourceSha256: ba60fc204c155881127b500bcce2f388066151757984659f89e681c2ef364398
+  runtimeNode: PoolTable_Source_FBX
+  generatedAtUtc: 2026-10-13T03:49:42.2614660Z
+  generator: TableDataImporter.v1
+  sourceVertexCount: 10572
+  sourceTriangleCount: 19954
+  sourceUniformScale: 2.5500472
+  sourceNonUniformScaleApplied: 0
+  innerLength: 2.54
+  innerWidth: 1.2701088
+  halfLength: 1.27
+  halfWidth: 0.6350544
+  clothHeight: 0
+  noseHeight: 0.044982042
+  ballRadius: 0.028575
+  legBottomY: -0.86351675
+  outerBoundsMin: {x: -1.4126858, y: -0.86351675, z: -0.79763436}
+  outerBoundsMax: {x: 1.4124087, y: 0.06102215, z: 0.79763436}
+  segments:
+  - a: {x: -1.3343427, y: 0.5735085}
+    b: {x: -1.3329755, y: 0.5844804}
+    rail: end_negative
+  - a: {x: -1.3329755, y: 0.5844804}
+    b: {x: -1.3291554, y: 0.5979052}
+    rail: end_negative
+  - a: {x: -1.3291554, y: 0.5979052}
+    b: {x: -1.3220001, y: 0.5936991}
+    rail: end_negative
+  - a: {x: -1.3220001, y: 0.5936991}
+    b: {x: -1.2983519, y: 0.5720076}
+    rail: end_negative
+  - a: {x: -1.2983519, y: 0.5720076}
+    b: {x: -1.277089, y: 0.5475064}
+    rail: end_negative
+  - a: {x: -1.277089, y: 0.5475064}
+    b: {x: -1.2700014, y: 0.53070354}
+    rail: end_negative
+  - a: {x: -1.2700014, y: 0.53070354}
+    b: {x: -1.2700014, y: -0.5307032}
+    rail: end_negative
+  - a: {x: -1.2700014, y: -0.5307032}
+    b: {x: -1.277089, y: -0.547506}
+    rail: end_negative
+  - a: {x: -1.277089, y: -0.547506}
+    b: {x: -1.2983463, y: -0.5720006}
+    rail: end_negative
+  - a: {x: -1.2983463, y: -0.5720006}
+    b: {x: -1.3220003, y: -0.5936988}
+    rail: end_negative
+  - a: {x: -1.3220003, y: -0.5936988}
+    b: {x: -1.3291556, y: -0.597905}
+    rail: end_negative
+  - a: {x: -1.3291556, y: -0.597905}
+    b: {x: -1.3329756, y: -0.5844801}
+    rail: end_negative
+  - a: {x: -1.3329756, y: -0.5844801}
+    b: {x: -1.3343428, y: -0.5735082}
+    rail: end_negative
+  - a: {x: 0.09499637, y: -0.6983061}
+    b: {x: 0.08120282, y: -0.6983061}
+    rail: long_negative_positive
+  - a: {x: 0.08120282, y: -0.6983061}
+    b: {x: 0.07110446, y: -0.6974762}
+    rail: long_negative_positive
+  - a: {x: 0.07110446, y: -0.6974762}
+    b: {x: 0.06756165, y: -0.6950635}
+    rail: long_negative_positive
+  - a: {x: 0.06756165, y: -0.6950635}
+    b: {x: 0.071566336, y: -0.6854957}
+    rail: long_negative_positive
+  - a: {x: 0.071566336, y: -0.6854957}
+    b: {x: 0.08382461, y: -0.6634056}
+    rail: long_negative_positive
+  - a: {x: 0.08382461, y: -0.6634056}
+    b: {x: 0.09785646, y: -0.6421421}
+    rail: long_negative_positive
+  - a: {x: 0.09785646, y: -0.6421421}
+    b: {x: 0.10702307, y: -0.6350556}
+    rail: long_negative_positive
+  - a: {x: 0.10702307, y: -0.6350556}
+    b: {x: 1.1689053, y: -0.6350556}
+    rail: long_negative_positive
+  - a: {x: 1.1689053, y: -0.6350556}
+    b: {x: 1.1832657, y: -0.6421432}
+    rail: long_negative_positive
+  - a: {x: 1.1832657, y: -0.6421432}
+    b: {x: 1.2069476, y: -0.66340154}
+    rail: long_negative_positive
+  - a: {x: 1.2069476, y: -0.66340154}
+    b: {x: 1.2276028, y: -0.6852826}
+    rail: long_negative_positive
+  - a: {x: 1.2276028, y: -0.6852826}
+    b: {x: 1.2328507, y: -0.69420993}
+    rail: long_negative_positive
+  - a: {x: 1.2328507, y: -0.69420993}
+    b: {x: 1.2194259, y: -0.6978791}
+    rail: long_negative_positive
+  - a: {x: 1.2194259, y: -0.6978791}
+    b: {x: 1.2084541, y: -0.6990953}
+    rail: long_negative_positive
+  - a: {x: 1.2084543, y: 0.6990952}
+    b: {x: 1.219426, y: 0.697879}
+    rail: long_positive_positive
+  - a: {x: 1.219426, y: 0.697879}
+    b: {x: 1.2328508, y: 0.69420975}
+    rail: long_positive_positive
+  - a: {x: 1.2328508, y: 0.69420975}
+    b: {x: 1.227603, y: 0.68528247}
+    rail: long_positive_positive
+  - a: {x: 1.227603, y: 0.68528247}
+    b: {x: 1.206953, y: 0.6634062}
+    rail: long_positive_positive
+  - a: {x: 1.206953, y: 0.6634062}
+    b: {x: 1.1832658, y: 0.6421432}
+    rail: long_positive_positive
+  - a: {x: 1.1832658, y: 0.6421432}
+    b: {x: 1.1689055, y: 0.6350555}
+    rail: long_positive_positive
+  - a: {x: 1.1689055, y: 0.6350555}
+    b: {x: 0.10702312, y: 0.6350557}
+    rail: long_positive_positive
+  - a: {x: 0.10702312, y: 0.6350557}
+    b: {x: 0.09778186, y: 0.6422139}
+    rail: long_positive_positive
+  - a: {x: 0.09778186, y: 0.6422139}
+    b: {x: 0.08382463, y: 0.6634056}
+    rail: long_positive_positive
+  - a: {x: 0.08382463, y: 0.6634056}
+    b: {x: 0.07156634, y: 0.6854957}
+    rail: long_positive_positive
+  - a: {x: 0.07156634, y: 0.6854957}
+    b: {x: 0.067561634, y: 0.6950635}
+    rail: long_positive_positive
+  - a: {x: 0.067561634, y: 0.6950635}
+    b: {x: 0.07110442, y: 0.6974763}
+    rail: long_positive_positive
+  - a: {x: 0.07110442, y: 0.6974763}
+    b: {x: 0.08120298, y: 0.69830614}
+    rail: long_positive_positive
+  - a: {x: 0.08120298, y: 0.69830614}
+    b: {x: 0.09499655, y: 0.69830614}
+    rail: long_positive_positive
+  - a: {x: -1.2084543, y: 0.6990953}
+    b: {x: -1.219426, y: 0.69787914}
+    rail: long_positive_negative
+  - a: {x: -1.219426, y: 0.69787914}
+    b: {x: -1.2328508, y: 0.69420993}
+    rail: long_positive_negative
+  - a: {x: -1.2328508, y: 0.69420993}
+    b: {x: -1.2276028, y: 0.68528265}
+    rail: long_positive_negative
+  - a: {x: -1.2276028, y: 0.68528265}
+    b: {x: -1.2069532, y: 0.66340643}
+    rail: long_positive_negative
+  - a: {x: -1.2069532, y: 0.66340643}
+    b: {x: -1.183266, y: 0.64214355}
+    rail: long_positive_negative
+  - a: {x: -1.183266, y: 0.64214355}
+    b: {x: -1.1689056, y: 0.63505596}
+    rail: long_positive_negative
+  - a: {x: -1.1689056, y: 0.63505596}
+    b: {x: -0.107023165, y: 0.6350557}
+    rail: long_positive_negative
+  - a: {x: -0.107023165, y: 0.6350557}
+    b: {x: -0.09778192, y: 0.6422139}
+    rail: long_positive_negative
+  - a: {x: -0.09778192, y: 0.6422139}
+    b: {x: -0.08382468, y: 0.6634056}
+    rail: long_positive_negative
+  - a: {x: -0.08382468, y: 0.6634056}
+    b: {x: -0.07156636, y: 0.6854957}
+    rail: long_positive_negative
+  - a: {x: -0.07156636, y: 0.6854957}
+    b: {x: -0.06756168, y: 0.6950635}
+    rail: long_positive_negative
+  - a: {x: -0.06756168, y: 0.6950635}
+    b: {x: -0.07110447, y: 0.6974763}
+    rail: long_positive_negative
+  - a: {x: -0.07110447, y: 0.6974763}
+    b: {x: -0.08120303, y: 0.69830614}
+    rail: long_positive_negative
+  - a: {x: -0.08120303, y: 0.69830614}
+    b: {x: -0.09499661, y: 0.69830614}
+    rail: long_positive_negative
+  - a: {x: 1.334343, y: 0.57350826}
+    b: {x: 1.3329757, y: 0.58448017}
+    rail: end_positive
+  - a: {x: 1.3329757, y: 0.58448017}
+    b: {x: 1.3291557, y: 0.597905}
+    rail: end_positive
+  - a: {x: 1.3291557, y: 0.597905}
+    b: {x: 1.3220004, y: 0.59369886}
+    rail: end_positive
+  - a: {x: 1.3220004, y: 0.59369886}
+    b: {x: 1.298352, y: 0.57200724}
+    rail: end_positive
+  - a: {x: 1.298352, y: 0.57200724}
+    b: {x: 1.277089, y: 0.547506}
+    rail: end_positive
+  - a: {x: 1.277089, y: 0.547506}
+    b: {x: 1.2700013, y: 0.53070307}
+    rail: end_positive
+  - a: {x: 1.2700013, y: 0.53070307}
+    b: {x: 1.270001, y: -0.5307032}
+    rail: end_positive
+  - a: {x: 1.270001, y: -0.5307032}
+    b: {x: 1.2770888, y: -0.54750603}
+    rail: end_positive
+  - a: {x: 1.2770888, y: -0.54750603}
+    b: {x: 1.298347, y: -0.5720019}
+    rail: end_positive
+  - a: {x: 1.298347, y: -0.5720019}
+    b: {x: 1.3220001, y: -0.59369904}
+    rail: end_positive
+  - a: {x: 1.3220001, y: -0.59369904}
+    b: {x: 1.3291554, y: -0.5979052}
+    rail: end_positive
+  - a: {x: 1.3291554, y: -0.5979052}
+    b: {x: 1.3329756, y: -0.58448035}
+    rail: end_positive
+  - a: {x: 1.3329756, y: -0.58448035}
+    b: {x: 1.3343427, y: -0.57350844}
+    rail: end_positive
+  - a: {x: -1.2084544, y: -0.6990952}
+    b: {x: -1.219426, y: -0.6978789}
+    rail: long_negative_negative
+  - a: {x: -1.219426, y: -0.6978789}
+    b: {x: -1.2328508, y: -0.69420975}
+    rail: long_negative_negative
+  - a: {x: -1.2328508, y: -0.69420975}
+    b: {x: -1.227603, y: -0.68528247}
+    rail: long_negative_negative
+  - a: {x: -1.227603, y: -0.68528247}
+    b: {x: -1.2069532, y: -0.66340625}
+    rail: long_negative_negative
+  - a: {x: -1.2069532, y: -0.66340625}
+    b: {x: -1.183266, y: -0.64214325}
+    rail: long_negative_negative
+  - a: {x: -1.183266, y: -0.64214325}
+    b: {x: -1.1689056, y: -0.6350556}
+    rail: long_negative_negative
+  - a: {x: -1.1689056, y: -0.6350556}
+    b: {x: -0.107023336, y: -0.6350556}
+    rail: long_negative_negative
+  - a: {x: -0.107023336, y: -0.6350556}
+    b: {x: -0.09778191, y: -0.6422142}
+    rail: long_negative_negative
+  - a: {x: -0.09778191, y: -0.6422142}
+    b: {x: -0.083824895, y: -0.6634056}
+    rail: long_negative_negative
+  - a: {x: -0.083824895, y: -0.6634056}
+    b: {x: -0.07156659, y: -0.6854957}
+    rail: long_negative_negative
+  - a: {x: -0.07156659, y: -0.6854957}
+    b: {x: -0.06756194, y: -0.6950635}
+    rail: long_negative_negative
+  - a: {x: -0.06756194, y: -0.6950635}
+    b: {x: -0.07110474, y: -0.6974762}
+    rail: long_negative_negative
+  - a: {x: -0.07110474, y: -0.6974762}
+    b: {x: -0.081203125, y: -0.6983061}
+    rail: long_negative_negative
+  - a: {x: -0.081203125, y: -0.6983061}
+    b: {x: -0.094996676, y: -0.6983061}
+    rail: long_negative_negative
+  pockets:
+  - index: 0
+    kind: corner
+    center: {x: -1.2914788, y: -0.6560756}
+    mouthA: {x: -1.1689044, y: -0.63505423}
+    mouthB: {x: -1.27, y: -0.53070176}
+    throatA: {x: -1.2328508, y: -0.69420975}
+    throatB: {x: -1.3291556, y: -0.597905}
+    throatCenter: {x: -1.2810032, y: -0.64605737}
+    throatNormal: {x: -0.70710695, y: -0.70710665}
+    mouthWidth: 0.14529194
+    throatWidth: 0.13619548
+    openingRadius: 0.061316635
+    captureRadius: 0.030741636
+    captureNote: Capture only after the center passes the throat toward the net;
+      this radius fits a complete ball within the projected inner net opening.
+  - index: 1
+    kind: side
+    center: {x: -0.00023674147, y: -0.70437086}
+    mouthA: {x: -0.10702403, y: -0.6350543}
+    mouthB: {x: 0.10702373, y: -0.6350543}
+    throatA: {x: -0.06756194, y: -0.6950635}
+    throatB: {x: 0.06756165, y: -0.6950635}
+    throatCenter: {x: -0.0000001429282, y: -0.6950635}
+    throatNormal: {x: 0, y: -1}
+    mouthWidth: 0.21404776
+    throatWidth: 0.1351236
+    openingRadius: 0.061316617
+    captureRadius: 0.030741619
+    captureNote: Capture only after the center passes the throat toward the net;
+      this radius fits a complete ball within the projected inner net opening.
+  - index: 2
+    kind: corner
+    center: {x: 1.2912016, y: -0.65607584}
+    mouthA: {x: 1.1689043, y: -0.6350544}
+    mouthB: {x: 1.27, y: -0.530702}
+    throatA: {x: 1.2328507, y: -0.69420993}
+    throatB: {x: 1.3291554, y: -0.5979052}
+    throatCenter: {x: 1.2810031, y: -0.64605755}
+    throatNormal: {x: 0.70710635, y: -0.7071072}
+    mouthWidth: 0.145292
+    throatWidth: 0.13619548
+    openingRadius: 0.061316647
+    captureRadius: 0.030741647
+    captureNote: Capture only after the center passes the throat toward the net;
+      this radius fits a complete ball within the projected inner net opening.
+  - index: 3
+    kind: corner
+    center: {x: -1.2914786, y: 0.65607584}
+    mouthA: {x: -1.1689043, y: 0.6350544}
+    mouthB: {x: -1.27, y: 0.53070205}
+    throatA: {x: -1.2328508, y: 0.69420993}
+    throatB: {x: -1.3291554, y: 0.5979052}
+    throatCenter: {x: -1.2810031, y: 0.64605755}
+    throatNormal: {x: -0.70710695, y: 0.70710665}
+    mouthWidth: 0.1452919
+    throatWidth: 0.13619538
+    openingRadius: 0.061316658
+    captureRadius: 0.030741656
+    captureNote: Capture only after the center passes the throat toward the net;
+      this radius fits a complete ball within the projected inner net opening.
+  - index: 4
+    kind: side
+    center: {x: -0.00023649554, y: 0.7043709}
+    mouthA: {x: -0.10702392, y: 0.6350543}
+    mouthB: {x: 0.10702385, y: 0.6350543}
+    throatA: {x: -0.06756168, y: 0.6950635}
+    throatB: {x: 0.067561634, y: 0.6950635}
+    throatCenter: {x: -0.00000002418356, y: 0.6950635}
+    throatNormal: {x: 0, y: 1}
+    mouthWidth: 0.21404776
+    throatWidth: 0.13512331
+    openingRadius: 0.061316647
+    captureRadius: 0.030741647
+    captureNote: Capture only after the center passes the throat toward the net;
+      this radius fits a complete ball within the projected inner net opening.
+  - index: 5
+    kind: corner
+    center: {x: 1.2912017, y: 0.6560756}
+    mouthA: {x: 1.1689043, y: 0.63505423}
+    mouthB: {x: 1.27, y: 0.5307019}
+    throatA: {x: 1.2328508, y: 0.69420975}
+    throatB: {x: 1.3291557, y: 0.597905}
+    throatCenter: {x: 1.2810032, y: 0.64605737}
+    throatNormal: {x: 0.70710635, y: 0.7071072}
+    mouthWidth: 0.14529194
+    throatWidth: 0.13619559
+    openingRadius: 0.06131667
+    captureRadius: 0.030741671
+    captureNote: Capture only after the center passes the throat toward the net;
+      this radius fits a complete ball within the projected inner net opening.
+  footSpot: {x: 0.51, y: 0}
+  offTableHalfExtents: {x: 1.39, y: 0.76}
