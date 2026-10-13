@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="13" result="Passed" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.0441298">
+  <test-suite type="TestSuite" id="1000" name="Idea35 Pool Room" fullname="Idea35 Pool Room" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.044130" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <test-suite type="Assembly" id="1015" name="Billiards.Tests.EditMode.dll" fullname="E:/Unity_Deve/Unity_Project/Billiards game/Library/ScriptAssemblies/Billiards.Tests.EditMode.dll" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.037449" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="10640" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <test-suite type="TestSuite" id="1016" name="Billiards" fullname="Billiards" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.036883" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1017" name="Tests" fullname="Billiards.Tests" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.036522" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1001" name="PoolConstantsTests" fullname="Billiards.Tests.PoolConstantsTests" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.035331" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1011" name="BallFitsInsideAllTableClearances" fullname="Billiards.Tests.PoolConstantsTests.BallFitsInsideAllTableClearances" methodname="BallFitsInsideAllTableClearances" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="71881072" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.011569" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1003" name="BallRadius_MatchesSourceMeasurement" fullname="Billiards.Tests.PoolConstantsTests.BallRadius_MatchesSourceMeasurement" methodname="BallRadius_MatchesSourceMeasurement" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="556048334" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.003605" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1007" name="CaptureRadius_IsOpeningRadiusMinusBallRadiusMinusTwoMillimetres" fullname="Billiards.Tests.PoolConstantsTests.CaptureRadius_IsOpeningRadiusMinusBallRadiusMinusTwoMillimetres" methodname="CaptureRadius_IsOpeningRadiusMinusBallRadiusMinusTwoMillimetres" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="687291693" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000191" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1004" name="ClothGeometry_HalfDimensionsAreConsistent" fullname="Billiards.Tests.PoolConstantsTests.ClothGeometry_HalfDimensionsAreConsistent" methodname="ClothGeometry_HalfDimensionsAreConsistent" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="374559234" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000157" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1005" name="ClothLength_IsNineFootSpecification" fullname="Billiards.Tests.PoolConstantsTests.ClothLength_IsNineFootSpecification" methodname="ClothLength_IsNineFootSpecification" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="1323132454" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000131" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1008" name="ClothPlane_IsWorldOrigin" fullname="Billiards.Tests.PoolConstantsTests.ClothPlane_IsWorldOrigin" methodname="ClothPlane_IsWorldOrigin" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="292290033" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000126" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1006" name="ClothWidth_DeviatesFromNominalByUnderOneMillimetre" fullname="Billiards.Tests.PoolConstantsTests.ClothWidth_DeviatesFromNominalByUnderOneMillimetre" methodname="ClothWidth_DeviatesFromNominalByUnderOneMillimetre" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="573185751" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000344" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1009" name="CollisionTopology_MatchesSourceCounts" fullname="Billiards.Tests.PoolConstantsTests.CollisionTopology_MatchesSourceCounts" methodname="CollisionTopology_MatchesSourceCounts" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="748308940" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000601" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1013" name="CueDimensions_MatchArtAsset" fullname="Billiards.Tests.PoolConstantsTests.CueDimensions_MatchArtAsset" methodname="CueDimensions_MatchArtAsset" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="998966003" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000139" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1012" name="PresentationScale_IsAppliedSeparatelyFromPhysicsUnits" fullname="Billiards.Tests.PoolConstantsTests.PresentationScale_IsAppliedSeparatelyFromPhysicsUnits" methodname="PresentationScale_IsAppliedSeparatelyFromPhysicsUnits" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="574782000" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000158" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1014" name="SourceProvenance_IsRecorded" fullname="Billiards.Tests.PoolConstantsTests.SourceProvenance_IsRecorded" methodname="SourceProvenance_IsRecorded" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="911984721" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000143" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1010" name="TableAspectRatio_DeviatesOnlyByMeasuredWidthError" fullname="Billiards.Tests.PoolConstantsTests.TableAspectRatio_DeviatesOnlyByMeasuredWidthError" methodname="TableAspectRatio_DeviatesOnlyByMeasuredWidthError" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="1077624932" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.000187" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1002" name="TableTestAssembly_IsWired" fullname="Billiards.Tests.PoolConstantsTests.TableTestAssembly_IsWired" methodname="TableTestAssembly_IsWired" classname="Billiards.Tests.PoolConstantsTests" runstate="Runnable" seed="400964961" result="Passed" start-time="2026-10-13 03:27:58Z" end-time="2026-10-13 03:27:58Z" duration="0.002872" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <reason>
+                <message><![CDATA[EditMode 测试程序集已接入 Billiards.Runtime。]]></message>
+              </reason>
+              <output><![CDATA[Saving results to: C:/Users/hp/AppData/LocalLow/DefaultCompany/Idea35 Pool Room\TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

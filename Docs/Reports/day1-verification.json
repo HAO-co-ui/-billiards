@@ -1,0 +1,222 @@
+{
+    "schema": "billiards.day1-verification.v1",
+    "generatedAtUtc": "2026-10-13T03:27:28.0889919Z",
+    "unityVersion": "6000.0.49f1",
+    "activeBuildTarget": "StandaloneWindows64",
+    "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
+    "isBatchMode": true,
+    "passCount": 26,
+    "warnCount": 0,
+    "failCount": 0,
+    "overallStatus": "PASS",
+    "checks": [
+        {
+            "id": "CFG-01",
+            "title": "色彩空间为 Linear",
+            "expected": "Linear",
+            "actual": "Linear",
+            "status": "PASS",
+            "detail": "URP 在 Gamma 下会出现光照与贴图亮度错误，此项为硬性要求。"
+        },
+        {
+            "id": "CFG-02",
+            "title": "默认窗口分辨率 1920x1080",
+            "expected": "1920x1080",
+            "actual": "1920x1080",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "CFG-03",
+            "title": "默认窗口模式（开发期便于对照调参）",
+            "expected": "Windowed",
+            "actual": "Windowed",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "CFG-04",
+            "title": "窗口可调整大小",
+            "expected": "true",
+            "actual": "true",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "CFG-05",
+            "title": "后台继续运行",
+            "expected": "true",
+            "actual": "true",
+            "status": "PASS",
+            "detail": "开发期在编辑器外层调参时，模拟不会因失焦暂停。发布前需复核。"
+        },
+        {
+            "id": "CFG-06",
+            "title": "产品名",
+            "expected": "Idea35 Pool Room",
+            "actual": "Idea35 Pool Room",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "LYR-01",
+            "title": "玩法 Layer 6-11 命名正确",
+            "expected": "Table, Ball, Cue, AimGuide, VFX, Environment",
+            "actual": "6=Table, 7=Ball, 8=Cue, 9=AimGuide, 10=VFX, 11=Environment",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "LYR-02",
+            "title": "玩法层之间物理碰撞全部隔离",
+            "expected": "全部 IgnoreLayerCollision = true",
+            "actual": "全部已隔离",
+            "status": "PASS",
+            "detail": "本项目自研二维定长步进物理，不使用 PhysX。隔离用于防止误加 Rigidbody/Collider 造成隐形干扰。"
+        },
+        {
+            "id": "LYR-03",
+            "title": "未引入自定义 Tag（刻意决策）",
+            "expected": "0",
+            "actual": "0",
+            "status": "PASS",
+            "detail": "物体身份由组件表达，具备类型安全；字符串 Tag 拼错不会编译失败，不用于关键路径判定。"
+        },
+        {
+            "id": "RND-01",
+            "title": "PC 渲染管线资产可加载",
+            "expected": "Assets/Settings/PC_RPAsset.asset",
+            "actual": "PC_RPAsset",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "RND-02",
+            "title": "Graphics 默认渲染管线 = PC_RPAsset",
+            "expected": "PC_RPAsset",
+            "actual": "PC_RPAsset",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "RND-03",
+            "title": "当前画质等级为 PC",
+            "expected": "PC",
+            "actual": "PC",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "RND-04",
+            "title": "PC 画质等级管线覆盖指向 PC_RPAsset",
+            "expected": "PC_RPAsset 或继承自 Graphics 默认",
+            "actual": "PC_RPAsset",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "SCN-01",
+            "title": "主场景存在",
+            "expected": "Assets/_Project/Scenes/Main.unity",
+            "actual": "Assets/_Project/Scenes/Main.unity",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "SCN-02",
+            "title": "构建场景列表仅含主场景",
+            "expected": "Assets/_Project/Scenes/Main.unity",
+            "actual": "Assets/_Project/Scenes/Main.unity [enabled]",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "SCN-03",
+            "title": "模板残留已清理",
+            "expected": "Assets/Readme.asset / Assets/Scenes/SampleScene.unity / Assets/Scenes / Assets/TutorialInfo 均不存在",
+            "actual": "均已移除",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "SCN-04",
+            "title": "主场景中无 Rigidbody（自研物理守卫）",
+            "expected": "0",
+            "actual": "0",
+            "status": "PASS",
+            "detail": "台球运动全部由自研二维定长步进模拟器驱动，任何 Rigidbody 都意味着有人误接入了 PhysX。"
+        },
+        {
+            "id": "INP-01",
+            "title": "输入映射包含全部必需动作表",
+            "expected": "Gameplay, UI",
+            "actual": "Gameplay, UI",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "INP-03",
+            "title": "Gameplay 映射包含全部必需动作",
+            "expected": "PointerPosition, AimLock, AimNudge, PowerAdjust, Shoot, CancelAim, RestartRack, ToggleAimGuide",
+            "actual": "PointerPosition, AimLock, AimNudge, PowerAdjust, Shoot, CancelAim, ToggleAimGuide, RestartRack",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "INP-02",
+            "title": "项目级输入资产引用完好",
+            "expected": "Assets/_Project/Settings/Input/Billiards.inputactions",
+            "actual": "Billiards",
+            "status": "PASS",
+            "detail": "资产迁移后 GUID 保持不变，EditorBuildSettings 的 config object 仍指向它。"
+        },
+        {
+            "id": "ASM-01",
+            "title": "程序集定义 Billiards.Runtime",
+            "expected": "Assets/_Project/Scripts/Runtime/Billiards.Runtime.asmdef",
+            "actual": "已加载",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "ASM-02",
+            "title": "程序集定义 Billiards.Editor",
+            "expected": "Assets/_Project/Scripts/Editor/Billiards.Editor.asmdef",
+            "actual": "已加载",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "ASM-03",
+            "title": "程序集定义 Billiards.Tests.EditMode",
+            "expected": "Assets/_Project/Tests/EditMode/Billiards.Tests.EditMode.asmdef",
+            "actual": "已加载",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "ASM-04",
+            "title": "Editor 程序集可访问 Runtime 常量",
+            "expected": "0.028575",
+            "actual": "0.028575",
+            "status": "PASS",
+            "detail": "证明 Billiards.Editor 对 Billiards.Runtime 的引用链已生效。"
+        },
+        {
+            "id": "TGT-01",
+            "title": "活动构建目标为 Windows 桌面",
+            "expected": "StandaloneWindows64",
+            "actual": "StandaloneWindows64",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "RUN-01",
+            "title": "Day-1 配置应用流程执行完毕",
+            "expected": "无异常抛出",
+            "actual": "无异常",
+            "status": "PASS",
+            "detail": "各步骤均为幂等操作，可重复执行。"
+        }
+    ]
+}

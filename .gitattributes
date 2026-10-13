@@ -1,0 +1,85 @@
+# ============================================================
+# Git LFS 与文本属性 — Idea35 台球
+#
+# 说明：本工程未启用 Unity 的 "Force Text" 之外的额外序列化设置，
+# 场景/预制体/资产均为文本，可正常 diff；二进制大资产交由 LFS 管理。
+# 使用前请确认已执行：git lfs install --local
+# ============================================================
+
+# 统一以 LF 入库并在检出时保持 LF：
+# Unity 自身写出的 .cs/.asset/.unity 等均为 LF，强制 CRLF 会让工作区被改写、
+# 在 diff 里产生与代码无关的整文件"变更"噪音。
+* text=auto eol=lf
+
+# ---- Git LFS 追踪：模型 ----
+*.fbx     filter=lfs diff=lfs merge=lfs -text
+*.obj     filter=lfs diff=lfs merge=lfs -text
+*.blend   filter=lfs diff=lfs merge=lfs -text
+*.blend1  filter=lfs diff=lfs merge=lfs -text
+*.glb     filter=lfs diff=lfs merge=lfs -text
+*.gltf    filter=lfs diff=lfs merge=lfs -text
+*.dae     filter=lfs diff=lfs merge=lfs -text
+
+# ---- Git LFS 追踪：贴图 ----
+*.png     filter=lfs diff=lfs merge=lfs -text
+*.jpg     filter=lfs diff=lfs merge=lfs -text
+*.jpeg    filter=lfs diff=lfs merge=lfs -text
+*.tga     filter=lfs diff=lfs merge=lfs -text
+*.tif     filter=lfs diff=lfs merge=lfs -text
+*.tiff    filter=lfs diff=lfs merge=lfs -text
+*.bmp     filter=lfs diff=lfs merge=lfs -text
+*.exr     filter=lfs diff=lfs merge=lfs -text
+*.hdr     filter=lfs diff=lfs merge=lfs -text
+*.psd     filter=lfs diff=lfs merge=lfs -text
+
+# ---- Git LFS 追踪：音频 ----
+*.wav     filter=lfs diff=lfs merge=lfs -text
+*.mp3     filter=lfs diff=lfs merge=lfs -text
+*.ogg     filter=lfs diff=lfs merge=lfs -text
+*.aif     filter=lfs diff=lfs merge=lfs -text
+*.aiff    filter=lfs diff=lfs merge=lfs -text
+
+# ---- Git LFS 追踪：视频 ----
+*.mp4     filter=lfs diff=lfs merge=lfs -text
+*.mov     filter=lfs diff=lfs merge=lfs -text
+*.webm    filter=lfs diff=lfs merge=lfs -text
+
+# ---- Git LFS 追踪：字体 ----
+*.ttf     filter=lfs diff=lfs merge=lfs -text
+*.otf     filter=lfs diff=lfs merge=lfs -text
+*.woff    filter=lfs diff=lfs merge=lfs -text
+*.woff2   filter=lfs diff=lfs merge=lfs -text
+
+# ---- Git LFS 追踪：打包产物 ----
+*.unitypackage filter=lfs diff=lfs merge=lfs -text
+*.assetbundle  filter=lfs diff=lfs merge=lfs -text
+*.bundle       filter=lfs diff=lfs merge=lfs -text
+
+# ---- Unity 文本资产：强制按文本处理，保持可 diff 可合并 ----
+*.unity              text
+*.prefab             text
+*.asset              text
+*.meta               text
+*.mat                text
+*.controller         text
+*.anim               text
+*.overrideController text
+*.physicMaterial     text
+*.physicsMaterial2D  text
+*.inputactions       text
+*.asmdef             text
+*.asmref             text
+*.json               text
+*.shader             text
+*.cginc              text
+*.hlsl               text
+*.compute            text
+*.md                 text
+*.txt                text
+
+# ---- C# 源码 ----
+*.cs     text diff=csharp
+
+# ---- 解决方案文件统一 CRLF ----
+*.sln    text eol=crlf
+*.csproj text eol=crlf

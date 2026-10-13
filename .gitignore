@@ -1,0 +1,70 @@
+# ============================================================
+# Unity 工程忽略规则 — Idea35 台球
+# 原则：只提交"人写的"与"必须共享的"资产；一切可再生成的中间产物都不入库。
+# ============================================================
+
+# ---- Unity 自动生成目录 ----
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/[Aa]ssets/[Aa]ssetStoreTools*
+
+# 例外：Assets 下的元数据必须提交，否则资源引用（GUID）会丢失
+!/[Aa]ssets/**/*.meta
+
+# ---- IDE 自动生成的解决方案与工程文件 ----
+# Unity 会按 asmdef 重新生成，无需入库
+ExportedObj/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# ---- 崩溃报告与日志 ----
+sysinfo.txt
+*.log
+crashlytics-build.properties
+
+# ---- 构建产物 ----
+*.apk
+*.aab
+*.unitypackage
+*.app
+/[Bb]uilds/
+/[Ll]ogs/
+
+# ---- Addressables / StreamingAssets 自动生成内容 ----
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# ---- 编辑器与本机个人配置 ----
+.idea/
+.vs/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- 美术交付包的原始来源档案（体积大，且不在本工程内）----
+# 资源文件由 Docs/35-A_制作排期.md 记录来源路径，按需导入，不入库
