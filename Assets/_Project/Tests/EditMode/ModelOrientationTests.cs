@@ -1,4 +1,5 @@
 using Billiards.Core;
+using Billiards.Diagnostics;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -100,11 +101,9 @@ namespace Billiards.Tests
                        - Mathf.Min(Mathf.Abs(min.x), Mathf.Abs(max.x));
             Assert.AreEqual(CornerAsymmetry, asym, 1e-5f,
                 "角袋 x 向不对称是「朝向是否被翻转」的判决量");
-            Assert.Greater(asym, TableIntegrityValidatorTol, "判决量必须大于容差，否则判据无判别力");
+            Assert.Greater(asym, MeshAlignmentTolerances.Bounds, "判决量必须大于容差，否则判据无判别力");
         }
 
-        /// <summary>与校验器 SCN-04 / AXL-02 同源的容差（0.1 mm）。</summary>
-        private const float TableIntegrityValidatorTol = 1e-4f;
 
         // ── 【必须证伪】翻转朝向常量 → 世界一致性检查必然 FAIL ──────────────────
 
@@ -127,9 +126,9 @@ namespace Billiards.Tests
                 Mathf.Abs(flippedMax.x - correctMax.x), Mathf.Abs(flippedMax.y - correctMax.y), Mathf.Abs(flippedMax.z - correctMax.z));
 
             TestContext.WriteLine($"[证伪] 翻转朝向常量后，世界包围盒与正确期望的最大偏差 = {err:E3} m");
-            TestContext.WriteLine($"[证伪] 容差 = {TableIntegrityValidatorTol:E0} m ⇒ 判定 = {(err > TableIntegrityValidatorTol ? "FAIL（如预期）" : "PASS（不可接受）")}");
+            TestContext.WriteLine($"[证伪] 容差 = {MeshAlignmentTolerances.Bounds:E0} m ⇒ 判定 = {(err > MeshAlignmentTolerances.Bounds ? "FAIL（如预期）" : "PASS（不可接受）")}");
 
-            Assert.Greater(err, TableIntegrityValidatorTol,
+            Assert.Greater(err, MeshAlignmentTolerances.Bounds,
                 "翻转朝向常量后检查**必须**失败；若这里通过了，说明该检查没有判别力（形同虚设）。");
             Assert.AreEqual(CornerAsymmetry, err, 1e-5f,
                 "失败的偏差量应等于角袋 x 向不对称（判决量），以此证明判据确实抓的是朝向。");

@@ -3,7 +3,8 @@
     "rootNamespace": "Billiards.EditorTools",
     "references": [
         "Billiards.Runtime",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Billiards.Diagnostics"
     ],
     "includePlatforms": [
         "Editor"

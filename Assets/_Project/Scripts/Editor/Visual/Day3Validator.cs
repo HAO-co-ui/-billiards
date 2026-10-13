@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Billiards.Core;
+using Billiards.Diagnostics;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -298,15 +299,25 @@ namespace Billiards.EditorTools
                 : CheckResult.Fail("SCN-05", "球桌子网格材质分配", "子网格=2 且材质正确",
                     $"子网格={subMeshes}，materialOk={materialOk}"));
 
-            int rigidbodies = 0;
-            foreach (GameObject root in scene.GetRootGameObjects())
-            {
-                rigidbodies += root.GetComponentsInChildren<Rigidbody>(true).Length;
-            }
+            // 自研物理铁律守卫 —— **单点实现**（`PhysicsBanAudit`），与 SCN-04 共用（铁律 16）。
+            // ① 扫描范围由「仅当前场景」扩到「Scenes + Prefabs 全量」：Day 4/5 正是从这 18 个 prefab 实例化球，
+            //    一个 Rigidbody 挂在球 prefab 上过去**不会被任何检查发现**。
+            // ② 改用**固定路径**（`ScanAll()` 内部用文件系统枚举），**不再用 `SceneManager.GetActiveScene()`** ——
+            //    旧写法一旦当前活动场景不是预期场景就会扫错对象，过去的安全只是调用顺序的巧合。
+            // ③ 同时断言 `CoverageIsNonVacuous`：证明"0"不是因为**一个文件都没扫到**（防恒真）。
+            PhysicsBanAudit.Scan banScan = PhysicsBanAudit.ScanAll();
+            bool banOk = banScan.RigidbodyCount == 0 && banScan.ColliderCount == 0 && banScan.CoverageIsNonVacuous;
+            string banActual =
+                $"scene={banScan.SceneCount} prefab={banScan.PrefabCount} → Rigidbody={banScan.RigidbodyCount} Collider={banScan.ColliderCount}";
 
-            report.Add(rigidbodies == 0
-                ? CheckResult.Ok("SCN-06", "场景无 Rigidbody（自研物理守卫）", "0", "0")
-                : CheckResult.Fail("SCN-06", "场景无 Rigidbody（自研物理守卫）", "0", rigidbodies.ToString()));
+            report.Add(banOk
+                ? CheckResult.Ok("SCN-06", "自研物理守卫：Scenes + Prefabs 无 Rigidbody/Collider",
+                    "0 / 0，且扫描非空转", banActual,
+                    "扫描范围 = Scenes + Prefabs 全量（含 18 个 prefab）；非空转证据 = 扫到的文件数 > 0。"
+                    + "单点实现：与 SCN-04 共用 `PhysicsBanAudit`。")
+                : CheckResult.Fail("SCN-06", "自研物理守卫：Scenes + Prefabs 无 Rigidbody/Collider",
+                    "0 / 0，且扫描非空转",
+                    banActual + (banScan.Offenders.Count > 0 ? "；违规：" + string.Join(" | ", banScan.Offenders) : "（扫描空转！）")));
         }
 
         // ── Prefab ─────────────────────────────────────────────────────────

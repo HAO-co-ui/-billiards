@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Billiards.Core;
-using Billiards.Reference;
+using Billiards.Diagnostics;
 using Billiards.Table;
 using NUnit.Framework;
 using UnityEditor;

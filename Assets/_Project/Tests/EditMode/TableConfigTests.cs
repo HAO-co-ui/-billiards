@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Billiards.Core;
-using Billiards.Reference;
+using Billiards.Diagnostics;
 using Billiards.Table;
 using NUnit.Framework;
 using UnityEditor;
@@ -25,16 +25,9 @@ namespace Billiards.Tests
         private const string ModelPath = "Assets/_Project/Art/Models/PoolTable_Normalized.fbx";
         private const string ConfigPath = "Assets/_Project/Data/TableConfig.asset";
 
-        /// <summary>
-        /// L1（必要条件层）：端点 → 最近**面内点**的容差 = 1e-4 m。
-        /// 与校验项 AXL-04/AXL-05 同源。**对足迹内滑动盲**；不作位移判据。
-        /// ⚠ 旧注释曾称"0.2613 mm 是轮廓近似残差" —— **该说法已被 D2-T02A/T03 证伪**（实为顶点采样下限）。
-        /// </summary>
-        /// <summary>端点 → 最近**网格面点** 的容差（D2-T03）：端点应精确落在网格面上。</summary>
-        private const float SurfacePointTolerance = 1e-4f;
-
-        /// <summary>顶点度量的**导出式**阈值系数：d_vertex ≤ k × (最近三角形最长边)。</summary>
-        private const float VertexRatioTolerance = 0.0958f;   // 与 TableIntegrityValidator.AXL-06 同源
+        // 容差**不再本地复制**，一律走单源 `MeshAlignmentTolerances`（铁律 16）。
+        // 历史：此处曾复制 1e-4 / 0.0958 两个字面量，并在注释里写"必须与校验器一致"——
+        // 靠注释维持一致必然分叉，已收敛到单源。
 
         private static TableConfig _config;
         private static TableMetaDto _a;
@@ -543,14 +536,14 @@ namespace Billiards.Tests
             }
 
             // (a) 必要条件：端点必须**落在网格面上**（面点度量）。
-            Assert.Less(worstSurface, SurfacePointTolerance,
+            Assert.Less(worstSurface, MeshAlignmentTolerances.L1SurfacePoint,
                 $"物理轮廓端点与最近网格面点的最大水平偏差 {worstSurface * 1000f:F6} mm 超过 "
-                + $"{SurfacePointTolerance:E0} m —— 端点未落在网格面上。");
+                + $"{MeshAlignmentTolerances.L1SurfacePoint:E0} m —— 端点未落在网格面上。");
 
             // (b) 位移判据：顶点度量，阈值由**网格局部顶点间距**导出（不拍板）。
             //     面点度量对"足迹内滑动"天然盲（但对掉出网格敏感），故位移检出必须依赖本项。
-            Assert.Less(worstRatio, VertexRatioTolerance,
-                $"端点→最近顶点/L_local 的最坏比值 {worstRatio:F4} 超过 k={VertexRatioTolerance:F4}（最坏 d={worstVertex * 1000f:F4} mm, L_local={worstLocalEdge * 1000f:F3} mm）。");
+            Assert.Less(worstRatio, MeshAlignmentTolerances.L3VertexRatio,
+                $"端点→最近顶点/L_local 的最坏比值 {worstRatio:F4} 超过 k={MeshAlignmentTolerances.L3VertexRatio:F4}（最坏 d={worstVertex * 1000f:F4} mm, L_local={worstLocalEdge * 1000f:F3} mm）。");
         }
 
         // ── helpers ────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Billiards.Core
+namespace Billiards.Diagnostics
 {
     /// <summary>
     /// 网格对齐的**三层度量**（均匀网格加速）：
@@ -12,9 +12,10 @@ namespace Billiards.Core
     ///
     /// 三层各有明确盲区，**叠加覆盖彼此**；谁也不作"唯一位移判据"。
     ///
-    /// 为什么放在 Runtime：Editor 校验器与 EditMode 测试**必须共用同一实现**，
-    /// 否则两处口径会分叉（本项目已把"校验器严、测试松"列为禁止项）。
-    /// 本类无 Editor 依赖、无副作用，仅做几何计算。
+    /// 为什么放在 `Billiards.Diagnostics`（Editor-only）：Editor 校验器与 EditMode 测试
+    /// **必须共用同一实现**（否则口径分叉），但 **Runtime 内零消费者** ——
+    /// 放在 Runtime 会被编进玩家构建（实测 281/1118 行），且其构造会建多个 Dictionary/数组，
+    /// 一旦有人在运行时 `new` 它就是一次性大分配。本类无 Editor API 依赖、无副作用，仅做几何计算。
     /// </summary>
     public sealed class MeshAlignmentMetrics
     {

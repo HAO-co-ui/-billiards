@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Billiards.Core;
+using Billiards.Diagnostics;
 using Billiards.Table;
 using NUnit.Framework;
 using UnityEditor;
@@ -24,10 +25,7 @@ namespace Billiards.Tests
         private const string ModelPath = "Assets/_Project/Art/Models/PoolTable_Normalized.fbx";
         private const string ConfigPath = "Assets/_Project/Data/TableConfig.asset";
 
-        // 与校验器同源的阈值（本测试另作独立断言，故就地声明；数值必须与 TableIntegrityValidator 一致）
-        private const float L1FaceTol = 1e-4f;
-        private const float L2EdgeTol = 5e-6f;
-        private const float L3RatioTol = 0.0958f;
+        // 阈值走单源 `MeshAlignmentTolerances`；不再就地复制（铁律 16）。
 
         private const float ScanStep = 0.00005f;   // 0.05 mm
         private const float ScanMax = 0.020f;      // 20 mm
@@ -120,9 +118,9 @@ namespace Billiards.Tests
         private bool AnyLayerCaught(Vector3 q)
         {
             MeshAlignmentMetrics.Measurement m = _metrics.Measure(q);
-            bool l1 = m.Face > L1FaceTol;
-            bool l2 = m.Edge > L2EdgeTol;
-            bool l3 = m.Vertex / Mathf.Max(m.LocalLongestEdge, 1e-9f) > L3RatioTol;
+            bool l1 = m.Face > MeshAlignmentTolerances.L1SurfacePoint;
+            bool l2 = m.Edge > MeshAlignmentTolerances.L2EdgeDistance;
+            bool l3 = m.Vertex / Mathf.Max(m.LocalLongestEdge, 1e-9f) > MeshAlignmentTolerances.L3VertexRatio;
             return l1 || l2 || l3;
         }
 
@@ -213,11 +211,11 @@ namespace Billiards.Tests
 
             TestContext.WriteLine($"[底噪] L1 面点 max = {worstFace * 1e6f:F4} µm；"
                                 + $"L2 边距 max = {worstEdge * 1e6f:F4} µm；"
-                                + $"L3 最坏比值 = {worstRatio:F4}（阈值 k = {L3RatioTol:F4}，余量 {L3RatioTol / Mathf.Max(worstRatio, 1e-9f):F2}×）");
+                                + $"L3 最坏比值 = {worstRatio:F4}（阈值 k = {MeshAlignmentTolerances.L3VertexRatio:F4}，余量 {MeshAlignmentTolerances.L3VertexRatio / Mathf.Max(worstRatio, 1e-9f):F2}×）");
 
-            Assert.LessOrEqual(worstFace, L1FaceTol, "未位移 L1 不得报警");
-            Assert.LessOrEqual(worstEdge, L2EdgeTol, "未位移 L2 不得报警");
-            Assert.LessOrEqual(worstRatio, L3RatioTol, "未位移 L3 不得报警");
+            Assert.LessOrEqual(worstFace, MeshAlignmentTolerances.L1SurfacePoint, "未位移 L1 不得报警");
+            Assert.LessOrEqual(worstEdge, MeshAlignmentTolerances.L2EdgeDistance, "未位移 L2 不得报警");
+            Assert.LessOrEqual(worstRatio, MeshAlignmentTolerances.L3VertexRatio, "未位移 L3 不得报警");
         }
 
         // ── 2. 单点位移密扫：列出上盲带，并标注兜底 ──────────────────────────
@@ -313,9 +311,9 @@ namespace Billiards.Tests
 
             TestContext.WriteLine($"[L2 盲区] 沿**真实网格边**滑动 ±{halfLen * 1000f:F2} mm："
                                 + $"L2 最大 = {maxL2 * 1e6f:F4} µm（≈0 即全盲）；"
-                                + $"L3 最大比值 = {maxL3Ratio:F4}（阈值 {L3RatioTol:F4}）");
+                                + $"L3 最大比值 = {maxL3Ratio:F4}（阈值 {MeshAlignmentTolerances.L3VertexRatio:F4}）");
 
-            Assert.LessOrEqual(maxL2, L2EdgeTol, "L2 沿边方向应恒 ≈0（已知盲区，必须被测试钉住）");
+            Assert.LessOrEqual(maxL2, MeshAlignmentTolerances.L2EdgeDistance, "L2 沿边方向应恒 ≈0（已知盲区，必须被测试钉住）");
         }
     }
 }

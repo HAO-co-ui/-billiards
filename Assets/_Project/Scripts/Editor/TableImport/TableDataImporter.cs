@@ -4,7 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using Billiards.Core;
-using Billiards.Reference;
+using Billiards.Diagnostics;
 using Billiards.Table;
 using UnityEditor;
 using UnityEngine;

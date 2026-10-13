@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Billiards.Core;
+using Billiards.Diagnostics;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -212,7 +213,8 @@ namespace Billiards.EditorTools
                 return;
             }
 
-            int rigidbodyCount = CountRigidbodiesInScene(MainScenePath);
+            // 单点实现：与 SCN-06 共用 PhysicsBanAudit（铁律 16），不再各写一份。
+            int rigidbodyCount = PhysicsBanAudit.CountRigidbodiesInScene(MainScenePath);
             report.Add(rigidbodyCount == 0
                 ? CheckResult.Ok("SCN-04", "主场景中无 Rigidbody（自研物理守卫）", "0", "0",
                     "台球运动全部由自研二维定长步进模拟器驱动，任何 Rigidbody 都意味着有人误接入了 PhysX。")
@@ -220,19 +222,8 @@ namespace Billiards.EditorTools
                     "检测到 PhysX 刚体，将破坏确定性与手感一致性。"));
         }
 
-        private static int CountRigidbodiesInScene(string scenePath)
-        {
-            // 以叠加方式打开再关闭，避免干扰用户当前正在编辑的场景。
-            Scene scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
-            int count = 0;
-            foreach (GameObject root in scene.GetRootGameObjects())
-            {
-                count += root.GetComponentsInChildren<Rigidbody>(true).Length;
-            }
-
-            EditorSceneManager.CloseScene(scene, true);
-            return count;
-        }
+        // `CountRigidbodiesInScene` 已下沉为单点实现：`Billiards.Diagnostics.PhysicsBanAudit`
+        // （原为 SCN-04/SCN-06 各一份、且已分叉 —— 见该类 doc-comment 的历史说明）。
 
         // ---- 输入 -------------------------------------------------------------
 

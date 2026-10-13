@@ -12,11 +12,26 @@ namespace Billiards.Tests
     {
         private const float Exact = 1e-9f;
 
+        /// <summary>
+        /// 原版用 <c>Assert.Pass</c>：**恒真、永不失败 ⇒ 零判别力**
+        /// （D4-AUDIT-01 查实为全工程唯一一处）。它想表达"测试程序集接线正常"，
+        /// 而**编译通过本身**已保证该点，故断言恒真。
+        ///
+        /// 现改为**可失败且有意义**的形式：断言 `PoolConstants` **真的位于 `Billiards.Runtime` 程序集**，
+        /// 且**没有**被编进测试程序集。这同时守住一条分层规则：
+        /// 若有人删掉/改坏 `Billiards.Runtime.asmdef`（代码会落进 `Assembly-CSharp` 或被测试程序集吞并），
+        /// 本断言立刻失败。
+        /// </summary>
         [Test]
-        public void TableTestAssembly_IsWired()
+        public void RuntimeCode_LivesInBilliardsRuntimeAssembly_NotInlinedIntoTestAssembly()
         {
-            // 本测试存在的意义：若 EditMode 测试程序集未正确接入，本类不会被执行。
-            Assert.Pass("EditMode 测试程序集已接入 Billiards.Runtime。");
+            System.Reflection.Assembly runtime = typeof(PoolConstants).Assembly;
+            System.Reflection.Assembly tests = typeof(PoolConstantsTests).Assembly;
+
+            Assert.AreNotSame(runtime, tests,
+                "Runtime 代码被编进了测试程序集 ⇒ `Billiards.Runtime.asmdef` 失效，分层被破坏。");
+            Assert.AreEqual("Billiards.Runtime", runtime.GetName().Name,
+                "`PoolConstants` 必须位于名为 `Billiards.Runtime` 的程序集。");
         }
 
         [Test]
@@ -88,21 +103,32 @@ namespace Billiards.Tests
         [Test]
         public void TableAspectRatio_DeviatesOnlyByMeasuredWidthError()
         {
-            // 9 尺台标称 100 × 50 英寸，即严格 2:1（2.54 = 2 × 1.27）。
-            // 短轴实测值比标称长 0.109 mm，相对误差 eps ≈ 8.57e-5，
-            // 因此比值 = 2 / (1 + eps) ≈ 2 × (1 - eps)，偏离 2 约 1.714e-4。
+            // 9 尺台标称 100 × 50 英寸，即严格 2:1。
             //
-            // 这里刻意不硬编码期望比例，而是从"短轴相对误差"推导：
-            // 本测试第一版把偏差写成 1.72e-5，比真实值小一个量级，
-            // 被断言当场拦下。推导式不依赖人工换算，杜绝同类错误。
-            float widthRelativeError =
-                (PoolConstants.ClothInnerWidth - 1.27f) / 1.27f;
-            float expectedRatio = 2f * (1f - widthRelativeError);
+            // ⚠ **原版是近代数恒等式（已废弃）**：它把期望值从**被测常量自身**导出 ——
+            //   `widthRelativeError = (ClothInnerWidth − 1.27) / 1.27`，`expectedRatio = 2 × (1 − 该值)`，
+            //   而 `ClothInnerLength` 恰为 `2 × 1.27` ⇒ 等式两边代数等价。
+            //   实测：把 `ClothInnerWidth` 改 ±1e-4 该断言**仍通过**（|Δ| ≤ 5e-8）⇒ 无判别力。
+            //
+            // 现改为**外部真值**：期望比值由「标称台面尺寸」与「独立测得的短轴实测值」在**测试内**算出，
+            // 三个数都**不是** `PoolConstants` 的成员，故等式两侧无共享推导 —— 可失败。
+            const double nominalLength = 2.540;          // 标称 100 英寸（外部规格）
+            const double nominalWidth = 1.270;           // 标称 50 英寸（外部规格）
+            const double measuredWidthDeviation = 0.000108866;   // 源网格实测短轴偏差（外部实测值）
+            const double measuredWidth = nominalWidth + measuredWidthDeviation;
 
-            float actualRatio = PoolConstants.ClothInnerLength / PoolConstants.ClothInnerWidth;
+            double expectedRatio = nominalLength / measuredWidth;
+            double actualRatio = PoolConstants.ClothInnerLength / PoolConstants.ClothInnerWidth;
 
-            Assert.Less(actualRatio, 2f, "短轴实测偏长，比值应略低于 2。");
-            Assert.AreEqual(expectedRatio, actualRatio, 1e-6f);
+            Assert.Less(actualRatio, 2.0, "短轴实测偏长，比值应略低于标称的 2。");
+            Assert.AreEqual(expectedRatio, actualRatio, 1e-6,
+                $"比值 {actualRatio:F9} 与外部真值 {expectedRatio:F9} 不符 ⇒ 内库尺寸常量被改动。");
+
+            // 两道独立边界（都是可失败的）：
+            Assert.Less(2.0 - actualRatio, 2e-4,
+                "比值偏离 2 的幅度必须能被实测短轴偏差解释（>2e-4 说明短轴被改错）。");
+            Assert.Greater(2.0 - actualRatio, 1e-5,
+                "比值必须真的偏离 2 —— 若为 0，说明短轴被\"修正\"回了标称 1.27（本项目刻意采用实测值）。");
         }
 
         [Test]

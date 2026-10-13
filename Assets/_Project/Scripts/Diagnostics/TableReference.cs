@@ -2,14 +2,15 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Billiards.Reference
+namespace Billiards.Diagnostics
 {
     // ─────────────────────────────────────────────────────────────────────
     // 参考数据的 JSON 传输对象（DTO）与两份源文件的逐点交叉比对。
     //
-    // 为什么放在 Runtime 程序集：这些是**纯数据契约 + 纯函数**，无任何 Editor 依赖，
-    // 放在 Runtime 后可被 Editor 导入器、Editor 校验器、EditMode 测试三方共用，
-    // 避免逻辑分叉（同一份比对规则只写一次）。
+    // 为什么放在 `Billiards.Diagnostics`（Editor-only）而非 Runtime：这些是**纯数据契约 + 纯函数**，
+    // 只被 Editor 导入器/校验器与 EditMode 测试使用，**Runtime 内零消费者**。
+    // 放在 Runtime 会被编进玩家构建（实测 386/1118 行）。现由 Editor-only 程序集承载，
+    // 既保留"同一份比对规则只写一次"（编辑器与测试共用），又不进玩家构建。
     //
     // 用 JsonUtility 反序列化，因此字段名必须与 JSON 键**逐字相同**；
     // 未声明的字段会被自动忽略（只声明需要的子集）。

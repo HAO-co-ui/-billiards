@@ -4,7 +4,8 @@
     "references": [
         "Billiards.Runtime",
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEditor.TestRunner",
+        "Billiards.Diagnostics"
     ],
     "includePlatforms": [
         "Editor"

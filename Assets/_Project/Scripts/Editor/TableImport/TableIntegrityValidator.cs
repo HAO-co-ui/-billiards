@@ -4,7 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using Billiards.Core;
-using Billiards.Reference;
+using Billiards.Diagnostics;
 using Billiards.Table;
 using UnityEditor;
 using UnityEngine;
@@ -39,60 +39,22 @@ namespace Billiards.EditorTools
         public const string ReferenceGameplayPath = "Docs/Reference/gameplay-markers-reference.json";
         public const string ReportFileName = "day2-verification.json";
 
-        // ── 容差策略（采纳独立复核 D2-T02A 的实测结论）─────────────────────────
+        // ── 容差：**单值源在 `MeshAlignmentTolerances`**（`Billiards.Diagnostics`，铁律 16）──────
         //
-        // 复核实测：**顺序无关**（集合/最近邻）比对下，全量镜像/180°旋转与真值只差
-        //   镜像 x→−x = 4.74e-4 m、镜像 y = 1.04e-4 m、180°绕竖轴 = 4.73e-4 m。
-        // 故 1 mm 容差会被这些错误"骗过去"。
+        // 以下同名常量是指向单值源的**编译期别名**（`const` 可引用 `const`）。之所以保留别名而不
+        // 直接把本文件内 ~50 处引用改成 `MeshAlignmentTolerances.X`：**改动面越小，越不容易改错**；
+        // 而"值只有一个来源"这一实质已达成 —— 改值只需改 `MeshAlignmentTolerances` 一处。
+        // 同时 `Day3Validator` 的 `TableIntegrityValidator.BoundsTolerance` 继续可用。
         //
-        // 因此本校验器的分层策略是：
-        //  ① 主判据（决定成败）= **索引对齐 + 逐字段**比对，容差 1e-5 m（CMP-03）；
-        //     镜像/180°在此口径下误差为 0.27~2.6 m，一抓即中。
-        //  ② 手性/绕向自检（不依赖基线）= CHR-01“= C4 袋口局部手性符号”、CHR-02“= C3 库边链绕向”。
-        //  ③ AXL-02 包围盒用**网格外轮廓**的 x 向不对称（0.277 mm）钉手性，容差 1e-4 m。
-        //  ④ 网格对齐为**三层**（L1 面点 1e-4 m / L2 边距 5 µm / L3 顶点比值 k=0.0958），
-        //     实现集中在共享类 `MeshAlignmentMetrics`（校验器与测试同源）。
-        //     **三层各自有盲区**（见各常量 doc-comment 与 AXL-04/06/07 的 detail）；**谁都不作唯一位移判据**；
-        //     单点位移威胁由 **CMP-03**（索引对齐，1e-5 m）兜底。
+        // 容差策略与三层各自的盲区、推导依据，全部集中写在 `MeshAlignmentTolerances` 的 doc-comment。
 
-        /// <summary>① 主判据容差：索引对齐逐字段比对，1e-5 m（独立复核建议值）。</summary>
-        public const float IndexAlignedTolerance = 1e-5f;
-
-        /// <summary>③ 世界包围盒容差（= 转换链推导期望）：0.1 mm。缩放/旋转错误会远超此值。</summary>
-        public const float BoundsTolerance = 1e-4f;
-
-        /// <summary>
-        /// **L1（必要条件层）** 端点 → 最近**面内点**（含内部与边）的容差 = **1e-4 m**。
-        /// 只验"端点落在网格面上"；**对足迹内滑动盲**（点仍在网格内），
-        /// 但**对掉出网格（袋孔、掉出外轮廓）敏感** —— **不作位移判据**。
-        /// </summary>
-        public const float SurfacePointTolerance = 1e-4f;
-
-        /// <summary>
-        /// **L2（高灵敏层）** 端点 → 最近**网格边** 的容差 = **5 µm**。
-        /// 推导：正确数据 188 端点 → 最近边 max = **0.18 µm**；float32 在 |坐标|≈1.3 m 处 ULP ≈ **0.155 µm**；
-        /// 噪声底 = max(0.18, 0.16) ≈ **0.18 µm** ⇒ 5 µm ≈ **28× 底噪**。
-        /// **盲区**：**沿边方向滑动 ⇒ 点仍在该边上 ⇒ 距离恒 ≈0，无论滑多远** ⇒ 不作唯一位移判据，靠 L3 兜。
-        /// 备选 2 µm 仅在"确认网格不再重导出"前提下可用；本轮**不收紧**（网格重导出是真实可能性，收紧会引入假阳性）。
-        /// </summary>
-        public const float EdgeDistanceTolerance = 5e-6f;
-
-        /// <summary>
-        /// **L3（全向层）** 端点→最近顶点 距离 / 最近三角形最长边 的**比值**上界。
-        /// 取值依据：实测观测最坏比值 = 0.2613 / 5.455 = **0.0479**；取 **2× 余量** ⇒ k = **0.0958**（该测量是确定性的）。
-        /// 阈值 T = k × L_local ≈ **0.52 mm**（≈ 现状 0.5 mm），检出下限 ≈ **0.40~0.75 mm**。
-        /// **理论硬上界 0.5**（点落在边中点时距离 = 0.5·L_local）—— 留档供将来换网格对照，**不得取 0.5**（永不假阳性＝灵敏度最差）。
-        /// **盲区**：**周期性盲带**（δ 增大时点落到另一顶点附近，距离回落）。
-        /// 实测：对**整段/区域刚性位移**无上盲带（仅 ≤~0.4 mm 底噪带）；对**单点位移**存在盲带（本次采样最高至 12.4 mm）。
-        /// 单点位移这一威胁**由 `CMP-03`（索引对齐，容差 1e-5 m）覆盖**。
-        /// </summary>
-        public const float VertexRatioTolerance = 0.0958f;
-
-        /// <summary>L3 的理论硬上界（留档）：点落在边中点时距离 = 0.5·L_local。不得用作阈值。</summary>
-        public const float VertexRatioTheoreticalBound = 0.5f;
-
-        /// <summary>实测基线（顶点度量 0.2613 mm）—— 输出中显示用。</summary>
-        public const float MeasuredVertexBaseline = 0.0002613f;
+        public const float IndexAlignedTolerance = MeshAlignmentTolerances.IndexAligned;
+        public const float BoundsTolerance = MeshAlignmentTolerances.Bounds;
+        public const float SurfacePointTolerance = MeshAlignmentTolerances.L1SurfacePoint;
+        public const float EdgeDistanceTolerance = MeshAlignmentTolerances.L2EdgeDistance;
+        public const float VertexRatioTolerance = MeshAlignmentTolerances.L3VertexRatio;
+        public const float VertexRatioTheoreticalBound = MeshAlignmentTolerances.L3TheoreticalBound;
+        public const float MeasuredVertexBaseline = MeshAlignmentTolerances.MeasuredVertexBaseline;
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
