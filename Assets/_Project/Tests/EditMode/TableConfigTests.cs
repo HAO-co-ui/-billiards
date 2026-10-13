@@ -16,7 +16,7 @@ namespace Billiards.Tests
     /// 三条主线：
     ///  1) TableConfig（运行时真源）与参考数据、PoolConstants 自洽；
     ///  2) A/B 两份源文件逐点一致（不自行选一份了事）；
-    ///  3) 轴向转换只做一次且可判据 —— 用网格包围盒与最近顶点距离断言。
+    ///  3) 轴向转换只做一次且可判据 —— 用**世界包围盒**（转换链推导）+ 三层网格对齐断言。
     ///
     /// 这些断言是 Day 4+ 物理内核的几何基准；一旦数据源或单位制被改动，这里会先报。
     /// </summary>
@@ -26,9 +26,9 @@ namespace Billiards.Tests
         private const string ConfigPath = "Assets/_Project/Data/TableConfig.asset";
 
         /// <summary>
-        /// 物理数据 ↔ 渲染网格 的“最近顶点”对应容差 = ≤ 0.5 mm。
-        /// 与校验项 AXL-04/AXL-05 同源：0.2613 mm 是“82 段直线段逼近曲率袋角”的轮廓近似残差（非误差），
-        /// 阈值由该测量性质推导（约 1.9× 余量）。属数据↔网格对应类，**非镜像判据**（镜像由 CHR-01/CHR-02/CMP-03 负责）。
+        /// L1（必要条件层）：端点 → 最近**面内点**的容差 = 1e-4 m。
+        /// 与校验项 AXL-04/AXL-05 同源。**对足迹内滑动盲**；不作位移判据。
+        /// ⚠ 旧注释曾称"0.2613 mm 是轮廓近似残差" —— **该说法已被 D2-T02A/T03 证伪**（实为顶点采样下限）。
         /// </summary>
         /// <summary>端点 → 最近**网格面点** 的容差（D2-T03）：端点应精确落在网格面上。</summary>
         private const float SurfacePointTolerance = 1e-4f;
@@ -548,7 +548,7 @@ namespace Billiards.Tests
                 + $"{SurfacePointTolerance:E0} m —— 端点未落在网格面上。");
 
             // (b) 位移判据：顶点度量，阈值由**网格局部顶点间距**导出（不拍板）。
-            //     面点度量对"沿面内滑动"天然盲，故位移检出必须依赖本项。
+            //     面点度量对"足迹内滑动"天然盲（但对掉出网格敏感），故位移检出必须依赖本项。
             Assert.Less(worstRatio, VertexRatioTolerance,
                 $"端点→最近顶点/L_local 的最坏比值 {worstRatio:F4} 超过 k={VertexRatioTolerance:F4}（最坏 d={worstVertex * 1000f:F4} mm, L_local={worstLocalEdge * 1000f:F3} mm）。");
         }

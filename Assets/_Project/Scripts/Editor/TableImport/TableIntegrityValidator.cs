@@ -18,13 +18,19 @@ namespace Billiards.EditorTools
     /// 碰撞几何完全依赖今天这份数据；数据错了会直接导致 Day 7 强制闸门失败且在后期极难定位。
     /// 因此这里不靠目视，全部用数值断言，并把 expected/actual/detail 写进报告。
     ///
-    /// 三类判据（对应任务书第 2 条硬约束"轴向转换只允许做一次、且要可判据"）：
-    ///  1) 包围盒判据：导入网格经唯一轴修正后的包围盒 = 源数据 bounds_runtime，
-    ///     且 X 的不对称符号被钉住（用于判定没有发生镜像/手性翻转）。
-    ///  2) 最近顶点判据：82 段端点 + 6 袋的 mouth/throat 端点，到网格顶点的最近距离 < 1 mm。
-    ///     （离线实测：段端点 ≤0.26 mm，袋口 mouth = 0，throat ≤0.22 mm。）
-    ///     这条同时证明"轴向映射正确"+"无二次缩放"+"物理轮廓与渲染网格对齐"。
-    ///  3) 交叉比对判据：A/B 两份源文件逐点一致。
+    /// 判据组织（三层网格对齐 + 数据交叉比对 + 手性自检 + 朝向不变量）：
+    ///  · **L1 面点**（AXL-04/05）：端点落在网格**面**上（含内部与边）—— **必要条件**；**对足迹内滑动盲**。
+    ///  · **L2 边距**（AXL-07）：端点落在网格**边**上 —— 高灵敏（底噪 0.18 µm）；**对沿边方向滑动全盲**。
+    ///  · **L3 顶点比值**（AXL-06）：端点→最近顶点 / 局部间距 ≤ k —— **唯一无方向性盲区**；但有**周期性盲带**。
+    ///  · **CMP-03**：生成资产 vs 源 JSON **索引对齐 + 逐字段**（1e-5 m）—— 单点位移威胁的**兜底**。
+    ///  · **CHR-01/02**：手性/绕向**自包含**自检（不依赖基线）。
+    ///  · **AXL-02 / SCN-04**：世界包围盒 = **转换链推导**的期望 —— 钉"朝向不变量恰好为真"。
+    ///
+    /// ⚠ **历史声明已被证伪，勿再引用**：本类曾写"0.2613 mm **不是误差**，而是『82 段直线段逼近曲率袋角的
+    /// **轮廓近似残差**』，阈值由该测量性质推导为 0.5 mm"。
+    /// **该说法已被 D2-T02A/T03 证伪** —— 188 个端点**精确落在网格边/面上**（最坏 0.000000 m），
+    /// 0.2613 mm 实为"端点 → 最近**顶点**"这一度量自身的**离散采样下限**；且 AXL-04/05 现已改为**面点**口径。
+    /// 详见 ADR-0001 §9.5。
     /// </summary>
     public static class TableIntegrityValidator
     {
@@ -44,21 +50,21 @@ namespace Billiards.EditorTools
         //     镜像/180°在此口径下误差为 0.27~2.6 m，一抓即中。
         //  ② 手性/绕向自检（不依赖基线）= CHR-01“= C4 袋口局部手性符号”、CHR-02“= C3 库边链绕向”。
         //  ③ AXL-02 包围盒用**网格外轮廓**的 x 向不对称（0.277 mm）钉手性，容差 1e-4 m。
-        //  ④ AXL-04/05（最近顶点，容差 ≤ 0.5 mm）属**“物理数据 ↔ 渲染网格”对应关系**这一类，
-        //     与上述“数据集之间顺序无关比对”不是同一类：网格被单侧镜像时其误差达米级（≈2.6 m）。
-        //     其 0.2613 mm **不是误差**，而是“82 段直线段逼近曲率袋角”的**轮廓近似残差**；
-        //     阈值由该测量性质推导为 0.5 mm（约 1.9× 余量），并**必须输出实测值**以看见渐变漂移。
-        //     **不作为镜像判据**，仅作网格对齐的补充证据。
+        //  ④ 网格对齐为**三层**（L1 面点 1e-4 m / L2 边距 5 µm / L3 顶点比值 k=0.0958），
+        //     实现集中在共享类 `MeshAlignmentMetrics`（校验器与测试同源）。
+        //     **三层各自有盲区**（见各常量 doc-comment 与 AXL-04/06/07 的 detail）；**谁都不作唯一位移判据**；
+        //     单点位移威胁由 **CMP-03**（索引对齐，1e-5 m）兜底。
 
         /// <summary>① 主判据容差：索引对齐逐字段比对，1e-5 m（独立复核建议值）。</summary>
         public const float IndexAlignedTolerance = 1e-5f;
 
-        /// <summary>③ 网格外轮廓包围盒容差：0.1 mm。缩放/旋转错误会远超此值。</summary>
+        /// <summary>③ 世界包围盒容差（= 转换链推导期望）：0.1 mm。缩放/旋转错误会远超此值。</summary>
         public const float BoundsTolerance = 1e-4f;
 
         /// <summary>
         /// **L1（必要条件层）** 端点 → 最近**面内点**（含内部与边）的容差 = **1e-4 m**。
-        /// 只验"端点落在网格面上"；**对沿面内滑动全盲**（点仍在面上），**不作位移判据**。
+        /// 只验"端点落在网格面上"；**对足迹内滑动盲**（点仍在网格内），
+        /// 但**对掉出网格（袋孔、掉出外轮廓）敏感** —— **不作位移判据**。
         /// </summary>
         public const float SurfacePointTolerance = 1e-4f;
 
@@ -90,16 +96,69 @@ namespace Billiards.EditorTools
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
+        // ── 唯一的生成前置条件（铁律 16：同一不变量在多处入口的前置条件必须**单点实现**）──
+        //
+        // 背景：本类曾有**两处**入口各写一份前置条件（菜单入口 :96 无条件 Import()，命令行入口另写一份），
+        // 结果"改了一处漏一处"：R2 只修了命令行入口，菜单入口仍会在**校验前重建** TableConfig.asset。
+        // 根因是**结构**，不是疏忽 —— 故此处收敛为单一 helper，两入口共用。
+
+        /// <summary>
+        /// 校验入口的**唯一前置条件**：只在产物**缺失**时生成；存在则**一律不重建**。
+        ///
+        /// **为什么**：校验入口必须校验"仓库里**既有的**那个对象"。若先重建再校验，
+        /// 它证明的只是"**生成器自洽**"，**证明不了"被提交的对象是对的"**（R2 原则）。
+        ///
+        /// 需要"重建后再校验"的工作流，请用 <see cref="RebuildAndValidateInteractive"/>
+        /// —— **本类不提供"默默重建"的校验入口**：要么只校验，要么名字说清它会重建。
+        /// </summary>
+        private static void EnsureGeneratedPrecondition()
+        {
+            if (ProjectPaths.Exists(TableDataImporter.OutputAssetPath))
+            {
+                Debug.Log("[前置] TableConfig.asset 已存在 ⇒ **不重建**，校验既有产物");
+                return;
+            }
+
+            Debug.Log("[前置] TableConfig.asset 缺失 ⇒ 生成一次（此后校验既有产物）");
+            TableDataImporter.Import();
+        }
+
         [MenuItem("Billiards/Verify/Validate Table Data & Art (Day 2)", false, 201)]
         public static void ValidateInteractive()
         {
-            TableDataImporter.Import();
+            // 只校验；**不重建**（前置条件走单点 helper）
+            EnsureGeneratedPrecondition();
+
             SetupReport report = RunAll();
-            string path = report.WriteToDisk(ReportFileName);
+            string path = ResolveReportPath("Docs/Reports/" + ReportFileName, ReportFileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, JsonUtility.ToJson(report, true), new UTF8Encoding(false));
             Debug.Log(report.ToConsoleSummary());
             EditorUtility.DisplayDialog(
                 "Billiards Day-2 Validate",
-                $"校验完成。\n\nPASS {report.passCount}  WARN {report.warnCount}  FAIL {report.failCount}\n结论：{report.overallStatus}",
+                $"校验完成（**未重建任何产物**）。\n\nPASS {report.passCount}  WARN {report.warnCount}  FAIL {report.failCount}\n结论：{report.overallStatus}",
+                "OK");
+            Debug.Log("验收报告已写入：" + path);
+        }
+
+        /// <summary>
+        /// **名字自证其行**的重建入口：显式重建 TableConfig.asset，然后校验。
+        /// 与 <see cref="ValidateInteractive"/> 分开，是为了让"会重建"这件事在菜单名里可见。
+        /// </summary>
+        [MenuItem("Billiards/Verify/Rebuild && Validate Table Data (Day 2)", false, 203)]
+        public static void RebuildAndValidateInteractive()
+        {
+            Debug.Log("[Rebuild & Validate] **显式重建** TableConfig.asset（本入口的名字已说明它会重建）");
+            TableDataImporter.Import();
+
+            SetupReport report = RunAll();
+            string path = ResolveReportPath("Docs/Reports/" + ReportFileName, ReportFileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, JsonUtility.ToJson(report, true), new UTF8Encoding(false));
+            Debug.Log(report.ToConsoleSummary());
+            EditorUtility.DisplayDialog(
+                "Billiards Day-2 Rebuild & Validate",
+                $"已**重建** TableConfig.asset 并校验。\n\nPASS {report.passCount}  WARN {report.warnCount}  FAIL {report.failCount}\n结论：{report.overallStatus}",
                 "OK");
             Debug.Log("验收报告已写入：" + path);
         }
@@ -127,18 +186,8 @@ namespace Billiards.EditorTools
 
             try
             {
-                // ⚠ R2 原则：**校验器不得重建被校验对象**。
-                // 只在产物缺失时生成；存在则一律校验既有产物 —— 否则校验的只是“生成器自洽”，
-                // 证明不了“被提交的那个对象是对的”。
-                if (!ProjectPaths.Exists(TableDataImporter.OutputAssetPath))
-                {
-                    Debug.Log("[R2] TableConfig.asset 缺失 ⇒ 生成一次");
-                    TableDataImporter.Import();
-                }
-                else
-                {
-                    Debug.Log("[R2] TableConfig.asset 已存在 ⇒ **不重建**，校验既有产物");
-                }
+                // 与菜单入口**共用同一前置条件**（铁律 16：单点实现）
+                EnsureGeneratedPrecondition();
                 report = RunAll();
                 exitCode = report.failCount > 0 ? 1 : 0;
             }
