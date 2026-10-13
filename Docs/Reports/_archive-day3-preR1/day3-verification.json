@@ -1,0 +1,190 @@
+{
+    "schema": "billiards.day3-verification.v1",
+    "generatedAtUtc": "2026-10-13T04:31:26.9172383Z",
+    "unityVersion": "6000.0.49f1",
+    "activeBuildTarget": "StandaloneWindows64",
+    "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
+    "isBatchMode": true,
+    "passCount": 22,
+    "warnCount": 0,
+    "failCount": 0,
+    "overallStatus": "PASS",
+    "checks": [
+        {
+            "id": "MAT-01",
+            "title": "桌体材质：URP Lit / Opaque / 三图齐备 / Smoothness=MetallicAlpha",
+            "expected": "URP Lit, _BaseMap+_BumpMap+_MetallicGlossMap, 非透明",
+            "actual": "shader=Universal Render Pipeline/Lit, queue=2000, smoothnessChannel=0",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "MAT-02",
+            "title": "袋网材质：URP Lit / Alpha Clipping / cutoff 0.5 / 双面",
+            "expected": "alphaClip=1, cutoff=0.5, cull=0",
+            "actual": "shader=Universal Render Pipeline/Lit, alphaClip=1, cutoff=0.5, cull=0, queue=2450",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "MAT-03",
+            "title": "16 个球材质齐备且指向各自 BaseColor",
+            "expected": "16/16",
+            "actual": "16/16",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "MAT-04",
+            "title": "球杆材质存在且含 BaseColor",
+            "expected": "存在",
+            "actual": "存在",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "MAT-05",
+            "title": "地面材质存在（最小布景）",
+            "expected": "存在",
+            "actual": "存在",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "SCN-01",
+            "title": "场景层级齐备（PlayfieldRoot / PoolTable / Floor / Main Camera）",
+            "expected": "四者齐备",
+            "actual": "四者齐备",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "SCN-02",
+            "title": "PlayfieldRoot 缩放 = 1（1.2 未误用，物理保持规范米制）",
+            "expected": "1",
+            "actual": "(1.00, 1.00, 1.00)",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "SCN-03",
+            "title": "球桌挂在 PlayfieldRoot 之下（视觉根且零旋转）",
+            "expected": "是",
+            "actual": "是",
+            "status": "PASS",
+            "detail": "球桌不得再叠加手动旋转：唯一模型侧修正在 PoolGeometry。"
+        },
+        {
+            "id": "SCN-04",
+            "title": "球桌世界几何 = 物理框架（含 180° 自对称等价旋转；X 端镜像差 = 0.277 mm）",
+            "expected": "±1 mm",
+            "actual": "err=2.770E-004 m",
+            "status": "PASS",
+            "detail": "worldMin=(-1.412409,-0.863517,-0.797634) worldMax=(1.412686,0.061022,0.797634); rootRot=(270.02, 0.00, 0.00), rootPos=(0.00, 0.00, 0.00), lossyScale=(1.00, 1.00, 1.00)；Unity 导入时在根节点留下约 Rx(270°)（来自 FBX 节点变换），使世界几何相对物理框架绕 Y 相差 180°。本表 180° 自对称至 0.277 mm（角袋 x 向不对称），故渲染无可见差异，且全流程自洽（球/瞄准/袋口反馈一律经 PhysicsToUnity，不会出现点到点的错位）。**该等价旋转系 Day-2 遗留不一致（ModelVertexToUnity 只与网格局部数据比对过，未与场景实际变换比对），已上报待裁断。**"
+        },
+        {
+            "id": "SCN-05",
+            "title": "球桌子网格材质：0=桌体(不透明) 1=袋网(AlphaClipping)",
+            "expected": "子网格=2 且材质正确",
+            "actual": "子网格=2，材质正确",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "SCN-06",
+            "title": "场景无 Rigidbody（自研物理守卫）",
+            "expected": "0",
+            "actual": "0",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "PRB-01",
+            "title": "16 个球 Prefab 齐备",
+            "expected": "16/16",
+            "actual": "16/16",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "PRB-02",
+            "title": "BallPrefab 基座 + 球杆 Prefab 存在",
+            "expected": "均存在",
+            "actual": "均存在",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "PRB-03",
+            "title": "球 Prefab 材质与层正确",
+            "expected": "Ball_00 材质=Ball_00.mat, layer=Ball",
+            "actual": "符合",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "GEO-01",
+            "title": "球网格半径 = PoolConstants.BallRadius",
+            "expected": "0.028575",
+            "actual": "0.028575",
+            "status": "PASS",
+            "detail": "实测导入后网格半径，单位米。"
+        },
+        {
+            "id": "GEO-02",
+            "title": "球杆网格长 = PoolConstants.CueLength（轴向已实测记录）",
+            "expected": "1.4",
+            "actual": "1.4000 m（长轴 = Y）",
+            "status": "PASS",
+            "detail": "Unity 导入后网格本地长轴 = Y；文档声称杆身 +Z，**实测为准**，Day 10 球杆动画需据此定向。"
+        },
+        {
+            "id": "GEO-03",
+            "title": "16 个球 FBX 已导入",
+            "expected": "16/16",
+            "actual": "16/16",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "CAM-01",
+            "title": "主相机参数符合设定",
+            "expected": "pos=(0.00, 3.05, -0.88), fov=37",
+            "actual": "pos=(0.00, 3.05, -0.88), fov=37",
+            "status": "PASS",
+            "detail": "俯视带俯角；俯视截图即由该相机渲染。"
+        },
+        {
+            "id": "CAM-02",
+            "title": "球桌完整落在相机视锥内",
+            "expected": "视口 [0,1]",
+            "actual": "x[0.044,0.956] y[0.103,0.851]",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "LGT-01",
+            "title": "主光 + 环境光已配置",
+            "expected": "dir light, intensity=1.4",
+            "actual": "intensity=1.4, ambient=Trilight, color=RGBA(1.000, 0.957, 0.902, 1.000)",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "RND-01",
+            "title": "渲染证据图落盘",
+            "expected": "俯视图 + 透视 + 法线 A/B（4 张）",
+            "actual": "Docs/Reports/day3-top-view.png; Docs/Reports/day3-perspective.png; Docs/Reports/day3-normal-ab/ab-asis.png; Docs/Reports/day3-normal-ab/ab-flipgreen.png",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "NAB-01",
+            "title": "法线方向 A/B 已渲染（结论见执行记录）",
+            "expected": "两版受光对比图",
+            "actual": "Docs/Reports/day3-normal-ab/ab-asis.png vs Docs/Reports/day3-normal-ab/ab-flipgreen.png",
+            "status": "PASS",
+            "detail": "掠射光 Euler(12,-118,0)、低角度视图、`_BumpScale=4`（仅对比图放大，正式材质为 1）；两版均值亮度 asIs=0.1506 flipped=0.1401。方向判定为**视觉判据**（依据：受力特征的明暗侧是否随绿色通道翻转而交换），结论与逐条依据写入 `Docs/35-A_Day3_材质与视觉基础_执行记录.md`。"
+        }
+    ]
+}

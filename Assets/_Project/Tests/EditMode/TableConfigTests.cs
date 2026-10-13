@@ -30,7 +30,11 @@ namespace Billiards.Tests
         /// 与校验项 AXL-04/AXL-05 同源：0.2613 mm 是“82 段直线段逼近曲率袋角”的轮廓近似残差（非误差），
         /// 阈值由该测量性质推导（约 1.9× 余量）。属数据↔网格对应类，**非镜像判据**（镜像由 CHR-01/CHR-02/CMP-03 负责）。
         /// </summary>
-        private const float VertexTolerance = 0.0005f;
+        /// <summary>端点 → 最近**网格面点** 的容差（D2-T03）：端点应精确落在网格面上。</summary>
+        private const float SurfacePointTolerance = 1e-4f;
+
+        /// <summary>顶点度量的**导出式**阈值系数：d_vertex ≤ k × (最近三角形最长边)。</summary>
+        private const float VertexRatioTolerance = 0.0958f;   // 与 TableIntegrityValidator.AXL-06 同源
 
         private static TableConfig _config;
         private static TableMetaDto _a;
@@ -448,17 +452,17 @@ namespace Billiards.Tests
             Assert.AreEqual(1f, up.y, 1e-6f);
             Assert.AreEqual(0f, up.z, 1e-6f);
 
-            // 模型长轴 X 在 Unity 里取反（Unity 导入时已做 X 取反的 handedness 转换，
-            // 因此这里再取反一次即"还原"为物理平面的 +X）。
+            // ADR-0001 §9 之后：唯一的模型侧转换 = ModelOrientation（Rx≈270°），
+            // 它 **不** 改变局部 X 的符号（X 取反已由 PoolGeometry.PhysicsToModelLocal 承担）。
             Vector3 x = PoolGeometry.ModelVertexToUnity(new Vector3(1f, 0f, 0f));
-            Assert.AreEqual(-1f, x.x, 1e-6f);
+            Assert.AreEqual(1f, x.x, 1e-6f);
 
             // 保距（纯旋转，无缩放）
             var probe = new Vector3(0.3f, -0.7f, 1.1f);
             Assert.AreEqual(probe.magnitude, PoolGeometry.ModelVertexToUnity(probe).magnitude, 1e-5f);
 
             // 分量式函数与四元数式等价（保证两条 API 不会漂移）
-            Vector3 q = PoolGeometry.ModelAxisCorrection * probe;
+            Vector3 q = PoolGeometry.ModelOrientation * probe;
             Vector3 f = PoolGeometry.ModelVertexToUnity(probe);
             Assert.AreEqual(q.x, f.x, 1e-5f);
             Assert.AreEqual(q.y, f.y, 1e-5f);
@@ -475,25 +479,25 @@ namespace Billiards.Tests
         [Test]
         public void Mesh_UnderAxisCorrection_MatchesReferenceBounds()
         {
-            List<Vector3> verts = LoadMeshVertices();
-            Assert.Greater(verts.Count, 0, "无法读取网格顶点（isReadable？）。");
+            MeshData mesh = LoadMesh();
+            Assert.Greater(mesh.Vertices.Count, 0, "无法读取网格顶点（isReadable？）。");
 
-            // LoadMeshVertices 返回的已是应用唯一轴修正后的 Unity 世界坐标。
+            // LoadMesh 返回的已是应用唯一模型侧转换后的 Unity 世界坐标。
             var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
             var max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
-            foreach (Vector3 w in verts)
+            foreach (Vector3 w in mesh.Vertices)
             {
                 min = Vector3.Min(min, w);
                 max = Vector3.Max(max, w);
             }
 
-            // 修正后包围盒 = 源 bounds_runtime（X 的不对称符号被钉住，可判手性未翻转）
-            Assert.AreEqual(PoolGeometry.OuterBoundsMin.x, min.x, 1e-4f, "网格长轴 −X 端不符。");
-            Assert.AreEqual(PoolGeometry.OuterBoundsMax.x, max.x, 1e-4f, "网格长轴 +X 端不符。");
-            Assert.AreEqual(PoolGeometry.OuterBoundsMin.y, min.y, 1e-4f, "网格最小 Y 应为桌腿底。");
-            Assert.AreEqual(PoolGeometry.OuterBoundsMax.y, max.y, 1e-4f, "网格最大 Y 应为库顶。");
-            Assert.AreEqual(PoolGeometry.OuterBoundsMin.z, min.z, 1e-4f);
-            Assert.AreEqual(PoolGeometry.OuterBoundsMax.z, max.z, 1e-4f);
+            // 世界包围盒 = 转换链推导的期望（含模型自带朝向；X 端为源端的镜像，符号被钉住）
+            Assert.AreEqual(PoolGeometry.WorldBoundsMin.x, min.x, 1e-4f, "世界长轴 −X 端不符。");
+            Assert.AreEqual(PoolGeometry.WorldBoundsMax.x, max.x, 1e-4f, "世界长轴 +X 端不符。");
+            Assert.AreEqual(PoolGeometry.WorldBoundsMin.y, min.y, 1e-4f, "世界最小 Y 应为桌腿底。");
+            Assert.AreEqual(PoolGeometry.WorldBoundsMax.y, max.y, 1e-4f, "世界最大 Y 应为库顶。");
+            Assert.AreEqual(PoolGeometry.WorldBoundsMin.z, min.z, 1e-4f);
+            Assert.AreEqual(PoolGeometry.WorldBoundsMax.z, max.z, 1e-4f);
 
             // 长轴必须是 X
             Assert.Greater(max.x - min.x, max.z - min.z, "长轴应为 Unity X。");
@@ -502,48 +506,142 @@ namespace Billiards.Tests
         [Test]
         public void Mesh_SegmentAndPocketEndpointsAlignWithVertices()
         {
-            List<Vector3> verts = LoadMeshVertices();
-            Assert.Greater(verts.Count, 0, "无法读取网格顶点。");
+            MeshData mesh = LoadMesh();
+            Assert.Greater(mesh.Vertices.Count, 0, "无法读取网格顶点。");
+            float worstSurface = 0f;
+            float worstVertex = 0f;
+            float worstLocalEdge = 0f;
+            float worstRatio = 0f;
 
-            float worst = 0f;
+            var queries = new List<Vector3>();
             foreach (CushionSegment s in Config.segments)
             {
-                worst = Mathf.Max(worst, NearestHorizontal(verts, PoolGeometry.PhysicsToUnity(s.a)));
-                worst = Mathf.Max(worst, NearestHorizontal(verts, PoolGeometry.PhysicsToUnity(s.b)));
+                queries.Add(PoolGeometry.PhysicsToUnity(s.a));
+                queries.Add(PoolGeometry.PhysicsToUnity(s.b));
             }
 
             foreach (Pocket p in Config.pockets)
             {
-                worst = Mathf.Max(worst, NearestHorizontal(verts, PoolGeometry.PhysicsToUnity(p.mouthA)));
-                worst = Mathf.Max(worst, NearestHorizontal(verts, PoolGeometry.PhysicsToUnity(p.mouthB)));
-                worst = Mathf.Max(worst, NearestHorizontal(verts, PoolGeometry.PhysicsToUnity(p.throatA)));
-                worst = Mathf.Max(worst, NearestHorizontal(verts, PoolGeometry.PhysicsToUnity(p.throatB)));
+                queries.Add(PoolGeometry.PhysicsToUnity(p.mouthA));
+                queries.Add(PoolGeometry.PhysicsToUnity(p.mouthB));
+                queries.Add(PoolGeometry.PhysicsToUnity(p.throatA));
+                queries.Add(PoolGeometry.PhysicsToUnity(p.throatB));
             }
 
-            Assert.Less(worst, VertexTolerance,
-                $"物理轮廓端点与网格顶点最大水平偏差 {worst * 1000f:F4} mm 超过 {VertexTolerance * 1000f:F1} mm —— "
-                + "说明轴向映射、缩放或几何对齐不正确。");
+            foreach (Vector3 q in queries)
+            {
+                float dSurface = NearestHorizontalToSurface(mesh, q, out float localEdge);
+                float dVertex = NearestHorizontal(mesh.Vertices, q);
+                float ratio = dVertex / Mathf.Max(localEdge, 1e-9f);
+                worstSurface = Mathf.Max(worstSurface, dSurface);
+                if (ratio > worstRatio)
+                {
+                    worstRatio = ratio;
+                    worstVertex = dVertex;
+                    worstLocalEdge = localEdge;
+                }
+            }
+
+            // (a) 必要条件：端点必须**落在网格面上**（面点度量）。
+            Assert.Less(worstSurface, SurfacePointTolerance,
+                $"物理轮廓端点与最近网格面点的最大水平偏差 {worstSurface * 1000f:F6} mm 超过 "
+                + $"{SurfacePointTolerance:E0} m —— 端点未落在网格面上。");
+
+            // (b) 位移判据：顶点度量，阈值由**网格局部顶点间距**导出（不拍板）。
+            //     面点度量对"沿面内滑动"天然盲，故位移检出必须依赖本项。
+            Assert.Less(worstRatio, VertexRatioTolerance,
+                $"端点→最近顶点/L_local 的最坏比值 {worstRatio:F4} 超过 k={VertexRatioTolerance:F4}（最坏 d={worstVertex * 1000f:F4} mm, L_local={worstLocalEdge * 1000f:F3} mm）。");
         }
 
         // ── helpers ────────────────────────────────────────────────────────
 
         /// <summary>加载球桌网格顶点，并应用唯一轴修正，返回 Unity 世界坐标。</summary>
-        private static List<Vector3> LoadMeshVertices()
+        private class MeshData
         {
-            var result = new List<Vector3>();
+            public List<Vector3> Vertices = new List<Vector3>();
+            public List<int> Triangles = new List<int>();
+        }
+
+        private static MeshData LoadMesh()
+        {
+            var d = new MeshData();
             UnityEngine.Object[] assets = AssetDatabase.LoadAllAssetsAtPath(ModelPath);
             foreach (UnityEngine.Object o in assets)
             {
                 if (o is Mesh m)
                 {
+                    int baseIndex = d.Vertices.Count;
                     foreach (Vector3 v in m.vertices)
                     {
-                        result.Add(PoolGeometry.ModelVertexToUnity(v));
+                        d.Vertices.Add(PoolGeometry.ModelVertexToUnity(v));
+                    }
+
+                    int[] tris = m.triangles;
+                    for (int i = 0; i < tris.Length; i++)
+                    {
+                        d.Triangles.Add(baseIndex + tris[i]);
                     }
                 }
             }
 
-            return result;
+            return d;
+        }
+
+        private static float NearestHorizontalToSurface(MeshData mesh, Vector3 q, out float nearestTriangleLongestEdge)
+        {
+            float best = float.MaxValue;
+            nearestTriangleLongestEdge = 0f;
+            for (int t = 0; t + 2 < mesh.Triangles.Count; t += 3)
+            {
+                Vector3 a = mesh.Vertices[mesh.Triangles[t]];
+                Vector3 b = mesh.Vertices[mesh.Triangles[t + 1]];
+                Vector3 c = mesh.Vertices[mesh.Triangles[t + 2]];
+                // 必须先判内部：点在三角形内时面距离为 0；只取“到三边最小距离”对内部点会返回正值。
+                float d = InsideXZ(q, a, b, c) ? 0f : Mathf.Min(SegXZ(q, a, b), Mathf.Min(SegXZ(q, b, c), SegXZ(q, c, a)));
+                if (d < best)
+                {
+                    best = d;
+                    nearestTriangleLongestEdge = Mathf.Max(Vector3.Distance(a, b),
+                        Mathf.Max(Vector3.Distance(b, c), Vector3.Distance(c, a)));
+                }
+            }
+
+            return Mathf.Sqrt(best);
+        }
+
+        private static bool InsideXZ(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        {
+            // 退化三角形（XZ 投影面积为 0，如竖直面）：不能判「内部」，否则任意点都返回 0 距离。
+            float projArea2 = (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
+            if (Mathf.Abs(projArea2) < 1e-12f)
+            {
+                return false;
+            }
+
+            float d1 = CrossXZ(p, a, b), d2 = CrossXZ(p, b, c), d3 = CrossXZ(p, c, a);
+            bool neg = d1 < 0f || d2 < 0f || d3 < 0f;
+            bool pos = d1 > 0f || d2 > 0f || d3 > 0f;
+            return !(neg && pos);
+        }
+
+        private static float CrossXZ(Vector3 p, Vector3 a, Vector3 b)
+        {
+            return (a.x - p.x) * (b.z - p.z) - (a.z - p.z) * (b.x - p.x);
+        }
+
+        private static float SegXZ(Vector3 q, Vector3 a, Vector3 b)
+        {
+            float dx = b.x - a.x, dz = b.z - a.z;
+            float len2 = dx * dx + dz * dz;
+            if (len2 <= 1e-18f)
+            {
+                float x0 = q.x - a.x, z0 = q.z - a.z;
+                return x0 * x0 + z0 * z0;
+            }
+
+            float tt = Mathf.Clamp01(((q.x - a.x) * dx + (q.z - a.z) * dz) / len2);
+            float ex = q.x - (a.x + tt * dx), ez = q.z - (a.z + tt * dz);
+            return ex * ex + ez * ez;
         }
 
         private static float NearestHorizontal(List<Vector3> verts, Vector3 q)

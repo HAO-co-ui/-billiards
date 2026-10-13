@@ -57,11 +57,36 @@ namespace Billiards.EditorTools
         public const float BoundsTolerance = 1e-4f;
 
         /// <summary>
-        /// ④ 物理数据 ↔ 渲染网格 的“最近顶点”对应容差 = **≤ 0.5 mm**（由轮廓近似残差 0.2613 mm 推导，约 1.9× 余量）。
-        /// 该阈值只用于拦“大错”；**渐变漂移由输出的实测值观察**（阈值只能拦大错，记录实测值才能看见渐变）。
-        /// 属数据↔网格对应类，**非镜像判据**。
+        /// **L1（必要条件层）** 端点 → 最近**面内点**（含内部与边）的容差 = **1e-4 m**。
+        /// 只验"端点落在网格面上"；**对沿面内滑动全盲**（点仍在面上），**不作位移判据**。
         /// </summary>
-        public const float VertexAlignmentTolerance = 0.0005f;
+        public const float SurfacePointTolerance = 1e-4f;
+
+        /// <summary>
+        /// **L2（高灵敏层）** 端点 → 最近**网格边** 的容差 = **5 µm**。
+        /// 推导：正确数据 188 端点 → 最近边 max = **0.18 µm**；float32 在 |坐标|≈1.3 m 处 ULP ≈ **0.155 µm**；
+        /// 噪声底 = max(0.18, 0.16) ≈ **0.18 µm** ⇒ 5 µm ≈ **28× 底噪**。
+        /// **盲区**：**沿边方向滑动 ⇒ 点仍在该边上 ⇒ 距离恒 ≈0，无论滑多远** ⇒ 不作唯一位移判据，靠 L3 兜。
+        /// 备选 2 µm 仅在"确认网格不再重导出"前提下可用；本轮**不收紧**（网格重导出是真实可能性，收紧会引入假阳性）。
+        /// </summary>
+        public const float EdgeDistanceTolerance = 5e-6f;
+
+        /// <summary>
+        /// **L3（全向层）** 端点→最近顶点 距离 / 最近三角形最长边 的**比值**上界。
+        /// 取值依据：实测观测最坏比值 = 0.2613 / 5.455 = **0.0479**；取 **2× 余量** ⇒ k = **0.0958**（该测量是确定性的）。
+        /// 阈值 T = k × L_local ≈ **0.52 mm**（≈ 现状 0.5 mm），检出下限 ≈ **0.40~0.75 mm**。
+        /// **理论硬上界 0.5**（点落在边中点时距离 = 0.5·L_local）—— 留档供将来换网格对照，**不得取 0.5**（永不假阳性＝灵敏度最差）。
+        /// **盲区**：**周期性盲带**（δ 增大时点落到另一顶点附近，距离回落）。
+        /// 实测：对**整段/区域刚性位移**无上盲带（仅 ≤~0.4 mm 底噪带）；对**单点位移**存在盲带（本次采样最高至 12.4 mm）。
+        /// 单点位移这一威胁**由 `CMP-03`（索引对齐，容差 1e-5 m）覆盖**。
+        /// </summary>
+        public const float VertexRatioTolerance = 0.0958f;
+
+        /// <summary>L3 的理论硬上界（留档）：点落在边中点时距离 = 0.5·L_local。不得用作阈值。</summary>
+        public const float VertexRatioTheoreticalBound = 0.5f;
+
+        /// <summary>实测基线（顶点度量 0.2613 mm）—— 输出中显示用。</summary>
+        public const float MeasuredVertexBaseline = 0.0002613f;
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
@@ -588,18 +613,19 @@ namespace Billiards.EditorTools
                 max = Vector3.Max(max, w);
             }
 
-            Vector3 expMin = PoolGeometry.OuterBoundsMin;
-            Vector3 expMax = PoolGeometry.OuterBoundsMax;
+            Vector3 expMin = PoolGeometry.WorldBoundsMin;
+            Vector3 expMax = PoolGeometry.WorldBoundsMax;
 
             float boundErr = Mathf.Max(
                 Mathf.Abs(min.x - expMin.x), Mathf.Abs(min.y - expMin.y), Mathf.Abs(min.z - expMin.z),
                 Mathf.Abs(max.x - expMax.x), Mathf.Abs(max.y - expMax.y), Mathf.Abs(max.z - expMax.z));
 
             report.Add(boundErr < BoundsTolerance
-                ? CheckResult.Ok("AXL-02", "轴修正后网格包围盒 = 源 bounds_runtime", "±0.1 mm",
+                ? CheckResult.Ok("AXL-02", "模型局部顶点经唯一转换链后的世界包围盒 = 推导期望值", "±0.1 mm",
                     $"err={boundErr:E3} m",
-                    $"worldMin={min} worldMax={max}；X 不对称符号被钉住（-1.412686 vs +1.412409），可判手性未翻转。")
-                : CheckResult.Fail("AXL-02", "轴修正后网格包围盒 = 源 bounds_runtime", "±0.1 mm",
+                    $"worldMin={min} worldMax={max}；期望由 PoolGeometry 转换链从源包络推导（非硬编码）。"
+                    + "X 的不对称符号被钉住（-1.412409 vs +1.412686），可判镜像/手性。")
+                : CheckResult.Fail("AXL-02", "模型局部顶点经唯一转换链后的世界包围盒 = 推导期望值", "±0.1 mm",
                     $"err={boundErr:E3} m", $"worldMin={min} worldMax={max}; expMin={expMin} expMax={expMax}"));
 
             float extX = max.x - min.x;
@@ -609,53 +635,115 @@ namespace Billiards.EditorTools
                     $"X={extX:F6} > Z={extZ:F6}")
                 : CheckResult.Fail("AXL-03", "网格长轴 = Unity X（短轴 = Z）", "X > Z", $"X={extX:F6} <= Z={extZ:F6}"));
 
-            // 最近顶点判据：段端点（在水平面 XZ 比较——物理是二维的，竖直高度不参与）
-            float worstSeg = 0f;
+            // ── 三层度量（L1 面点 / L2 边距 / L3 顶点）；实现与 EditMode 测试共用 MeshAlignmentMetrics ──
+            var segQueries = new List<Vector3>();
             foreach (CushionSegment s in config.segments)
             {
-                worstSeg = Mathf.Max(worstSeg, mesh.NearestHorizontalDistance(PoolGeometry.PhysicsToUnity(s.a)));
-                worstSeg = Mathf.Max(worstSeg, mesh.NearestHorizontalDistance(PoolGeometry.PhysicsToUnity(s.b)));
+                segQueries.Add(PoolGeometry.PhysicsToUnity(s.a));
+                segQueries.Add(PoolGeometry.PhysicsToUnity(s.b));
             }
 
-            report.Add(worstSeg < VertexAlignmentTolerance
-                ? CheckResult.Ok("AXL-04", "82 段端点与网格顶点对齐（水平面）",
-                    $"实测值（阈值 {VertexAlignmentTolerance * 1000f:F2} mm）", $"实测 {worstSeg * 1000f:F4} mm",
-                    $"余量 {VertexAlignmentTolerance / Mathf.Max(worstSeg, 1e-9f):F2}×；"
-                    + "该实测值为“82 段直线段逼近曲率袋角”的轮廓近似残差（非误差）。"
-                    + "本检查只验证**水平面端点对齐**；它**不能**单独证明手性/未镜像 —— "
-                    + "最优轴排列内 8 个符号变体的误差跨度仅约 0.27 µm，镜像变体甚至略优。"
-                    + "手性由 AXL-02（包围盒不对称：X 端 -1.412686/+1.412409、Y 端腿底 -0.8635/库顶 +0.0610）"
-                    + "与“模型修正必须是纯旋转 det=+1”共同钉死。")
-                : CheckResult.Fail("AXL-04", "82 段端点与网格顶点对齐（水平面）",
-                    $"实测值（阈值 {VertexAlignmentTolerance * 1000f:F2} mm）", $"实测 {worstSeg * 1000f:F4} mm"));
-
-            // 最近顶点判据：袋口 mouth/throat（袋心是形心，非顶点，故不参与）
-            float worstPocket = 0f;
+            var pocketQueries = new List<Vector3>();
             foreach (Pocket p in config.pockets)
             {
-                worstPocket = Mathf.Max(worstPocket, mesh.NearestHorizontalDistance(PoolGeometry.PhysicsToUnity(p.mouthA)));
-                worstPocket = Mathf.Max(worstPocket, mesh.NearestHorizontalDistance(PoolGeometry.PhysicsToUnity(p.mouthB)));
-                worstPocket = Mathf.Max(worstPocket, mesh.NearestHorizontalDistance(PoolGeometry.PhysicsToUnity(p.throatA)));
-                worstPocket = Mathf.Max(worstPocket, mesh.NearestHorizontalDistance(PoolGeometry.PhysicsToUnity(p.throatB)));
+                pocketQueries.Add(PoolGeometry.PhysicsToUnity(p.mouthA));
+                pocketQueries.Add(PoolGeometry.PhysicsToUnity(p.mouthB));
+                pocketQueries.Add(PoolGeometry.PhysicsToUnity(p.throatA));
+                pocketQueries.Add(PoolGeometry.PhysicsToUnity(p.throatB));
             }
 
-            report.Add(worstPocket < VertexAlignmentTolerance
-                ? CheckResult.Ok("AXL-05", "6 袋 mouth/throat 端点与网格顶点对齐（水平面）",
-                    $"实测值（阈值 {VertexAlignmentTolerance * 1000f:F2} mm）", $"实测 {worstPocket * 1000f:F4} mm",
-                    $"余量 {VertexAlignmentTolerance / Mathf.Max(worstPocket, 1e-9f):F2}×；"
-                    + "离线实测 mouth = 0、throat ≤ 0.22 mm；本条是\"袋口落在网格袋口上\"的可判据版本。")
-                : CheckResult.Fail("AXL-05", "6 袋 mouth/throat 端点与网格顶点对齐（水平面）",
-                    $"实测值（阈值 {VertexAlignmentTolerance * 1000f:F2} mm）", $"实测 {worstPocket * 1000f:F4} mm"));
+            var all = new List<Vector3>(segQueries);
+            all.AddRange(pocketQueries);
+
+            float worstFaceSeg = 0f, worstFacePocket = 0f, worstEdge = 0f;
+            float worstVertex = 0f, worstRatio = 0f, localAtWorst = 0f;
+
+            foreach (Vector3 q in all)
+            {
+                MeshAlignmentMetrics.Measurement m = mesh.Metrics.Measure(q);
+                worstEdge = Mathf.Max(worstEdge, m.Edge);
+                if (m.Vertex > worstVertex) worstVertex = m.Vertex;
+                float ratio = m.Vertex / Mathf.Max(m.LocalLongestEdge, 1e-9f);
+                if (ratio > worstRatio)
+                {
+                    worstRatio = ratio;
+                    localAtWorst = m.LocalLongestEdge;
+                }
+            }
+
+            foreach (Vector3 q in segQueries) worstFaceSeg = Mathf.Max(worstFaceSeg, mesh.Metrics.Measure(q).Face);
+            foreach (Vector3 q in pocketQueries) worstFacePocket = Mathf.Max(worstFacePocket, mesh.Metrics.Measure(q).Face);
+
+            // L1：必要条件层（只验落在面上）
+            report.Add(worstFaceSeg < SurfacePointTolerance
+                ? CheckResult.Ok("AXL-04", "L1 82 段端点落在网格面上（端点→最近面内点）",
+                    $"< {SurfacePointTolerance:E0} m", $"实测 {worstFaceSeg * 1000f:F6} mm",
+                    "**只验落在网格面上**；对沿面内滑动**全盲**（点仍在面上），**不作位移判据**。"
+                    + "此前的 0.26 mm 来自旧口径“最近顶点”的采样下限，非几何错位。")
+                : CheckResult.Fail("AXL-04", "L1 82 段端点落在网格面上（端点→最近面内点）",
+                    $"< {SurfacePointTolerance:E0} m", $"实测 {worstFaceSeg * 1000f:F6} mm"));
+
+            report.Add(worstFacePocket < SurfacePointTolerance
+                ? CheckResult.Ok("AXL-05", "L1 6 袋 mouth/throat 端点落在网格面上",
+                    $"< {SurfacePointTolerance:E0} m", $"实测 {worstFacePocket * 1000f:F6} mm",
+                    "同上：必要条件层，不作位移判据。")
+                : CheckResult.Fail("AXL-05", "L1 6 袋 mouth/throat 端点落在网格面上",
+                    $"< {SurfacePointTolerance:E0} m", $"实测 {worstFacePocket * 1000f:F6} mm"));
+
+            // L2：高灵敏层（边距）
+            report.Add(worstEdge < EdgeDistanceTolerance
+                ? CheckResult.Ok("AXL-07", "L2 端点落在网格边上（端点→最近网格边，高灵敏层）",
+                    $"< {EdgeDistanceTolerance * 1e6f:F0} µm", $"实测 {worstEdge * 1e6f:F4} µm",
+                    "底噪 0.18 µm（= 模型量化 0.155 µm 与实测底噪 0.18 µm 取大），阈值 5 µm ≈ 28× 底噪。"
+                    + "**盲区：沿边方向滑动 ⇒ 点仍在该边上 ⇒ 距离恒 ≈0** ⇒ 不作唯一位移判据，由 L3 兜。"
+                    + "（备选 2 µm 仅在确认网格不再重导出时可用；本轮不收紧。）")
+                : CheckResult.Fail("AXL-07", "L2 端点落在网格边上（端点→最近网格边，高灵敏层）",
+                    $"< {EdgeDistanceTolerance * 1e6f:F0} µm", $"实测 {worstEdge * 1e6f:F4} µm"));
+
+            // L3：全向层（顶点，比值口径）
+            report.Add(worstRatio < VertexRatioTolerance
+                ? CheckResult.Ok("AXL-06", "L3 端点→最近顶点 / 局部间距 ≤ k（全向层，比值口径）",
+                    $"≤ k = {VertexRatioTolerance:F4}（2× 观测比值 {MeasuredVertexBaseline / localAtWorst:F4}）",
+                    $"实测算比 {worstRatio:F4}（阈值 k={VertexRatioTolerance:F4}，余量 {VertexRatioTolerance / Mathf.Max(worstRatio, 1e-12f):F2}×）；"
+                    + $"T = k×L_local = {VertexRatioTolerance * localAtWorst * 1000f:F3} mm；L_local={localAtWorst * 1000f:F3} mm",
+                    "**唯一无方向性盲区**的层；检出下限 ≈ 0.40~0.75 mm。"
+                    + "**对整段/区域刚性位移：无上盲带**（仅 ≤~0.4 mm 底噪带）；"
+                    + "**对单点位移：存在周期性盲带**（实测最高至 12.4 mm），"
+                    + "但该威胁**由 CMP-03（索引对齐，容差 1e-5 m）覆盖**。"
+                    + $"理论硬上界 = {VertexRatioTheoreticalBound}（边中点），仅留档、不用作阈值。")
+                : CheckResult.Fail("AXL-06", "L3 端点→最近顶点 / 局部间距 ≤ k（全向层，比值口径）",
+                    $"≤ k = {VertexRatioTolerance:F4}", $"实测算比 {worstRatio:F4}；L_local={localAtWorst * 1000f:F3} mm"));
+        }
+
+        /// <summary>记录"端点→最近顶点 / 局部顶点间距"最坏的那次查询（供 AXL-06 使用）。</summary>
+        private static void AccumulateVertexRatio(MeshSet mesh, Vector3 query,
+            ref float worstVertex, ref float worstLocalEdge, ref float worstRatio)
+        {
+            float dv = mesh.NearestHorizontalDistance(query);
+            mesh.NearestHorizontalDistanceToSurface(query, out float localEdge);
+            float ratio = dv / Mathf.Max(localEdge, 1e-9f);
+            if (ratio > worstRatio)
+            {
+                worstRatio = ratio;
+                worstVertex = dv;
+                worstLocalEdge = localEdge;
+            }
         }
 
         private class MeshSet
         {
-            /// <summary>顶点已应用唯一轴修正，处于 Unity 世界坐标（可直接与 PhysicsToUnity 的结果比较）。</summary>
+            /// <summary>顶点已应用唯一模型侧转换（<see cref="PoolGeometry.ModelVertexToUnity"/>），处于 Unity 世界坐标。</summary>
             public readonly List<Vector3> Vertices = new List<Vector3>();
-            public int TriangleCount;
 
-            /// <summary>查询点到最近网格顶点在**水平面 XZ** 上的距离。
-            /// 物理是二维的，竖直高度不参与对齐判据（库鼻高度 44.98 mm 与台呢高度本就是不同平面）。</summary>
+            /// <summary>三角面（顶点索引三元组），索引指向 <see cref="Vertices"/>。</summary>
+            public readonly List<int> Triangles = new List<int>();
+
+            /// <summary>三层度量的**共享实现**（与 EditMode 测试同源，杜绝口径分叉）。</summary>
+            public MeshAlignmentMetrics Metrics;
+
+            public int TriangleCount => Triangles.Count / 3;
+
+            /// <summary>查询点到最近**顶点**的水平(XZ)距离。</summary>
             public float NearestHorizontalDistance(Vector3 query)
             {
                 float best = float.MaxValue;
@@ -669,6 +757,90 @@ namespace Billiards.EditorTools
 
                 return Mathf.Sqrt(best);
             }
+
+            /// <summary>
+            /// 查询点到最近**网格面点**的水平(XZ)距离（点到三角形在 XZ 投影的最短距离）。
+            /// 同时给出该最近三角形的**最长边**（网格在此处的特征间距），用于导出 AXL-06 的阈值。
+            /// </summary>
+            public float NearestHorizontalDistanceToSurface(Vector3 query, out float nearestTriangleLongestEdge)
+            {
+                float best = float.MaxValue;
+                nearestTriangleLongestEdge = 0f;
+
+                for (int t = 0; t + 2 < Triangles.Count; t += 3)
+                {
+                    Vector3 a = Vertices[Triangles[t]];
+                    Vector3 b = Vertices[Triangles[t + 1]];
+                    Vector3 c = Vertices[Triangles[t + 2]];
+
+                    float d = PointToTriangleHorizontalSqr(query, a, b, c);
+                    if (d < best)
+                    {
+                        best = d;
+                        nearestTriangleLongestEdge = Mathf.Max(
+                            Vector3.Distance(a, b),
+                            Mathf.Max(Vector3.Distance(b, c), Vector3.Distance(c, a)));
+                    }
+                }
+
+                return Mathf.Sqrt(best);
+            }
+
+            private static float PointToTriangleHorizontalSqr(Vector3 q, Vector3 a, Vector3 b, Vector3 c)
+            {
+                // 只用 XZ 分量（物理是二维的）。
+                // 注意：**必须先判内部** —— 点在三角形内（含边）时面距离为 0；
+                // 若只取"到三条边的最小距离"，则对内部点会返回正值，等于"换名不换实"（仍是边/顶点度量）。
+                if (IsInsideTriangleXZ(q, a, b, c))
+                {
+                    return 0f;
+                }
+
+                return Mathf.Min(
+                    PointToSegmentHorizontalSqr(q, a, b),
+                    Mathf.Min(PointToSegmentHorizontalSqr(q, b, c), PointToSegmentHorizontalSqr(q, c, a)));
+            }
+
+            /// <summary>XZ 平面上的点是否落在三角形内（含边、含退化三角形上的共线情形）。</summary>
+            private static bool IsInsideTriangleXZ(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+            {
+            // 退化三角形（XZ 投影面积为 0，如竖直面）：不能判「内部」，否则任意点都返回 0 距离。
+            float projArea2 = (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
+            if (Mathf.Abs(projArea2) < 1e-12f)
+            {
+                return false;
+            }
+
+                float d1 = Cross2(p, a, b);
+                float d2 = Cross2(p, b, c);
+                float d3 = Cross2(p, c, a);
+                bool hasNeg = d1 < 0f || d2 < 0f || d3 < 0f;
+                bool hasPos = d1 > 0f || d2 > 0f || d3 > 0f;
+                return !(hasNeg && hasPos);
+            }
+
+            private static float Cross2(Vector3 p, Vector3 a, Vector3 b)
+            {
+                return (a.x - p.x) * (b.z - p.z) - (a.z - p.z) * (b.x - p.x);
+            }
+
+            private static float PointToSegmentHorizontalSqr(Vector3 q, Vector3 a, Vector3 b)
+            {
+                float ax = a.x, az = a.z, bx = b.x, bz = b.z;
+                float dx = bx - ax, dz = bz - az;
+                float len2 = dx * dx + dz * dz;
+                if (len2 <= 1e-18f)
+                {
+                    float px = q.x - ax, pz = q.z - az;
+                    return px * px + pz * pz;
+                }
+
+                float t = ((q.x - ax) * dx + (q.z - az) * dz) / len2;
+                t = Mathf.Clamp01(t);
+                float cx = ax + t * dx, cz = az + t * dz;
+                float ex = q.x - cx, ez = q.z - cz;
+                return ex * ex + ez * ez;
+            }
         }
 
         private static MeshSet LoadMeshes(string fbxPath)
@@ -679,16 +851,22 @@ namespace Billiards.EditorTools
             {
                 if (o is Mesh m)
                 {
-                    // 顶点一律经唯一轴修正后再入库，保证后续包围盒/最近顶点比较口径一致。
+                    // 顶点一律经唯一模型侧转换后再入库，保证与 PhysicsToUnity 同处 Unity 世界坐标
+                    int baseIndex = set.Vertices.Count;
                     foreach (Vector3 v in m.vertices)
                     {
                         set.Vertices.Add(PoolGeometry.ModelVertexToUnity(v));
                     }
 
-                    set.TriangleCount += m.triangles.Length / 3;
+                    int[] tris = m.triangles;
+                    for (int i = 0; i < tris.Length; i++)
+                    {
+                        set.Triangles.Add(baseIndex + tris[i]);
+                    }
                 }
             }
 
+            set.Metrics = new MeshAlignmentMetrics(set.Vertices.ToArray(), set.Triangles.ToArray());
             return set;
         }
 
