@@ -1,0 +1,264 @@
+{
+  "dtSub": 0.002777777777777778,
+  "ballRadius": 0.028575,
+  "halfWidth": 0.6350544330872985,
+  "task1a_pureRoll": [
+    {
+      "a": 0.5,
+      "v0": 2.0,
+      "T": 4.0,
+      "scheme": "A",
+      "truth": 4.0,
+      "got": 4.002777777777793,
+      "error": 0.002777777777793311
+    },
+    {
+      "a": 0.5,
+      "v0": 2.0,
+      "T": 4.0,
+      "scheme": "B",
+      "truth": 4.0,
+      "got": 4.000000000000014,
+      "error": 1.4210854715202004e-14
+    },
+    {
+      "a": 1.0,
+      "v0": 2.0,
+      "T": 2.0,
+      "scheme": "A",
+      "truth": 2.0,
+      "got": 2.0027777777777844,
+      "error": 0.0027777777777844292
+    },
+    {
+      "a": 1.0,
+      "v0": 2.0,
+      "T": 2.0,
+      "scheme": "B",
+      "truth": 2.0,
+      "got": 2.0000000000000075,
+      "error": 7.549516567451064e-15
+    },
+    {
+      "a": 2.0,
+      "v0": 2.0,
+      "T": 1.0,
+      "scheme": "A",
+      "truth": 1.0,
+      "got": 1.0027777777777813,
+      "error": 0.0027777777777813206
+    },
+    {
+      "a": 2.0,
+      "v0": 2.0,
+      "T": 1.0,
+      "scheme": "B",
+      "truth": 1.0,
+      "got": 1.0000000000000036,
+      "error": 3.552713678800501e-15
+    },
+    {
+      "a": 5.0,
+      "v0": 2.0,
+      "T": 0.4,
+      "scheme": "A",
+      "truth": 0.4,
+      "got": 0.402777777777779,
+      "error": 0.002777777777778989
+    },
+    {
+      "a": 5.0,
+      "v0": 2.0,
+      "T": 0.4,
+      "scheme": "B",
+      "truth": 0.4,
+      "got": 0.4000000000000014,
+      "error": 1.3877787807814457e-15
+    }
+  ],
+  "task1b_bounce": [
+    {
+      "a": 0.5,
+      "v0": 2.0,
+      "e": 0.95,
+      "scheme": "A",
+      "truthContacts": 3,
+      "gotContacts": 3,
+      "truthFinalY": 0.19458793789531637,
+      "gotFinalY": 0.19225274676837928,
+      "finalYError": -0.002335191126937086,
+      "guardTrips": 0,
+      "subSteps": 1302
+    },
+    {
+      "a": 0.5,
+      "v0": 2.0,
+      "e": 0.95,
+      "scheme": "B",
+      "truthContacts": 3,
+      "gotContacts": 3,
+      "truthFinalY": 0.19458793789531637,
+      "gotFinalY": 0.19457855984708325,
+      "finalYError": -9.378048233116276e-06,
+      "guardTrips": 0,
+      "subSteps": 1302
+    },
+    {
+      "a": 5.0,
+      "v0": 2.0,
+      "e": 0.95,
+      "scheme": "A",
+      "truthContacts": 0,
+      "gotContacts": 0,
+      "truthFinalY": 0.4,
+      "gotFinalY": 0.402777777777779,
+      "finalYError": 0.002777777777778989,
+      "guardTrips": 0,
+      "subSteps": 146
+    },
+    {
+      "a": 5.0,
+      "v0": 2.0,
+      "e": 0.95,
+      "scheme": "B",
+      "truthContacts": 0,
+      "gotContacts": 0,
+      "truthFinalY": 0.4,
+      "gotFinalY": 0.4000000000000014,
+      "finalYError": 1.3877787807814457e-15,
+      "guardTrips": 0,
+      "subSteps": 146
+    }
+  ],
+  "task1c_errorScaling": [
+    {
+      "T": 0.5,
+      "T_over_taustop": 0.25,
+      "truth": 0.875,
+      "got": 0.875694444444445,
+      "error": 0.0006944444444449971,
+      "cumulativeBound_half_a_dt_sub_T": 0.0006944444444444445
+    },
+    {
+      "T": 1.0,
+      "T_over_taustop": 0.5,
+      "truth": 1.5,
+      "got": 1.5013888888888904,
+      "error": 0.0013888888888904383,
+      "cumulativeBound_half_a_dt_sub_T": 0.001388888888888889
+    },
+    {
+      "T": 1.5,
+      "T_over_taustop": 0.75,
+      "truth": 1.875,
+      "got": 1.877083333333337,
+      "error": 0.0020833333333369897,
+      "cumulativeBound_half_a_dt_sub_T": 0.0020833333333333333
+    },
+    {
+      "T": 2.0,
+      "T_over_taustop": 1.0,
+      "truth": 2.0,
+      "got": 2.0027777777777844,
+      "error": 0.0027777777777844292,
+      "cumulativeBound_half_a_dt_sub_T": 0.002777777777777778
+    }
+  ],
+  "task2_pocketEscape": {
+    "path": {
+      "from": [
+        0.0,
+        0.0
+      ],
+      "to": [
+        0.0,
+        -0.8
+      ],
+      "velocity": [
+        0.0,
+        -2.0
+      ],
+      "samples": 40001
+    },
+    "ballRadius": 0.028575,
+    "minDistanceToAnySegment": 0.0675616516101382,
+    "minDistanceSegmentIndex": 15,
+    "minDistanceAtY": -0.69506,
+    "firstContactY": null,
+    "neverContactsAnySegment": true,
+    "pocketProximity": [
+      {
+        "index": 0,
+        "kind": "corner",
+        "throatCenter": [
+          -1.2810031973632396,
+          -0.6460573834592171
+        ],
+        "openingRadius": 0.06131663576716901,
+        "triggerRadius": 0.089891635767169,
+        "minDistanceAlongPath": 1.281003197365912,
+        "triggers": false
+      },
+      {
+        "index": 1,
+        "kind": "side",
+        "throatCenter": [
+          -1.4292819688205283e-07,
+          -0.6950634444556911
+        ],
+        "openingRadius": 0.06131661813752844,
+        "triggerRadius": 0.08989161813752844,
+        "minDistanceAlongPath": 3.4474198290198033e-06,
+        "triggers": true
+      },
+      {
+        "index": 2,
+        "kind": "corner",
+        "throatCenter": [
+          1.2810030833672454,
+          -0.6460575734525411
+        ],
+        "openingRadius": 0.061316647750187823,
+        "triggerRadius": 0.08989164775018782,
+        "minDistanceAlongPath": 1.2810030833695436,
+        "triggers": false
+      },
+      {
+        "index": 3,
+        "kind": "corner",
+        "throatCenter": [
+          -1.2810030833672454,
+          0.6460575734525411
+        ],
+        "openingRadius": 0.06131665652727014,
+        "triggerRadius": 0.08989165652727014,
+        "minDistanceAlongPath": 1.4346983264128301,
+        "triggers": false
+      },
+      {
+        "index": 4,
+        "kind": "side",
+        "throatCenter": [
+          -2.4183560445867336e-08,
+          0.6950634444556911
+        ],
+        "openingRadius": 0.061316647524030106,
+        "triggerRadius": 0.0898916475240301,
+        "minDistanceAlongPath": 0.6950634444556916,
+        "triggers": false
+      },
+      {
+        "index": 5,
+        "kind": "corner",
+        "throatCenter": [
+          1.2810031973632396,
+          0.6460573834592171
+        ],
+        "openingRadius": 0.061316670311403615,
+        "triggerRadius": 0.08989167031140362,
+        "minDistanceAlongPath": 1.434698342641063,
+        "triggers": false
+      }
+    ]
+  }
+}

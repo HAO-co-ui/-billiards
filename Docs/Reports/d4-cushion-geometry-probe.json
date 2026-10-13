@@ -1,0 +1,762 @@
+{
+  "source": "Docs/Reference/table-metadata-reference.json",
+  "sourceSha256Declared": "abc5b634683b7770d8830ae56acdc5cb430a3e7e1bbf10c67e8050073162f119",
+  "segmentCount": 82,
+  "ballRadius": 0.028575,
+  "ballDiameter": 0.05715,
+  "declaredHalfLength": 1.27,
+  "declaredHalfWidth": 0.6350544330872985,
+  "Q1_segmentLength": {
+    "min": 0.004286363,
+    "median": 0.013957782,
+    "max": 1.06188249,
+    "minOverDiameter": 0.075002,
+    "countShorterThanDiameter": 76,
+    "indicesShorterThanDiameter": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81
+    ],
+    "countShorterThanRadius": 60,
+    "indicesShorterThanRadius": [
+      0,
+      1,
+      2,
+      5,
+      7,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      21,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      32,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      46,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      60,
+      62,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      73,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81
+    ]
+  },
+  "Q2_normalOrientation": {
+    "conventionTest": "s = cross(normalize(b-a), center - a); sign tells which side the table centre lies on",
+    "countPositive": 39,
+    "countNegative": 43,
+    "countZero": 0,
+    "zeroIndices": [],
+    "consistent": false,
+    "minoritySideIndices": [
+      {
+        "index": 2,
+        "rail": "end_negative",
+        "length": 0.008299953011577356,
+        "nearPockets": [
+          3
+        ]
+      },
+      {
+        "index": 3,
+        "rail": "end_negative",
+        "length": 0.032089918408468206,
+        "nearPockets": [
+          3
+        ]
+      },
+      {
+        "index": 4,
+        "rail": "end_negative",
+        "length": 0.03244101793682755,
+        "nearPockets": [
+          3
+        ]
+      },
+      {
+        "index": 5,
+        "rail": "end_negative",
+        "length": 0.01823647218202478,
+        "nearPockets": [
+          3
+        ]
+      },
+      {
+        "index": 6,
+        "rail": "end_negative",
+        "length": 1.0614067212550524,
+        "nearPockets": []
+      },
+      {
+        "index": 7,
+        "rail": "end_negative",
+        "length": 0.01823647860692905,
+        "nearPockets": [
+          0
+        ]
+      },
+      {
+        "index": 8,
+        "rail": "end_negative",
+        "length": 0.03243238193873258,
+        "nearPockets": [
+          0
+        ]
+      },
+      {
+        "index": 9,
+        "rail": "end_negative",
+        "length": 0.03209862285457007,
+        "nearPockets": [
+          0
+        ]
+      },
+      {
+        "index": 10,
+        "rail": "end_negative",
+        "length": 0.008299991901841294,
+        "nearPockets": [
+          0
+        ]
+      },
+      {
+        "index": 16,
+        "rail": "long_negative_positive",
+        "length": 0.010372055119131843,
+        "nearPockets": [
+          1
+        ]
+      },
+      {
+        "index": 17,
+        "rail": "long_negative_positive",
+        "length": 0.025263339883147638,
+        "nearPockets": [
+          1
+        ]
+      },
+      {
+        "index": 18,
+        "rail": "long_negative_positive",
+        "length": 0.025476069700096107,
+        "nearPockets": [
+          1
+        ]
+      },
+      {
+        "index": 19,
+        "rail": "long_negative_positive",
+        "length": 0.011586431027551723,
+        "nearPockets": [
+          1
+        ]
+      },
+      {
+        "index": 20,
+        "rail": "long_negative_positive",
+        "length": 1.0618822321811148,
+        "nearPockets": []
+      },
+      {
+        "index": 21,
+        "rail": "long_negative_positive",
+        "length": 0.01601422032509098,
+        "nearPockets": [
+          2
+        ]
+      },
+      {
+        "index": 32,
+        "rail": "long_positive_positive",
+        "length": 0.016014280366640744,
+        "nearPockets": [
+          5
+        ]
+      },
+      {
+        "index": 33,
+        "rail": "long_positive_positive",
+        "length": 1.0618823265642898,
+        "nearPockets": []
+      },
+      {
+        "index": 34,
+        "rail": "long_positive_positive",
+        "length": 0.011689340721929297,
+        "nearPockets": [
+          4
+        ]
+      },
+      {
+        "index": 35,
+        "rail": "long_positive_positive",
+        "length": 0.025375050051395266,
+        "nearPockets": [
+          4
+        ]
+      },
+      {
+        "index": 36,
+        "rail": "long_positive_positive",
+        "length": 0.025263345457176248,
+        "nearPockets": [
+          4
+        ]
+      },
+      {
+        "index": 37,
+        "rail": "long_positive_positive",
+        "length": 0.010372064080778834,
+        "nearPockets": [
+          4
+        ]
+      },
+      {
+        "index": 41,
+        "rail": "long_positive_negative",
+        "length": 0.011038933999830709,
+        "nearPockets": [
+          3
+        ]
+      },
+      {
+        "index": 42,
+        "rail": "long_positive_negative",
+        "length": 0.013917178063255695,
+        "nearPockets": [
+          3
+        ]
+      },
+      {
+        "index": 43,
+        "rail": "long_positive_negative",
+        "length": 0.010355518026154024,
+        "nearPockets": [
+          3
+        ]
+      },
+      {
+        "index": 44,
+        "rail": "long_positive_negative",
+        "length": 0.030082875686818767,
+        "nearPockets": [
+          3
+        ]
+      },
+      {
+        "index": 45,
+        "rail": "long_positive_negative",
+        "length": 0.03183062033280269,
+        "nearPockets": [
+          3
+        ]
+      },
+      {
+        "index": 52,
+        "rail": "long_positive_negative",
+        "length": 0.004286409909752871,
+        "nearPockets": [
+          4
+        ]
+      },
+      {
+        "index": 53,
+        "rail": "long_positive_negative",
+        "length": 0.010132599590081356,
+        "nearPockets": [
+          4
+        ]
+      },
+      {
+        "index": 54,
+        "rail": "long_positive_negative",
+        "length": 0.013793574187990149,
+        "nearPockets": [
+          4
+        ]
+      },
+      {
+        "index": 55,
+        "rail": "end_positive",
+        "length": 0.011056740316173925,
+        "nearPockets": [
+          5
+        ]
+      },
+      {
+        "index": 56,
+        "rail": "end_positive",
+        "length": 0.013957782172537106,
+        "nearPockets": [
+          5
+        ]
+      },
+      {
+        "index": 66,
+        "rail": "end_positive",
+        "length": 0.013957818720357545,
+        "nearPockets": [
+          2
+        ]
+      },
+      {
+        "index": 67,
+        "rail": "end_positive",
+        "length": 0.011056778023222724,
+        "nearPockets": [
+          2
+        ]
+      },
+      {
+        "index": 73,
+        "rail": "long_negative_negative",
+        "length": 0.016014232338467188,
+        "nearPockets": [
+          0
+        ]
+      },
+      {
+        "index": 74,
+        "rail": "long_negative_negative",
+        "length": 1.061882319910814,
+        "nearPockets": []
+      },
+      {
+        "index": 75,
+        "rail": "long_negative_negative",
+        "length": 0.01168970502038205,
+        "nearPockets": [
+          1
+        ]
+      },
+      {
+        "index": 76,
+        "rail": "long_negative_negative",
+        "length": 0.025374683642530618,
+        "nearPockets": [
+          1
+        ]
+      },
+      {
+        "index": 77,
+        "rail": "long_negative_negative",
+        "length": 0.02526335578894467,
+        "nearPockets": [
+          1
+        ]
+      },
+      {
+        "index": 78,
+        "rail": "long_negative_negative",
+        "length": 0.010372042127969569,
+        "nearPockets": [
+          1
+        ]
+      }
+    ]
+  },
+  "Q3_chainTopology": {
+    "endpointTolerance": 1e-06,
+    "uniqueEndpoints": 88,
+    "degreeHistogram": {
+      "1": 12,
+      "2": 76
+    },
+    "danglingCount": 12,
+    "dangling": [
+      {
+        "point": [
+          -1.3343426830893106,
+          0.5735084897245177
+        ],
+        "users": [
+          [
+            0,
+            "a"
+          ]
+        ]
+      },
+      {
+        "point": [
+          -1.3343428350839697,
+          -0.5735081857351996
+        ],
+        "users": [
+          [
+            12,
+            "b"
+          ]
+        ]
+      },
+      {
+        "point": [
+          0.09499636896565826,
+          -0.6983060899921176
+        ],
+        "users": [
+          [
+            13,
+            "a"
+          ]
+        ]
+      },
+      {
+        "point": [
+          1.2084541706332137,
+          -0.6990953307809201
+        ],
+        "users": [
+          [
+            26,
+            "b"
+          ]
+        ]
+      },
+      {
+        "point": [
+          1.2084542466305432,
+          0.699095178786261
+        ],
+        "users": [
+          [
+            27,
+            "a"
+          ]
+        ]
+      },
+      {
+        "point": [
+          0.09499654716317747,
+          0.698306134966645
+        ],
+        "users": [
+          [
+            40,
+            "b"
+          ]
+        ]
+      },
+      {
+        "point": [
+          -1.2084542466305432,
+          0.6990953307809201
+        ],
+        "users": [
+          [
+            41,
+            "a"
+          ]
+        ]
+      },
+      {
+        "point": [
+          -0.09499660629935382,
+          0.6983061359717759
+        ],
+        "users": [
+          [
+            54,
+            "b"
+          ]
+        ]
+      },
+      {
+        "point": [
+          1.3343429110812992,
+          0.5735082617325291
+        ],
+        "users": [
+          [
+            55,
+            "a"
+          ]
+        ]
+      },
+      {
+        "point": [
+          1.3343427590866401,
+          -0.5735084137271882
+        ],
+        "users": [
+          [
+            67,
+            "b"
+          ]
+        ]
+      },
+      {
+        "point": [
+          -1.2084543226278728,
+          -0.699095178786261
+        ],
+        "users": [
+          [
+            68,
+            "a"
+          ]
+        ]
+      },
+      {
+        "point": [
+          -0.094996675094468,
+          -0.6983060909979582
+        ],
+        "users": [
+          [
+            81,
+            "b"
+          ]
+        ]
+      }
+    ]
+  },
+  "Q4_railDistribution": {
+    "end_negative": {
+      "count": 13,
+      "minLen": 0.008299953,
+      "maxLen": 1.061406721,
+      "indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    "long_negative_positive": {
+      "count": 14,
+      "minLen": 0.004286363,
+      "maxLen": 1.061882232,
+      "indices": [
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26
+      ]
+    },
+    "long_positive_positive": {
+      "count": 14,
+      "minLen": 0.00428641,
+      "maxLen": 1.061882327,
+      "indices": [
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40
+      ]
+    },
+    "long_positive_negative": {
+      "count": 14,
+      "minLen": 0.00428641,
+      "maxLen": 1.06188249,
+      "indices": [
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54
+      ]
+    },
+    "end_positive": {
+      "count": 13,
+      "minLen": 0.008299999,
+      "maxLen": 1.061406258,
+      "indices": [
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67
+      ]
+    },
+    "long_negative_negative": {
+      "count": 14,
+      "minLen": 0.004286363,
+      "maxLen": 1.06188232,
+      "indices": [
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81
+      ]
+    }
+  },
+  "extra_bounds": {
+    "minX": -1.334342835,
+    "maxX": 1.334342911,
+    "minY": -0.699095331,
+    "maxY": 0.699095331,
+    "extentX": 2.668685746,
+    "extentY": 1.398190662,
+    "expectedExtentX_if_segments_are_inner": 2.54,
+    "expectedExtentY_if_segments_are_inner": 1.270108866174597
+  }
+}

@@ -1,0 +1,421 @@
+{
+  "source": "Docs/Reference/table-metadata-reference.json",
+  "ballRadius": 0.028575,
+  "pocketProximityTriggerRadius": 0.089891635767169,
+  "note": "本文件为 spec §1.3 / §1.4 的证据来源；此前两份探针不含这些比对。",
+  "G1_longSegmentEndpointsVsMouthVertex": {
+    "count": 12,
+    "maxDeviation": 2.097191780498588e-06,
+    "entries": [
+      {
+        "segmentIndex": 47,
+        "rail": "long_positive_negative",
+        "endpoint": "a",
+        "point": [
+          -1.1689056522213814,
+          0.6350559294828279
+        ],
+        "length": 1.0618824902860418,
+        "nearestPocket": 3,
+        "nearestMouthVertex": "mouthA",
+        "deviation": 2.0006045911032103e-06
+      },
+      {
+        "segmentIndex": 47,
+        "rail": "long_positive_negative",
+        "endpoint": "b",
+        "point": [
+          -0.1070231619353572,
+          0.6350557369417338
+        ],
+        "length": 1.0618824902860418,
+        "nearestPocket": 4,
+        "nearestMouthVertex": "mouthA",
+        "deviation": 1.6048823735338512e-06
+      },
+      {
+        "segmentIndex": 33,
+        "rail": "long_positive_positive",
+        "endpoint": "a",
+        "point": [
+          1.1689054428507402,
+          0.6350554655442865
+        ],
+        "length": 1.0618823265642898,
+        "nearestPocket": 5,
+        "nearestMouthVertex": "mouthA",
+        "deviation": 1.6851575414743063e-06
+      },
+      {
+        "segmentIndex": 33,
+        "rail": "long_positive_positive",
+        "endpoint": "b",
+        "point": [
+          0.10702311628647564,
+          0.635055697622108
+        ],
+        "length": 1.0618823265642898,
+        "nearestPocket": 4,
+        "nearestMouthVertex": "mouthB",
+        "deviation": 1.5603772651984996e-06
+      },
+      {
+        "segmentIndex": 74,
+        "rail": "long_negative_negative",
+        "endpoint": "a",
+        "point": [
+          -1.1689056584117692,
+          -0.6350556228461098
+        ],
+        "length": 1.061882319910814,
+        "nearestPocket": 0,
+        "nearestMouthVertex": "mouthA",
+        "deviation": 1.8954475545467545e-06
+      },
+      {
+        "segmentIndex": 74,
+        "rail": "long_negative_negative",
+        "endpoint": "b",
+        "point": [
+          -0.10702333850095523,
+          -0.6350556189494356
+        ],
+        "length": 1.061882319910814,
+        "nearestPocket": 1,
+        "nearestMouthVertex": "mouthA",
+        "deviation": 1.4713266259122762e-06
+      },
+      {
+        "segmentIndex": 20,
+        "rail": "long_negative_positive",
+        "endpoint": "a",
+        "point": [
+          0.10702306486581856,
+          -0.6350555796288563
+        ],
+        "length": 1.0618822321811148,
+        "nearestPocket": 1,
+        "nearestMouthVertex": "mouthB",
+        "deviation": 1.4268179889182344e-06
+      },
+      {
+        "segmentIndex": 20,
+        "rail": "long_negative_positive",
+        "endpoint": "b",
+        "point": [
+          1.1689052970469327,
+          -0.6350556148516294
+        ],
+        "length": 1.0618822321811148,
+        "nearestPocket": 2,
+        "nearestMouthVertex": "mouthA",
+        "deviation": 1.579970956371136e-06
+      },
+      {
+        "segmentIndex": 6,
+        "rail": "end_negative",
+        "endpoint": "a",
+        "point": [
+          -1.2700014203981997,
+          0.5307035512393088
+        ],
+        "length": 1.0614067212550524,
+        "nearestPocket": 3,
+        "nearestMouthVertex": "mouthB",
+        "deviation": 2.097191780498588e-06
+      },
+      {
+        "segmentIndex": 6,
+        "rail": "end_negative",
+        "endpoint": "b",
+        "point": [
+          -1.2700014177622574,
+          -0.5307031700157436
+        ],
+        "length": 1.0614067212550524,
+        "nearestPocket": 0,
+        "nearestMouthVertex": "mouthB",
+        "deviation": 1.986972362577148e-06
+      },
+      {
+        "segmentIndex": 61,
+        "rail": "end_positive",
+        "endpoint": "a",
+        "point": [
+          1.2700012604191073,
+          0.5307030915345776
+        ],
+        "length": 1.061406257830203,
+        "nearestPocket": 5,
+        "nearestMouthVertex": "mouthB",
+        "deviation": 1.7664718585407608e-06
+      },
+      {
+        "segmentIndex": 61,
+        "rail": "end_positive",
+        "endpoint": "b",
+        "point": [
+          1.2700011057670013,
+          -0.5307031662956141
+        ],
+        "length": 1.061406257830203,
+        "nearestPocket": 2,
+        "nearestMouthVertex": "mouthB",
+        "deviation": 1.6562375339284515e-06
+      }
+    ]
+  },
+  "G2_danglingChainEndpointsVsPockets": {
+    "count": 12,
+    "triggerRadius": 0.089891635767169,
+    "triggerCount": 4,
+    "minDistToNearestKeyPoint": 0.02488085589391306,
+    "maxDistToNearestKeyPoint": 0.027625895948466442,
+    "minDistToAnyThroatCenter": 0.08986844504203181,
+    "maxDistToAnyThroatCenter": 0.09505191035403318,
+    "entries": [
+      {
+        "point": [
+          -1.3343428350839697,
+          -0.5735081857351996
+        ],
+        "pocket0_throatCenter": 0.09004722673451594,
+        "pocket1_throatCenter": 1.339867941639071,
+        "pocket2_throatCenter": 2.6163519806818023,
+        "pocket3_throatCenter": 1.2207316535981083,
+        "pocket4_throatCenter": 1.841125937552013,
+        "pocket5_throatCenter": 2.885719155947415,
+        "nearestKeyPoint": {
+          "distance": 0.024942180692733046,
+          "pocket": 0,
+          "key": "throatB"
+        },
+        "minDistToAnyThroatCenter": 0.09004722673451594,
+        "triggersPocketProximity": false
+      },
+      {
+        "point": [
+          -1.3343426830893106,
+          0.5735084897245177
+        ],
+        "pocket0_throatCenter": 1.2207317558628217,
+        "pocket1_throatCenter": 1.8411259507902575,
+        "pocket2_throatCenter": 2.8857191236458584,
+        "pocket3_throatCenter": 0.09004711238171871,
+        "pocket4_throatCenter": 1.3398678809477316,
+        "pocket5_throatCenter": 2.6163519290000448,
+        "nearestKeyPoint": {
+          "distance": 0.024942106357106017,
+          "pocket": 3,
+          "key": "throatB"
+        },
+        "minDistToAnyThroatCenter": 0.09004711238171871,
+        "triggersPocketProximity": false
+      },
+      {
+        "point": [
+          -1.2084543226278728,
+          -0.699095178786261
+        ],
+        "pocket0_throatCenter": 0.089868498143239,
+        "pocket1_throatCenter": 1.20846090516629,
+        "pocket2_throatCenter": 2.4900223219568693,
+        "pocket3_throatCenter": 1.3471077349419542,
+        "pocket4_throatCenter": 1.8450040808053598,
+        "pocket5_throatCenter": 2.8296349869825743,
+        "nearestKeyPoint": {
+          "distance": 0.02488085589391306,
+          "pocket": 0,
+          "key": "throatA"
+        },
+        "minDistToAnyThroatCenter": 0.089868498143239,
+        "triggersPocketProximity": true
+      },
+      {
+        "point": [
+          -1.2084542466305432,
+          0.6990953307809201
+        ],
+        "pocket0_throatCenter": 1.3471077072305777,
+        "pocket1_throatCenter": 1.8450040681050786,
+        "pocket2_throatCenter": 2.8296349824045213,
+        "pocket3_throatCenter": 0.08986844504203181,
+        "pocket4_throatCenter": 1.2084609484204614,
+        "pocket5_throatCenter": 2.4900223672312984,
+        "nearestKeyPoint": {
+          "distance": 0.02488085589391306,
+          "pocket": 3,
+          "key": "throatA"
+        },
+        "minDistToAnyThroatCenter": 0.08986844504203181,
+        "triggersPocketProximity": true
+      },
+      {
+        "point": [
+          -0.094996675094468,
+          -0.6983060909979582
+        ],
+        "pocket0_throatCenter": 1.1871568549705365,
+        "pocket1_throatCenter": 0.09505185889931592,
+        "pocket2_throatCenter": 1.3769913735649861,
+        "pocket3_throatCenter": 1.7927422744942645,
+        "pocket4_throatCenter": 1.3966041049684077,
+        "pocket5_throatCenter": 1.9237174429884956,
+        "nearestKeyPoint": {
+          "distance": 0.02762570524221034,
+          "pocket": 1,
+          "key": "throatA"
+        },
+        "minDistToAnyThroatCenter": 0.09505185889931592,
+        "triggersPocketProximity": false
+      },
+      {
+        "point": [
+          -0.09499660629935382,
+          0.6983061359717759
+        ],
+        "pocket0_throatCenter": 1.7927422866725338,
+        "pocket1_throatCenter": 1.3966041370816726,
+        "pocket2_throatCenter": 1.9237174764449398,
+        "pocket3_throatCenter": 1.187156803430919,
+        "pocket4_throatCenter": 0.09505191035403318,
+        "pocket5_throatCenter": 1.3769914276489215,
+        "nearestKeyPoint": {
+          "distance": 0.027625895948466442,
+          "pocket": 4,
+          "key": "throatA"
+        },
+        "minDistToAnyThroatCenter": 0.09505191035403318,
+        "triggersPocketProximity": false
+      },
+      {
+        "point": [
+          0.09499636896565826,
+          -0.6983060899921176
+        ],
+        "pocket0_throatCenter": 1.3769911887414807,
+        "pocket1_throatCenter": 0.09505183860438611,
+        "pocket2_throatCenter": 1.187157038511011,
+        "pocket3_throatCenter": 1.923717274552265,
+        "pocket4_throatCenter": 1.3966040864320368,
+        "pocket5_throatCenter": 1.7927424092032374,
+        "nearestKeyPoint": {
+          "distance": 0.027625684991867596,
+          "pocket": 1,
+          "key": "throatB"
+        },
+        "minDistToAnyThroatCenter": 0.09505183860438611,
+        "triggersPocketProximity": false
+      },
+      {
+        "point": [
+          0.09499654716317747,
+          0.698306134966645
+        ],
+        "pocket0_throatCenter": 1.9237173822085012,
+        "pocket1_throatCenter": 1.3966041515003078,
+        "pocket2_throatCenter": 1.7927423921002585,
+        "pocket3_throatCenter": 1.3769912473941706,
+        "pocket4_throatCenter": 0.09505189955695624,
+        "pocket5_throatCenter": 1.1871569847129981,
+        "nearestKeyPoint": {
+          "distance": 0.027625885135874054,
+          "pocket": 4,
+          "key": "throatB"
+        },
+        "minDistToAnyThroatCenter": 0.09505189955695624,
+        "triggersPocketProximity": false
+      },
+      {
+        "point": [
+          1.2084541706332137,
+          -0.6990953307809201
+        ],
+        "pocket0_throatCenter": 2.490022291251211,
+        "pocket1_throatCenter": 1.2084610395343822,
+        "pocket2_throatCenter": 0.08986850639303057,
+        "pocket3_throatCenter": 2.829634915543562,
+        "pocket4_throatCenter": 1.8450041277838665,
+        "pocket5_throatCenter": 1.3471077113234422,
+        "nearestKeyPoint": {
+          "distance": 0.02488085589391306,
+          "pocket": 2,
+          "key": "throatA"
+        },
+        "minDistToAnyThroatCenter": 0.08986850639303057,
+        "triggersPocketProximity": true
+      },
+      {
+        "point": [
+          1.2084542466305432,
+          0.699095178786261
+        ],
+        "pocket0_throatCenter": 2.829634920121611,
+        "pocket1_throatCenter": 1.845004140484157,
+        "pocket2_throatCenter": 1.347107739034808,
+        "pocket3_throatCenter": 2.4900222459767813,
+        "pocket4_throatCenter": 1.2084609962802106,
+        "pocket5_throatCenter": 0.08986855949423363,
+        "nearestKeyPoint": {
+          "distance": 0.02488085589391306,
+          "pocket": 5,
+          "key": "throatA"
+        },
+        "minDistToAnyThroatCenter": 0.08986855949423363,
+        "triggersPocketProximity": true
+      },
+      {
+        "point": [
+          1.3343427590866401,
+          -0.5735084137271882
+        ],
+        "pocket0_throatCenter": 2.616352007075484,
+        "pocket1_throatCenter": 1.3398681299489081,
+        "pocket2_throatCenter": 0.09004721862836716,
+        "pocket3_throatCenter": 2.8857191604046455,
+        "pocket4_throatCenter": 1.8411260746181477,
+        "pocket5_throatCenter": 1.2207316832587565,
+        "nearestKeyPoint": {
+          "distance": 0.024942180692733153,
+          "pocket": 2,
+          "key": "throatB"
+        },
+        "minDistToAnyThroatCenter": 0.09004721862836716,
+        "triggersPocketProximity": false
+      },
+      {
+        "point": [
+          1.3343429110812992,
+          0.5735082617325291
+        ],
+        "pocket0_throatCenter": 2.885719256942358,
+        "pocket1_throatCenter": 1.841126166107223,
+        "pocket2_throatCenter": 1.2207317328435527,
+        "pocket3_throatCenter": 2.6163520545425634,
+        "pocket4_throatCenter": 1.3398681768510299,
+        "pocket5_throatCenter": 0.09004721052224966,
+        "nearestKeyPoint": {
+          "distance": 0.02494210635710591,
+          "pocket": 5,
+          "key": "throatB"
+        },
+        "minDistToAnyThroatCenter": 0.09004721052224966,
+        "triggersPocketProximity": false
+      }
+    ]
+  },
+  "G3_allSegmentEndpointsVsMouthVertex": {
+    "count": 164,
+    "min": 1.4268179889182344e-06,
+    "median": 0.064385154817859,
+    "max": 0.08953018241823615,
+    "countWithin1e-5m": 24,
+    "countBeyond1e-3m": 140,
+    "histogram": {
+      "<=1e-5": 24,
+      "1e-5..1e-4": 0,
+      "1e-4..1e-3": 0,
+      ">1e-3": 140
+    }
+  }
+}

@@ -1,0 +1,864 @@
+{
+  "source": "Docs/Reference/table-metadata-reference.json",
+  "A_longestSegments": [
+    {
+      "orientation": "horizontal",
+      "aY": 0.6350559294828279,
+      "bY": 0.6350557369417338,
+      "distanceToNearestInnerLine": 1.4963955293767484e-06,
+      "nearestInnerLine": 0.6350544330872985,
+      "index": 47,
+      "rail": "long_positive_negative",
+      "a": [
+        -1.1689056522213814,
+        0.6350559294828279
+      ],
+      "b": [
+        -0.1070231619353572,
+        0.6350557369417338
+      ],
+      "length": 1.0618824902860418
+    },
+    {
+      "orientation": "horizontal",
+      "aY": 0.6350554655442865,
+      "bY": 0.635055697622108,
+      "distanceToNearestInnerLine": 1.032456988014907e-06,
+      "nearestInnerLine": 0.6350544330872985,
+      "index": 33,
+      "rail": "long_positive_positive",
+      "a": [
+        1.1689054428507402,
+        0.6350554655442865
+      ],
+      "b": [
+        0.10702311628647564,
+        0.635055697622108
+      ],
+      "length": 1.0618823265642898
+    },
+    {
+      "orientation": "horizontal",
+      "aY": -0.6350556228461098,
+      "bY": -0.6350556189494356,
+      "distanceToNearestInnerLine": 1.1897588113596314e-06,
+      "nearestInnerLine": -0.6350544330872985,
+      "index": 74,
+      "rail": "long_negative_negative",
+      "a": [
+        -1.1689056584117692,
+        -0.6350556228461098
+      ],
+      "b": [
+        -0.10702333850095523,
+        -0.6350556189494356
+      ],
+      "length": 1.061882319910814
+    },
+    {
+      "orientation": "horizontal",
+      "aY": -0.6350555796288563,
+      "bY": -0.6350556148516294,
+      "distanceToNearestInnerLine": 1.1465415578060245e-06,
+      "nearestInnerLine": -0.6350544330872985,
+      "index": 20,
+      "rail": "long_negative_positive",
+      "a": [
+        0.10702306486581856,
+        -0.6350555796288563
+      ],
+      "b": [
+        1.1689052970469327,
+        -0.6350556148516294
+      ],
+      "length": 1.0618822321811148
+    },
+    {
+      "orientation": "vertical",
+      "aX": -1.2700014203981997,
+      "bX": -1.2700014177622574,
+      "distanceToNearestInnerLine": 1.4203981997251702e-06,
+      "nearestInnerLine": -1.27,
+      "index": 6,
+      "rail": "end_negative",
+      "a": [
+        -1.2700014203981997,
+        0.5307035512393088
+      ],
+      "b": [
+        -1.2700014177622574,
+        -0.5307031700157436
+      ],
+      "length": 1.0614067212550524
+    },
+    {
+      "orientation": "vertical",
+      "aX": 1.2700012604191073,
+      "bX": 1.2700011057670013,
+      "distanceToNearestInnerLine": 1.2604191073073423e-06,
+      "nearestInnerLine": 1.27,
+      "index": 61,
+      "rail": "end_positive",
+      "a": [
+        1.2700012604191073,
+        0.5307030915345776
+      ],
+      "b": [
+        1.2700011057670013,
+        -0.5307031662956141
+      ],
+      "length": 1.061406257830203
+    }
+  ],
+  "B_chains": {
+    "chainCount": 6,
+    "nodesTotal": 88,
+    "degreeHistogram": {
+      "1": 12,
+      "2": 76
+    },
+    "endsCount": 12,
+    "chains": [
+      {
+        "chainIndex": 0,
+        "segmentCount": 13,
+        "segmentIndices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "totalLength": 1.293570677,
+        "railtagSet": [
+          "end_negative"
+        ],
+        "start": {
+          "node": 0,
+          "point": [
+            -1.3343426830893106,
+            0.5735084897245177
+          ],
+          "nearPocket": {
+            "pocket": 3,
+            "distance": 0.024942106
+          }
+        },
+        "end": {
+          "node": 13,
+          "point": [
+            -1.3343428350839697,
+            -0.5735081857351996
+          ],
+          "nearPocket": {
+            "pocket": 0,
+            "distance": 0.024942181
+          }
+        }
+      },
+      {
+        "chainIndex": 1,
+        "segmentCount": 14,
+        "segmentIndices": [
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26
+        ],
+        "totalLength": 1.276032195,
+        "railtagSet": [
+          "long_negative_positive"
+        ],
+        "start": {
+          "node": 14,
+          "point": [
+            0.09499636896565826,
+            -0.6983060899921176
+          ],
+          "nearPocket": {
+            "pocket": 1,
+            "distance": 0.027625685
+          }
+        },
+        "end": {
+          "node": 28,
+          "point": [
+            1.2084541706332137,
+            -0.6990953307809201
+          ],
+          "nearPocket": {
+            "pocket": 2,
+            "distance": 0.024880856
+          }
+        }
+      },
+      {
+        "chainIndex": 2,
+        "segmentCount": 14,
+        "segmentIndices": [
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40
+        ],
+        "totalLength": 1.276034404,
+        "railtagSet": [
+          "long_positive_positive"
+        ],
+        "start": {
+          "node": 29,
+          "point": [
+            1.2084542466305432,
+            0.699095178786261
+          ],
+          "nearPocket": {
+            "pocket": 5,
+            "distance": 0.024880856
+          }
+        },
+        "end": {
+          "node": 43,
+          "point": [
+            0.09499654716317747,
+            0.698306134966645
+          ],
+          "nearPocket": {
+            "pocket": 4,
+            "distance": 0.027625885
+          }
+        }
+      },
+      {
+        "chainIndex": 3,
+        "segmentCount": 14,
+        "segmentIndices": [
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54
+        ],
+        "totalLength": 1.2760342,
+        "railtagSet": [
+          "long_positive_negative"
+        ],
+        "start": {
+          "node": 44,
+          "point": [
+            -1.2084542466305432,
+            0.6990953307809201
+          ],
+          "nearPocket": {
+            "pocket": 3,
+            "distance": 0.024880856
+          }
+        },
+        "end": {
+          "node": 58,
+          "point": [
+            -0.09499660629935382,
+            0.6983061359717759
+          ],
+          "nearPocket": {
+            "pocket": 4,
+            "distance": 0.027625896
+          }
+        }
+      },
+      {
+        "chainIndex": 4,
+        "segmentCount": 13,
+        "segmentIndices": [
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67
+        ],
+        "totalLength": 1.293570934,
+        "railtagSet": [
+          "end_positive"
+        ],
+        "start": {
+          "node": 59,
+          "point": [
+            1.3343429110812992,
+            0.5735082617325291
+          ],
+          "nearPocket": {
+            "pocket": 5,
+            "distance": 0.024942106
+          }
+        },
+        "end": {
+          "node": 72,
+          "point": [
+            1.3343427590866401,
+            -0.5735084137271882
+          ],
+          "nearPocket": {
+            "pocket": 2,
+            "distance": 0.024942181
+          }
+        }
+      },
+      {
+        "chainIndex": 5,
+        "segmentCount": 14,
+        "segmentIndices": [
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81
+        ],
+        "totalLength": 1.276033937,
+        "railtagSet": [
+          "long_negative_negative"
+        ],
+        "start": {
+          "node": 73,
+          "point": [
+            -1.2084543226278728,
+            -0.699095178786261
+          ],
+          "nearPocket": {
+            "pocket": 0,
+            "distance": 0.024880856
+          }
+        },
+        "end": {
+          "node": 87,
+          "point": [
+            -0.094996675094468,
+            -0.6983060909979582
+          ],
+          "nearPocket": {
+            "pocket": 1,
+            "distance": 0.027625705
+          }
+        }
+      }
+    ]
+  },
+  "C_windingUniformity": [
+    {
+      "chainIndex": 0,
+      "forward": 13,
+      "backward": 0,
+      "uniform": true,
+      "pattern": "FFFFFFFFFFFFF"
+    },
+    {
+      "chainIndex": 1,
+      "forward": 14,
+      "backward": 0,
+      "uniform": true,
+      "pattern": "FFFFFFFFFFFFFF"
+    },
+    {
+      "chainIndex": 2,
+      "forward": 14,
+      "backward": 0,
+      "uniform": true,
+      "pattern": "FFFFFFFFFFFFFF"
+    },
+    {
+      "chainIndex": 3,
+      "forward": 14,
+      "backward": 0,
+      "uniform": true,
+      "pattern": "FFFFFFFFFFFFFF"
+    },
+    {
+      "chainIndex": 4,
+      "forward": 13,
+      "backward": 0,
+      "uniform": true,
+      "pattern": "FFFFFFFFFFFFF"
+    },
+    {
+      "chainIndex": 5,
+      "forward": 14,
+      "backward": 0,
+      "uniform": true,
+      "pattern": "FFFFFFFFFFFFFF"
+    }
+  ],
+  "D_anchorInheritance": [
+    {
+      "chainIndex": 0,
+      "anchorSegment": 6,
+      "anchorLength": 1.061406721,
+      "anchorInteriorSign": 1,
+      "mismatchCount": 4,
+      "mismatchIndices": [
+        0,
+        1,
+        11,
+        12
+      ],
+      "mismatchDetail": [
+        {
+          "index": 0,
+          "length": 0.011056740316173925,
+          "midRadius": 1.453919225
+        },
+        {
+          "index": 1,
+          "length": 0.013957782172537214,
+          "midRadius": 1.456449162
+        },
+        {
+          "index": 11,
+          "length": 0.013957818720357437,
+          "midRadius": 1.456449201
+        },
+        {
+          "index": 12,
+          "length": 0.011056778023222724,
+          "midRadius": 1.453919251
+        }
+      ]
+    },
+    {
+      "chainIndex": 1,
+      "anchorSegment": 20,
+      "anchorLength": 1.061882232,
+      "anchorInteriorSign": 1,
+      "mismatchCount": 8,
+      "mismatchIndices": [
+        13,
+        14,
+        15,
+        22,
+        23,
+        24,
+        25,
+        26
+      ],
+      "mismatchDetail": [
+        {
+          "index": 13,
+          "length": 0.01379354583886792,
+          "midRadius": 0.703841552
+        },
+        {
+          "index": 14,
+          "length": 0.01013240834266905,
+          "midRadius": 0.702033782
+        },
+        {
+          "index": 15,
+          "length": 0.004286363004093909,
+          "midRadius": 0.699713331
+        },
+        {
+          "index": 22,
+          "length": 0.03182370232075324,
+          "midRadius": 1.361760496
+        },
+        {
+          "index": 23,
+          "length": 0.0300901805573712,
+          "midRadius": 1.391580442
+        },
+        {
+          "index": 24,
+          "length": 0.010355546799975475,
+          "midRadius": 1.410392767
+        },
+        {
+          "index": 25,
+          "length": 0.013917158026954488,
+          "midRadius": 1.409926612
+        },
+        {
+          "index": 26,
+          "length": 0.01103894237289328,
+          "midRadius": 1.40054803
+        }
+      ]
+    },
+    {
+      "chainIndex": 2,
+      "anchorSegment": 33,
+      "anchorLength": 1.061882327,
+      "anchorInteriorSign": 1,
+      "mismatchCount": 8,
+      "mismatchIndices": [
+        27,
+        28,
+        29,
+        30,
+        31,
+        38,
+        39,
+        40
+      ],
+      "mismatchDetail": [
+        {
+          "index": 27,
+          "length": 0.01103893399983072,
+          "midRadius": 1.400548039
+        },
+        {
+          "index": 28,
+          "length": 0.013917178063255665,
+          "midRadius": 1.409926622
+        },
+        {
+          "index": 29,
+          "length": 0.010355526613270799,
+          "midRadius": 1.410392769
+        },
+        {
+          "index": 30,
+          "length": 0.030083045996805276,
+          "midRadius": 1.391583952
+        },
+        {
+          "index": 31,
+          "length": 0.03183074034665025,
+          "midRadius": 1.361764056
+        },
+        {
+          "index": 38,
+          "length": 0.0042864095222864395,
+          "midRadius": 0.699713382
+        },
+        {
+          "index": 39,
+          "length": 0.010132589811166985,
+          "midRadius": 0.702033864
+        },
+        {
+          "index": 40,
+          "length": 0.013793572763654097,
+          "midRadius": 0.703841617
+        }
+      ]
+    },
+    {
+      "chainIndex": 3,
+      "anchorSegment": 47,
+      "anchorLength": 1.06188249,
+      "anchorInteriorSign": -1,
+      "mismatchCount": 8,
+      "mismatchIndices": [
+        41,
+        42,
+        43,
+        44,
+        45,
+        52,
+        53,
+        54
+      ],
+      "mismatchDetail": [
+        {
+          "index": 41,
+          "length": 0.011038933999830709,
+          "midRadius": 1.400548115
+        },
+        {
+          "index": 42,
+          "length": 0.013917178063255695,
+          "midRadius": 1.409926697
+        },
+        {
+          "index": 43,
+          "length": 0.010355518026154024,
+          "midRadius": 1.410392833
+        },
+        {
+          "index": 44,
+          "length": 0.030082875686818767,
+          "midRadius": 1.391584096
+        },
+        {
+          "index": 45,
+          "length": 0.03183062033280269,
+          "midRadius": 1.361764346
+        },
+        {
+          "index": 52,
+          "length": 0.004286409909752871,
+          "midRadius": 0.699713388
+        },
+        {
+          "index": 53,
+          "length": 0.010132599590081356,
+          "midRadius": 0.702033871
+        },
+        {
+          "index": 54,
+          "length": 0.013793574187990149,
+          "midRadius": 0.703841625
+        }
+      ]
+    },
+    {
+      "chainIndex": 4,
+      "anchorSegment": 61,
+      "anchorLength": 1.061406258,
+      "anchorInteriorSign": -1,
+      "mismatchCount": 4,
+      "mismatchIndices": [
+        55,
+        56,
+        66,
+        67
+      ],
+      "mismatchDetail": [
+        {
+          "index": 55,
+          "length": 0.011056740316173925,
+          "midRadius": 1.453919344
+        },
+        {
+          "index": 56,
+          "length": 0.013957782172537106,
+          "midRadius": 1.456449278
+        },
+        {
+          "index": 66,
+          "length": 0.013957818720357545,
+          "midRadius": 1.456449224
+        },
+        {
+          "index": 67,
+          "length": 0.011056778023222724,
+          "midRadius": 1.453919272
+        }
+      ]
+    },
+    {
+      "chainIndex": 5,
+      "anchorSegment": 74,
+      "anchorLength": 1.06188232,
+      "anchorInteriorSign": 1,
+      "mismatchCount": 8,
+      "mismatchIndices": [
+        68,
+        69,
+        70,
+        71,
+        72,
+        79,
+        80,
+        81
+      ],
+      "mismatchDetail": [
+        {
+          "index": 68,
+          "length": 0.011038942372893292,
+          "midRadius": 1.400548086
+        },
+        {
+          "index": 69,
+          "length": 0.013917158026954458,
+          "midRadius": 1.409926669
+        },
+        {
+          "index": 70,
+          "length": 0.010355538212722446,
+          "midRadius": 1.410392815
+        },
+        {
+          "index": 71,
+          "length": 0.03008291044274949,
+          "midRadius": 1.391584052
+        },
+        {
+          "index": 72,
+          "length": 0.03183071109479887,
+          "midRadius": 1.361764249
+        },
+        {
+          "index": 79,
+          "length": 0.004286363391669199,
+          "midRadius": 0.69971336
+        },
+        {
+          "index": 80,
+          "length": 0.01013242759244203,
+          "midRadius": 0.702033815
+        },
+        {
+          "index": 81,
+          "length": 0.01379354726407819,
+          "midRadius": 0.703841591
+        }
+      ]
+    }
+  ],
+  "E_boundsExtremes": {
+    "maxX": {
+      "point": [
+        1.3343429110812992,
+        0.5735082617325291
+      ],
+      "segmentIndex": 55,
+      "tag": "a",
+      "segmentLength": 0.011056740316173925,
+      "rail": "end_positive"
+    },
+    "minX": {
+      "point": [
+        -1.3343428350839697,
+        -0.5735081857351996
+      ],
+      "segmentIndex": 12,
+      "tag": "b",
+      "segmentLength": 0.011056778023222724,
+      "rail": "end_negative"
+    },
+    "maxY": {
+      "point": [
+        -1.2084542466305432,
+        0.6990953307809201
+      ],
+      "segmentIndex": 41,
+      "tag": "a",
+      "segmentLength": 0.011038933999830709,
+      "rail": "long_positive_negative"
+    },
+    "minY": {
+      "point": [
+        1.2084541706332137,
+        -0.6990953307809201
+      ],
+      "segmentIndex": 26,
+      "tag": "b",
+      "segmentLength": 0.01103894237289328,
+      "rail": "long_negative_positive"
+    }
+  },
+  "F_shortSegmentLengths": {
+    "count": 76,
+    "distinctLengths": [
+      0.004286363,
+      0.00428641,
+      0.008299953,
+      0.008299992,
+      0.008299999,
+      0.008300038,
+      0.010132408,
+      0.010132428,
+      0.01013259,
+      0.0101326,
+      0.010355518,
+      0.010355527,
+      0.010355538,
+      0.010355547,
+      0.010372042,
+      0.010372051,
+      0.010372055,
+      0.010372064,
+      0.011038934,
+      0.011038942,
+      0.01105674,
+      0.011056778,
+      0.011586431,
+      0.011689308,
+      0.011689341,
+      0.011689705,
+      0.013793546,
+      0.013793547,
+      0.013793573,
+      0.013793574,
+      0.013917158,
+      0.013917178,
+      0.013957782,
+      0.013957819,
+      0.01601422,
+      0.016014225,
+      0.016014232,
+      0.01601428,
+      0.018236472,
+      0.018236479,
+      0.018236514,
+      0.018236567,
+      0.02526334,
+      0.025263345,
+      0.025263356,
+      0.025263366,
+      0.025374684,
+      0.02537505,
+      0.02547607,
+      0.030082876,
+      0.03008291,
+      0.030083046,
+      0.030090181,
+      0.031823702,
+      0.03183062,
+      0.031830711,
+      0.03183074,
+      0.032089918,
+      0.032090038,
+      0.032097304,
+      0.032098623,
+      0.032432382,
+      0.032433955,
+      0.032441018,
+      0.032441142
+    ],
+    "minLength": 0.004286363,
+    "maxLength": 0.032441142
+  }
+}
