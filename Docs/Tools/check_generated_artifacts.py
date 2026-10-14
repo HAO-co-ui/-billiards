@@ -73,6 +73,120 @@ def f32(x):
     return struct.unpack("<f", struct.pack("<f", float(x)))[0]
 
 
+# ---------------------------------------------------------------------------
+# 语义指纹（G3 用）
+# ---------------------------------------------------------------------------
+# 为什么不用「源码 sha」：本项目已多次发生「只改注释 / 只改文案」的合法改动，
+# 纯源码哈希会**持续假红** ⇒ 假红多了就被无视 ⇒ 橡皮图章。
+# 语义指纹 = **去掉注释 + 去掉字符串字面量** 后的规范化源码哈希：
+#   · 改注释        ⇒ 指纹不变（不红）
+#   · 改字符串字面量 ⇒ 指纹不变（导出文案类改动不红）
+#   · 改逻辑/数值字面量 ⇒ 指纹改变（红）
+# 注：`$"...{expr}..."` 插值字符串的 `{expr}` 会被当作字符串内容一并去掉，
+#     这是**已知的假阴性**（改插值表达式不红）；本轮接受，登记为盲区。
+
+def _strip_c_like(text):
+    """去掉 C# 风格注释与字符串字面量（保留字面量占位，保留其余字符）。"""
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if c == "/" and nxt == "/":              # 行注释（含 ///）
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if c == "/" and nxt == "*":              # 块注释
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        if c == "@" and nxt == "\"":             # verbatim 字符串 @"..."
+            out.append("@\"\"")
+            i += 2
+            while i < n:
+                if text[i] == "\"":
+                    if i + 1 < n and text[i + 1] == "\"":
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                i += 1
+            continue
+        if c == "\"" or c == "'":                # 普通字符串 / 字符字面量
+            quote = c
+            out.append("\"\"" if quote == "\"" else "''")
+            i += 1
+            while i < n:
+                if text[i] == "\\":
+                    i += 2
+                    continue
+                if text[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _strip_python(text):
+    """去掉 Python 注释与字符串字面量（含三引号）。"""
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        trip = text[i:i + 3]
+        if c == "#":                             # 行注释
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if trip in ('"""', "'''"):               # 三引号字符串
+            j = text.find(trip, i + 3)
+            out.append("\"\"\"\"\"\"")
+            i = n if j < 0 else j + 3
+            continue
+        if c == "\"" or c == "'":                # 普通字符串
+            quote = c
+            j = i + 1
+            while j < n:
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == quote:
+                    break
+                j += 1
+            out.append("\"\"" if quote == "\"" else "''")
+            i = j + 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def semantic_fingerprint(path):
+    """返回「去注释 + 去字符串字面量 + 去空行/行首尾空白」后的 sha256。"""
+    text = read_text(path)
+    stripped = _strip_python(text) if path.endswith(".py") else _strip_c_like(text)
+    stripped = stripped.replace("\r\n", "\n").replace("\r", "\n")
+    norm = "\n".join(ln.strip() for ln in stripped.split("\n") if ln.strip())
+    return hashlib.sha256(norm.encode("utf-8")).hexdigest()
+
+
+def is_placeholder_generator(gen):
+    """形如 `<unity test runner>` 的占位生成器：非文件，无法做逻辑指纹。"""
+    return gen.startswith("<") and gen.endswith(">")
+
+
+def manifest_generators(entry):
+    """取一条清单的生成器集合（兼容旧的单个 `generator` 字段）。"""
+    if "generators" in entry:
+        return list(entry["generators"])
+    return [entry["generator"]]
+
+
 def read_text(path):
     return open(path, "r", encoding="utf-8").read()
 
@@ -123,43 +237,79 @@ class Finding:
 FBX = "Assets/_Project/Art/Models/PoolTable_Normalized.fbx"
 TEX = "Assets/_Project/Art/Textures"
 
+# 生成器集合（缺陷 1：治「盲点」）。
+# 一个产物的内容可能由**多个文件**共同决定；只登记「主入口」会留下盲点——
+# 例如 day1-verification.json 的 RUN-01 文案来自 BilliardsProjectSetup.cs（不在旧清单里），
+# 于是改了它守卫也不会红。故 A 类产物用 `generators` 列出**所有能改变其内容的文件**。
+#
+# coverage 的含义：
+#   complete  —— 已逐文件读过生产路径，认为集合完备
+#   partial   —— 已补上能确认的文件，但仍存在**未核完**的间接依赖（见 COVERAGE_NOTES）
 MANIFEST = [
     dict(path="Docs/Reports/d2t02a-baseline.json", klass="A",
-         generator="Docs/Tools/verify_collision_data.py",
+         generators=["Docs/Tools/verify_collision_data.py"],
          reads=[f"{SRC}/table-metadata-reference.json", f"{SRC}/gameplay-markers-reference.json"],
-         content="baseline_vs_source"),
+         content="baseline_vs_source", coverage="complete"),
     dict(path="Docs/Reports/d2t02b-crosscheck.json", klass="B",
          generator="Docs/Tools/_gen_crosscheck_json.py", reads=[],
          content="crosscheck_fields"),
     dict(path="Assets/_Project/Data/TableConfig.asset", klass="A",
-         generator="Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs",
+         generators=["Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs"],
          reads=["Docs/Reference/table-metadata-reference.json"],
-         content=None, stamp=("generator", "TableDataImporter.v1")),
+         content=None, stamp=("generator", "TableDataImporter.v1"), coverage="partial"),
     dict(path=f"{TEX}/table_metallic_roughness.png", klass="A",
-         generator="Assets/_Project/Scripts/Editor/Import/TableTextureChannelPacker.cs",
+         generators=["Assets/_Project/Scripts/Editor/Import/TableTextureChannelPacker.cs"],
          reads=[f"{TEX}/table_metallic.png", f"{TEX}/table_roughness.png"],
-         content="packed_mask"),
+         content="packed_mask", coverage="complete"),
     dict(path="Docs/Reports/d2t02b-mesh-audit.json", klass="A",
-         generator="Assets/_Project/Tests/EditMode/MeshAlignmentAuditTests.cs",
-         reads=["Assets/_Project/Data/TableConfig.asset", FBX], content=None),
+         generators=["Assets/_Project/Tests/EditMode/MeshAlignmentAuditTests.cs"],
+         reads=["Assets/_Project/Data/TableConfig.asset", FBX], content=None, coverage="partial"),
     dict(path="Docs/Reports/day2-axis-probe.json", klass="A",
-         generator="Assets/_Project/Scripts/Editor/TableImport/AxisProbe.cs",
-         reads=[FBX], content=None),
+         generators=["Assets/_Project/Scripts/Editor/TableImport/AxisProbe.cs"],
+         reads=[FBX], content=None, coverage="complete"),
+    # day1 的生成器集合：所有能改变其内容的文件（本轮逐文件核对后补齐）。
+    # 旧清单只列了 BilliardsProjectVerifier.cs —— 那正是「盲点」：RUN-01 文案、产品名、
+    # 必需动作表、模板残留清单来自 BilliardsProjectSetup.cs；schema/序列化来自
+    # ProjectSetupReport.cs；LYR-01/02 期望值来自 BilliardsLayers.cs；SCN-04 计数来自
+    # PhysicsBanAudit.cs；ASM-04 实测值来自 PoolConstants.cs。
     dict(path="Docs/Reports/day1-verification.json", klass="A",
-         generator="Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsProjectVerifier.cs",
-         reads=["<Unity project>"], content=None),
+         generators=["Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsProjectVerifier.cs",
+                     "Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsProjectSetup.cs",
+                     "Assets/_Project/Scripts/Editor/ProjectSetup/ProjectSetupReport.cs",
+                     "Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsLayers.cs",
+                     "Assets/_Project/Scripts/Diagnostics/PhysicsBanAudit.cs",
+                     "Assets/_Project/Scripts/Runtime/Core/PoolConstants.cs"],
+         reads=["<Unity project>"], content=None, coverage="complete"),
     dict(path="Docs/Reports/day2-verification.json", klass="A",
-         generator="Assets/_Project/Scripts/Editor/TableImport/TableIntegrityValidator.cs",
-         reads=["<Unity project>"], content=None),
+         generators=["Assets/_Project/Scripts/Editor/TableImport/TableIntegrityValidator.cs",
+                     "Assets/_Project/Scripts/Editor/Import/BilliardsAssetPostprocessor.cs"],
+         reads=["<Unity project>"], content=None, coverage="partial"),
+    # day3：**写者其实是 MaterialVisualValidator.cs**，旧清单误记为 MaterialVisualSetup.cs
+    # （后者只构建材质/场景/Prefab，不写报告；但它改变被校验对象 ⇒ 仍影响内容）。两个都收。
     dict(path="Docs/Reports/day3-verification.json", klass="A",
-         generator="Assets/_Project/Scripts/Editor/Visual/MaterialVisualSetup.cs",
-         reads=["<Unity project>"], content=None),
+         generators=["Assets/_Project/Scripts/Editor/Visual/MaterialVisualValidator.cs",
+                     "Assets/_Project/Scripts/Editor/Visual/MaterialVisualSetup.cs"],
+         reads=["<Unity project>"], content=None, coverage="partial"),
     dict(path="Docs/Reports/day2-import.json", klass="A",
-         generator="Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs",
-         reads=["Docs/Reference/table-metadata-reference.json"], content=None),
+         generators=["Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs"],
+         reads=["Docs/Reference/table-metadata-reference.json"], content=None, coverage="complete"),
     dict(path="Docs/Reports/d2t02b-editmode-tests.xml", klass="A",
          generator="<unity test runner>", reads=["<Unity test assemblies>"], content=None),
 ]
+
+# 生成器集合的**未核完声明**（缺陷 1 的诚实边界）。
+COVERAGE_NOTES = {
+    "Assets/_Project/Data/TableConfig.asset":
+        "未核完：TableConfig.cs（Runtime 序列化契约）未纳入集合——它改变字段集会使资产过期，本轮未做自证。",
+    "Docs/Reports/d2t02b-mesh-audit.json":
+        "未核完：断言口径与 TableIntegrityValidator 共享 MeshAlignmentMetrics；共享实现变动本轮未覆盖。",
+    "Docs/Reports/day2-verification.json":
+        "未核完：AXL 三层度量经 PoolGeometry.ModelVertexToUnity；PoolGeometry.cs 变动本轮未纳入（其内容重算留 hook）。",
+    "Docs/Reports/day3-verification.json":
+        "未核完：校验读回的材质/场景由 BilliardsAssetPostprocessor.cs 与 PoolGeometry.cs 共同影响，本轮未纳入。",
+    "Docs/Reports/day1-verification.json":
+        "已核：6 个生成器逐文件读过生产路径。未纳入 ReportOutput.cs（只决定落盘位置、不决定内容）。",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -397,36 +547,80 @@ def guard_G2_A_sourcefpr(root):
 
 
 def guard_G3_A_logicfpr(root):
-    """A 类逻辑指纹：生成器源码 sha 必须等于台账记录；戳变/未变分别报。"""
+    """A 类生成器【集合】的语义指纹守卫。
+
+    三层检查（任一命中即 FAIL）：
+      ① 覆盖完备性：MANIFEST 声明的生成器集合 必须 == 台账记录的集合。
+         —— 这是「缺陷 1（盲点）」的牙：从集合里**删掉一项**也会红。
+      ② key 可解析：生成器文件必须存在、且台账里**必须有它的 key**。
+         —— 这是「缺陷 2（静默跳过）」的牙：取不到 key 不再 `continue`，而是 FAIL。
+      ③ 语义漂移：生成器**语义指纹**（去注释+去字符串字面量）必须等于台账记录。
+    """
     findings = []
     led = load_ledger(root)
     if led is None:
         return [Finding("G3(A逻辑指纹)", "SKIP", "无台账（先 --write-ledger）")]
+    led_gens = led.get("generators", {})
+    coverage = led.get("artifactGenerators", {})
+    checked = set()
     for a in MANIFEST:
         if a["klass"] != "A":
             continue
-        gen = a["generator"]
-        gp = os.path.join(root, gen)
-        if not os.path.exists(gp):
+        artifact = a["path"]
+        gens = manifest_generators(a)
+        real = [g for g in gens if not is_placeholder_generator(g)]
+        if not real:
+            findings.append(Finding("G3(A逻辑指纹)", "SKIP",
+                                    f"{artifact}：生成器为占位符（{gens[0]}），无法做逻辑指纹——已登记盲区"))
             continue
-        cur = sha256_file(gp)
-        entry = led.get("generators", {}).get(gen)
-        if entry is None:
-            continue
-        if cur != entry["sha256"]:
+
+        # ① 覆盖完备性
+        man_set = set(gens)
+        led_set = set(coverage.get(artifact, []))
+        if man_set != led_set:
             f = Finding("G3(A逻辑指纹)", "FAIL",
-                        f"生成器逻辑已变：{gen}（台账 {entry['sha256'][:16]} → 现 {cur[:16]}）")
-            f.detail = [f"受影响生成物：{a['path']}"]
-            # 若带戳且戳未变 → 正是"逻辑变、戳未变"窗口
-            if "stamp" in a:
-                field, expect = a["stamp"]
-                mm = re.search(rf"{field}:\s*(\S+)", read_text(os.path.join(root, a["path"])))
-                got = mm.group(1) if mm else None
-                if got == entry.get("stamp"):
-                    f.msg += "；且版本戳未变 ⇒ 资产会静默停留旧版（正是目标窗口）"
+                        f"生成器集合与台账不一致（生成器集合不完备 / 被削）：{artifact}")
+            f.detail = [f"清单独有（台账未覆盖）：{sorted(man_set - led_set)}",
+                        f"台账独有（清单已删项）：{sorted(led_set - man_set)}",
+                        "⇒ 生成物处于「部分无守卫」状态（缺陷 1）。"]
             findings.append(f)
+
+        # ② key 可解析 + ③ 语义漂移
+        for gen in gens:
+            if is_placeholder_generator(gen):
+                continue
+            gp = os.path.join(root, gen)
+            if not os.path.exists(gp):
+                f = Finding("G3(A逻辑指纹)", "FAIL", f"生成器文件缺失（key 无法解析）：{gen}")
+                f.detail = [f"受影响生成物：{artifact}"]
+                findings.append(f)
+                continue
+            entry = led_gens.get(gen)
+            if entry is None:
+                f = Finding("G3(A逻辑指纹)", "FAIL", f"生成器在台账中无记录（key 缺失）：{gen}")
+                f.detail = [f"受影响生成物：{artifact}",
+                            "台账无该 key ⇒ 无基线可比较（缺陷 2：旧实现会静默 continue，永不检查）。"]
+                findings.append(f)
+                continue
+            base = entry.get("semantic_sha256") or entry.get("sha256")
+            cur = semantic_fingerprint(gp)
+            checked.add(gen)
+            if cur != base:
+                f = Finding("G3(A逻辑指纹)", "FAIL",
+                            f"生成器语义已变：{gen}（台账 {base[:16]} → 现 {cur[:16]}）")
+                f.detail = [f"受影响生成物：{artifact}",
+                            "语义指纹 = 去注释 + 去字符串字面量；改注释/改文案不在此列。"]
+                if "stamp" in a:
+                    field, _ = a["stamp"]
+                    mm = re.search(rf"{field}:\s*(\S+)", read_text(os.path.join(root, artifact)))
+                    got = mm.group(1) if mm else None
+                    if got == entry.get("stamp"):
+                        f.msg += "；且版本戳未变 ⇒ 资产会静默停留旧版（正是目标窗口）"
+                findings.append(f)
+
     if not any(f.status == "FAIL" for f in findings):
-        findings.append(Finding("G3(A逻辑指纹)", "PASS", "所有 A 类生成器逻辑指纹与台账一致"))
+        findings.append(Finding("G3(A逻辑指纹)", "PASS",
+                                f"所有 A 类生成器集合完备且语义指纹与台账一致（去注释+去字符串字面量；共 {len(checked)} 个生成器）"))
     return findings
 
 
@@ -469,8 +663,10 @@ BLIND_SPOTS = {
         "check6_fieldCoverage 的定性结论（rail 保留等）—— 部分可机检（rail=82），其余为分析文字",
     ],
     "G2/G3(A源/逻辑指纹) 未覆盖": [
-        "只能证明『生成器源码未变』，不能证明『生成逻辑语义正确』（改注释也会使指纹变 → 假阳性）",
-        "台账本身若被误更新，守卫随之失效（台账需人工审查后更新）",
+        "G3 的语义指纹 = 去注释 + 去字符串字面量 + 规范化空白；仍**不能**证明『生成逻辑语义正确』",
+        "假阴性：`$\"...{expr}...\"` 插值字符串里的表达式会被整段当作字符串去掉 ⇒ 改插值表达式不红",
+        "假阴性：改『非注释、非字面量』的重命名（局部变量名等）会使指纹变红（对语义无影响的假阳性，但属安全侧）",
+        "台账本身若被误更新（含 artifactGenerators 被削），守卫随之失效（台账需人工审查后更新）",
     ],
     "G4(A内容) 未覆盖": [
         "TableConfig.asset 的内容正确性需 Unity 重生成 → 本轮只做文件层（源sha+逻辑指纹），内容重算留 hook",
@@ -481,8 +677,15 @@ BLIND_SPOTS = {
 
 
 def guard_G5_evidence_snapshot(root):
-    """证据内嵌指纹 vs 现行仓库。语义：证据是『时刻 T 的快照』，允许随仓库演进变化；
-    但一旦变化，必须刷新或注明——否则证据的溯源信息已不再描述当前仓库。"""
+    """证据内嵌指纹 vs 现行仓库。语义：证据是『时刻 T 的快照』，允许随仓库演进变化。
+
+    ★ 本守卫对「现行仓库」的敏感度是**恒红**的：`anchorsActuallyObserved` 是某时刻的快照，
+    任何被锚文件（含纯注释改动）变动它就不同 ⇒ 在持续演进的仓库里**永远红**。
+    而永远红 = 被无视 = 橡皮图章。故 **降级为 WARN**（不计入 FAIL、不挂闸门）。
+
+    降级后仍要求：刷新证据时记录**刷新时刻 + 对应提交**（见 `Docs/Reports/d2t02b-crosscheck.json`
+    的 `anchorsActuallyObserved` 与刷新记录）。本守卫只负责**提醒**「快照已过期，需刷新或注明」。
+    """
     f = Finding("G5(证据快照vs现行)", "PASS", "证据内嵌指纹与现行仓库一致")
     cp = os.path.join(root, "Docs/Reports/d2t02b-crosscheck.json")
     if not os.path.exists(cp):
@@ -504,8 +707,10 @@ def guard_G5_evidence_snapshot(root):
         if cur16 != rec.get("sha256_16") or cursz != rec.get("bytes"):
             miss.append((fn, f"{rec.get('sha256_16')}/{rec.get('bytes')}", f"{cur16}/{cursz}"))
     if miss:
-        f.status = "FAIL"
-        f.msg = f"证据内嵌指纹已与现行仓库不符 {len(miss)} 处（上游变动 ⇒ 快照过期，需刷新或注明）"
+        # WARN（非 FAIL）：快照过期是**常态**，只提示、不阻断。见函数 docstring 的降级理由。
+        f.status = "WARN"
+        f.msg = (f"证据内嵌指纹已与现行仓库不符 {len(miss)} 处"
+                 f"（上游变动 ⇒ 快照过期，需刷新或注明；WARN 不计入 FAIL）")
         f.detail = [f"{a}: 证据={b} 现行={c}" for (a, b, c) in miss]
     return f
 
@@ -535,11 +740,14 @@ def print_report(findings):
     npass = sum(1 for f in findings if f.status == "PASS")
     nfail = sum(1 for f in findings if f.status == "FAIL")
     nskip = sum(1 for f in findings if f.status == "SKIP")
+    nwarn = sum(1 for f in findings if f.status == "WARN")
     for f in findings:
         print(str(f))
         for d in f.detail[:60]:
             print("      " + str(d))
-    print(f"\n小结：PASS={npass} FAIL={nfail} SKIP={nskip}")
+    print(f"\n小结：PASS={npass} FAIL={nfail} SKIP={nskip} WARN={nwarn}")
+    print("说明：**WARN 不计入 FAIL**（G5 证据快照为「时刻 T 快照」，在演进仓库中恒变，"
+          "故降级为提示）。FAIL 才是需要处置的项。")
 
 
 # ---------------------------------------------------------------------------
@@ -550,27 +758,31 @@ def self_test():
     print("反向用例（每条守卫必须能 FAIL）")
     print("=" * 78)
     tmp = tempfile.mkdtemp(prefix="d2t04_")
-    # 造一个最小镜像：复制被守卫读取的构件（含证据内嵌指纹所指向的文件）
-    for rel in ["Docs/Reports/d2t02b-crosscheck.json", "Docs/Reports/d2t02a-baseline.json",
-                "Docs/Reports/d2t02b-editmode-tests.xml",
-                "Assets/_Project/Data/TableConfig.asset",
-                f"{TEX}/table_metallic_roughness.png", f"{TEX}/table_metallic.png",
-                f"{TEX}/table_roughness.png", f"{TEX}/table_normal.png",
-                "Docs/Reference/table-metadata-reference.json", LEDGER_REL,
-                "Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs",
-                "Assets/_Project/Scripts/Editor/Import/TableTextureChannelPacker.cs",
-                "Assets/_Project/Scripts/Editor/TableImport/TableIntegrityValidator.cs",
-                "Assets/_Project/Scripts/Editor/Import/BilliardsAssetPostprocessor.cs",
-                "Assets/_Project/Scripts/Runtime/Table/TableConfig.cs",
-                "Assets/_Project/Scripts/Runtime/Core/PoolGeometry.cs",
-                "Assets/_Project/Tests/EditMode/TableConfigTests.cs",
-                "Assets/_Project/Tests/EditMode/MeshAlignmentAuditTests.cs"]:
-            src = os.path.join(REPO, rel)
-            if not os.path.exists(src):
-                continue
-            dst = os.path.join(tmp, rel)
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
+    # 造一个最小镜像：复制被守卫读取的构件（含**所有清单生成器**与证据内嵌指纹所指文件）。
+    # 生成器集合由 MANIFEST 派生，避免手抄漏项导致基线里混入「生成器文件缺失」的假 FAIL。
+    to_copy = {
+        "Docs/Reports/d2t02b-crosscheck.json", "Docs/Reports/d2t02a-baseline.json",
+        "Docs/Reports/d2t02b-editmode-tests.xml",
+        "Assets/_Project/Data/TableConfig.asset",
+        f"{TEX}/table_metallic_roughness.png", f"{TEX}/table_metallic.png",
+        f"{TEX}/table_roughness.png", f"{TEX}/table_normal.png",
+        "Docs/Reference/table-metadata-reference.json", LEDGER_REL,
+        "Assets/_Project/Scripts/Runtime/Table/TableConfig.cs",
+        "Assets/_Project/Scripts/Runtime/Core/PoolGeometry.cs",
+        "Assets/_Project/Tests/EditMode/TableConfigTests.cs",
+    }
+    for _a in MANIFEST:
+        to_copy.add(_a["path"])
+        for _g in manifest_generators(_a):
+            if not is_placeholder_generator(_g):
+                to_copy.add(_g)
+    for rel in sorted(to_copy):
+        src = os.path.join(REPO, rel)
+        if not os.path.exists(src):
+            continue
+        dst = os.path.join(tmp, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(src, dst)
 
     results = []
 
@@ -579,12 +791,16 @@ def self_test():
     base_fails = sorted(x.guard for x in base_f if x.status == "FAIL")
     print(f"（基线：未篡改时 FAIL 集合 = {base_fails}；阴性对照将与之比较）")
 
-    def run_case(name, tamper, restore_rel, pick):
-        """立即执行：篡改 → run_all → 取守卫 → 复原。"""
+    def run_case(name, tamper, restore_rel, pick, expect="FAIL"):
+        """立即执行：篡改 → run_all → 取守卫 → 复原。`expect` 为该用例应观察到的状态。"""
         tamper()
         f, _ = run_all(tmp)
-        g = next(x for x in f if x.guard.startswith(pick))
-        results.append((name, g.status, ([g.msg] + g.detail)[:4]))
+        # 同一守卫可能有多个 finding（如 G3 的占位符 SKIP + 汇总 PASS/FAIL）——
+        # 取**最严重**的一条，否则会被 SKIP 抢占。
+        rank = {"FAIL": 0, "WARN": 1, "PASS": 2, "SKIP": 3}
+        cands = [x for x in f if x.guard.startswith(pick)]
+        g = min(cands, key=lambda x: rank.get(x.status, 9))
+        results.append((name, g.status, ([g.msg] + g.detail)[:4], expect))
         if restore_rel:
             shutil.copy2(os.path.join(REPO, restore_rel), os.path.join(tmp, restore_rel))
 
@@ -605,8 +821,14 @@ def self_test():
         open(p, "w", encoding="utf-8", newline="\n").write(t)
 
     def t_a2():
+        # 语义漂移：追加一行**真实代码**（非注释、非字符串）⇒ 语义指纹必变。
         p = os.path.join(tmp, GEN)
-        open(p, "a", encoding="utf-8").write("\n// tamper: logic changed, stamp unchanged\n")
+        open(p, "a", encoding="utf-8").write("\nprivate const int TamperProbe = 1;\n")
+
+    def t_a2c():
+        # 只改注释 ⇒ 语义指纹**不应**变（修复「只改注释也红」的假阳性）。
+        p = os.path.join(tmp, GEN)
+        open(p, "a", encoding="utf-8").write("\n// tamper: comment only, semantics unchanged\n")
 
     def t_a3():
         p = os.path.join(tmp, BL)
@@ -615,22 +837,24 @@ def self_test():
 
     run_case("RC-B1 篡改 json 字段 parsedSegments 82→81", t_b1, CJ, "G1(B内容)")
     run_case("RC-A1 伪造 TableConfig.asset 源 sha", t_a1, AS, "G2(")
-    run_case("RC-A2 改生成器源码(逻辑变/戳不变)", t_a2, GEN, "G3(")
+    run_case("RC-A2 改生成器源码(语义变/戳不变)", t_a2, GEN, "G3(")
+    run_case("RC-A2c 生成器只改注释(语义不变⇒不红)", t_a2c, GEN, "G3(", expect="PASS")
     run_case("RC-A3 篡改 baseline 字段 ball_radius", t_a3, BL, "G4a")
 
     # 阴性对照：与"基线 FAIL 集合"一致 ⇒ 篡改全部被复原，无残留、无假阳性
     f, _ = run_all(tmp)
     cur_fails = sorted(x.guard for x in f if x.status == "FAIL")
     results.append(("CLEAN 未篡改（FAIL 集合应 == 基线）", "PASS" if cur_fails == base_fails else "FAIL",
-                    [f"基线={base_fails}", f"现={cur_fails}"]))
+                    [f"基线={base_fails}", f"现={cur_fails}"], "PASS"))
 
-    print("\n| 反向用例 | 观察到的状态 | 明细 |")
-    print("| --- | --- | --- |")
+    print("\n| 反向用例 | 观察到的状态 | 期望 | 明细 |")
+    print("| --- | --- | --- | --- |")
     ok = True
-    for name, st, det in results:
-        print(f"| {name} | {st} | {det} |")
-        ok &= (st == "PASS") if name.startswith("CLEAN") else (st == "FAIL")
-    print(f"\n自证{'通过' if ok else '未通过'}：每条守卫在注入漂移时都观察到了 FAIL，未篡改时 PASS。")
+    for name, st, det, expect in results:
+        print(f"| {name} | {st} | {expect} | {det} |")
+        ok &= (st == expect)
+    print(f"\n自证{'通过' if ok else '未通过'}：注入漂移时观察 FAIL、只改注释时观察 PASS、"
+          f"未篡改时 FAIL 集合 == 基线。")
     shutil.rmtree(tmp, ignore_errors=True)
     return 0 if ok else 1
 
@@ -638,29 +862,49 @@ def self_test():
 def write_ledger():
     import datetime
     gens = {}
+    coverage = {}
+    served = {}          # gen -> [artifact...]（同一生成器可服务多个生成物）
     for a in MANIFEST:
         if a["klass"] != "A":
             continue
-        gp = os.path.join(REPO, a["generator"])
-        if not os.path.exists(gp):
+        gset = manifest_generators(a)
+        real = [g for g in gset if not is_placeholder_generator(g)]
+        if not real:
             continue
-        stamp = None
-        if "stamp" in a:
-            field, _ = a["stamp"]
-            mm = re.search(rf"{field}:\s*(\S+)", read_text(os.path.join(REPO, a["path"])))
-            stamp = mm.group(1) if mm else None
-        gens[a["generator"]] = {"sha256": sha256_file(gp), "bytes": os.path.getsize(gp),
-                                "stamp": stamp, "verifiedWith": a["path"]}
-    led = {"schema": "idea35.generator-fingerprints.v1",
+        coverage[a["path"]] = sorted(gset)
+        for gen in gset:
+            if is_placeholder_generator(gen):
+                continue
+            gp = os.path.join(REPO, gen)
+            if not os.path.exists(gp):
+                print(f"  [警告] 生成器缺失，未入台账：{gen}（受影响生成物 {a['path']}）")
+                continue
+            stamp = None
+            if "stamp" in a:
+                field, _ = a["stamp"]
+                mm = re.search(rf"{field}:\s*(\S+)", read_text(os.path.join(REPO, a["path"])))
+                stamp = mm.group(1) if mm else None
+            served.setdefault(gen, [])
+            if a["path"] not in served[gen]:
+                served[gen].append(a["path"])
+            gens[gen] = {"semantic_sha256": semantic_fingerprint(gp),
+                         "raw_sha256": sha256_file(gp),
+                         "bytes": os.path.getsize(gp),
+                         "stamp": stamp, "verifiedWith": sorted(served[gen])}
+    led = {"schema": "idea35.generator-fingerprints.v2",
            "recordedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-           "note": "生成器逻辑指纹台账：生成器源码 sha 变化即视为『逻辑漂移』，需人工复核后刷新本台账。",
-           "generators": gens}
+           "fingerprint": "semantic-v1 = sha256( 去注释 + 去字符串字面量 + 去空行/行首尾空白 )",
+           "note": ("生成器语义指纹台账：改注释/改字符串字面量**不**算漂移；"
+                    "改逻辑/数值字面量即视为『语义漂移』，需人工复核后刷新本台账。"
+                    "artifactGenerators 记录每个生成物的**生成器集合**（改集合也会红）。"),
+           "generators": gens,
+           "artifactGenerators": coverage}
     p = os.path.join(REPO, LEDGER_REL)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     open(p, "w", encoding="utf-8", newline="\n").write(json.dumps(led, ensure_ascii=False, indent=1))
     print("台账已写入：" + p)
     for k, v in gens.items():
-        print(f"  {v['sha256'][:16]}  {k}")
+        print(f"  {v['semantic_sha256'][:16]}  {k}   [{v['verifiedWith']}]")
 
 
 def emit_json(findings, path, with_fbx):
@@ -673,10 +917,13 @@ def emit_json(findings, path, with_fbx):
             "pass": sum(1 for f in findings if f.status == "PASS"),
             "fail": sum(1 for f in findings if f.status == "FAIL"),
             "skip": sum(1 for f in findings if f.status == "SKIP"),
+            "warn": sum(1 for f in findings if f.status == "WARN"),
+            "note": "WARN 不计入 FAIL",
         },
         "findings": [{"guard": f.guard, "status": f.status, "message": f.msg, "detail": f.detail}
                      for f in findings],
         "blindSpots": BLIND_SPOTS,
+        "generatorCoverageNotes": COVERAGE_NOTES,
     }
     d = os.path.dirname(path)
     if d:

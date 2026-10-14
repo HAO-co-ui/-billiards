@@ -1,9 +1,9 @@
 {
     "schema": "billiards.day2-import.v1",
-    "generatedAtUtc": "2026-10-13T03:56:50.8280720Z",
+    "generatedAtUtc": "2026-10-14T14:29:05.9530335Z",
     "unityVersion": "6000.0.49f1",
     "isBatchMode": true,
     "exitCode": 0,
     "succeeded": true,
-    "summary": "================ Billiards Day-2 数据导入 ================\r\n[SKIPPED-UPTODATE] 内容未变（源 sha256/生成器版本/计数均匹配），跳过重写。\r\n  sourceSha256 : ba60fc204c155881127b500bcce2f388066151757984659f89e681c2ef364398\r\n  segments     : 82\r\n  pockets      : 6\r\n  innerLength  : 2.54 m\r\n  innerWidth   : 1.27010882 m\r\n  ballRadius   : 0.028575 m\r\n  asset        : Assets/_Project/Data/TableConfig.asset\r\n=========================================================\r\n"
+    "summary": "================ Billiards 数据导入 ================\r\n[SKIPPED-UPTODATE] 内容未变（源 sha256/生成器版本/计数均匹配），跳过重写。\r\n  sourceSha256 : ba60fc204c155881127b500bcce2f388066151757984659f89e681c2ef364398\r\n  segments     : 82\r\n  pockets      : 6\r\n  innerLength  : 2.54 m\r\n  innerWidth   : 1.27010882 m\r\n  ballRadius   : 0.028575 m\r\n  asset        : Assets/_Project/Data/TableConfig.asset\r\n=========================================================\r\n"
 }

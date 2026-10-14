@@ -1,55 +1,180 @@
 {
- "schema": "idea35.generator-fingerprints.v1",
- "recordedAt": "2026-10-13T05:45:44.894293+00:00",
- "note": "生成器逻辑指纹台账：生成器源码 sha 变化即视为『逻辑漂移』，需人工复核后刷新本台账。",
+ "schema": "idea35.generator-fingerprints.v2",
+ "recordedAt": "2026-10-14T14:24:45.279076+00:00",
+ "fingerprint": "semantic-v1 = sha256( 去注释 + 去字符串字面量 + 去空行/行首尾空白 )",
+ "note": "生成器语义指纹台账：改注释/改字符串字面量**不**算漂移；改逻辑/数值字面量即视为『语义漂移』，需人工复核后刷新本台账。artifactGenerators 记录每个生成物的**生成器集合**（改集合也会红）。",
  "generators": {
   "Docs/Tools/verify_collision_data.py": {
-   "sha256": "4aaeeba5f18873b44fa0490b5c2c6a378bdf9fadfa740285dd4019fdd3da0215",
-   "bytes": 28629,
+   "semantic_sha256": "f930e3964970a49b692e5421745c336edf6661046d96a10250658e5138cc6dec",
+   "raw_sha256": "8543424cda191bfcbf7f7b7a253e5845547ecbab933a4a942efbdf8d380e4268",
+   "bytes": 28609,
    "stamp": null,
-   "verifiedWith": "Docs/Reports/d2t02a-baseline.json"
+   "verifiedWith": [
+    "Docs/Reports/d2t02a-baseline.json"
+   ]
   },
   "Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs": {
-   "sha256": "19c6b8320f3b05ea13c36acef820dbd44007fad90795a7391d64aff9d14504b1",
-   "bytes": 17844,
+   "semantic_sha256": "17cda8fece8ed8ac715be6fab161637dd9054b0083cedfdc0048d9bbd39880b7",
+   "raw_sha256": "227fb7713b28f6a655c4b41228c06ca95397ed53f475b3ff68e0bbc6877ba096",
+   "bytes": 19046,
    "stamp": null,
-   "verifiedWith": "Docs/Reports/day2-import.json"
+   "verifiedWith": [
+    "Assets/_Project/Data/TableConfig.asset",
+    "Docs/Reports/day2-import.json"
+   ]
   },
   "Assets/_Project/Scripts/Editor/Import/TableTextureChannelPacker.cs": {
-   "sha256": "cc64c689abd04ccaf608ec452f965bc01e123b1cbdf93e9f4a7982c8e8b91315",
-   "bytes": 5784,
+   "semantic_sha256": "8c4c2bfd15a4b5c67b98dfcc466d81aa4e0113f1607a1519c0511c510ea6fadc",
+   "raw_sha256": "cb40f244e58f1c461ae5a00aa9d17979d7c5dbcf4c3e52a41fd9732414d22c1b",
+   "bytes": 5778,
    "stamp": null,
-   "verifiedWith": "Assets/_Project/Art/Textures/table_metallic_roughness.png"
+   "verifiedWith": [
+    "Assets/_Project/Art/Textures/table_metallic_roughness.png"
+   ]
   },
-  "Assets/_Project/Tests/EditMode/D2T02B_IndependentAuditTests.cs": {
-   "sha256": "27494a89393d418c279d43265c006f37449045c746afdc33e938ae787c075d7d",
-   "bytes": 17320,
+  "Assets/_Project/Tests/EditMode/MeshAlignmentAuditTests.cs": {
+   "semantic_sha256": "a48ee73e3139ed7b1abb5fa5017fb0dfb52b16ab5c1937b6fe35db0b09100dc9",
+   "raw_sha256": "bce82ab03d65a3d8474c119895b4060dde5120aeeb5f693ddd7b8129e987c188",
+   "bytes": 20344,
    "stamp": null,
-   "verifiedWith": "Docs/Reports/d2t02b-mesh-audit.json"
+   "verifiedWith": [
+    "Docs/Reports/d2t02b-mesh-audit.json"
+   ]
   },
   "Assets/_Project/Scripts/Editor/TableImport/AxisProbe.cs": {
-   "sha256": "31dc1667388af60f537bba01c96cf407198d1b22e32f546c7623a2a7d7ce45d1",
+   "semantic_sha256": "8914e8ef8b35e552ad93ae9fad67894139b41490a9ad45e32b010d410c4f9c69",
+   "raw_sha256": "31dc1667388af60f537bba01c96cf407198d1b22e32f546c7623a2a7d7ce45d1",
    "bytes": 8810,
    "stamp": null,
-   "verifiedWith": "Docs/Reports/day2-axis-probe.json"
+   "verifiedWith": [
+    "Docs/Reports/day2-axis-probe.json"
+   ]
   },
   "Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsProjectVerifier.cs": {
-   "sha256": "df2bd933088e317dd105a63ba69fcb3039967489c29c281e8ab61becd40c4f07",
-   "bytes": 18875,
+   "semantic_sha256": "a5d38d06f908d704617c623846b195c30c1bd66a9d32d2c0032875e3abba13c1",
+   "raw_sha256": "f8350eabe20ee9236cab9021210dc272e7b732e5cd760ebd21ab374f8ab3d4e1",
+   "bytes": 19159,
    "stamp": null,
-   "verifiedWith": "Docs/Reports/day1-verification.json"
+   "verifiedWith": [
+    "Docs/Reports/day1-verification.json"
+   ]
+  },
+  "Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsProjectSetup.cs": {
+   "semantic_sha256": "bdb45add2b58fa2929255a234b88b88bc70216a5315c2f5e2cfb0a5ab23044d7",
+   "raw_sha256": "af47485b2357e4e9e80a408d8757e4e15b02cd91226f399dde7c8475051253c4",
+   "bytes": 13904,
+   "stamp": null,
+   "verifiedWith": [
+    "Docs/Reports/day1-verification.json"
+   ]
+  },
+  "Assets/_Project/Scripts/Editor/ProjectSetup/ProjectSetupReport.cs": {
+   "semantic_sha256": "b0282681f4167ea3c5bbfb9a363e9a414b215be46616d54c605e998f50157167",
+   "raw_sha256": "044cc546ae865d28e32bd2fd8741c0f98d8e5e09599476e663c7c59209a44f37",
+   "bytes": 7206,
+   "stamp": null,
+   "verifiedWith": [
+    "Docs/Reports/day1-verification.json"
+   ]
+  },
+  "Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsLayers.cs": {
+   "semantic_sha256": "a62b473956ddc0678f0f50c67edb09f181857181052443cc8f1c84470f120082",
+   "raw_sha256": "4daf5e43ef0d607d1a03745e7784dedad8437f802e1bbedb52f2d2a079b23766",
+   "bytes": 1519,
+   "stamp": null,
+   "verifiedWith": [
+    "Docs/Reports/day1-verification.json"
+   ]
+  },
+  "Assets/_Project/Scripts/Diagnostics/PhysicsBanAudit.cs": {
+   "semantic_sha256": "d37a26d9432c14d4b95c13eb843ac9c23b5af2e7be6144d4e42b7b7babadd97e",
+   "raw_sha256": "366b3d2c4c599d575634661892a5a8aa5946f9d3808da106232bbd8f357e2162",
+   "bytes": 10598,
+   "stamp": null,
+   "verifiedWith": [
+    "Docs/Reports/day1-verification.json"
+   ]
+  },
+  "Assets/_Project/Scripts/Runtime/Core/PoolConstants.cs": {
+   "semantic_sha256": "f43b2d4f19b8c1255e76c9787ba782fb9f686b0c8cbdbd6be322377f397318e9",
+   "raw_sha256": "5054b8049574dd87f31b6590facd161261cd7cc04d4bd657ff1d6dfcfec73e8d",
+   "bytes": 5754,
+   "stamp": null,
+   "verifiedWith": [
+    "Docs/Reports/day1-verification.json"
+   ]
   },
   "Assets/_Project/Scripts/Editor/TableImport/TableIntegrityValidator.cs": {
-   "sha256": "30fdebeeff702f637e91b455369202cc00552d4e142b05285bb34fb6ed092cd4",
-   "bytes": 57391,
+   "semantic_sha256": "f6cccc0ceeb3e73ab50bbd864d2fd614608e91572392622243b991ac30fa18e7",
+   "raw_sha256": "365ec144dc13a134b10753b5b8d182820fd2693144f67dcfc9d30785cf3c85d5",
+   "bytes": 54178,
    "stamp": null,
-   "verifiedWith": "Docs/Reports/day2-verification.json"
+   "verifiedWith": [
+    "Docs/Reports/day2-verification.json"
+   ]
   },
-  "Assets/_Project/Scripts/Editor/Visual/Day3VisualSetup.cs": {
-   "sha256": "c274d498a59b6724d29c57cb7dcb873b2adaa959b4f2c17b6e9d3fb4a97690d9",
-   "bytes": 20223,
+  "Assets/_Project/Scripts/Editor/Import/BilliardsAssetPostprocessor.cs": {
+   "semantic_sha256": "d482b796a16fb5934eed10dc6b7a8a2e535a4bfdaa3d85734c284c94cb0de484",
+   "raw_sha256": "b7287ec906e322c1c1549d8d5e4fabf2ad22c699f38ee42f3df0f03df7c7ef9b",
+   "bytes": 9058,
    "stamp": null,
-   "verifiedWith": "Docs/Reports/day3-verification.json"
+   "verifiedWith": [
+    "Docs/Reports/day2-verification.json"
+   ]
+  },
+  "Assets/_Project/Scripts/Editor/Visual/MaterialVisualValidator.cs": {
+   "semantic_sha256": "317bd3b355a48ffaf6aa6c6d548468db81af6c6fad84d9b73dabf5b5274b1b2e",
+   "raw_sha256": "1780cbf521407415840f9507c5b8e150a0ec1e04a2e89a55e8405b6969713976",
+   "bytes": 42268,
+   "stamp": null,
+   "verifiedWith": [
+    "Docs/Reports/day3-verification.json"
+   ]
+  },
+  "Assets/_Project/Scripts/Editor/Visual/MaterialVisualSetup.cs": {
+   "semantic_sha256": "6d81f93f5cc49c0e9e7b503cc2ccaf516cff60f068a0df96da83b5e0574c9e48",
+   "raw_sha256": "f5ffa072e18d6204b3d4f8dffda9ff27f08c254db6d7d6032fdfa69ca7fb08be",
+   "bytes": 20245,
+   "stamp": null,
+   "verifiedWith": [
+    "Docs/Reports/day3-verification.json"
+   ]
   }
+ },
+ "artifactGenerators": {
+  "Docs/Reports/d2t02a-baseline.json": [
+   "Docs/Tools/verify_collision_data.py"
+  ],
+  "Assets/_Project/Data/TableConfig.asset": [
+   "Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs"
+  ],
+  "Assets/_Project/Art/Textures/table_metallic_roughness.png": [
+   "Assets/_Project/Scripts/Editor/Import/TableTextureChannelPacker.cs"
+  ],
+  "Docs/Reports/d2t02b-mesh-audit.json": [
+   "Assets/_Project/Tests/EditMode/MeshAlignmentAuditTests.cs"
+  ],
+  "Docs/Reports/day2-axis-probe.json": [
+   "Assets/_Project/Scripts/Editor/TableImport/AxisProbe.cs"
+  ],
+  "Docs/Reports/day1-verification.json": [
+   "Assets/_Project/Scripts/Diagnostics/PhysicsBanAudit.cs",
+   "Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsLayers.cs",
+   "Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsProjectSetup.cs",
+   "Assets/_Project/Scripts/Editor/ProjectSetup/BilliardsProjectVerifier.cs",
+   "Assets/_Project/Scripts/Editor/ProjectSetup/ProjectSetupReport.cs",
+   "Assets/_Project/Scripts/Runtime/Core/PoolConstants.cs"
+  ],
+  "Docs/Reports/day2-verification.json": [
+   "Assets/_Project/Scripts/Editor/Import/BilliardsAssetPostprocessor.cs",
+   "Assets/_Project/Scripts/Editor/TableImport/TableIntegrityValidator.cs"
+  ],
+  "Docs/Reports/day3-verification.json": [
+   "Assets/_Project/Scripts/Editor/Visual/MaterialVisualSetup.cs",
+   "Assets/_Project/Scripts/Editor/Visual/MaterialVisualValidator.cs"
+  ],
+  "Docs/Reports/day2-import.json": [
+   "Assets/_Project/Scripts/Editor/TableImport/TableDataImporter.cs"
+  ]
  }
 }

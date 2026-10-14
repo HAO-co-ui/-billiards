@@ -1,6 +1,6 @@
 {
     "schema": "billiards.day1-verification.v1",
-    "generatedAtUtc": "2026-10-13T03:27:28.0889919Z",
+    "generatedAtUtc": "2026-10-14T14:28:13.5091004Z",
     "unityVersion": "6000.0.49f1",
     "activeBuildTarget": "StandaloneWindows64",
     "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
@@ -212,7 +212,7 @@
         },
         {
             "id": "RUN-01",
-            "title": "Day-1 配置应用流程执行完毕",
+            "title": "工程配置应用流程执行完毕",
             "expected": "无异常抛出",
             "actual": "无异常",
             "status": "PASS",

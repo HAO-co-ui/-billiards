@@ -1,6 +1,6 @@
 {
     "schema": "billiards.day2-verification.v1",
-    "generatedAtUtc": "2026-10-13T05:10:15.5729265Z",
+    "generatedAtUtc": "2026-10-14T14:28:41.7639204Z",
     "unityVersion": "6000.0.49f1",
     "activeBuildTarget": "StandaloneWindows64",
     "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
@@ -184,7 +184,7 @@
             "expected": "< 1E-004 m",
             "actual": "实测 0.000000 mm",
             "status": "PASS",
-            "detail": "**只验落在网格面上**；对沿面内滑动**全盲**（点仍在面上），**不作位移判据**。此前的 0.26 mm 来自旧口径“最近顶点”的采样下限，非几何错位。"
+            "detail": "**只验落在网格面上**；**对足迹内滑动盲**（点仍在网格内），但**对掉出网格（袋孔、掉出外轮廓）敏感** —— **不作位移判据**。此前的 0.26 mm 来自旧口径“最近顶点”的采样下限，非几何错位。"
         },
         {
             "id": "AXL-05",
@@ -216,7 +216,7 @@
             "expected": "useFileScale=false, globalScale=1, readable, no compression, no auto-material, MikkTSpace",
             "actual": "全部符合",
             "status": "PASS",
-            "detail": "杜绝二次缩放；材质留待 Day 3 手建。"
+            "detail": "杜绝二次缩放；材质留待材质视觉阶段手建。"
         },
         {
             "id": "IMP-02",
