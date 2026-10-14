@@ -205,6 +205,21 @@ public void SetConstantRolling(float a)
 ```
 ⇒ 19 处 `p.rollingDeceleration = a;` **一行换一行**改成 `p.SetConstantRolling(a);`。
 
+> ⚠ **实现前必读：那 19 处**不是**都能"一行换一行"（`d8impl` 开工前实测发现）** ——
+> 它们**几乎全部位于 `new PhysicsParams { … }` 的「对象初始化器」里**（如各测试文件的 `Params(...)` 辅助函数），
+> 而 **C# 的对象初始化器内不能调用方法** ⇒ 必须改成**两步**：
+> ```csharp
+> // 旧：return new PhysicsParams { cushionRestitution = e, …, rollingDeceleration = a, };
+> // 新：
+> var p = new PhysicsParams { cushionRestitution = e, cushionTangentialFriction = mu,
+>                             ballRestitution = 1f, ballTangentialFriction = 1f, rollingDecelerationSlide = a,
+>                             rollingDecelerationRoll = a };
+> p.SetConstantRolling(a);   // 恒等于上两行；保留以把"恒定档"概念单点化
+> return p;
+> ```
+> ⇒ **机械做法**：先把初始化器里的 `rollingDeceleration = a,` 改成**两个新字段**（保证 `F2c` 的"字段齐全"要求仍然满足），
+> 再在构造之后补一句 `p.SetConstantRolling(a);`（**单点化语义**）。**别指望纯文本替换**。
+
 > ⚠ **关键区别（必须写清，否则后人会以为我们自相矛盾）**：
 > `SetConstantRolling` 是**便利构造**、**只写那两个已存在的字段**，**不新增存储** ⇒ **不违反 `Q-14` (a) 的裁定**，
 > 反而把"恒定档"变成**单点、具名**的概念（**铁律 16 满足**）。
