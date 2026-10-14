@@ -217,23 +217,51 @@ namespace Billiards.Physics
         }
 
         /// <summary>
-        /// 球堆位置（**纯函数**，供验收器与测试共用同一口径）。
-        /// 间距 = <c>2r + 2e-4</c> ⇒ 满足 <see cref="PoolSimulator.BallInitialOverlapTolerance"/>
-        /// 的"合法摆放"要求（任意两球间距 ≥ <c>2r − 1e-4</c>）。
+        /// 球堆位置（**纯函数**，灰盒驱动 / 验收器 / 测试**共用同一口径** —— 单一实现，铁律 16）。
+        /// 返回数组 = **`[白球] + rackBallCount 颗堆球**；`rackBallCount` 默认 `3`（= 旧的 4 球摆放）。
+        ///
+        /// 排布：三角形、**顶点朝 +x（面向白球）**；第 `r` 行沿 y 关于 0 对称，行距 `s·√3/2`。
+        /// 间距 `s = 2·BallRadius + 2e-4` ⇒ 满足 <see cref="PoolSimulator.BallInitialOverlapTolerance"/>
+        /// 的"合法摆放"要求（任意两球间距 ≥ `2r − 1e-4`）。
+        ///
+        /// **⚠ 内层 `k` 必须降序**：在 `y = (k − r/2)·s` 下，降序才能让 `r = 1` 时 `+half` 先于 `−half` 入列
+        /// ⇒ 与旧 4 球字面 `[footSpot, (−0.30, 0), (−0.30 − row, +half), (−0.30 − row, −half)]` **逐位一致**。
+        /// 若改升序，索引 2/3 互换 ⇒ 破坏既有按索引读取的证据（验收器 / 报告项 / 逐球终态）。
         /// </summary>
-        public static Vector2[] RackPositions(Vector2 footSpot)
+        public static Vector2[] RackPositions(Vector2 footSpot, int rackBallCount = 3)
         {
             float s = PoolConstants.BallDiameter + 2e-4f;
-            float half = s * 0.5f;
             float row = s * 0.8660254f;
 
-            return new[]
+            int rows = 1;
+            while (rows * (rows + 1) / 2 < rackBallCount)
             {
-                footSpot,
-                new Vector2(-0.30f, 0f),
-                new Vector2(-0.30f - row, half),
-                new Vector2(-0.30f - row, -half),
-            };
+                rows++;
+            }
+
+            var positions = new List<Vector2>(1 + rackBallCount) { footSpot };
+
+            int placed = 0;
+            for (int r = 0; r < rows; r++)
+            {
+                for (int k = r; k >= 0; k--)   // ★ 降序 ⇒ 与旧 4 球字面同序
+                {
+                    if (placed >= rackBallCount)
+                    {
+                        break;
+                    }
+
+                    positions.Add(new Vector2(-0.30f - r * row, (k - r * 0.5f) * s));
+                    placed++;
+                }
+
+                if (placed >= rackBallCount)
+                {
+                    break;
+                }
+            }
+
+            return positions.ToArray();
         }
 
         /// <summary>

@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using Billiards.Core;
 using Billiards.Diagnostics;
 using Billiards.Physics;
+using Billiards.Table;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -37,6 +39,7 @@ namespace Billiards.EditorTools
 
         public const string MainScenePath = "Assets/_Project/Scenes/Main.unity";
         public const string PhysicsSourceDir = "Assets/_Project/Scripts/Runtime/Physics";
+        public const string TableConfigPath = "Assets/_Project/Data/TableConfig.asset";
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
@@ -92,6 +95,7 @@ namespace Billiards.EditorTools
             VerifyPhysicsSourcesArePhysXFree(report);
             VerifyPhysicsBanScan(report);
             VerifyBallBallInitialPlacement(report);
+            VerifyPocketCaptureSelfConsistency(report);
 
             VerifyBuildSettings(report);
 
@@ -298,6 +302,76 @@ namespace Billiards.EditorTools
                     $"球数={rack.Length}，配对数={pairCount}，最小间距 ≥ 下限")
                 : CheckResult.Fail("D5-PHY-01", "球-球初始摆放无重叠（间距 ≥ 2r − 容差）",
                     $"全部 {pairCount} 对均合法", violation));
+        }
+
+        // ── 6 袋袋口几何自洽（D6-PHY-01）──────────────────────────────────
+
+        /// <summary>
+        /// **袋口捕获的资产级自洽检查**（新增检查项，编号族规 = `D{轮次}-{域}-{序号}` ⇒ `D6-PHY-01`）。
+        ///
+        /// 逐袋断言（6 袋）：
+        ///  · `captureRadius == openingRadius − BallRadius − 0.002`（"开口内**容一球**"的派生关系，容差 1e-6 m）；
+        ///  · `openingRadius == PoolConstants.PocketOpeningRadius`（与全局真源一致）；
+        ///  · `|throatNormal| == 1`（单位法向）；
+        ///  · `dot(normalize(throatB − throatA), throatNormal) == 0`（法向 ⟂ 袋喉平面，容差 1e-4）。
+        ///
+        /// **只读**：不生成、不重建被校验对象（R5-4）。运行时侧的"捕获归类完备"
+        /// （`PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount`）由 EditMode 判据覆盖。
+        /// </summary>
+        private static void VerifyPocketCaptureSelfConsistency(SetupReport report)
+        {
+            const string title = "6 袋 captureRadius 逐袋自洽（= openingRadius − r − 0.002；法向单位/⟂袋喉）";
+            TableConfig table = AssetDatabase.LoadAssetAtPath<TableConfig>(TableConfigPath);
+            if (table == null)
+            {
+                report.Add(CheckResult.Fail("D6-PHY-01", title, "6/6 通过", "TableConfig 缺失：" + TableConfigPath));
+                return;
+            }
+
+            const float margin = 0.002f;
+            const float tolerance = 1e-6f;
+            float r = PoolConstants.BallRadius;
+            int pass = 0;
+            var failures = new List<string>();
+
+            for (int i = 0; i < table.PocketCount; i++)
+            {
+                Pocket p = table.pockets[i];
+                float derived = p.openingRadius - r - margin;
+
+                float nx = p.throatNormal.x;
+                float ny = p.throatNormal.y;
+                float normalLen = Mathf.Sqrt(nx * nx + ny * ny);
+
+                float dx = p.throatB.x - p.throatA.x;
+                float dy = p.throatB.y - p.throatA.y;
+                float dirLen = Mathf.Sqrt(dx * dx + dy * dy);
+                float align = dirLen > 0f ? Mathf.Abs((dx / dirLen) * nx + (dy / dirLen) * ny) : 1f;
+
+                bool ok =
+                    Mathf.Abs(p.captureRadius - derived) <= tolerance &&
+                    Mathf.Abs(p.openingRadius - PoolConstants.PocketOpeningRadius) <= tolerance &&
+                    Mathf.Abs(normalLen - 1f) <= tolerance &&
+                    align <= 1e-4f;
+
+                if (ok)
+                {
+                    pass++;
+                }
+                else
+                {
+                    failures.Add($"pocket[{p.index}](cr={p.captureRadius:R}, derived={derived:R}, |n|={normalLen:R}, align={align:R})");
+                }
+            }
+
+            bool complete = table.PocketCount == PoolConstants.PocketCount;
+            string actual = $"pocketCount={table.PocketCount}，通过 {pass}/{table.PocketCount}"
+                            + (failures.Count > 0 ? "；违规：" + string.Join(" | ", failures) : "；全部自洽");
+
+            report.Add(pass == table.PocketCount && complete
+                ? CheckResult.Ok("D6-PHY-01", title, "6/6 通过", actual)
+                : CheckResult.Fail("D6-PHY-01", title, "6/6 通过",
+                    actual + (complete ? string.Empty : "（袋数 ≠ 6，扫描未覆盖）")));
         }
 
         // ── build list（R-J）───────────────────────────────────────────────

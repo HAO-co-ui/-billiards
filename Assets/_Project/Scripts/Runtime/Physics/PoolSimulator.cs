@@ -7,7 +7,7 @@ using UnityEngine;
 namespace Billiards.Physics
 {
     /// <summary>
-    /// 自研二维定长步进台球物理内核（球-库边 + **球-球** + 袋喉越界冻结）。
+    /// 自研二维定长步进台球物理内核（球-库边 + **球-球** + 袋口捕获 / 擦袋角分类 + 越界冻结 + 运动终止）。
     ///
     /// 设计要点（每条都对应一个可失败的判别测试）：
     ///  1. **定长步进**：外部只调 <see cref="Step"/>，内部固定 1/120 s，再细分为
@@ -102,12 +102,37 @@ namespace Billiards.Physics
         /// </summary>
         public const float BallBallSeparationShare = 0.5f;
 
+        /// <summary>
+        /// **游戏级静止**速度阈值，m/s。与 <see cref="StoppedSpeedEpsilon"/>（数值终止，1e-6 m/s）**分层**：
+        /// 后者只让事件循环与积分退出（避免 TOI 空转），前者用于"**本杆结束**"的宏观静止声明
+        /// （<see cref="TableAtRest"/>）。滚动阻力为 0 时，速度落在 `(1e-6, 1e-3]` 的球会"永远爬行"，
+        /// 故游戏级阈值必须高于数值阈值。
+        ///
+        /// 取值依据：`1e-3 m/s` ⇒ 1 秒位移 1 mm，低于视觉可辨阈值。**系数为选定值**（乙-系数选定），
+        /// 由物理调参阶段复核。本类**不因静止而置零速度**（<see cref="TableAtRest"/> 只作声明）。
+        /// </summary>
+        public const float RestSpeedThreshold = 1e-3f;
+
+        /// <summary>
+        /// 宏观静止需**连续**满足 <see cref="RestSpeedThreshold"/> 的定长步数（乙-系数选定）。
+        /// 取 8 ⇒ 约 66 ms @120 Hz；用"连续帧数"而非单帧，避免把瞬时慢速误判为停止。
+        /// </summary>
+        public const int RestStableFrames = 8;
+
         // ── 只读几何缓存（构造时摊平，顺序 = 资源顺序）──────────────────────
 
         private readonly Vector2[] _segA;
         private readonly Vector2[] _segB;
         private readonly Vector2[] _pocketThroatCenter;
         private readonly Vector2[] _pocketThroatNormal;
+
+        /// <summary>
+        /// **逐袋**的捕获半径（米），来自 <c>TableConfig.Pocket.captureRadius</c>。
+        /// 语义 = "开口内**容一球**"的**横向（面内）偏移上限** = `openingRadius − BallRadius − 0.002`。
+        /// **必须用逐袋值**：6 袋的 `captureRadius` 在 1e-8 量级互不相同，
+        /// 用 `PoolConstants.PocketCaptureRadius`（单值代表）做判定会使逐袋边界用例不可预期。
+        /// </summary>
+        private readonly float[] _pocketCaptureRadius;
 
         private readonly PhysicsParams _params;
 
@@ -118,6 +143,9 @@ namespace Billiards.Physics
 
         private BallState[] _balls = new BallState[0];
         private bool[] _frozen = new bool[0];
+
+        /// <summary>逐球记录"落入哪个袋"；未捕获为 <c>-1</c>（供判据断言"入对袋"）。</summary>
+        private int[] _capturedPocket = new int[0];
 
         /// <summary>子步内每球的均速缓存（与 TOI 共用同一 <c>v_avg</c>）。</summary>
         private Vector2[] _vAvg = new Vector2[0];
@@ -158,6 +186,35 @@ namespace Billiards.Physics
 
         /// <summary>球心越过袋喉平面的次数（每次随即冻结该球）。</summary>
         public int PocketProximityEvents { get; private set; }
+
+        /// <summary>
+        /// **正常落袋**次数：球心越过袋喉平面（`s &gt; 0`）**且**面内横向偏移
+        /// `ρ = |dot(C − tc, td)| ≤ 该袋 captureRadius`。
+        /// 由 <see cref="ResetDiagnostics"/> 归零。
+        ///
+        /// **⚠ 与 <see cref="PocketProximityEvents"/>、<see cref="PocketJawCrossingCount"/> 的关系**：
+        /// 三者**必须各自独立累加**（在各自分支里 `++`），恒满足
+        /// `PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount` ——
+        /// 该等式是**待判据验证的结论**，**不得**在实现里用"一变量 = 另两者之和"来省略独立计数
+        /// （否则"归类完备"判据恒真、对"设计本身错"完全盲）。
+        /// </summary>
+        public int CapturedBallCount { get; private set; }
+
+        /// <summary>
+        /// **擦袋角越界**次数：球心越过袋喉平面但面内横向偏移 **超出**该袋 `captureRadius`。
+        /// 这类球**不再逃逸**（一律冻结，保持"越喉平面即离台"不变量），但其归属
+        /// （落袋 / 弹回）由后续裁定；本计数是该窗口的可观测量。
+        /// </summary>
+        public int PocketJawCrossingCount { get; private set; }
+
+        /// <summary>
+        /// **宏观静止**：全部未冻结球已**连续** <see cref="RestStableFrames"/> 步速度 ≤ <see cref="RestSpeedThreshold"/>。
+        /// 游戏级"本杆结束"信号；**本类不因此置零速度**。
+        /// </summary>
+        public bool TableAtRest { get; private set; }
+
+        /// <summary>当前"全员静止"的连续帧数（诊断）：任一未冻结球超过阈值即清零。</summary>
+        public int ConsecutiveRestFrameCount { get; private set; }
 
         /// <summary>
         /// **球-球接触的解算次数（对 × 次）**：同一个球对在一次同刻事件内**只计 1**；
@@ -246,11 +303,13 @@ namespace Billiards.Physics
             int pocketCount = table.PocketCount;
             _pocketThroatCenter = new Vector2[pocketCount];
             _pocketThroatNormal = new Vector2[pocketCount];
+            _pocketCaptureRadius = new float[pocketCount];
             for (int i = 0; i < pocketCount; i++)
             {
                 Pocket p = table.pockets[i];
                 _pocketThroatCenter[i] = p.throatCenter;
                 _pocketThroatNormal[i] = p.throatNormal;
+                _pocketCaptureRadius[i] = p.captureRadius;
             }
 
             SubSteps = DeriveSubSteps(PoolConstants.MaxBallSpeed);
@@ -334,6 +393,7 @@ namespace Billiards.Physics
                 _frozen = new bool[0];
                 _vAvg = new Vector2[0];
                 _active = new bool[0];
+                _capturedPocket = new int[0];
                 return;
             }
 
@@ -341,10 +401,12 @@ namespace Billiards.Physics
             _frozen = new bool[balls.Count];
             _vAvg = new Vector2[balls.Count];
             _active = new bool[balls.Count];
+            _capturedPocket = new int[balls.Count];
             for (int i = 0; i < balls.Count; i++)
             {
                 _balls[i] = balls[i];
                 _frozen[i] = false;
+                _capturedPocket[i] = -1;
             }
         }
 
@@ -358,6 +420,28 @@ namespace Billiards.Physics
             BallBallContactCount = 0;
             BallBallMaxIterationsObserved = 0;
             BallBallSeparationCount = 0;
+            CapturedBallCount = 0;
+            PocketJawCrossingCount = 0;
+            TableAtRest = false;
+            ConsecutiveRestFrameCount = 0;
+
+            for (int i = 0; i < _capturedPocket.Length; i++)
+            {
+                _capturedPocket[i] = -1;
+            }
+        }
+
+        /// <summary>
+        /// 该球**落入哪个袋**（袋索引）；未捕获返回 <c>-1</c>。越界索引亦返回 <c>-1</c>。
+        /// </summary>
+        public int CapturedPocketIndex(int ballIndex)
+        {
+            if (ballIndex < 0 || ballIndex >= _capturedPocket.Length)
+            {
+                return -1;
+            }
+
+            return _capturedPocket[ballIndex];
         }
 
         /// <summary>
@@ -370,6 +454,8 @@ namespace Billiards.Physics
             {
                 AdvanceSubStep(SubStepDeltaTime);
             }
+
+            UpdateTermination();
         }
 
         // ── 子步：全局最早事件循环 ────────────────────────────────────────
@@ -1109,11 +1195,27 @@ namespace Billiards.Physics
             }
         }
 
-        // ── 袋喉越界冻结 ──────────────────────────────────────────────────
+        // ── 袋口捕获与越界冻结（单点实现）─────────────────────────────────
 
         /// <summary>
-        /// 袋口判据用**喉平面**而非半径：球心满足 <c>dot(C − throatCenter, throatNormal) &gt; 0</c>
-        /// 即视为越界，冻结该球（速度置零、停止积分）并累计 <see cref="PocketProximityEvents"/>。
+        /// **袋口判定单点实现**：越界、正常落袋、擦袋角越界三者都在此一处求值与分类。
+        ///
+        /// 判据（规范二维物理平面，米；`tc/tn` 取自 <c>TableConfig.Pocket</c> 的逐袋真源）：
+        ///  · 越界量   `s = dot(C − tc, tn)`（`tn` 指向网内）；
+        ///  · 横向偏移 `ρ = |dot(C − tc, td)|`，`td = (−tn.y, tn.x)` —— **面内**偏移、**不含法向分量**。
+        ///
+        /// 分类：`s &gt; 0`（球心穿过袋喉、朝网方向）为**必要**条件；在此之上
+        /// `ρ ≤ 该袋 captureRadius` ⇒ **正常落袋**（<see cref="CapturedBallCount"/>）；
+        /// 否则 ⇒ **擦袋角越界**（<see cref="PocketJawCrossingCount"/>）。
+        /// 三计数**各自独立累加**，恒满足
+        /// `PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount`（待判据验证的结论）。
+        ///
+        /// **不变量**：只要 `s &gt; 0`（**不论是否落袋**）⇒ 该球**离台**（速度置零、停止积分）。
+        /// 这是"球不得静默离台"的唯一保证。
+        ///
+        /// **为什么用 ρ 而非 |C − tc|**：判据在**子步末**求值，此时球可能已越界 `v·dt_sub`
+        /// （8 m/s ⇒ 22.2 mm）。`ρ` 沿法向直行时恒定 ⇒ 鲁棒；`|C − tc|` 含法向分量 ⇒ 越界越多值越大
+        /// ⇒ 正中进袋的球会在越界那一子步被判"未捕获"（假阴性）。
         /// </summary>
         private void CheckPocketProximity(int index)
         {
@@ -1129,14 +1231,62 @@ namespace Billiards.Physics
                 Vector2 tc = _pocketThroatCenter[p];
                 Vector2 tn = _pocketThroatNormal[p];
                 float s = (c.x - tc.x) * tn.x + (c.y - tc.y) * tn.y;
-                if (s > 0f)
+                if (s <= 0f)
                 {
-                    PocketProximityEvents++;
-                    _balls[index].velocity = Vector2.zero;
-                    _frozen[index] = true;
-                    return;
+                    continue;
+                }
+
+                // 袋喉切向（面内、单位）：td = (−tn.y, tn.x)。
+                float tdx = -tn.y;
+                float tdy = tn.x;
+                float rho = Mathf.Abs((c.x - tc.x) * tdx + (c.y - tc.y) * tdy);
+
+                // ★ 三计数各自独立累加（不得由另两者相加得到 —— 否则"归类完备"判据恒真）。
+                PocketProximityEvents++;
+                if (rho <= _pocketCaptureRadius[p])
+                {
+                    CapturedBallCount++;
+                    _capturedPocket[index] = p;
+                }
+                else
+                {
+                    PocketJawCrossingCount++;
+                }
+
+                // 不变量：越喉平面即离台（不论分类）。
+                _balls[index].velocity = Vector2.zero;
+                _frozen[index] = true;
+                return;
+            }
+        }
+
+        // ── 运动终止（游戏级静止声明）─────────────────────────────────────
+
+        /// <summary>
+        /// 每 <see cref="Step"/> 末求值一次：全部未冻结球速度 ≤ <see cref="RestSpeedThreshold"/> 时
+        /// 累加"连续静止帧数"，任一球超过阈值即清零；达到 <see cref="RestStableFrames"/> 即声明
+        /// <see cref="TableAtRest"/>。**不置零速度**（避免改变物理）—— 数值终止由
+        /// <see cref="StoppedSpeedEpsilon"/> 承担，两者**分层**、不得互相代替。
+        /// </summary>
+        private void UpdateTermination()
+        {
+            bool allAtRest = true;
+            for (int i = 0; i < _balls.Length; i++)
+            {
+                if (_frozen[i])
+                {
+                    continue;
+                }
+
+                if (Length(_balls[i].velocity) > RestSpeedThreshold)
+                {
+                    allAtRest = false;
+                    break;
                 }
             }
+
+            ConsecutiveRestFrameCount = allAtRest ? ConsecutiveRestFrameCount + 1 : 0;
+            TableAtRest = ConsecutiveRestFrameCount >= RestStableFrames;
         }
 
         // ── 几何/向量小工具（开方走 PoolMath 单一口径）─────────────────────
