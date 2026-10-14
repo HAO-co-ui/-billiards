@@ -482,23 +482,27 @@ namespace Billiards.Physics
             _hasLastVisualPositions = false;
         }
 
-        /// <summary>
-        /// 同步**一个**球可视物：先按本帧世界位移加纯滚动自转，再写入世界位置，最后记录位置供下一帧求位移。
-        /// <paramref name="index"/> = 球索引（用于取出上一帧位置）；<paramref name="worldPosition"/> = 本帧目标世界位置。
+        /// <summary>同步**一个**球可视物：先按本帧位移加纯滚动自转，再写入位置，最后记录位置供下一帧求位移。
+        /// <paramref name="index"/> = 球索引（用于取出上一帧位置）；<paramref name="canonicalPosition"/> = 本帧目标位置，
+        /// **规范世界坐标**（= 缩放根的**局部坐标**）。
+        ///
+        /// ⚠ **写的是 `localPosition` 而不是 `position`**：球可视物挂在 `PlayfieldRoot`（表现层等比缩放）之下，
+        /// 局部坐标 = **规范**坐标、世界坐标 = 缩放后的**显示**坐标。若写世界坐标，
+        /// 就会出现"桌 1.2×、球 1.0×"的静默错位。
         ///
         /// ⚠ 只有拿到"上一帧位置"（<see cref="_hasLastVisualPositions"/>）时才自转 —— 首帧 / 重新装载后
         /// 没有可靠的前一位置，若强行相减会得出一个巨大的假位移 ⇒ 球会凭空猛转一下。
         /// </summary>
-        private void SyncBallVisual(Transform visual, int index, Vector3 worldPosition)
+        private void SyncBallVisual(Transform visual, int index, Vector3 canonicalPosition)
         {
             if (visual != null)
             {
                 if (_hasLastVisualPositions && _lastVisualPositions != null && index < _lastVisualPositions.Length)
                 {
-                    ApplyRollingRotation(visual, worldPosition - _lastVisualPositions[index]);
+                    ApplyRollingRotation(visual, canonicalPosition - _lastVisualPositions[index]);
                 }
 
-                visual.position = worldPosition;
+                visual.localPosition = canonicalPosition;
             }
 
             if (_lastVisualPositions == null)
@@ -512,7 +516,7 @@ namespace Billiards.Physics
                 _lastVisualPositions = grown;
             }
 
-            _lastVisualPositions[index] = worldPosition;
+            _lastVisualPositions[index] = canonicalPosition;
         }
 
         /// <summary>

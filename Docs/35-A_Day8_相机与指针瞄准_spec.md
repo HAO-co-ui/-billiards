@@ -95,7 +95,7 @@
 
 | # | 事实 | 出处 |
 | --- | --- | --- |
-| F-6 | 根节点 = `PhysicsGreybox`（scale 1，rot 0，pos 0）；**无 `PlayfieldRoot`**（现有 8 个直接子物体 = CueBall / CushionGizmo / PhysicsTestDrive / RackBall_1..3 / Main Camera / Directional Light，**无一是缩放根**） | 名 `:263`；子物体表 `:281-289` |
+| F-6 | 根节点 = `PhysicsGreybox`（scale 1，rot 0，pos 0）；**无 `PlayfieldRoot`**（现有 8 个直接子物体 = CueBall / CushionGizmo / PhysicsTestDrive / RackBall_1..3 / Main Camera / Directional Light，**无一是缩放根**）—— **切片一落地后**：新增 `PlayfieldRoot`（scale 1.2），球可视物（CueBall / RackBall_1..3）移入其下 ⇒ 直接子物体 **8 → 5**，对象名集合仅 **+`PlayfieldRoot`**（见执行记录 §2 的 churn 实测） | 名 `:263`；子物体表 `:281-289` |
 | F-7 | 相机 `Main Camera`：**透视**，pos `(0, 2.1, −0.75)`，rot `x≈0.5644,w≈0.8255`（俯角 ≈ 68.6°），`field of view: 40`，near 0.05 / far 60。**相机是 `PhysicsGreybox` 的子节点，不在任何缩放根之下** | 名 `:550`；rot `:564`；pos `:565`；near/far `:602-603`；FOV `:604` |
 | F-8 | `PhysicsTestDrive` 宿主：`tableConfig` / `cushionGizmo` / `ballVisuals`（4 个）/ `ballVisual` / `tuning` 已接线；**序列化值**：`loadRackForBallBallDemo=1`、`rollingDeceleration=0.9`、`aimDegrees=180`、`minLaunchSpeed=0.5`、`maxLaunchSpeed=4.5`、`aimStepDegrees=1`、`fineKey=304` | 名 `:389`；字段 `:430`/`:433`/`:437`/`:439`/`:440`/`:444`/`:446` |
 | F-9 | **球可视物**：`CueBall`(x=−0.51) + `RackBall_1..3`(x=0.30/0.3497/0.3497)，**父节点 = `PhysicsGreybox` 根**，layer 7，scale 0.05715 | CueBall `:179`(pos `:194`)；RackBall_2 `:304`(pos `:319`)；RackBall_1 `:465`(pos `:480`)；RackBall_3 `:731`(pos `:746`) |
@@ -129,7 +129,7 @@
 | F-22 | `MaterialVisualValidator` 的 `SCN-02` 断言 **`Main.unity`** 的 `PlayfieldRoot` 缩放 == 1（"1.2 未误用"），`SCN-03` 断言球桌挂在 `PlayfieldRoot` 之下 | `Editor/Visual/MaterialVisualValidator.cs:220-247` |
 | F-23 | `GreyboxTuningWiringTests` 现有 4 条：`T41`（接线 —— 全部已接线参数与资产一致）+ **`T43`（场景漂移 —— 场景序列化值 == 代码默认）** + **`T44`（出厂口径冻结 —— 资产字段 == 台账表）** + `T42_AimIndicator_FollowsRules`（存在/可渲染/无碰撞体；全静止可见、运动中隐藏；朝向 == **独立闭式** `(−cosθ,0,−sinθ)`；位置闭式；**经验交叉校验**）。**⇒ `T43` / `T44` 编号已被占用，本 spec 自 `T45` 起** | `Tests/EditMode/GreyboxTuningWiringTests.cs`：`T41` `:46`、`T43` `:109`、`T44` `:161`、`T42` `:190` |
 | F-24 | 报告路径**唯一单点**：`ReportOutput.ResolveReportPath`（接受 `-outputDir`）；测试证据 `ResolveTestEvidencePathOrNull` **未给 `-outputDir` 返回 `null`、绝不回落仓库** | `Editor/ProjectSetup/ReportOutput.cs:29-106` |
-| F-25 | EditMode 基线（源码 `[Test]` 计数）= **135 @ `7f76dba`**（`133` 是 `d99aaf1` 时的数；`950c78f` 又 +2 = `T43`/`T44`）。四验收器 Day1/2/3/4 = 25 / 33 / 22 / 7 | `Docs/测试数基线台账.md`（顶部注）；`grep -cE "^\s*\[Test\]" Assets/_Project/Tests/EditMode/*.cs` |
+| F-25 | EditMode 基线（源码 `[Test]` 计数）= **135 @ `7f76dba`**（本 spec 定稿时的旧锚点；`133` 是 `d99aaf1` 时的数；`950c78f` 又 +2 = `T43`/`T44`）。**切片一实现时实测该基线已前移为 `149 @ 6a531f0`**（见 §11.1）。四验收器 Day1/2/3/4 = 25 / 33 / 22 / 7 | `Docs/测试数基线台账.md`（顶部注）；`grep -cE "^\s*\[Test\]" Assets/_Project/Tests/EditMode/*.cs` |
 
 ---
 
@@ -307,6 +307,13 @@
 
 ### T46 指针点中「球在屏幕上出现的位置」→ 反解出「球的物理位置」（**1.2 正/反向一致性的决定性判据**）
 
+> **⚠ 切片一裁定（实测）**：原文的 `screen = cam.WorldToScreenPoint(ballVisuals[0].position)`（**球心**，离台呢高 r）
+> 与「拾取台呢平面 `y=0`」之间存在 **`r / tan(俯角)` 的系统性偏移**——按场景现值（俯角 ≈ 68.6°）**实测为 `0.013394 m`**，
+> **远超本条容差 `2e-4 m`** ⇒ 原文构造在**正确实现上也会 FAIL**。
+> 切片一改用**球的台呢切点**像素（球心 − 世界半径），实测误差 `0.000002 m`。
+> **代价（盲带）**：「视觉端漏 1.2」不再被本条抓到 ⇒ 由 `T45` 独有覆盖（注入实测：`localScale=1.44` 仅 `T45` 红）。
+> 详见 `Docs/35-A_Day8_相机与指针瞄准_执行记录.md` §5。
+
 **构造**：取白球物理位 `c_phys`（读 `drive.Simulator.Balls[0].position`）。计算它在屏幕上的**实际渲染像素**：
 `screen = cam.WorldToScreenPoint(ballVisuals[0].position)`（读**渲染**位置 —— 被测对象是**拾取器**，不是这个 Transform）。
 再把这个 `screen` 喂给 `PointerAimSolver.TryPickPhysicsPoint(...)`，得 `p_phys`。
@@ -354,6 +361,13 @@
 - 给 `PlayfieldRoot` 加一个**非零 `localPosition`**、而 β 端用 `InverseTransformVector` 却**忘了** `InverseTransformPoint` 处理平移 ⇒ **T48 FAIL**。
 
 ### T49 拾取精度与拒绝域（独立闭式 + 边界）
+
+> **⚠ 切片一裁定（实测）**：原文第二个拒绝情形「射线落在台面 **XZ 范围之外**」**未实现** —— 实现口径（§3.2）里 β
+> 只拒绝**近平行**射线（`R-AD` 亦只登记这一条）；且加「台面矩形越界」会把本条指定的注入
+> （删 `|D.y| &lt; eps`）**掩盖掉**（巨型坐标天然"越界" ⇒ 仍返回 `false`）。
+> ⇒ 拒绝域取 §3.2 的唯一条件：**近平行**（两个像素：中心 + 同扫描线左 1/4）。
+> 另：`ParallelEpsilon` 取 **`1e-4`**（实测「水平前视相机中心像素」`|D.y| ≈ 1.35e-6` ⇒ 取 `1e-6` 会被自身噪声击穿）。
+> 详见执行记录 §5。
 
 **构造**：对一组屏幕像素（含屏幕中心、四分之一处、台面四角投影点）：
 - 逐点比较 `TryPickPhysicsPoint` 与**测试侧独立闭式**（用 `cam.ScreenPointToRay` 取射线，**手工**做平面求交 + 去缩放 + `UnityToPhysics`）——容差 `2e-4 m`；
@@ -433,7 +447,7 @@
 | 34 | **`T46`** 视觉/拾取互逆 | 屏幕反解回球的**物理**位误差 ≤ `2e-4 m` | 模拟器位（异对象）+ 引擎投影 |
 | 35 | **`T47`** 方向无偏移（**验收**） | （a）指示物朝向与独立世界方向 ∠ < 0.1° 且 （b）`Launch()` 初速与期望物理方向 ∠ < 0.05° | 独立闭式 |
 | 36 | **`T48`** 顺序恒等 | α 与 β 拾取差 ≤ `1e-6 m` | 测试侧独立 α |
-| 37 | **`T49`** 拾取精度 + 拒绝域 | 逐点 ≤ `2e-4 m`；平行/越界 ⇒ `false` | 独立闭式 + 契约常量 |
+| 37 | **`T49`** 拾取精度 + 拒绝域 | 逐点 ≤ `2e-4 m`；**近平行** ⇒ `false`（切片一裁定：不做台面越界拒绝，见 §5 `T49`） | 独立闭式 + 契约常量 |
 | 38 | **`T50`** 拖拽/锁定 | 三段（变 / 逐位不变 / 又变） | 契约语义（F-20） |
 | 39 | **`T51`** 微调粒度 | 场景 `aimStepDegrees==1.0` ∧ 细调 `==0.2°` ∧ 基础 `==1.0°` | 排期 + 契约常量 |
 | 40 | **`T52`** 窄窗不裁切（**验收**） | 6 档宽高比下内库四角 `viewport∈[0.02,0.98]` | `PoolConstants` + 场景相机 |
@@ -563,16 +577,21 @@
 | `GreyboxSceneSetup.cs` | 增补 `PlayfieldRoot` | 生成器**仍只生成不校验**（`R2`/`R5-4`）；不得写入 `EditorBuildSettings` |
 | `MaterialVisualValidator`（`SCN-02`） | **不改**（`SCN-02` 只管 `Main.unity`） | 本日**不动** `Main.unity` ⇒ `SCN-02` 仍绿（`Q-13`） |
 | asmdef | **无需改动**（新运行时代码落 `Billiards.Runtime`；新测试落 `Billiards.Tests.EditMode` 同目录自动纳入） | 若新增子目录，`.meta` 与 `rootNamespace` 须一致 |
-| EditMode 测试基线 | **135**（@ `7f76dba`，源码 `[Test]` 计数） | **双向核对**（§11.1） |
+| EditMode 测试基线 | **135**（@ `7f76dba`，源码 `[Test]` 计数）→ **本切片实现时实测为 `149 @ 6a531f0`** | **双向核对**（§11.1） |
 
-### 11.1 台账同步（**占位，实现后按实测填写**）
+### 11.1 台账同步（**切片一实测回填**）
 
-| 项 | 基线（带修订锚点） | 增量 | 新值（预计） |
+> ⚠ 本 spec 的判据 `T50`–`T53`（拖拽瞄准状态机 / 微调粒度 / 视口适配）**留待下一单**；
+> 本节按**切片一**（`T45`–`T49`，5 条）**实测**回填（证据：`_d8aim_out/editmode-final.xml` 等，`-outputDir` 指向**仓库外**）。
+> **基线旧 → 新**：`135 @ 7f76dba`（本 spec 定稿时的旧锚点）→ **`149 @ 6a531f0`**（Day 7 续批 + `Launch` 整盘重置后实测源码 `[Test]` 计数）。
+
+| 项 | 基线（带修订锚点） | 增量 | 新值（**实测**） |
 | --- | --- | --- | --- |
-| EditMode 测试 | **135 @ `7f76dba`**（源码 `[Test]` 计数；`133` 是 `d99aaf1` 时的数，`950c78f` 又 +2 = `T43`/`T44`） | **+N，N = 本 spec 判据条数 = 9**（`T45`–`T53`；**一条判据一个 `[Test]`** ⇒ 约 **+9**）—— ⚠ **实现后按实测填写，不得编数字** | 预计 **144**（= 135 + 9）**@ 实现提交** —— ⚠ **待实测** |
-| 四验收器 | 25 / 33 / 22 / 7 | **±0**（本日**不新增验收器**；`D4-PHY-01` 等若因改动 `PhysicsTestDrive` 而触碰，须重跑并记新锚点） | **待实测** |
+| EditMode 测试 | **149 @ `6a531f0`**（源码 `[Test]` 计数） | **+5**（本切片 = `T45`–`T49`，一条判据一个 `[Test]`；文件 `Tests/EditMode/PointerAimTests.cs`） | **154 / 154 @ 工作区（Day 8 切片一，未提交）**；failed 0 / skipped 0 |
+| 四验收器 | 25 / 33 / 22 / 7 | **±0**（本日**不新增验收器**） | **25 / 33 / 22 / 7，FAIL = 0**（实测） |
 
-> **数目以 `grep -cE "^\s*\[Test\]"` 逐文件求和 + Unity 实跑 XML 双向核对为准**（`R3-6`：报数须带修订锚点，权威数字由复核方在冻结修订上测）。**本表为占位，不得被引用为实测。**
+> 数目以 `grep -cE "^\s*\[Test\]"` 逐文件求和 + Unity 实跑 XML **双向核对**：源码合计 `154`（新增前 `149`），XML `testcasecount="154"`。
+> **本表为切片一实测值，不得被引为 `T50`–`T53` 完成后的终值。**
 
 ---
 

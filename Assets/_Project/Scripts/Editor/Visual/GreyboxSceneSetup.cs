@@ -43,6 +43,12 @@ namespace Billiards.EditorTools
         public const string DriveObjectName = "PhysicsTestDrive";
         public const string CueBallObjectName = "CueBall";
 
+        /// <summary>
+        /// **可视野缩放根**（表现层等比缩放 <see cref="PoolConstants.PlayfieldVisualScale"/>）。
+        /// 球可视物挂其下；相机 / 光 / Gizmo / 驱动器**留在场景根下**（否则会被一起缩放）。
+        /// </summary>
+        public const string PlayfieldRootObjectName = "PlayfieldRoot";
+
         // ── 入口 ───────────────────────────────────────────────────────────
 
         [MenuItem("Billiards/Visual/Build Physics Greybox Scene", false, 402)]
@@ -148,10 +154,20 @@ namespace Billiards.EditorTools
             root.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             root.transform.localScale = Vector3.one;
 
-            // 1) 白球（物理平面 footSpot → Unity 世界，唯一转换点 PoolGeometry）
+            // 0) **可视野缩放根**（表现层 1.2）。物理仍是**规范米制**；这里只放大"看得见的东西"。
+            //    唯一真相 = 该 Transform 的 localScale；显示↔规范映射的唯一函数是 `PlayfieldView`。
+            //    ⚠ 相机 / 光 / Gizmo / 驱动器**不进这个根** —— 否则相机会被放大、取景全错。
+            var playfieldRoot = new GameObject(PlayfieldRootObjectName);
+            playfieldRoot.transform.SetParent(root.transform, false);
+            playfieldRoot.transform.localPosition = Vector3.zero;
+            playfieldRoot.transform.localRotation = Quaternion.identity;
+            playfieldRoot.transform.localScale = Vector3.one * PoolConstants.PlayfieldVisualScale;
+
+            // 1) 白球（物理平面 footSpot → **规范世界**，唯一转换点 PoolGeometry）
+            //    ⚠ 挂到**缩放根**下：写入的是**局部坐标**（= 规范世界坐标），世界坐标会自动 ×1.2。
             GameObject cueBall = BuildCueBall();
-            cueBall.transform.SetParent(root.transform, false);
-            cueBall.transform.position = PoolGeometry.PhysicsBallToUnity(config.footSpot);
+            cueBall.transform.SetParent(playfieldRoot.transform, false);
+            cueBall.transform.localPosition = PoolGeometry.PhysicsBallToUnity(config.footSpot);
 
             // 2) CushionGizmo 宿主
             var gizmoGo = new GameObject(GizmoObjectName);
@@ -174,7 +190,8 @@ namespace Billiards.EditorTools
 
             // 3b) **球堆可见性** —— 按 `RackPositions` 生成同数量的球体并接上 `ballVisuals`，
             //     使 Game 视图能看见散球（`D7-T02` 阻塞项 ②）；**纯可视，无任何物理组件**。
-            drive.ballVisuals = BuildRackVisuals(root, config, cueBall);
+            //     球与白球同挂**缩放根**下（见 `BuildRackVisuals`）。
+            drive.ballVisuals = BuildRackVisuals(playfieldRoot, config, cueBall);
 
             // 4) 俯视相机 + 主平行光（灰盒可见即可；不引入任何物理组件）
             BuildCamera(root);
@@ -218,8 +235,9 @@ namespace Billiards.EditorTools
         /// <summary>
         /// 按 <see cref="PhysicsTestDrive.RackPositions"/> 生成**与内核球一一对应**的可视球体，返回 Transform 数组。
         /// 第 0 个复用已建的白球；其余为 `RackBall_i`。**只可视**：不引入任何物理组件。
+        /// 全部挂 <paramref name="playfieldRoot"/>（缩放根）下，写入的是**局部规范坐标**。
         /// </summary>
-        private static Transform[] BuildRackVisuals(GameObject root, TableConfig config, GameObject cueBall)
+        private static Transform[] BuildRackVisuals(GameObject playfieldRoot, TableConfig config, GameObject cueBall)
         {
             Vector2[] positions = PhysicsTestDrive.RackPositions(config.footSpot, 3);
             var visuals = new Transform[positions.Length];
@@ -228,8 +246,8 @@ namespace Billiards.EditorTools
             for (int i = 1; i < positions.Length; i++)
             {
                 GameObject ball = BuildBallObject("RackBall_" + i.ToString());
-                ball.transform.SetParent(root.transform, false);
-                ball.transform.position = PoolGeometry.PhysicsBallToUnity(positions[i]);
+                ball.transform.SetParent(playfieldRoot.transform, false);
+                ball.transform.localPosition = PoolGeometry.PhysicsBallToUnity(positions[i]);
                 visuals[i] = ball.transform;
             }
 
