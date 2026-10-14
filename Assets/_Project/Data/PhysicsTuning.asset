@@ -15,7 +15,7 @@ MonoBehaviour:
   cushionRestitution: 1
   cushionTangentialFriction: 1
   rollingDeceleration: 0
-  ballRestitution: 1
+  ballRestitution: 0.95
   ballTangentialFriction: 1
   pocketCaptureRadiusScale: 1
   initialDamping: 0

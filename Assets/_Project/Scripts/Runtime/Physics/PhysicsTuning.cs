@@ -17,9 +17,12 @@ namespace Billiards.Physics
     ///    **不把逐袋值搬进来**（否则违反 `R-Y`：用单值代替逐袋）。
     ///
     /// ── 默认值 = 现口径（保持行为不变）────────────────────────────────────────
-    ///  · `e_ball = 1.0`（**注意**：Day-5 spec §2.1 文字写"运行时默认 0.95"，
-    ///    但**代码现行默认是 1.0**，且 `F2b` 断言实机档 `e_ball == 1.0` ⇒ 本资产默认取 **1.0**。
-    ///    `0.95` 作为**扫描建议值**由调参裁定，不擅自改默认。）
+    ///  · `e_ball = 0.95`（**调参目标口径**；Day 7 依扫描裁定：白球行程随 `e_ball` 单调递减 ——
+    ///    1.00→2.587 m / 0.95→2.249 m / 0.90→1.883 m ⇒ 取台球实测 0.93–0.96 的中点）。
+    ///    ⚠ **两个数字的关系（勿误认为矛盾）**：
+    ///      · **`PhysicsParams.SafeDefault` 的 `e_ball` = 1.0** —— 它是"**字段全零**"的**解药**（安全兜底），
+    ///        由 `F2a` 钉住；**它不是调参默认值**。
+    ///      · **本资产 / `PhysicsTestDrive` 的默认 = 0.95** —— 那是**调参目标口径**，随调参结论而变。
     ///  · `rollingDeceleration = 0`（内核阶段单一口径）。
     ///  · `pocketCaptureRadiusScale = 1.0`（逐袋值不变）。
     /// </summary>
@@ -40,9 +43,9 @@ namespace Billiards.Physics
         public float rollingDeceleration = 0f;
 
         [Header("球-球")]
-        [Tooltip("球-球法向恢复系数 e_ball，[0,1]。台球实测 0.93–0.96；现行代码默认 1.0（F2b 钉住）。")]
+        [Tooltip("球-球法向恢复系数 e_ball，[0,1]。台球实测 0.93–0.96；**调参目标口径 = 0.95**（Day 7 定）。")]
         [Range(0f, 1f)]
-        public float ballRestitution = 1f;
+        public float ballRestitution = 0.95f;
 
         [Tooltip("球-球切向保留系数 μ_ball，[0,1]。本模型无自旋 ⇒ 必须 1.0（<1 属非物理耗散）。")]
         [Range(0f, 1f)]
@@ -85,7 +88,7 @@ namespace Billiards.Physics
                 cushionRestitution = 1f,
                 cushionTangentialFriction = 1f,
                 rollingDeceleration = 0f,
-                ballRestitution = 1f,
+                ballRestitution = 0.95f,
                 ballTangentialFriction = 1f,
                 pocketCaptureRadiusScale = 1f,
             };

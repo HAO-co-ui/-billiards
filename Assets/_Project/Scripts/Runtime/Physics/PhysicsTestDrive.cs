@@ -52,10 +52,10 @@ namespace Billiards.Physics
         [Tooltip("台呢滚阻减速度 a（m/s²）。物理内核阶段 = 0（spec §2.1 单一口径）。")]
         public float rollingDeceleration = 0f;
 
-        [Header("球-球参数（默认取 SafeDefault = 1.0）")]
-        [Tooltip("球-球法向恢复系数 e_ball。1.0 = 完全弹性（默认）；台球实测 0.93–0.96。")]
+        [Header("球-球参数（默认 = 调参口径 0.95；SafeDefault 的 1.0 是「全零解药」、非调参默认）")]
+        [Tooltip("球-球法向恢复系数 e_ball。台球实测 0.93–0.96；调参目标口径 = 0.95（Day 7 定）。")]
         [Range(0f, 1f)]
-        public float ballRestitution = 1f;
+        public float ballRestitution = 0.95f;
 
         [Tooltip("球-球切向保留系数 μ_ball。**本模型无自旋 ⇒ 必须保持 1.0**（<1 属非物理耗散）。")]
         [Range(0f, 1f)]

@@ -521,8 +521,12 @@ namespace Billiards.Tests
                                       + $"μ_ball={effective.ballTangentialFriction} "
                                       + $"cushion(e={effective.cushionRestitution},μ={effective.cushionTangentialFriction})");
 
-                Assert.AreEqual(1f, effective.ballRestitution,
-                    "F2b：实机档 e_ball 必须为 1.0（0 = 球-球完全非弹性）。");
+                // ⚠ **期望值是「调参后的目标口径」，不是「安全兜底」** ——
+                // 因此它**随 Day 7 的调参结论而变**；变更须记录（本条在 Day 7 由 `1.0` 改为 `0.95`）。
+                // 对照：`PhysicsParams.SafeDefault` 的 `e_ball` **仍是 `1.0`**（"字段全零"的解药，由 `F2a` 钉住）——
+                // **两个数字不是矛盾**：一个是"安全兜底"，一个是"调参目标口径"。
+                Assert.AreEqual(0.95f, effective.ballRestitution,
+                    "F2b：实机档 e_ball 必须为调参口径 0.95（0 = 球-球完全非弹性）。");
                 Assert.AreEqual(1f, effective.ballTangentialFriction,
                     "F2b：实机档 μ_ball 必须为 1.0（0 = 切向分量被整个删除）。");
             }

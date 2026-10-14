@@ -159,8 +159,8 @@
 | `throatCenter` / `throatNormal` | `TableConfig.Pocket` | 袋喉平面：点 + 单位法向（**指向网内**） | 见 §1.2 表 | ✅ 是 |
 | `throatTangent` `td` | **运行时派生** = `(−tn.y, tn.x)` | 袋喉平面内的横向方向 | 不落数据（由 `tn` 派生） | ✅ 是（派生） |
 | `BallRadius` `r` | `PoolConstants` | 球半径 | 0.028575 m | ✅ 是 |
-| `RestSpeedThreshold` | **`PoolSimulator` 常量** | **宏观静止**速度阈值（游戏级"本杆结束"） | **1e-3 m/s**（**本轮定** `Q-3`；`乙-系数选定`；**Day 7 物理调参时复核**） | ✅ 是，但**与 `StoppedSpeedEpsilon` 不同层**（§2.5） |
-| `RestStableFrames` | **`PoolSimulator` 常量** | **连续静止**帧数（防瞬时抖动误判） | **8**（**本轮定** `Q-3`；`乙-系数选定`；**Day 7 复核**） | ✅ 是 |
+| `RestSpeedThreshold` | **`PoolSimulator` 常量** | **宏观静止**速度阈值（游戏级"本杆结束"） | **1e-3 m/s**（**本轮定** `Q-3`；`乙-系数选定`；**Day 7 复核：维持（扫描未推翻）**） | ✅ 是，但**与 `StoppedSpeedEpsilon` 不同层**（§2.5） |
+| `RestStableFrames` | **`PoolSimulator` 常量** | **连续静止**帧数（防瞬时抖动误判） | **8**（**本轮定** `Q-3`；`乙-系数选定`；**Day 7 复核：维持**） | ✅ 是 |
 | 袋角几何 | **复用 TM 的 76 段袋角侧壁** | 折线近似弧 | **不新增弧段原语**（§2.6） | ✅ 是（既有） |
 
 > **⚠ 逐袋 vs 单值的口径（必须写死）**：判据与实现**一律取 `Pocket.captureRadius`（逐袋）**；
@@ -170,6 +170,8 @@
 **口径一致性要求**：
 - **`captureRadius` 只作用于"横向偏移"**，**不得**把它与法向越界量混算（§0.3 错误 1）。
 - **`RestSpeedThreshold` 与 `StoppedSpeedEpsilon` 是两个不同层**（§2.5）：**不得合并字段、不得互相代替**。
+- **`e_ball` 的两个数字（`D7-T01` 裁定）**：`PhysicsParams.SafeDefault.ballRestitution = 1.0`（"字段全零"的**解药**，`F2a` 钉）
+  **vs** 资产 / `PhysicsTestDrive` 默认 = **0.95**（**Day 7 调参口径**，`F2b` 钉）—— **不是矛盾**：一个是"安全兜底"，一个是"调参目标"。
 
 ### 2.2 捕获判据的精确几何（本轮核心）
 
@@ -273,7 +275,7 @@ ConsecutiveRestFrameCount：当前"全员静止"的连续帧数（诊断，供�
 
 > **⚠ "是否置零" —— 本轮已定（`Q-3`）**：`TableAtRest` **只声明**（暴露谓词 + 计数），
 > **不强行置零速度** —— 因为"强行置零"会**改变物理**（0.5 mm/s 的球被停）。
-> 阈值 `1e-3 m/s` / `8` 帧为 **`乙-系数选定`**，**Day 7 物理调参时复核**（§13.1）。
+> 阈值 `1e-3 m/s` / `8` 帧为 **`乙-系数选定`**，**Day 7 复核：维持（扫描未推翻）**（§13.1）。
 
 ### 2.6 袋角行为：**复用 76 段袋角侧壁**，不新增弧段原语（排期第 2 条）
 
@@ -317,8 +319,8 @@ ConsecutiveRestFrameCount：当前"全员静止"的连续帧数（诊断，供�
 | `FixedDeltaTime` / `SubSteps` / `SubStepDeltaTime` | `PoolSimulator` | 已存在 | 1/120 s / 3 / 1/360 s |
 | `StoppedSpeedEpsilon` | `PoolSimulator` | 已存在，**不动** | 1e-6 m/s（数值终止） |
 | `ToiTimeEpsilon` / `ToiRemainingEpsilon` / `MaxToiIterations` | `PoolSimulator` | 已存在，**不动** | 1e-9 / 1e-9 / 128 |
-| **`RestSpeedThreshold`** | **`PoolSimulator`** | **需新增** | **1e-3 m/s**（游戏静止；**本轮定 `Q-3`**、`乙-系数选定`；**Day 7 复核**） |
-| **`RestStableFrames`** | **`PoolSimulator`** | **需新增** | **8**（**本轮定 `Q-3`**、`乙-系数选定`；**Day 7 复核**） |
+| **`RestSpeedThreshold`** | **`PoolSimulator`** | **需新增** | **1e-3 m/s**（游戏静止；**本轮定 `Q-3`**、`乙-系数选定`；**Day 7 复核：维持**） |
+| **`RestStableFrames`** | **`PoolSimulator`** | **需新增** | **8**（**本轮定 `Q-3`**、`乙-系数选定`；**Day 7 复核：维持**） |
 | **`throatTangent`（派生）** | `PoolSimulator` 构造时**可选缓存** | 需新增（派生） | `td[p] = (−tn.y, tn.x)`；**由 `tn` 派生，不落资产** |
 
 ### 3.2 API 增量（最小面）
@@ -570,7 +572,7 @@ PoolSimulator 常量
 **能测出**：阈值写反、把 `RestStableFrames` 写成 1（瞬时抖动误判）、把 `StoppedSpeedEpsilon` 当游戏阈值用
 （1e-6 太小 ⇒ T33a 的 5e-4 球永不停 ⇒ 失败）。
 - **盲带**：不覆盖"a > 0 时经摩擦自然减速至静"（本轮 `a=0`）；不覆盖多球同时静止的**次序**。
-- **出处**：**乙（系数选定）**：`RestSpeedThreshold=1e-3`、`RestStableFrames=8` 为**选定**（`Q-3` 本轮定），无独立推导；**Day 7 物理调参时复核**。
+- **出处**：**乙（系数选定）**：`RestSpeedThreshold=1e-3`、`RestStableFrames=8` 为**选定**（`Q-3` 本轮定），无独立推导；**Day 7 复核：维持（扫描未推翻）**。
 
 ### T34 开球散球样例（排期验收口径 —— 把"表现合理"落成可判定）
 
@@ -738,9 +740,9 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 
 | 文件 | 内容 | 状态 |
 | --- | --- | --- |
-| `Docs/Reports/d6-verification.json` | 验收门结果（沿用 `SetupReport` 模型） | 待产出 |
-| `Docs/Reports/d6-editmode-tests.xml` | EditMode 结果 | 待产出 |
-| `Docs/Reports/d6-pocket-capture-scan.json` | 6 袋逐一捕获 + `ρ`/`s` 逐袋 + 归类计数 + 窗口球枚举 | 待产出 |
+| **D6 检查项的证据 = `Docs/Reports/d4-verification.json`** | **`D6-PHY-01`（6 袋袋口几何自洽）落在 Day4 物理验收器**（实测 `pass=7 fail=0 warn=0`）。**不再单产 `d6-verification.json`** —— 理由：D6 **未新增独立验收器**，另建一个只会**重复同一检查**（铁律 16 单点）。**原则（`D7-T01` 裁定）：spec 只指向真实存在的证据。** | 已入库 |
+| `d6-pocket-capture-scan.json` | **改为「不落盘」**：6 袋逐一捕获由 §5 `T27a` 的**断言**承担（每袋 `CapturedBallCount == 1` + `CapturedPocketIndex == p` + `ρ ≤ captureRadius_p`）。理由：**断言比落盘副本更强**，且避免第二份会分叉的数据（`D7-T01`："补上或如实收窄，二选一"⇒选**收窄**） | — |
+| **窗口重算证据** | `Docs/Tuning/d6-pocket-window-probe.json`（探针 `Docs/Tools/d6_pocket_window_probe.py`，**独立复算得 8.25 mm 侧袋 / 8.78 mm 角袋**）—— **顺手补掉"角袋窗口未独立复算"的缺口** | 已入库 |
 | `Docs/Reports/d6-break-sample.json` | 散球样例（T34）逐球轨迹 + 迭代峰值 + 判定 | 待产出 |
 | `Docs/Reports/d6-full-break-sample.json` | **真开球（15 球满堆，`T37`）** 逐球终态 + 判定（**不含预算断言**） | 待产出 |
 | `Docs/Tools/d6_pocket_window_probe.py` | **§1.4 窗口重算探针**（据 TM 逐段最近距离；**非 Unity 实测**） | 待产出 |
@@ -833,6 +835,7 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 | --- | --- | --- | --- |
 | EditMode 测试 | **109 / 109** @ `2f5dd3c`→`5bfaa15` | **+19**（`T27a/T27b/T28a/T28b/T29/T30a/T30b/T31a/T31b/T31c/T35/T36` + `T32a/T32b/T33a/T33b/T34/T37` + **`T38`**＝`C1` 兼容闸门） | **128 / 128 @ `9bca79b`（实测）** |
 | Day4 物理验收器 | **6** | **+1**（`D6-PHY-01`） | **7**（实测 `@ 9bca79b`，FAIL=0 WARN=0） |
+| **Day 7（`D7-T01`）** | — | **+3**（`T39` / `T39b` / `T40`） | **EditMode 131 / 131 @ `799a8bf`**；四验收器 **25 / 33 / 22 / 7**（FAIL=0 WARN=0） |
 
 > **数目以 `grep -cE "^\s*\[Test\]"` 逐文件求和 + Unity 实跑 XML 双向核对为准**；
 > 本表为**预计**，**不得**被引用为实测（`R3-6`：报数须带修订锚点，权威数字由复核方在冻结修订上测）。
@@ -871,7 +874,7 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 | **Q-2** | `captureNote` 严格度（是否要求"开口内"） | **维持 (a)**：要求 `Crossed ∧ WithinOpening`（**本轮定**）—— 与 `Q-1` (a) 一致（`captureRadius` 只做**分类门**；冻结不变量**不由它决定**） | §2.2、§4.1、§13.2 回归清单 |
 | **Q-4** | 袋角折线 vs 真弧 | **(a) 本轮采用 76 段折线**（用户裁定）—— 接缝非光滑偏折为**已知限制、量级尚未实测**（实现后待测） | §2.6、§9 `R-V` |
 | **Q-5** | 散球规模 | **(c) 两者都做**（用户裁定）：`T34`（4 球，**含预算带断言**）+ **`T37`（15 球满堆，硬判据含非空转下界、不含预算带断言）** | §5 `T34`/`T37`、§6 判据 26/31、§9 `R-W` |
-| **Q-3** | 终止阈值与"是否静止即置零" | **本轮定**：`RestSpeedThreshold = 1e-3 m/s`、`RestStableFrames = 8`、**不置零**；标 **`乙-系数选定`**，**Day 7 物理调参时复核** | §2.1、§2.5、§3.1、§4.2、§5 `T33`、§8 |
+| **Q-3** | 终止阈值与"是否静止即置零" | **本轮定**：`RestSpeedThreshold = 1e-3 m/s`、`RestStableFrames = 8`、**不置零**；标 **`乙-系数选定`**，**Day 7 复核：维持（扫描未推翻）** | §2.1、§2.5、§3.1、§4.2、§5 `T33`、§8 |
 
 > **⚠ `Q-1` 翻案回归清单（若将来改选 (b)「视同捕获/算落袋」）** —— 免得翻案时漏改：
 > ① **判据 23（`T31b`）的 b 档**（现钉 `PocketJawCrossingCount == 1`）；
