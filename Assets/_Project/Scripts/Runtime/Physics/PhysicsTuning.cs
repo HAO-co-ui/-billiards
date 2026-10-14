@@ -63,6 +63,13 @@ namespace Billiards.Physics
         [Tooltip("袋口捕获半径的**全局乘子**（默认 1 = 不变）。真源仍是 TableConfig.Pocket.captureRadius（逐袋）。")]
         public float pocketCaptureRadiusScale = 1f;
 
+        [Header("力度 → 初速（交互层手感旋钮；唯一可调入口）")]
+        [Tooltip("**力度下限**对应的初速（m/s）。本两项是交互层手感旋钮，由本资产统一提供（`B4` 事故：此前无资产字段，只靠代码默认 + 场景序列化）。")]
+        public float minLaunchSpeed = 0.5f;
+
+        [Tooltip("**满力**对应的初速（m/s）。⚠ 与 `PoolConstants.MaxBallSpeed`（=8，喂 `DeriveSubSteps`）**不是一回事**，不得混用。")]
+        public float maxLaunchSpeed = 4.5f;
+
         [Header("运动终止（游戏级静止声明）")]
         [Tooltip("宏观静止速度阈值，m/s。默认与 PoolSimulator.RestSpeedThreshold 一致（1e-3）。**内核真的读它**。")]
         public float restSpeedThreshold = 1e-3f;

@@ -20,3 +20,5 @@ MonoBehaviour:
   pocketCaptureRadiusScale: 1
   restSpeedThreshold: 0.001
   restStableFrames: 8
+  minLaunchSpeed: 0.5
+  maxLaunchSpeed: 4.5

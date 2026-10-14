@@ -143,6 +143,9 @@ namespace Billiards.Physics
         /// <summary>宏观静止连续帧数（**实例字段** ⇒ 可由 `PhysicsTuning` 资产覆盖；默认 = 同名常量）。</summary>
         private readonly int _restStableFrames;
 
+        /// <summary>袋口捕获半径的**全局乘子**（实例字段；默认 1 ⇒ 逐袋值不变）。</summary>
+        private readonly float _pocketCaptureRadiusScale;
+
         private readonly float _ballRestitution;
         private readonly float _ballTangentialFriction;
 
@@ -280,6 +283,15 @@ namespace Billiards.Physics
         /// </summary>
         public PhysicsParams Params => _params;
 
+        /// <summary>**生效的**宏观静止速度阈值（实例值；供守卫比对资产，属"不可观测参数"的只读出口）。</summary>
+        public float RestSpeedThresholdValue => _restSpeedThreshold;
+
+        /// <summary>**生效的**宏观静止连续帧数（实例值；只读出口）。</summary>
+        public int RestStableFramesValue => _restStableFrames;
+
+        /// <summary>**生效的**袋口捕获半径全局乘子（实例值；只读出口）。</summary>
+        public float PocketCaptureRadiusScaleValue => _pocketCaptureRadiusScale;
+
         // ── 构造 ──────────────────────────────────────────────────────────
 
         /// <summary>
@@ -297,6 +309,7 @@ namespace Billiards.Physics
             _params = parameters;
             _restSpeedThreshold = restSpeedThreshold;
             _restStableFrames = restStableFrames;
+            _pocketCaptureRadiusScale = pocketCaptureRadiusScale;
             _ballRestitution = parameters.ballRestitution;
             _ballTangentialFriction = parameters.ballTangentialFriction;
 

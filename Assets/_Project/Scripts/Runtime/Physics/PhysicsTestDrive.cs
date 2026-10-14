@@ -162,6 +162,11 @@ namespace Billiards.Physics
                 captureScale = tuning.pocketCaptureRadiusScale;
                 restSpeed = tuning.restSpeedThreshold;
                 restFrames = tuning.restStableFrames;
+
+                // **初速也由资产统一提供**（`B4` 事故：资产缺这两个字段 ⇒ 灰盒实际用的是组件/场景序列化的旧值）。
+                // 读入组件字段 ⇒ `Launch()` 仍只有**一条**读取路径（组件字段），不产生第二个真源。
+                minLaunchSpeed = tuning.minLaunchSpeed;
+                maxLaunchSpeed = tuning.maxLaunchSpeed;
             }
             else
             {
@@ -460,6 +465,19 @@ namespace Billiards.Physics
             }
 
             Vector3 dir = AimDirectionUnity;
+
+            // **跟随口径（8 Ball Pool）**：球运动期间（`!TableAtRest`）指示物**隐藏** ——
+            // 不得粘着滚动中的白球乱跑；全静止后回到白球当前位置、随 `aimDegrees`（含 Shift 微调）实时更新。
+            bool ballsMoving = _simulator != null && !_simulator.TableAtRest;
+            if (aimIndicator.gameObject.activeSelf == ballsMoving)
+            {
+                aimIndicator.gameObject.SetActive(!ballsMoving);
+            }
+
+            if (ballsMoving)
+            {
+                return;
+            }
 
             Vector3 origin;
             if (ballVisuals != null && ballVisuals.Length > 0 && ballVisuals[0] != null)

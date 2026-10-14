@@ -1,11 +1,11 @@
 {
     "schema": "billiards.day4-verification.v1",
-    "generatedAtUtc": "2026-10-13T10:35:31.8187187Z",
+    "generatedAtUtc": "2026-10-14T09:20:37.1369143Z",
     "unityVersion": "6000.0.49f1",
     "activeBuildTarget": "StandaloneWindows64",
     "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
     "isBatchMode": true,
-    "passCount": 5,
+    "passCount": 7,
     "warnCount": 0,
     "failCount": 0,
     "overallStatus": "PASS",
@@ -30,7 +30,7 @@
             "id": "D4-PHY-01",
             "title": "Runtime/Physics/ 源码无 Rigidbody/Collider 名字（含字符串字面量，只跳注释行）",
             "expected": "scanned > 0 且 hits == 0",
-            "actual": "scanned=6 file(s), commentLinesSkipped=262 → hits=0",
+            "actual": "scanned=7 file(s), commentLinesSkipped=562 → hits=0",
             "status": "PASS",
             "detail": ""
         },
@@ -40,7 +40,23 @@
             "expected": "0 / 0，且扫描非空转",
             "actual": "scene=2 prefab=18 → Rigidbody=0 Collider=0",
             "status": "PASS",
-            "detail": "复用 `PhysicsBanAudit` 单点实现（铁律 16）；扫描范围含本切片新增的 PhysicsGreybox.unity。"
+            "detail": "复用 `PhysicsBanAudit` 单点实现（铁律 16）；扫描范围含新增的 PhysicsGreybox.unity。"
+        },
+        {
+            "id": "D5-PHY-01",
+            "title": "球-球初始摆放无重叠（间距 ≥ 2r − 容差）",
+            "expected": "全部 6 对均合法；下限 = 2r − 1E-004 m",
+            "actual": "球数=4，配对数=6，最小间距 ≥ 下限",
+            "status": "PASS",
+            "detail": ""
+        },
+        {
+            "id": "D6-PHY-01",
+            "title": "6 袋 captureRadius 逐袋自洽（= openingRadius − r − 0.002；法向单位/⟂袋喉）",
+            "expected": "6/6 通过",
+            "actual": "pocketCount=6，通过 6/6；全部自洽",
+            "status": "PASS",
+            "detail": ""
         },
         {
             "id": "D4-BLD-01",
@@ -48,7 +64,7 @@
             "expected": "仅 Assets/_Project/Scenes/Main.unity",
             "actual": "Assets/_Project/Scenes/Main.unity [enabled]",
             "status": "PASS",
-            "detail": "R-J：灰盒场景**刻意不注册**。若注册，Day 1 的 SCN-02（build list 恰含 Main.unity）会失败、其 26/26 证据作废。"
+            "detail": "R-J：灰盒场景**刻意不注册**。若注册，工程配置阶段的 SCN-02（build list 恰含 Main.unity）会失败、其 26/26 证据作废。"
         }
     ]
 }
