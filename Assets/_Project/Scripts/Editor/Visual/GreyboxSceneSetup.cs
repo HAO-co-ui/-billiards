@@ -174,6 +174,9 @@ namespace Billiards.EditorTools
             gizmoGo.transform.SetParent(root.transform, false);
             CushionGizmo gizmo = gizmoGo.AddComponent<CushionGizmo>();
             gizmo.tableConfig = config;
+            // Gizmo 宿主本身不进缩放根（`Gizmos.*` 用世界坐标，父节点缩放对它无效），
+            // 但**绘制坐标**必须过显示层 ⇒ 接线 `playfieldRoot` 让 CushionGizmo 走 `PlayfieldView` 映射。
+            gizmo.playfieldRoot = playfieldRoot.transform;
 
             // 3) PhysicsTestDrive 宿主
             var driveGo = new GameObject(DriveObjectName);

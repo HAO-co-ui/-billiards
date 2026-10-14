@@ -8,7 +8,7 @@ namespace Billiards.Physics
     /// <summary>
     /// 库边碰撞几何（<see cref="PoolConstants.CushionSegmentCount"/> 段）与当前球状态的 **Gizmo 可视化**。
     ///
-    /// ── 契约（三条，均可被评审逐条对照）────────────────────────────────────
+    /// ── 契约（四条，均可被评审逐条对照）────────────────────────────────────
     ///  1. **只画不算**：本类在 <c>OnDrawGizmos</c> 内**不做任何物理推进、不写任何状态**。
     ///     球状态只从 <see cref="Simulator"/> 读出后绘制。Gizmo 是纯只读视图。
     ///  2. **坐标只经唯一转换点**：物理平面 → Unity 世界一律走
@@ -16,6 +16,13 @@ namespace Billiards.Physics
     ///     <see cref="PhysicsVectorToUnity"/>（由同一转换点导出，不另写变换）。工程标准 R5-2。
     ///  3. **按 rail 分组着色**：同一条链同色。颜色按 rail 名**首次出现顺序**从固定调色板取用
     ///     （确定性，不使用 <c>Dictionary</c> 迭代序）。
+    ///  4. **绘制坐标必须过显示层**（Day 8 切片 A 之后新增）：所有库边线段 / 端点标记 / 法向刻度 /
+    ///     球线框的坐标，一律经 <see cref="PlayfieldView.DisplayFromCanonical"/>（**唯一**显示映射点）映射到
+    ///     **显示世界** ⇒ 与挂在 `PlayfieldRoot`（`localScale = PoolConstants.PlayfieldVisualScale`）下的
+    ///     球可视物保持同一尺度。**不得**直接拿 <see cref="PoolGeometry"/> 的**规范世界**坐标去画
+    ///     （那会让线框停在 1.0× 而显示球是 1.2× ⇒ 错位）；**不得**在本类手写固定倍数
+    ///     （根节点带平移/旋转时会静默算错）。`playfieldRoot == null` ⇒ 退化为 scale = 1
+    ///     （警戒色 + 一次性告警），不抛异常、不静默画在错位置。
     ///
     /// 段几何以 <see cref="TableConfig.segments"/> 为唯一真源（82 段 = 6 段直库 + 76 段袋角侧壁）。
     /// </summary>
@@ -25,6 +32,14 @@ namespace Billiards.Physics
         /// <summary>球桌碰撞几何真源。为空时本组件不绘制任何库边。</summary>
         [Tooltip("球桌碰撞几何真源（TableConfig.asset）。为空时不绘制库边。")]
         public TableConfig tableConfig;
+
+        /// <summary>
+        /// **可视野缩放根**（表现层等比缩放，`PoolConstants.PlayfieldVisualScale`）。
+        /// 所有绘制坐标都经本 Transform 映射到**显示世界**（映射的唯一实现是 <see cref="PlayfieldView"/>）。
+        /// **为空** ⇒ 绘制退化为 `scale = 1`（警戒色 + 一次性告警），与 1.2 显示层的球错位。
+        /// </summary>
+        [Tooltip("可视野缩放根（PlayfieldRoot）。为空时绘制退化为 scale = 1。")]
+        public Transform playfieldRoot;
 
         /// <summary>
         /// 可选的物理内核引用，**仅用于读取球状态**。运行时由
@@ -42,6 +57,12 @@ namespace Billiards.Physics
 
         /// <summary>速度矢量绘制比例（世界米 / (m·s⁻¹)）。仅可视化用。</summary>
         public const float VelocityVectorScale = 0.1f;
+
+        /// <summary>`playfieldRoot` 未接线时的**警戒绘制色**（橙红）：提示"绘制坐标未过显示层"。</summary>
+        private static readonly Color MissingRootColor = new Color(1f, 0.35f, 0.05f, 1f);
+
+        /// <summary>退化告警是否已打过（**只报一次**，避免每帧刷屏）。</summary>
+        private bool _warnedMissingPlayfieldRoot;
 
         /// <summary>
         /// rail 分组调色板。本工程实测 **6 条链**（end_negative / end_positive /
@@ -80,6 +101,41 @@ namespace Billiards.Physics
             return PoolGeometry.PhysicsToUnity(vector, PoolConstants.ClothHeightY) - origin;
         }
 
+        // ── 显示层映射（绘制坐标的**唯一落点**；抽成纯函数以便判据直接驱动，不必真画）──────
+
+        /// <summary>
+        /// **规范世界点 → 绘制用（显示世界）点**。经 <see cref="PlayfieldView.DisplayFromCanonical"/>
+        /// （唯一显示映射点）；<paramref name="playfieldRoot"/> 为 <c>null</c> ⇒ 退化为**原样返回**
+        /// （等价 `scale = 1`），不抛异常。
+        ///
+        /// ⚠ 纯函数、无副作用 ⇒ 判据可直接断言"绘制点 == 显示映射点"，无需运行 <c>Gizmos</c>。
+        /// </summary>
+        public static Vector3 DisplayPoint(Transform playfieldRoot, Vector3 canonicalWorldPoint)
+        {
+            return playfieldRoot == null
+                ? canonicalWorldPoint
+                : PlayfieldView.DisplayFromCanonical(playfieldRoot, canonicalWorldPoint);
+        }
+
+        /// <summary>
+        /// **显示层尺度因子**（半径 / 刻度这类"长度"要乘的量）。
+        /// 由**唯一显示映射点**导出：<c>|DisplayFromCanonical(root, +X) − DisplayFromCanonical(root, 0)|</c>
+        /// —— 对等比缩放恒等于该尺度，且**自动含**平移（相减抵消）与旋转（旋转保长）。
+        /// **不硬编码** <see cref="PoolConstants.PlayfieldVisualScale"/>。
+        /// <paramref name="playfieldRoot"/> 为 <c>null</c> ⇒ `1f`（退化）。
+        /// </summary>
+        public static float DisplayScale(Transform playfieldRoot)
+        {
+            if (playfieldRoot == null)
+            {
+                return 1f;
+            }
+
+            Vector3 origin = PlayfieldView.DisplayFromCanonical(playfieldRoot, Vector3.zero);
+            Vector3 unitX = PlayfieldView.DisplayFromCanonical(playfieldRoot, Vector3.right);
+            return (unitX - origin).magnitude;
+        }
+
         private void OnDrawGizmos()
         {
             if (tableConfig == null || tableConfig.segments == null || tableConfig.segments.Count == 0)
@@ -87,24 +143,37 @@ namespace Billiards.Physics
                 return;
             }
 
+            // 退化：playfieldRoot 未接线 ⇒ 只报一次（不抛异常、不每帧刷屏），并按警戒色绘制以示"未过显示层"。
+            if (playfieldRoot == null && !_warnedMissingPlayfieldRoot)
+            {
+                _warnedMissingPlayfieldRoot = true;
+                Debug.LogWarning("CushionGizmo：playfieldRoot 未接线 ⇒ 绘制退化为 scale = 1，"
+                                 + "会与 PlayfieldRoot 下的球可视物（显示层尺度）错位。请在 GreyboxSceneSetup 里接线。", this);
+            }
+
             EnsureRailColors();
 
-            Vector3 center = PoolGeometry.PhysicsToUnity(Vector2.zero, PoolConstants.ClothHeightY);
+            float displayScale = DisplayScale(playfieldRoot);
+            float markerRadius = EndpointMarkerRadius * displayScale;
+            float tickLength = NormalTickLength * displayScale;
+
+            // 台心也过显示层（法向刻度的内向判定用）。
+            Vector3 center = DisplayPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(Vector2.zero, PoolConstants.ClothHeightY));
 
             for (int i = 0; i < tableConfig.segments.Count; i++)
             {
                 CushionSegment s = tableConfig.segments[i];
-                Vector3 a = PoolGeometry.PhysicsToUnity(s.a, PoolConstants.ClothHeightY);
-                Vector3 b = PoolGeometry.PhysicsToUnity(s.b, PoolConstants.ClothHeightY);
+                Vector3 a = DisplayPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(s.a, PoolConstants.ClothHeightY));
+                Vector3 b = DisplayPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(s.b, PoolConstants.ClothHeightY));
 
-                Gizmos.color = _cachedCorners[i];
+                Gizmos.color = playfieldRoot == null ? MissingRootColor : _cachedCorners[i];
 
-                // 段本体
+                // 段本体（显示世界坐标）
                 Gizmos.DrawLine(a, b);
 
                 // 段端点小球标记
-                Gizmos.DrawWireSphere(a, EndpointMarkerRadius);
-                Gizmos.DrawWireSphere(b, EndpointMarkerRadius);
+                Gizmos.DrawWireSphere(a, markerRadius);
+                Gizmos.DrawWireSphere(b, markerRadius);
 
                 // 内法向短刻度：取段的水平垂线中"指向台心 (0,0)"的那一侧。
                 // 选点依据：本 spec §2.2 结论 B 已证「球恒在内侧」不成立，故**不引入逐段朝向数据**；
@@ -121,11 +190,11 @@ namespace Billiards.Physics
                         perp = -perp;
                     }
 
-                    Gizmos.DrawLine(mid, mid + perp * NormalTickLength);
+                    Gizmos.DrawLine(mid, mid + perp * tickLength);
                 }
             }
 
-            DrawBalls();
+            DrawBalls(displayScale);
         }
 
         /// <summary>按 rail 首次出现顺序分配颜色，结果按段索引缓存（仅在球桌或段数变化时重建）。</summary>
@@ -157,7 +226,7 @@ namespace Billiards.Physics
             _cachedCorners = corners;
         }
 
-        private void DrawBalls()
+        private void DrawBalls(float displayScale)
         {
             if (Simulator == null)
             {
@@ -170,15 +239,19 @@ namespace Billiards.Physics
                 return;
             }
 
+            // 球线框的**显示半径** = 规范半径 × 显示尺度（与挂在 PlayfieldRoot 下的球网格同尺度）。
+            float displayRadius = PoolConstants.BallRadius * displayScale;
+
             Gizmos.color = new Color(1f, 0.96f, 0.62f, 1f);
             for (int i = 0; i < balls.Count; i++)
             {
                 BallState ball = balls[i];
-                Vector3 p = PoolGeometry.PhysicsBallToUnity(ball.position);
+                Vector3 p = DisplayPoint(playfieldRoot, PoolGeometry.PhysicsBallToUnity(ball.position));
 
-                Gizmos.DrawWireSphere(p, PoolConstants.BallRadius);
+                Gizmos.DrawWireSphere(p, displayRadius);
 
-                Vector3 v = PhysicsVectorToUnity(ball.velocity);
+                // 速度矢量同样按显示尺度放大，避免与已放大的位置/半径不成比例。
+                Vector3 v = PhysicsVectorToUnity(ball.velocity) * displayScale;
                 if (v.sqrMagnitude > 1e-12f)
                 {
                     Gizmos.DrawLine(p, p + v * VelocityVectorScale);
