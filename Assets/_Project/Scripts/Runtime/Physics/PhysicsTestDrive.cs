@@ -49,14 +49,15 @@ namespace Billiards.Physics
         [Range(0f, 1f)]
         public float cushionTangentialFriction = 0.9f;
 
-        [Tooltip("台呢**滑动段**减速度 a_slide（m/s²，高速段）。调参阶段定为 0.9（手感口径；真实台呢约 0.05–0.15 ⇒ 非物理真值）。")]
-        public float rollingDecelerationSlide = 0.9f;
+        [Tooltip("台呢**滑动段**减速度 a_slide（m/s²，高速段）。出厂 0.5（手感口径；真实台呢约 0.05–0.15 ⇒ 非物理真值）。")]
+        public float rollingDecelerationSlide = 0.5f;
 
-        [Tooltip("台呢**滚动段**减速度 a_roll（m/s²，低速段）。与 `rollingDecelerationSlide` 同值即“恒定档”（与历史行为逐位等价）。")]
-        public float rollingDecelerationRoll = 0.9f;
+        [Tooltip("台呢**滚动段**减速度 a_roll（m/s²，低速段）。出厂 0.25 —— **这是“球能滑多远”的主旋钮**（调小 ⇒ 尾巴更长）。"
+                 + "⚠ 与 `rollingDecelerationSlide` 取同值即“恒定档”（与历史行为逐位等价）。")]
+        public float rollingDecelerationRoll = 0.25f;
 
-        [Tooltip("两段过渡速度 v_transition（m/s）。≤ 0 ⇒ 恒取 a_slide；两段同值时本项不影响结果。")]
-        public float rollingTransitionSpeed = 1.0f;
+        [Tooltip("两段过渡速度 v_transition（m/s）。出厂 2.0。≤ 0 ⇒ 恒取 a_slide；两段同值时本项不影响结果。")]
+        public float rollingTransitionSpeed = 2.0f;
 
         [Header("球-球参数（默认 = 调参口径 0.95；SafeDefault 的 1.0 是「全零解药」、非调参默认）")]
         [Tooltip("球-球法向恢复系数 e_ball。台球实测 0.93–0.96；调参目标口径 = 0.95（Day 7 定）。")]

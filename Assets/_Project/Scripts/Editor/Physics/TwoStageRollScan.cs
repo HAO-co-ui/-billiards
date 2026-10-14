@@ -13,9 +13,9 @@ namespace Billiards.EditorTools
     /// **台呢滚阻两段模型的参数扫描器**（Editor CLI，**只出表 + 曲线，不含任何断言**）。
     ///
     /// ── 为什么它是"显式参数"的 ─────────────────────────────────────────────
-    /// 网格由**代码里的显式字面量**给出，**不读 `PhysicsTuning.asset`** ⇒
-    /// **跑扫描不需要先定出厂值**（出厂值由用户拍板后再改资产）。
-    /// 唯一读资产的是"恒定档对照"（`a_slide == a_roll == 0.9`），而它也只是**对照行**。
+    /// 网格与对照行**全部由代码里的显式字面量给出，完全不读 `PhysicsTuning.asset`** ⇒
+    /// **跑扫描不需要先定出厂值**（出厂值由用户拍板后另行落资产）。
+    /// 对照行 = **历史恒定档**（两段同值 `0.9`，即本次改成两段之前的出厂口径）⇒ 便于"改前 vs 改后"直接比。
     ///
     /// ── 口径（与既有实测一致，使新旧数字可直接比）──────────────────────────
     /// · 单球、**台面中心**（物理坐标 `(0, 0)`）、朝 **`+x` 长库方向**；
@@ -24,9 +24,9 @@ namespace Billiards.EditorTools
     /// · "撞库次数" = 内核诊断量 `TotalContactCount`（单球、无球-球 ⇒ 即段接触次数）。
     ///
     /// ── 产物（默认 `Docs/Tuning/`；可用 `-outputDir` 改到仓库外）────────────
-    /// · `two-stage-roll-scan.csv`（12 格 + 恒定档对照行，逐格三指标）
-    /// · `two-stage-roll-summary.txt`（12 格表 + 力度档次表 + 恒定档对照）
-    /// · `two-stage-roll-curve.svg`（速度-时间曲线：若干两段档 vs 恒定档）
+    /// · `two-stage-roll-scan.csv`（网格 A + 网格 B + 历史恒定档对照行，逐格三指标）
+    /// · `two-stage-roll-summary.txt`（网格 A/B 满力表 + **新出厂值 vs 现状 力度档对照** + 力度档次表）
+    /// · `two-stage-roll-curve.svg`（速度-时间曲线：若干两段档 vs 历史恒定档）
     /// </summary>
     public static class TwoStageRollScan
     {
@@ -45,10 +45,11 @@ namespace Billiards.EditorTools
         private static readonly float[] TransitionGridA = { 1.0f, 2.0f, 3.0f };
 
         /// <summary>
-        /// 扫描网格 B（补充，**显式字面量**）：`a_slide ≤ 现行恒定口径 0.9` ⇒ **比现状滚得更远**。
-        /// 理由：网格 A 固定 `a_slide = 2.0`（是出厂 `0.9` 的 2 倍以上）⇒ 高速段扣得更狠，
-        /// 满力路径反而**短于**现状（实测 3.76–4.98 m vs 现状 6.20 m）。
+        /// 扫描网格 B（补充，**显式字面量**）：`a_slide ≤ 历史恒定口径 0.9` ⇒ **比旧口径滚得更远**。
+        /// 理由：网格 A 固定 `a_slide = 2.0`（是旧口径 `0.9` 的 2 倍以上）⇒ 高速段扣得更狠，
+        /// 满力路径反而**短于**旧口径（实测 3.76–4.98 m vs 旧口径 6.20 m）。
         /// 用户第一诉求是"滚得太短" ⇒ 必须同时给出"变长"那一侧的可选值。
+        /// ★ **用户拍板档 ④ = `0.50 / 0.25 / 2.0` 就在本网格内**（见 `FactoryNow`）。
         /// </summary>
         private static readonly float[] SlideGridB = { 0.5f, 0.7f, 0.9f };
 
@@ -57,6 +58,21 @@ namespace Billiards.EditorTools
 
         /// <summary>力度档（0 / 25 / 50 / 75 / 100 %）。</summary>
         private static readonly float[] PowerGrid = { 0f, 0.25f, 0.5f, 0.75f, 1f };
+
+        /// <summary>**新出厂口径（用户拍板档 ④）** —— 只用于摘要里的"改前 vs 改后"对照，**不读资产**。</summary>
+        private static readonly float[] FactoryNow = { 0.50f, 0.25f, 2.0f };
+
+        /// <summary>
+        /// **历史恒定档对照**：`a_slide == a_roll == 0.9`（= 本次改成两段之前的出厂口径）。
+        /// ⚠ 旧单值滚阻字段已删，"恒定档"由"两段取同值"表达（退化档下 `v_transition` 不生效，取 1.0）。
+        /// </summary>
+        private static readonly float[] ConstantPrior = { 0.9f, 0.9f, 1.0f };
+
+        /// <summary>CSV/摘要里的 case 标签（单点常量，避免各处字面量分叉）。</summary>
+        private const string CaseGridA = "two-stage";
+
+        private const string CaseGridB = "two-stage-B";
+        private const string CaseConstant = "constant(prior-0.9)";
 
         public static void RunFromCommandLine()
         {
@@ -100,20 +116,18 @@ namespace Billiards.EditorTools
             const float minLaunch = 0.5f;
             const float maxLaunch = 4.5f;
 
-            // ── 12 格（网格 A）+ 网格 B（变长方向）+ 恒定档对照行 ─────────────
+            // ── 网格 A（12 格）+ 网格 B（变长方向，36 格）+ 历史恒定档对照行 ────
             var rows = new List<Row>();
-            AddGrid(rows, "two-stage", SlideGridA, RollGridA, TransitionGridA);
-            AddGrid(rows, "two-stage-B", SlideGridB, RollGridB, TransitionGridB);
+            AddGrid(rows, CaseGridA, SlideGridA, RollGridA, TransitionGridA);
+            AddGrid(rows, CaseGridB, SlideGridB, RollGridB, TransitionGridB);
 
-            // 恒定档对照：`a_slide == a_roll == 0.9`（= 现行出厂值）。⚠ 旧单值滚阻字段已删，
-            // "恒定档"由"两段取同值"表达（`v_transition` 在退化档下不生效，取 1.0）。
-            const float constantA = 0.9f;
+            // 对照行：历史恒定档（两段同值 0.9 = 本次改成两段之前的出厂口径）
             rows.Add(new Row
             {
-                Case = "constant(factory)",
-                Slide = constantA,
-                Roll = constantA,
-                Transition = 1.0f,
+                Case = CaseConstant,
+                Slide = ConstantPrior[0],
+                Roll = ConstantPrior[1],
+                Transition = ConstantPrior[2],
                 Shots = new Shot[PowerGrid.Length],
             });
 
@@ -267,8 +281,13 @@ namespace Billiards.EditorTools
               .Append(StepCap).Append(" 步（").Append(StepCap / (int)FixedStepsPerSecond).Append(" s）\n");
             sb.Append("网格 A（spec 指定 12 格）：a_slide = 2.0 固定 × a_roll ∈ {0.10, 0.15, 0.25, 0.40} × v_transition ∈ {1.0, 2.0, 3.0}\n");
             sb.Append("网格 B（补充 36 格）：a_slide ∈ {0.5, 0.7, 0.9} × a_roll ∈ {0.05, 0.10, 0.15, 0.25} × v_transition ∈ {1.0, 2.0, 3.0}\n");
-            sb.Append("  ⚠ 网格 A 的 a_slide = 2.0 是**出厂 0.9 的 2 倍以上** ⇒ 高速段扣得更狠、满力路径**短于**现状；\n");
+            sb.Append("  ⚠ 网格 A 的 a_slide = 2.0 是**历史出厂 0.9 的 2 倍以上** ⇒ 高速段扣得更狠、满力路径**短于**旧口径；\n");
             sb.Append("     网格 B 是**变长那一侧**（a_slide ≤ 0.9）—— 用户第一诉求是\"滚得太短\" ⇒ 两侧都要看。\n");
+            sb.Append("★ **新出厂口径 = `a_slide = ").Append(F(FactoryNow[0], "F2")).Append("` / `a_roll = ")
+              .Append(F(FactoryNow[1], "F2")).Append("` / `v_transition = ").Append(F(FactoryNow[2], "F2"))
+              .Append("`**（= 网格 B 的一行，见下面的对照表）。\n");
+            sb.Append("★ **历史恒定档对照 = `").Append(F(ConstantPrior[0], "F2")).Append('/').Append(F(ConstantPrior[1], "F2"))
+              .Append('/').Append(F(ConstantPrior[2], "F2")).Append("`**（两段同值 ⇒ 退化 ⇒ 与历史单一恒定减速度逐位等价）。\n");
             sb.Append("力度 → 初速：v0 = ").Append(F(minLaunch, "F2")).Append(" + 力度·(")
               .Append(F(maxLaunch - minLaunch, "F2")).Append(") ⇒ 0/25/50/75/100% = ")
               .Append(F(minLaunch, "F2")).Append('/').Append(F(minLaunch + 0.25f * (maxLaunch - minLaunch), "F2"))
@@ -278,41 +297,91 @@ namespace Billiards.EditorTools
             sb.Append("⚠ \"撞库次数\" = 内核诊断量 TotalContactCount（单球、无球-球 ⇒ 即段接触次数）。\n\n");
 
             // 表 A / A2：满力一杆
-            AppendFullPowerTable(sb, rows, "two-stage", "═══ 表 A：**网格 A 满力一杆（100%，v0 = 4.5 m/s）** ═══", true);
-            AppendFullPowerTable(sb, rows, "two-stage-B", "═══ 表 A2：**网格 B 满力一杆（100%，v0 = 4.5 m/s）** —— **变长方向** ═══", false);
+            AppendFullPowerTable(sb, rows, CaseGridA, "═══ 表 A：**网格 A 满力一杆（100%，v0 = 4.5 m/s）** ═══", true);
+            AppendFullPowerTable(sb, rows, CaseGridB, "═══ 表 A2：**网格 B 满力一杆（100%，v0 = 4.5 m/s）** —— **变长方向** ═══", false);
 
-            Row constantRow = rows[rows.Count - 1];
-            Shot cs = constantRow.Shots[PowerGrid.Length - 1];
-            sb.Append("\n**对照行（现行恒定档 a = 0.9；= 历史单值模型）**：满力 静止 ")
-              .Append(F(cs.RestS, "F4")).Append(" s / 路径 ").Append(F(cs.TravelM, "F4"))
-              .Append(" m / 撞库 ").Append(cs.CushionHits.ToString(CultureInfo.InvariantCulture)).Append(" 次\n");
+            // ★ 新出厂值 vs 现状（向用户解释"尾巴有多长"用）
+            AppendFactoryCompare(sb, rows);
 
             var main = new List<Row>();
             for (int r = 0; r < rows.Count; r++)
             {
-                if (rows[r].Case == "two-stage" || rows[r].Case == "constant(factory)")
+                if (rows[r].Case == CaseGridA || rows[r].Case == CaseConstant)
                 {
                     main.Add(rows[r]);
                 }
             }
 
-            // 表 B / C / D：网格 A + 恒定档对照 的各力度档
-            sb.Append("\n═══ 表 B：**网格 A + 恒定档 · 各力度档 · 静止耗时 (s)** ═══\n");
+            // 表 B / C / D：网格 A + 历史恒定档 的各力度档
+            sb.Append("\n═══ 表 B：**网格 A + 历史恒定档 · 各力度档 · 静止耗时 (s)** ═══\n");
             sb.Append("参数（a_slide/a_roll/v_t) | 0% | 25% | 50% | 75% | 100%\n");
             AppendPowerMatrix(sb, main, 0);
 
-            sb.Append("\n═══ 表 C：**网格 A + 恒定档 · 各力度档 · 滚动路径 (m)** ═══\n");
+            sb.Append("\n═══ 表 C：**网格 A + 历史恒定档 · 各力度档 · 滚动路径 (m)** ═══\n");
             sb.Append("参数（a_slide/a_roll/v_t) | 0% | 25% | 50% | 75% | 100%\n");
             AppendPowerMatrix(sb, main, 1);
 
-            sb.Append("\n═══ 表 D：**网格 A + 恒定档 · 各力度档 · 撞库次数** ═══\n");
+            sb.Append("\n═══ 表 D：**网格 A + 历史恒定档 · 各力度档 · 撞库次数** ═══\n");
             sb.Append("参数（a_slide/a_roll/v_t) | 0% | 25% | 50% | 75% | 100%\n");
             AppendPowerMatrix(sb, main, 2);
 
             sb.Append("\n★ = 上限 ").Append(StepCap).Append(" 步内**未静止**（该格数字为上限值，不代表真值）。\n");
             sb.Append("说明：**选值由主理人 + 用户拍板**；扫描**不含任何断言**，仅作调参依据。\n");
-            sb.Append("      网格 B 的力度档明细见 CSV（`two-stage-roll-scan.csv`，`case=two-stage-B`）。\n");
+            sb.Append("      网格 B 的力度档明细见 CSV（`two-stage-roll-scan.csv`，`case=").Append(CaseGridB).Append("`）。\n");
             File.WriteAllText(path, sb.ToString());
+        }
+
+        /// <summary>
+        /// **新出厂值 vs 现状**：逐力度档并列两行（**本工具不读资产**，两行都是显式字面量）。
+        /// 用途：向用户解释"改了以后每一档各滚多远、停多久"。
+        /// </summary>
+        private static void AppendFactoryCompare(StringBuilder sb, List<Row> rows)
+        {
+            int nowIdx = IndexOfRow(rows, FactoryNow);
+            int priorIdx = IndexOfRow(rows, ConstantPrior);
+            sb.Append("\n★★★ 新出厂值 vs 现状（逐力度档；**本表两行都是显式字面量，不读资产**）★★★\n");
+            if (nowIdx < 0 || priorIdx < 0)
+            {
+                sb.Append("（内部错误：新出厂行或对照行未生成）\n");
+                return;
+            }
+
+            Row nowRow = rows[nowIdx];
+            Row priorRow = rows[priorIdx];
+            sb.Append("口径：单球 · 台面中心 · 朝 +x · 路径 = 逐帧弦长累加 · 上限 ").Append(StepCap).Append(" 步\n\n");
+            sb.Append("力度 | 初速(m/s) | ").Append(F(priorRow.Slide, "F2")).Append('/').Append(F(priorRow.Roll, "F2"))
+              .Append("/vt=").Append(F(priorRow.Transition, "F2")).Append("（现状）耗时/路径/撞库 | ")
+              .Append(F(nowRow.Slide, "F2")).Append('/').Append(F(nowRow.Roll, "F2")).Append("/vt=")
+              .Append(F(nowRow.Transition, "F2")).Append("（新出厂）耗时/路径/撞库 | 路径变化\n");
+            for (int k = 0; k < PowerGrid.Length; k++)
+            {
+                Shot o = priorRow.Shots[k];
+                Shot n = nowRow.Shots[k];
+                float delta = o.TravelM != 0f ? (n.TravelM / o.TravelM - 1f) * 100f : 0f;
+                sb.Append((PowerGrid[k] * 100f).ToString("F0", CultureInfo.InvariantCulture)).Append("% | ")
+                  .Append(F(0.5f + PowerGrid[k] * 4f, "F2")).Append(" | ")
+                  .Append(F(o.RestS, "F4")).Append(" s / ").Append(F(o.TravelM, "F4")).Append(" m / ")
+                  .Append(o.CushionHits.ToString(CultureInfo.InvariantCulture)).Append(" | ")
+                  .Append(F(n.RestS, "F4")).Append(" s / ").Append(F(n.TravelM, "F4")).Append(" m / ")
+                  .Append(n.CushionHits.ToString(CultureInfo.InvariantCulture)).Append(" | ")
+                  .Append((delta >= 0f ? "+" : "")).Append(delta.ToString("F1", CultureInfo.InvariantCulture)).Append("%\n");
+            }
+
+            sb.Append('\n');
+        }
+
+        /// <summary>按 (a_slide, a_roll, v_transition) 找行下标；找不到返回 −1。</summary>
+        private static int IndexOfRow(List<Row> rows, float[] p)
+        {
+            for (int r = 0; r < rows.Count; r++)
+            {
+                if (rows[r].Slide == p[0] && rows[r].Roll == p[1] && rows[r].Transition == p[2])
+                {
+                    return r;
+                }
+            }
+
+            return -1;
         }
 
         /// <summary>满力一杆表（按 <paramref name="fullPower"/> 决定是否附恒定档对照行）。</summary>
@@ -325,7 +394,7 @@ namespace Billiards.EditorTools
                 Row row = rows[r];
                 if (fullPower)
                 {
-                    if (row.Case != kase && row.Case != "constant(factory)")
+                    if (row.Case != kase && row.Case != CaseConstant)
                     {
                         continue;
                     }
@@ -342,9 +411,9 @@ namespace Billiards.EditorTools
                   .Append(F(s.RestS, "F4")).Append(Star(s)).Append(" | ")
                   .Append(F(s.TravelM, "F4")).Append(" | ")
                   .Append(s.CushionHits.ToString(CultureInfo.InvariantCulture));
-                if (row.Case == "constant(factory)")
+                if (row.Case == CaseConstant)
                 {
-                    sb.Append("  ← 现行恒定档");
+                    sb.Append("  ← 历史恒定档（改动前的出厂口径）");
                 }
 
                 sb.Append('\n');
@@ -360,7 +429,7 @@ namespace Billiards.EditorTools
             {
                 Row row = rows[r];
                 sb.Append(F(row.Slide, "F2")).Append('/').Append(F(row.Roll, "F2")).Append('/').Append(F(row.Transition, "F2"));
-                if (row.Case != "two-stage")
+                if (row.Case != CaseGridA)
                 {
                     sb.Append(" ← ").Append(row.Case);
                 }
@@ -389,7 +458,7 @@ namespace Billiards.EditorTools
             // 曲线选点：恒定档 + 网格 A 两档 + 网格 B 两档（按参数查找，不用下标，避免网格增删时错位）
             float[][] wanted =
             {
-                new[] { 0.9f, 0.9f, 1.0f },    // 恒定档（现行出厂）
+                new[] { 0.9f, 0.9f, 1.0f },    // 历史恒定档（改动前的出厂口径）
                 new[] { 2.0f, 0.10f, 1.0f },   // 网格 A
                 new[] { 2.0f, 0.40f, 3.0f },   // 网格 A
                 new[] { 0.5f, 0.05f, 1.0f },   // 网格 B（变长）
@@ -469,7 +538,7 @@ namespace Billiards.EditorTools
                   .Append("\" font-size=\"12\" fill=\"").Append(color).Append("\">a=")
                   .Append(F(row.Slide, "F2")).Append('/').Append(F(row.Roll, "F2")).Append("/vt=")
                   .Append(F(row.Transition, "F2"))
-                  .Append(row.Case == "constant(factory)" ? "(恒定档)" : string.Empty)
+                  .Append(row.Case == CaseConstant ? "(历史恒定档)" : string.Empty)
                   .Append("</text>\n");
             }
 

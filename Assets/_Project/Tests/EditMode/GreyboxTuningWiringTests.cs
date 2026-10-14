@@ -170,7 +170,7 @@ namespace Billiards.Tests
 
         /// <summary>
         /// **出厂口径冻结**：`PhysicsTuning.asset` 的**每一个**字段值 == 台账口径
-        /// （`0.8 / 0.9 / 0.9 / 0.9 / 1.0 / 0.95 / 1.0 / 1.0 / 1e-3 / 8 / 4.5 / 0.5`，**共 12 项**）。
+        /// （`0.8 / 0.9 / 0.5 / 0.25 / 2.0 / 0.95 / 1.0 / 1.0 / 1e-3 / 8 / 4.5 / 0.5`，**共 12 项**）。
         /// 表项数 = **10 − 1 + 3**：旧单值滚阻字段删 1、台呢两段模型加 3（滑动段 / 滚动段 / 过渡速度）。
         /// 改值**必须显式重钉本表**（与 `T37` 基线同规）—— 否则"测试全绿而手感被悄悄改掉"。
         /// **可被打死**：改资产任一字段 ⇒ FAIL（含把 `rollingDecelerationRoll` 改 `0.05`）。
@@ -183,10 +183,11 @@ namespace Billiards.Tests
 
             Assert.AreEqual(0.8f, t.cushionRestitution, 1e-6f, "T44：cushionRestitution 偏离台账。");
             Assert.AreEqual(0.9f, t.cushionTangentialFriction, 1e-6f, "T44：cushionTangentialFriction 偏离台账。");
-            // 台呢两段模型：出厂 = **退化恒定档**（滑动段 == 滚动段 == 0.9，与历史单一减速度逐位等价）。
-            Assert.AreEqual(0.9f, t.rollingDecelerationSlide, 1e-6f, "T44：rollingDecelerationSlide 偏离台账。");
-            Assert.AreEqual(0.9f, t.rollingDecelerationRoll, 1e-6f, "T44：rollingDecelerationRoll 偏离台账。");
-            Assert.AreEqual(1.0f, t.rollingTransitionSpeed, 1e-6f, "T44：rollingTransitionSpeed 偏离台账。");
+            // 台呢两段模型：出厂 = **非退化两段档**（滑动段 0.5 / 滚动段 0.25 / 过渡速度 2.0；用户拍板档 ④）。
+            // ⇒ 减速度随速度变（高速段扣得多、低速段扣得少）。退化档（两段同值）仍是显式逃生舱，由 `T54` 钉等价。
+            Assert.AreEqual(0.5f, t.rollingDecelerationSlide, 1e-6f, "T44：rollingDecelerationSlide 偏离台账。");
+            Assert.AreEqual(0.25f, t.rollingDecelerationRoll, 1e-6f, "T44：rollingDecelerationRoll 偏离台账。");
+            Assert.AreEqual(2.0f, t.rollingTransitionSpeed, 1e-6f, "T44：rollingTransitionSpeed 偏离台账。");
             Assert.AreEqual(0.95f, t.ballRestitution, 1e-6f, "T44：ballRestitution 偏离台账。");
             Assert.AreEqual(1f, t.ballTangentialFriction, 1e-6f, "T44：ballTangentialFriction 偏离台账。");
             Assert.AreEqual(1f, t.pocketCaptureRadiusScale, 1e-6f, "T44：pocketCaptureRadiusScale 偏离台账。");
@@ -195,7 +196,7 @@ namespace Billiards.Tests
             Assert.AreEqual(4.5f, t.maxLaunchSpeed, 1e-6f, "T44：maxLaunchSpeed 偏离台账。");
             Assert.AreEqual(0.5f, t.minLaunchSpeed, 1e-6f, "T44：minLaunchSpeed 偏离台账。");
 
-            TestContext.WriteLine("T44: 出厂口径冻结表全部吻合（0.8/0.9/0.9/0.9/1.0/0.95/1.0/1.0/1e-3/8/4.5/0.5，共 12 项）✓");
+            TestContext.WriteLine("T44: 出厂口径冻结表全部吻合（0.8/0.9/0.5/0.25/2.0/0.95/1.0/1.0/1e-3/8/4.5/0.5，共 12 项）✓");
         }
 
         // ══════════════════ T42 瞄准指示物跟随口径 ═════════════════════════════
