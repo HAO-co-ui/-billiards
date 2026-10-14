@@ -10,8 +10,8 @@
 | 基线 | **`HEAD = f697378`**；`git status --porcelain` 为空（实测）；**EditMode 源码 `[Test]` 计数 = 159 @ `f697378`**（实测，见 §9.1） |
 | 坐标真源 | **ADR-0001**；唯一坐标系转换点 = `Runtime/Core/PoolGeometry.cs`；唯一"显示↔规范"映射点 = `Runtime/Core/PlayfieldView.cs` |
 | 数据真源 | `PoolConstants`（米制）、`TableConfig.asset`（82 段 / 6 袋 / `footSpot`）、`PhysicsTuning.asset`（可由 `PhysicsTestDrive` 现场读出的**生效**参数） |
-| 判据编号 | 自 **`T72`** 起。**已占用：`T41`–`T44`**（`GreyboxTuningWiringTests`）、**`T45`–`T49`**（`PointerAimTests`）、**`T50`–`T53`**（`PointerAimControllerTests` / `CameraViewportFitterTests`）、**`T54`–`T70`**（滚阻两段模型 / 出杆族）、**`T71`**（`CushionGizmoDisplayTests`）⇒ **本 spec 用 `T72`–`T83`**（不复用、不跳号） |
-| 待裁定 | 见 **§11**（`Q-14`…`Q-19`；其中 **`Q-14` 是本单的前提性裁定**） |
+| 判据编号 | 自 **`T72`** 起。**已占用：`T41`–`T44`**（`GreyboxTuningWiringTests`）、**`T45`–`T49`**（`PointerAimTests`）、**`T50`–`T53`**（`PointerAimControllerTests` / `CameraViewportFitterTests`）、**`T54`–`T70`**（滚阻两段模型 / 出杆族）、**`T71`**（`CushionGizmoDisplayTests`）⇒ **本 spec 用 `T72`–`T83` + `T72b`**（共 **13** 条；`T72b` 是 `T72` 的**子判据**，沿用本工程既有的后缀式编号 `T32a`/`T39b`/`T42b` 先例；不复用、不跳号） |
+| 待裁定 | 见 **§11**（`Q-14`…`Q-20`；其中 **`Q-14` 已由主理人批准**并附四条硬约束 **K-1…K-4**；仅 **`Q-20`** 仍待指认） |
 
 > **阅读约定**：本文件是**排期产物**，正文里 `Day N` 是**主题词汇**，有意义。
 > **但文中的代码片段，其注释立即适用 `Docs/注释规范.md`** —— 代码注释里不得出现开发日/批次标签；
@@ -46,7 +46,8 @@
 - **不改** `PoolGeometry.cs` 的映射式（点 `(−px, h, −py)` / 方向 `(−dx, 0, −dy)`）—— 已冻结契约。
 - **不改** `PlayfieldView.cs` / `PointerAimSolver.cs` / `PointerAimState.cs` / `PointerAimController.cs` / `CameraViewportFitter.cs`（Day 8 已落地并被 `T45`–`T53`、`T71` 钉住）。
 - **不改** 物理参数语义（`PhysicsParams` 字段、两段滚阻、`RestSpeedThreshold` / `RestStableFrames`、袋口逐袋 `captureRadius`）。
-- **唯一例外**：`PoolSimulator.cs` 需**新增一个只读诊断**（"首次球-球接触"记录），见 §3.1 / `Q-14`。**除该新增外不改内核任何解算路径**。
+- **例外 1**：`PoolSimulator.cs` 需**新增一个只读诊断**（"首次球-球接触"记录），见 §3.1 / `Q-14`（**已批准**，附四条硬约束）。**除该新增外不改内核任何解算路径**。
+- **例外 2**：`PhysicsTestDrive.cs` 需**新增 1 个表现层开关字段**（`enableShotPrediction`）+ 其唯一读点属性，见 §3.5 / `Q-17`（**已裁定：最小形态、落驱动器组件**）。与既有 `aimIndicator*` 字段同处；**不改任何物理 / 交互语义**。
 - **不改** 任何 `Docs/Reports/**` / `Docs/Reviews/**` / 其它 spec。
 
 ---
@@ -174,12 +175,23 @@ public bool HasBallBallContact { get; }          // 是否已记录首次
 public BallBallContactRecord FirstBallBallContact { get; }   // 仅当 Has… 为真有意义
 ```
 
-- **记录时机**：`ResolveContactGroup()` 里**首次**走到 `ResolveBallBallContact(i,k)` 之前那一刻的**两球位置**（即"所有活跃球已推进到 `earliest`、冲量尚未施加"的状态），随后把解算后的速度补进记录。
+- **记录时机（单点）**：`ResolveBallBallContact(i, k, n)` 的**入口**（本函数是 `BallBallContactCount` **唯一**递增之处，`:1177`/`:1207` 两处都在其内）—— 此刻"所有活跃球刚推进到 `earliest`、冲量**尚未**施加"，正是幽灵球要的"相切瞬间"。由私有布尔 `_hasFirstBallBallContact` 守卫，**只记第一次**，解算后的速度在同一函数内补进记录。
+  - **单点理由**：`BallBallContactCount++` 有**两处**（`:1177` 的"只分离不施冲量"分支、`:1207` 的"施冲量"分支），但**都在** `ResolveBallBallContact` 内 ⇒ 在**函数入口**记录 = **一处**记录点，**不新开**第二个"检测球-球接触"的地方（铁律 16）。
+  - **盲带**：若**首次**调用走 `vn ≥ 0`（深层重叠 / 球心重合，`:1172-1182`）分支，入口记录的位置满足 `|Δ| < 2r`（非相切）⇒ `T75a` 会红。**合法静止局面不含深层重叠**（球堆间距 `2r + 2e-4`）⇒ 本 spec 把该情形**排除在验收场景之外**并登记为盲带。
 - **时间口径**：`timeSeconds` = `已完成的 Step 数 × FixedDeltaTime` + `本 Step 内已完成子步数 × SubStepDeltaTime` + `(SubStepDeltaTime − 该子步接触时刻的 remaining)`；**不读 `Time`**（不破坏确定性，`R5-3`）。
 - **清零**：由 `ResetDiagnostics()` 一并清（⇒ 新实例天然为空；在跑内核在 `Launch()` 后会自然开始记录）。
 
-**判据**：`T75`（幽灵球 == 该记录的白球位置 ⇒ 与目标球心距 `|Δ| == 2r`；并把"路径终点 == 幽灵球"作为内部一致性（`T75b`））。
-**注入**：把记录时机从"推进到 TOI 后"改成"`Step()` 末尾采样" ⇒ **`T75` FAIL**（`|Δ| ≠ 2r`，偏差达 37.5 mm 量级）。
+**四条硬约束（主理人裁定，逐条落地，缺一不可）**：
+
+| # | 约束 | 落地方式 | 判据 |
+| --- | --- | --- | --- |
+| **K-1** | **单点**：写在 `BallBallContactCount` 递增的**同一处**，不许另开第二个"检测球-球接触"的地方 | 记录点 = `ResolveBallBallContact` **函数入口**（两处递增都在该函数内）；**不新增**任何球-球 TOI 扫描 / 配对循环 | `T72b`**(a)**（源码守卫：`BallBallContactCount++` 恰 2 处，且记录语句只出现在该函数内） |
+| **K-2** | **必须证明惰性**：加上诊断后**既有逐位证据一字不变** | 重跑 `T32b` 与 `T37`，**核 接触数 与 逐球终态 逐位相同**（同一串行化口径） | `T72b`**(b)**（逐位一致 + 计数不变） |
+| **K-3** | 纳入 `ResetDiagnostics()` 的语义与既有族**一致**（每杆计数） | 与 `BallBallContactCount` 等**同处**归零 | `T72b`**(c)**（`ResetDiagnostics()` 后 `HasBallBallContact == false`） |
+| **K-4** | ⚠ `T55`（白盒单点守卫）可能需跟着重钉 ⇒ **如实改并说明为什么不是放宽** | **判定：不触到** —— `T55` 只扫 `DecelerationAt(` / `_params.rolling*` / `AverageVelocity`(3 处) / `ApplyRollingDeceleration`(1 处)；新增记录位于 `ResolveBallBallContact`，**既不调用** `AverageVelocity`/`ApplyRollingDeceleration`，**也不读** `_params.rolling*`（记录字段是私有成员，不匹配 `_params.rolling[A-Za-z]*`）。**落地后必跑 `T55`**；若计数变化 ⇒ 如实重钉 + 说明理由（**不放宽**：那三处/一处计数是**物理不变量的守卫**，不得为了通过而删项） | `T72b`**(d)** + `T55`（**回归**，不新增判据） |
+
+**判据**：`T72b`（单点 + 惰性 + 清零语义）+ `T75a`（幽灵球与目标球心距 == `2r`）。
+**注入**：把记录时机从"函数入口"改成"`Step()` 末尾采样" ⇒ **`T75a` FAIL**（`|Δ| ≠ 2r`，偏差达 37.5 mm 量级）；把记录**另开**一个配对循环 ⇒ **`T72b` (K-1) FAIL**。
 
 > **替代方案（已评估、未采纳）**：预测侧用**闭式 2 球 TOI** 在 Step 边界内插值。**不采纳**理由：那是**第二处**接触几何实现（铁律 16），会与内核 TOI 分叉；且排期明写"**用物理前向模拟做预测，而非解析几何**"。
 
@@ -200,7 +212,7 @@ public static ShotPrediction Predict(TableConfig table, PoolSimulator source,
    ⇒ **参数/步长与在跑内核同源**（`T73`）。
 2. **装快照**：`probe.LoadBalls(SnapshotInPlay(source))`
    - `SnapshotInPlay` = **只取 `source.IsBallInPlay(i) == true` 的球**（位置与速度**原样照抄**），丢掉已离台（frozen）的球。
-   - **裁定（见 `Q-14` 附注）**：**已入袋 / 擦袋角离台的球，在快照里"不表示"（被排除）**。理由三条：① 内核**没有**公开的"重新冻结"入口（`LoadBalls` 必清 `_frozen`，`PlaceBall` 必解冻）⇒ "带着 frozen 装载"**结构上不可达**；② 离台球速度恒为 0 且位于喉平面之外，**本不参与**后续运动；③ 排除后 `probe` 的球数恰等于"在场上球数"，可被 `T74` 直接断言。
+   - **裁定（见 `Q-14b`）**：**已入袋 / 擦袋角离台的球，在快照里"不表示"（被排除）**。理由三条：① 内核**没有**公开的"重新冻结"入口（`LoadBalls` 必清 `_frozen`，`PlaceBall` 必解冻）⇒ "带着 frozen 装载"**结构上不可达**；② 离台球速度恒为 0 且位于喉平面之外，**本不参与**后续运动；③ 排除后 `probe` 的球数恰等于"在场上球数"，可被 `T74` 直接断言。
    - ⚠ **已知偏差（盲带，必登记）**：在跑内核里，"运动球 vs **frozen 球**"的对**不会**被 `!_active[i] && !_active[k]` 跳过（`:957`）⇒ 理论上白球仍可撞到**已在袋里的球**；`probe` 里没有它 ⇒ 预测与实跑在该窗口会分叉。窗口极窄（白球须自身也进入同一袋口区域），**`T78` 的擦库/斜碰场景刻意不含"贴近袋口的入袋球"**，并在 §5 `T74` 声明该盲带。
 3. **置初速**：`probe.PlaceBall(cueLocalIndex, cueStart, cueVelocity)`（只动白球；`cueLocalIndex` = **白球在快照子集里的下标**（= 现场从 `source` 的白球索引映射得到）；`cueStart` = 白球快照位置；若白球不在场上 ⇒ 用 `table.footSpot`，**与 `Launch()` 的 respawn 口径一致**，`F-12`）。
 4. **步进到首接触**：循环 `probe.Step()`，直到 `probe.HasBallBallContact` 或步数达 `maxSteps`；每步记录白球位置（画虚线用）。
@@ -224,13 +236,13 @@ public static ShotPrediction Predict(TableConfig table, PoolSimulator source,
 
 **新增交付物（运行时）**
 - `Runtime/Physics/AimAssistController.cs` · `MonoBehaviour`，挂灰盒 `PhysicsGreybox` 根。
-- 序列化字段：`PhysicsTestDrive drive`、`Camera aimCamera`（可空）、`Transform playfieldRoot`、**`bool enablePrediction = true`**（**设置项预留接口的唯一写点**）、`int maxPredictSteps`（**待实测定值**，见 §4.1）。
+- 序列化字段：`PhysicsTestDrive drive`、`Camera aimCamera`（可空）、`Transform playfieldRoot`、`int maxPredictSteps`（**待实测定值**，见 §4.1）。**开关字段不在这里** —— 它落在驱动器组件上（`Q-17`，见 §3.5）。
 - 每帧（`LateUpdate`）：
-  - **开关关闭 ⇒ 直接返回**（**不得**调用 `Predict`；`T82`）。
+  - **开关关闭 ⇒ 直接返回**（`drive.PredictionEnabled == false` ⇒ **不得**调用 `Predict`；`T82`）。
   - **仅在 `drive.Simulator.TableAtRest` 且 `drive.Simulator != null` 时**重算（球运动期间预测**无意义**且**隐藏**，与 `F-14` 同口径）。
   - **脏标记**：仅当 `(aimDegrees, power, 在场上球快照指纹)` 变化时才重算 ⇒ 静止时**不每帧重算**（`T83`）。
   - 重算：`v0 = (cosθ, sinθ)·lerp(min,max,power)`（**与 `Launch()` 同一口径**，`F-12`）；`_prediction = ShotPredictor.Predict(drive.tableConfig, drive.Simulator, v0, maxPredictSteps)`。
-- **只读出口**（可观测，`T82`）：`Prediction`（当前结果）、`PredictionEnabled`（**唯一读点**，属性 → 返回 `enablePrediction`）、**`PredictionComputeCount`**（累计重算次数，诊断量）。
+- **只读出口**（可观测，`T82`）：`Prediction`（当前结果）、`PredictionComputeCount`（累计重算次数，诊断量）。**开关的唯一读点是 `drive.PredictionEnabled`**（→ `PhysicsTestDrive.enableShotPrediction`，§3.5）—— 本类**不另存**一份开关状态。
 - **不写任何内核状态**：本类**不得**调 `drive.Simulator.Step/PlaceBall/LoadBalls/ResetDiagnostics`（`T72` 由源码 `grep` + 状态快照双重覆盖）。
 
 ### 3.4 子任务 D — 绘制 `AimAssistView`（任务 1/3 的表现层）
@@ -254,10 +266,16 @@ public static float  DrawScale(Transform playfieldRoot);                        
 
 ### 3.5 子任务 E — 开关与设置项预留接口（任务 5）
 
-- **唯一写点**：`AimAssistController.enablePrediction`（`[Tooltip]` 注明"设置项预留接口"）。
-- **唯一读点**：`AimAssistController.PredictionEnabled`（属性）—— 未来设置菜单**只写这一个字段**，不新增第二处开关状态。
-- **可观测**：`Prediction` / `PredictionComputeCount` 公开只读。
-- **关闭即不算**：`LateUpdate` 首行 `if (!enablePrediction) return;` ⇒ **不重算、不绘制**（`T82`）。
+**裁定居所（`Q-17` 已批准：最小形态，**不建**独立 ScriptableObject 资产）**：
+
+- **唯一写点**：`PhysicsTestDrive.enableShotPrediction`（`[Tooltip("瞄准辅助：预测线开关（设置项预留接口）。")]`），**与既有 `aimIndicator` / `aimIndicatorLength` / `aimIndicatorThickness` 同处**（`PhysicsTestDrive.cs` 的"瞄准指示物（Game 视图可见；无物理组件）"区）—— 它们是**表现 / 辅助**字段，本开关同族。
+- **唯一读点**：`PhysicsTestDrive.PredictionEnabled`（只读属性 → 返回 `enableShotPrediction`）—— 未来设置菜单**只写这一个字段**，不新增第二处开关状态。
+- **不得**塞进 `PhysicsTuning`（那是**物理手感入口**，混进表现开关会污染语义；且 `T44` 逐字段冻结该资产 ⇒ 会被判"偏离台账"）。
+- **可观测**：`AimAssistController.Prediction` / `PredictionComputeCount` 公开只读；`PhysicsTestDrive.PredictionEnabled` 公开只读。
+- **关闭即不算**：`AimAssistController.LateUpdate` 首行 `if (drive == null || !drive.PredictionEnabled) return;` ⇒ **不重算、不绘制**（`T82`）。
+- **默认**：`enableShotPrediction = true`（开箱即用，与 `aimIndicator` 由 `Initialize` 按需自动创建同风格）。
+
+> **协调影响（须复查，不自作主张）**：`T43`（场景序列化值 == 代码默认）是**显式字段清单**（`maxLaunchSpeed` / `minLaunchSpeed` / `rolling*` / `cushion*` / `ball*`），**不含**本新字段 ⇒ 本开关**不在其覆盖内**。本 spec **不**要求扩面（它是表现开关、非手感入口）；若主理人要求覆盖该 bool 的"场景漂移"，**请指认**（加一行 `Assert.AreEqual(probe.enableShotPrediction, drive.enableShotPrediction)`，属扩面、非放宽）。
 
 ---
 
@@ -272,13 +290,14 @@ public static float  DrawScale(Transform playfieldRoot);                        
 | `PredictionDashLength` / `PredictionGapLength` | `AimAssistView` | **需新增** | **待实测定值**（世界米；**必须满足 `gap > 0` 且屏幕 ≥1 px**，见 §5 `T80`） |
 | `PredictionLineWidth` | `AimAssistView` | **需新增** | **待实测定值**（世界米；= 显示尺度 × 常数） |
 | `TargetLineLength` | `AimAssistView` | **需新增** | **需选定**（米；建议与 `PhysicsTestDrive.aimIndicatorLength` 量级一致，参考 `0.55`） |
-| `BallBallContactRecord` / `HasBallBallContact` / `FirstBallBallContact` | `PoolSimulator` | **需新增（只读诊断）** | 见 §3.1（`Q-14`） |
+| `BallBallContactRecord` / `HasBallBallContact` / `FirstBallBallContact` | `PoolSimulator` | **需新增（只读诊断）** | 见 §3.1（`Q-14` 已批准 + K-1…K-4） |
+| `enableShotPrediction`（字段）+ `PredictionEnabled`（只读属性） | **`PhysicsTestDrive`**（与 `aimIndicator*` 同处） | **需新增** | `bool`，出厂 `true`；**设置项预留接口的唯一写点/读点**（`Q-17`）；**不得**落 `PhysicsTuning`（见 §3.5） |
 
 ### 4.2 契约（在内核/引擎既有契约之上追加）
 
 1. **预测只读**：预测过程**不得**改在跑内核的任何状态（含 `Balls` 的位置/速度、`_frozen`、`_capturedPocket`、每杆计数、`TableAtRest`）。**唯一**被预测读的内核状态 = `Balls` / `Params` / `RestSpeedThresholdValue` / `RestStableFramesValue` / `PocketCaptureRadiusScaleValue`（F-1/F-2）。
 2. **同源参数**：`probe` 的 `Params` / `SubSteps` / 三个终止与袋口参数**逐字段**等于在跑内核（`T73`）。
-3. **快照语义**：快照 = **在场上球的子集**（位置/速度原样）；**已离台球不表示**（§3.2 步 2 + `Q-14` 附注）。
+3. **快照语义**：快照 = **在场上球的子集**（位置/速度原样）；**已离台球不表示**（§3.2 步 2 + `Q-14b`）。
 4. **幽灵球定义**：= 内核记录的**首次球-球接触、冲量施加前**的白球位置 ⇒ 与目标球心距**恰为 `2r`**（`T75`）。**不得**取 "Step 末端采样" 或 "球心连线解析交点" 顶替。
 5. **绘制单点**：绘制坐标**只**经 `PlayfieldView`（经 `CushionGizmo.DisplayPoint` 包装）；**不得**出现第二个 1.2 / 第二处轴手性转换（F-18/F-20）。
 6. **方向单点**：世界方向**只**由 `PoolGeometry.PhysicsDirectionToUnity` 导出（F-20）。
@@ -289,7 +308,7 @@ public static float  DrawScale(Transform playfieldRoot);                        
 
 ## 5. 测试族（**判据续 `T71`，自 `T72` 起**）
 
-> **编号占用边界**：`T41`–`T44` / `T45`–`T49` / `T50`–`T53` / `T54`–`T70` / **`T71`** 已占用；**本 spec 的判据 = `T72`–`T83`**（不复用、不跳号）。
+> **编号占用边界**：`T41`–`T44` / `T45`–`T49` / `T50`–`T53` / `T54`–`T70` / **`T71`** 已占用；**本 spec 的判据 = `T72`–`T83` + `T72b`（共 13 条）**（不复用、不跳号）。
 
 > **坐标系**：物理平面 x 长轴 / y 短轴，单位米。测试运行在 **EditMode**。
 > **期望值必须来自「被测对象之外」**（`工程标准.md` §7 第 8 条）。本 spec 的期望值分类：
@@ -313,6 +332,25 @@ public static float  DrawScale(Transform playfieldRoot);                        
 **注入式负对照**：
 - 把 `Predict` 改成直接对 `source` 实例 `Step()`（省掉 `probe`）⇒ **（a）FAIL**（`Balls`/计数/`TableAtRest` 全变）。
 - 让 `Predict` 提前 `return`（不跑）⇒ **（b）FAIL**。
+
+### T72b 内核新增只读诊断的**单点**与**惰性**（`Q-14` 四条硬约束的牙）
+
+**构造**：① 源码级：读 `Runtime/Physics/PoolSimulator.cs`（**去注释**后），对 `BallBallContactCount++` 的出现次数与"记录语句所在函数"做**白盒断言**（同 `T55` 的形态）。② 行为级：按 `T32b` / `T37` 的**既有场景与串行化口径**重跑一次，与**既有基线**（`t32bTotalContactCount`、`T37` 的接触数与**逐球终态**）比对。
+
+**判据（四条，对应 K-1…K-4）**：
+- （a）**K-1 单点**：去注释后 `BallBallContactCount++` 恰 **2 处**（`ResolveBallBallContact` 的"只分离"与"施冲量"分支），且**首接触记录语句只出现在 `ResolveBallBallContact` 内**（没有第二个球-球检测/扫描点）；
+- （b）**K-2 惰性（逐位）**：`T32b` / `T37` 重跑后的 `TotalContactCount` / `BallBallContactCount` 与**逐球终态**（位置/速度 `ToString("R")`）与既有基线**逐位相同**；
+- （c）**K-3 清零语义**：`ResetDiagnostics()` 后 `HasBallBallContact == false`（与 `BallBallContactCount == 0` 同处生效）；
+- （d）**K-4 `T55` 回归**：`T55` 仍 PASS（新增记录不引入 `AverageVelocity`/`ApplyRollingDeceleration` 调用点、不引入 `_params.rolling*` 新名字）。
+
+**期望值来源**：**乙**（既有基线 = 改动前实测；本判据断言"**不变**"）＋ **甲**（源码计数 = 直接计数）。
+**盲带**：源码守卫是**文本级**的（改注释/换行风格可规避），故（a）**只**作为**单点性的辅助证据**；真正的判据是（b）的**逐位不变**与 `T75a` 的几何恒等式。**不声称**（a）能证明"实现者真的没另开检测点"。
+**判别力来源**：把主理人的 K-1…K-4 四条硬约束变成**可失败**。（b）最重要 —— 它把"只读诊断"从**声明**变成**实测**：若诊断偷偷影响解算（或重构计数点导致顺序变化），既有逐位证据必改。
+**注入式负对照**：
+- 把首接触记录**另开**一个独立配对循环来检测（而非在 `ResolveBallBallContact` 内）⇒ **（a）FAIL**。
+- 让诊断顺带**归一化/微调**两球位置（哪怕 1e-9）⇒ **（b）FAIL**（逐球终态不再逐位相同）。
+- 把记录清零塞进 `ResetDiagnostics()` **之外**（例如只在构造函数清）⇒ **（c）FAIL**。
+- 在 `AverageVelocity` 的某个调用点旁顺手读一次 `_params.rollingDecelerationSlide` 来实现"时间戳" ⇒ **（d）FAIL**（`T55` 的 `_params.rolling*` 名字集合 / 调用点计数变化）。
 
 ### T73 预测世界与在跑内核**同源**（参数 / 步长 / 终止 / 袋口）
 
@@ -401,15 +439,20 @@ public static float  DrawScale(Transform playfieldRoot);                        
 **构造**：布置"白球 → 长库反弹 → 命中目标球"的**银行球**场景（瞄准方向刻意指向长库，使白球在接触目标球前**必须**先与库边碰撞）。
 
 **判据（三条）**：
-- （a）**甲-结构**：`CushionBounceCountBeforeContact ≥ 1`，且 `GhostBall` 到"直线段 `c0→t`"的距离 **> 阈值 `d_min`**（**待实测定值**，见 §4.1/§8.3）—— 即幽灵球**不在**直线上（证明预测**真的**跑了库边，而非解析直线）；
-- （b）**乙-同源**：由 `Predict` 得到的 `(GhostBall, TargetBallCenter, TargetOutgoingDirection, CueOutgoingDirection, TimeToFirstContactSeconds)`，与**生产路径实跑**（`PhysicsTestDrive.Launch()` + `Advance()` 直到 `Simulator.HasBallBallContact`）读到的**同名量**，**逐位相等**（0 容差；方向向量按 `ToString("R")` 逐分量）；
-- （c）**非空转**：（b）的实跑确实**发生过**球-球接触（`Simulator.BallBallContactCount ≥ 1`）且 `StepsSimulated ≥ 1`。
+- （a）**甲-结构**：`HasFirstContact == true` ∧ `CushionBounceCountBeforeContact ≥ 1` ∧ `GhostBall` 到"直线段 `c0→t`"的距离 **> 阈值 `d_min`**（**待实测定值**，见 §4.1/§8.3）—— 即幽灵球**不在**直线上（证明预测**真的**跑了库边，而非解析直线）；
+- （b）**乙-同源**：**两路都必须发生首接触**（`Predict` 的 `HasFirstContact == true` ∧ 实跑的 `Simulator.BallBallContactCount ≥ 1`），且由 `Predict` 得到的 `(GhostBall, TargetBallCenter, TargetOutgoingDirection, CueOutgoingDirection, TimeToFirstContactSeconds)` 与**生产路径实跑**（`PhysicsTestDrive.Launch()` + `Advance()` 直到 `Simulator.HasBallBallContact`）读到的**同名量**，**逐位相等**（0 容差；方向向量按 `ToString("R")` 逐分量）；
+- （c）**非空转**：`StepsSimulated ≥ 1`。
 
-**期望值来源**：（a）**甲**（直线距离的几何构造）；(b) **乙-同源**。
-**盲带（必登记）**：（b）的期望值**与在跑内核同内核**（这是 Day 9 的设计意图：预测**必须**用同一内核）⇒ **（b）不能检出内核物理缺陷**（内核错了两边一起错）；它检的是**绑定正确性**（快照/参数/步长/触发）。内核物理缺陷由 Day 4–6 的内核判据承担。本 spec **不声称**（b）能证"物理更准"。**判别力来源**：（a）把"**解析几何直线近似**"（排期明令禁止的路线）变成可判定失败；（b）把"步长/参数不同源"变成可判定失败。
-**注入式负对照**：
-- 预测改用**解析直线**（不模拟库边）⇒ 要么**找不到接触**（`HasFirstContact==false`），要么 `GhostBall` 落在直线上 ⇒ **（a）FAIL**。
-- `probe` 的 `SubSteps`/参数与在跑内核不同（例如注入 `FixedDeltaTime` 改变）⇒ **（b）FAIL**。
+> **★ 本判据的判别范围（写在判据内 —— 读判据者不必翻风险节）**：
+> **`T78b` 的期望值与被测对象「同内核」** —— 它检的是**预测管线绑定正确性**（快照 / 参数 / 步长 / 触发 / 时间轴），
+> **不能检出内核物理缺陷**（内核错则两路一起错）；**内核物理正确性由 Day 4–6 的 159 条判据承担**，本判据**不重复计数、不混淆两件事**。
+
+**期望值来源**：（a）**甲**（直线距离的几何构造）；（b）**乙-同源**（**判别范围已写在上面**）。
+**盲带**：见上"判别范围"框；另：`d_min` 是**选定门限**（待实测），只判"离直线足够远"，**不判具体落点**。
+**判别力来源**：（a）把"**解析几何直线近似**"（排期明令禁止的路线）变成可判定失败；（b）把"步长 / 参数 / 时间轴不同源"变成可判定失败。
+**注入式负对照（★ 主理人要求：第一条必须**同时**打红（a）与（b））**：
+- **预测改用解析直线（沿瞄准方向直走、忽略库边）** ⇒ 在"银行球"几何下白球**打不到目标球** ⇒ `HasFirstContact == false` ⇒ **（a）FAIL**（缺 `≥1` 反弹）**且（b）FAIL**（缺"两路都发生首接触"与五个比对值）—— **两条同时红**；
+- `Predict` 与实跑的**步长 / 参数不同源**（例如注入改变 `FixedDeltaTime` / `SubSteps`）⇒ **（b）FAIL**（数值不逐位相等）；
 - 预测拿"实跑结束后"的位置当幽灵球 ⇒ **（b）FAIL**（时间轴错位）。
 
 ### T79 绘制坐标**过显示层**（`T71` 同族；**不得重犯直画规范坐标**）
@@ -461,12 +504,12 @@ public static float  DrawScale(Transform playfieldRoot);                        
 
 ### T82 **开关**：关掉即不算、状态可观测、开回来恢复
 
-**构造**：`AimAssistController` 在场景/合成宿主上，`enablePrediction = true` → 记录 `PredictionComputeCount` = `n1`；置 `false` → 多次 `LateUpdate`（或直接多次调用其纯逻辑入口）→ 记录 `n2`；再 `false → true` → `n3`。
+**构造**：`AimAssistController` 在场景/合成宿主上，`drive.enableShotPrediction = true` → 记录 `PredictionComputeCount` = `n1`；置 `false` → 多次 `LateUpdate`（或直接多次调用其纯逻辑入口）→ 记录 `n2`；再 `false → true` → `n3`。
 
 **判据（四条）**：
 - （a）关闭期间 **`PredictionComputeCount` 逐位不变**（`n2 == n1`）—— **关闭即不算**（不得"只藏不算"）；
 - （b）关闭期间 `Prediction` **逐位不变**（对幽灵球 / 目标出射方向 / `StepsSimulated` 取 `ToString("R")` 串，置 `false` 前后**相等**）；
-- （c）**可观测**：`PredictionEnabled` 与 `enablePrediction` 一致（单点读出口存在且真实反映）；
+- （c）**可观测**：`drive.PredictionEnabled` == `drive.enableShotPrediction`（单点读出口存在且真实反映；`AimAssistController` **不另存**开关副本）；
 - （d）重新开启后 `n3 > n2`（**恢复计算**，非空转）。
 
 **期望值来源**：**乙**（`PredictionComputeCount` 是**新增**诊断量；判据断言的是**变化/不变**，不是"值 == 自己"）＋ **契约**（开关语义）。
@@ -493,11 +536,12 @@ public static float  DrawScale(Transform playfieldRoot);                        
 - 把循环条件从"首接触即停"改成"跑到 `TableAtRest`" ⇒ **（a）FAIL** + **（d）FAIL**（`TotalContactCount` 逼近 6746）。
 - 删掉步数上限 ⇒ 无接触场景 **（c）FAIL**（死循环 / 超时）。
 
-### T72–T83 汇总
+### T72–T83 + T72b 汇总
 
 | # | 判据 | 门槛（PASS 条件） | 期望值来源 |
 | --- | --- | --- | --- |
 | **T72** | 零扰动 | 预测前后在跑内核**逐位**一致 ∧ `StepsSimulated > 0` ∧ 幂等 | 乙（前后不变） |
+| **T72b** | 诊断**单点 + 惰性**（`Q-14` K-1…K-4） | `BallBallContactCount++` 恰 2 处且记录只在 `ResolveBallBallContact` 内 ∧ `T32b`/`T37` **逐位不变** ∧ `ResetDiagnostics` 清 ∧ `T55` 仍 PASS | 乙（既有基线不变）+ 甲（源码计数） |
 | **T73** | 同源参数/步长 | `Params`/`SubSteps`/终止/袋口**逐字段位相等** ∧ 同 `TableConfig` | 乙（只读出口） |
 | **T74** | 快照语义 | `probe` 球数 == 在场上球数 ∧ 入袋记录不变 ∧ 反证清 `_frozen` | 甲（计数）+乙 |
 | **T75** | 幽灵球定义 | `\|ghost − target\| == 2r`（1e-6 m）∧ 路径终点==幽灵球 ∧ 时间区间合理 | 甲（几何恒等式）+乙 |
@@ -509,16 +553,16 @@ public static float  DrawScale(Transform playfieldRoot);                        
 | **T81** | 方向单点/180° | == `PhysicsDirectionToUnity` ∧ `(cos30,sin30)→(−cos30,0,−sin30)` ∧ 无手写映射 | 甲 |
 | **T82** | 开关键 | 关掉 `ComputeCount` 不变 ∧ 可观测 ∧ 恢复 | 乙 + 契约 |
 | **T83** | 成本上限 | `BallBallContactCount==1` ∧ `Steps ≤ maxPredictSteps` ∧ 无接触有界 ∧ 远小于 6746 | 乙 + 乙(选定) |
-| — | **EditMode 总数** | 全绿；总数 = 基线 **159 @ `f697378`** + 本 spec 新增 12 条（**双向核对**，§9.1）；**终值待实测** | — |
+| — | **EditMode 总数** | 全绿；总数 = 基线 **159 @ `f697378`** + 本 spec 新增 **13** 条（`T72`–`T83` 12 条 + `T72b` 1 条；**双向核对**，§9.1）；**终值待实测** | — |
 
 > **「丙」= 0 声明**：本 spec §5 的期望值**无一条**为"转写被测代码公式"。
-> 分类：**甲 = 独立闭式/几何构造/引擎原语**（`T74` 计数、`T75a` 的 `2r`、`T76`、`T77`、`T78a`、`T79`、`T80`、`T81`）；
-> **乙 = 契约常量/只读出口/独立实例实跑**（`T72`、`T73`、`T74b`、`T75b`/`T75c`（内部一致性，弱）、`T78b`、`T82`、`T83`）；
+> 分类：**甲 = 独立闭式/几何构造/引擎原语**（`T72b` 源码计数、`T74` 计数、`T75a` 的 `2r`、`T76`、`T77`、`T78a`、`T79`、`T80`、`T81`）；
+> **乙 = 契约常量/只读出口/独立实例实跑/既有基线不变**（`T72`、`T72b`、`T73`、`T74b`、`T75b`/`T75c`（内部一致性，弱）、`T78b`、`T82`、`T83`）；
 > **乙-系数选定 = 选定门限**（`T80d` 的 `MinGapWorld`、`T83` 的 `maxPredictSteps`/比值门限）。
-> **⚠ `T78b` 是「乙-同源」**（与在跑内核**同内核**的独立实例实跑）—— **已在 `T78` 盲带中明示其盲带（检不出内核物理缺陷）**，
-> **不**被引作"物理正确性"的证据；物理正确性由 Day 4–6 内核判据承担。**`T75b`/`T75c` 是内部一致性**（弱判别），`T75a` 的 `2r` 恒等式才是绝对判别量。
-> **⚠ 每条 = 一行注入式负对照**（§5 各条"注入式负对照"）：`T72`(就地用在跑内核/空转) / `T73`(SafeDefault 参数) / `T74`(传全集) / `T75`(Step 末端采样) /
-> `T76`(漏 2r) / `T77`(解析近似出射) / `T78`(纯直线/步长不同源) / `T79`(直画规范坐标) / `T80`(gap=0) / `T81`(旧 180° 口径) / `T82`(只藏不算) / `T83`(跑到静止)。
+> **⚠ `T78b` 是「乙-同源」**（与在跑内核**同内核**的独立实例实跑）—— **判别范围已写在 `T78` 判据条目内**（不能检出内核物理缺陷，那由 Day 4–6 承担），
+> **不**被引作"物理正确性"的证据。**`T75b`/`T75c` 是内部一致性**（弱判别），`T75a` 的 `2r` 恒等式才是绝对判别量。
+> **⚠ 每条 = 一行注入式负对照**（§5 各条"注入式负对照"）：`T72`(就地用在跑内核/空转) / `T72b`(另开检测点 / 诊断微调位置 / 清零塞错处) / `T73`(SafeDefault 参数) / `T74`(传全集) / `T75`(Step 末端采样) /
+> `T76`(漏 2r) / `T77`(解析近似出射) / `T78`(纯直线 ⇒ **结构+同源同时红** / 步长不同源) / `T79`(直画规范坐标) / `T80`(gap=0) / `T81`(旧 180° 口径) / `T82`(只藏不算) / `T83`(跑到静止)。
 > **事前一击，非事后证明**（铁律 18）。
 
 ---
@@ -575,16 +619,18 @@ public static float  DrawScale(Transform playfieldRoot);                        
 
 | # | 交付物 | 类型 |
 | --- | --- | --- |
-| 1 | `Runtime/Physics/PoolSimulator.cs`（**改**：新增只读诊断 `BallBallContactRecord` / `HasBallBallContact` / `FirstBallBallContact`，并纳入 `ResetDiagnostics()`；**不改任何解算路径**） | 运行时代码（`Q-14`） |
+| 1 | `Runtime/Physics/PoolSimulator.cs`（**改**：新增只读诊断 `BallBallContactRecord` / `HasBallBallContact` / `FirstBallBallContact`，记录点 = `ResolveBallBallContact` **函数入口**（`Q-14` K-1 单点），并纳入 `ResetDiagnostics()`；**不改任何解算路径**） | 运行时代码（`Q-14` 已批准） |
 | 2 | `Runtime/Physics/ShotPredictor.cs`（**新增**；纯静态推演核） | 运行时代码 |
 | 3 | `Runtime/Physics/ShotPrediction.cs`（**新增**；结果值类型） | 运行时代码 |
-| 4 | `Runtime/Physics/AimAssistController.cs`（**新增**；胶水：开关 / 触发 / 缓存 / 只读出口） | 运行时代码 |
+| 4 | `Runtime/Physics/AimAssistController.cs`（**新增**；胶水：读开关 / 触发 / 缓存 / 只读出口） | 运行时代码 |
 | 5 | `Runtime/Physics/AimAssistView.cs`（**新增**；纯几何 + 绘制，过显示层单点） | 运行时代码 |
-| 6 | `Editor/Visual/GreyboxSceneSetup.cs`（**改**：生成/接线 `AimAssistController` / `AimAssistView` 宿主；**只生成不校验**，`R2`） | 编辑器脚本 |
-| 7 | 灰盒场景 `Assets/_Project/Scenes/PhysicsGreybox.unity`（**改**：由生成器重建） | 场景 |
-| 8 | `Tests/EditMode/ShotPredictorTests.cs`（**新增**；`T72`–`T78`、`T83`） | 测试 |
-| 9 | `Tests/EditMode/AimAssistViewTests.cs`（**新增**；`T79`–`T82`） | 测试 |
-| 10 | `Docs/35-A_Day9_瞄准辅助与击球预测_执行记录.md` | 执行记录 |
+| 6 | `Runtime/Physics/PhysicsTestDrive.cs`（**改**：新增 `enableShotPrediction` 字段 + `PredictionEnabled` 读点属性，与 `aimIndicator*` 同处；**不动任何物理/交互语义**） | 运行时代码（`Q-17` 已裁定） |
+| 7 | `Editor/Visual/GreyboxSceneSetup.cs`（**改**：生成/接线 `AimAssistController` / `AimAssistView` 宿主；**只生成不校验**，`R2`） | 编辑器脚本 |
+| 8 | 灰盒场景 `Assets/_Project/Scenes/PhysicsGreybox.unity`（**改**：由生成器重建 + 序列化 `enableShotPrediction`） | 场景 |
+| 9 | `Tests/EditMode/PoolSimulatorBallBallContactDiagnosticTests.cs`（**新增**；`T72b` = **1** 条；白盒单点 + 既有基线逐位不变） | 测试 |
+| 10 | `Tests/EditMode/ShotPredictorTests.cs`（**新增**；`T72`–`T78` + `T83` = **8** 条） | 测试 |
+| 11 | `Tests/EditMode/AimAssistViewTests.cs`（**新增**；`T79`–`T82` = **4** 条） | 测试 |
+| 12 | `Docs/35-A_Day9_瞄准辅助与击球预测_执行记录.md` | 执行记录 |
 
 ### 8.1 入口分离（沿用既有铁律）
 
@@ -595,8 +641,12 @@ public static float  DrawScale(Transform playfieldRoot);                        
 
 ### 8.2 协调项（**先于编码**）
 
-- **C-2**：`PoolSimulator.cs` 是本日**唯一**触碰的既有内核文件（新增只读诊断）。它是全工程共享资产 ⇒ **改动前须确认无他人占用**；落地后**必须重跑全量 EditMode**（`G2`）+ 四验收器，确认既有计数判据（`BallBallContactCount` / `TotalContactCount` / `EnergyGainViolations` 等）**不受影响**（`R-AQ`）。
-- **C-3**：`GreyboxSceneSetup` + 场景重建会改动 `PhysicsGreybox.unity`（与 Day 8 切片 A 同族操作）⇒ 生成后须核对 `PlayfieldRoot` / 球可视物 / `CushionGizmo.playfieldRoot` 接线**未漂移**（`T45`/`T71` 仍绿）。
+- **C-2**：`PoolSimulator.cs` 是本日**触碰的既有内核文件**（新增只读诊断，`Q-14` 已批准）。它是全工程共享资产 ⇒ **改动前须确认无他人占用**；落地后**必须**：① 重跑全量 EditMode（`G2`）+ 四验收器；② 核 `T32b` / `T37` 的**接触数与逐球终态逐位不变**（`Q-14` K-2）；③ 核 `T55` 仍 PASS（K-4）；④ 核既有计数判据（`BallBallContactCount` / `TotalContactCount` / `EnergyGainViolations`）**不受影响**（`R-AQ`）。
+- **C-3**：`GreyboxSceneSetup` + 场景重建会改动 `PhysicsGreybox.unity`（与 Day 8 切片 A 同族操作）⇒ 生成后须核对 `PlayfieldRoot` / 球可视物 / `CushionGizmo.playfieldRoot` 接线**未漂移**（`T45`/`T71` 仍绿），并核 `T43`（场景序列化值 == 代码默认）仍绿。
+- **C-4（★ 实现拆分，主理人定：两单**必须串行**）**：12+1 条判据对**一单太大**（本项目多次出现 worker 预算耗尽半途停下）⇒ 拆为
+  - **D9-A** = `T72` / `T72b` / `T73` / `T74` / `T75` / `T76`（**内核只读诊断 + 预测核**：前向模拟 / 零扰动 / 诊断惰性 / 快照语义 / 幽灵球 / 直球闭式）；
+  - **D9-B** = `T77` / `T78` / `T79` / `T80` / `T81` / `T82` / `T83`（**出射线 / 擦库 / 绘制 / 开关 / 性能**）。
+  - ⚠ **两者必须串行，不得并行**：D9-A 与 D9-B **同动 `PoolSimulator.cs`**（D9-A 引入只读诊断、D9-B 的 `T78b` 依赖它）与**同一个预测/绘制落点**（`ShotPredictor` / `AimAssistView` 的几何口径）⇒ 并行会造出**两处实现**（铁律 16）。**D9-B 必须等 D9-A 的 `PoolSimulator.cs` 冻结后再开工**。
 
 ### 8.3 需实测定值（**实现后按实测填写，不得编数字**）
 
@@ -615,9 +665,9 @@ public static float  DrawScale(Transform playfieldRoot);                        
 
 | 影响对象 | 变更 | 处理 |
 | --- | --- | --- |
-| `PoolSimulator.cs` | **新增只读诊断**（唯一既有内核改动）；**解算路径不变** | 落地后重跑全量 EditMode + 四验收器；核 `BallBallContactCount` / `TotalContactCount` / `EnergyGainViolations` / 终止判据**不受影响** |
+| `PoolSimulator.cs` | **新增只读诊断**（`Q-14` 已批准；记录点在 `ResolveBallBallContact` 入口，K-1 单点）；**解算路径不变** | 落地后重跑全量 EditMode + 四验收器；核 `T32b`/`T37` 逐位不变（K-2）、`T55` 仍 PASS（K-4）、`ResetDiagnostics` 语义（K-3）；核 `BallBallContactCount` / `TotalContactCount` / `EnergyGainViolations` / 终止判据**不受影响** |
 | `PoolGeometry.cs` / `PlayfieldView.cs` / `CushionGizmo.cs` / `PointerAim*` / `CameraViewportFitter.cs` | **不改** | `T45`–`T53` / `T71` 仍绿 |
-| `PhysicsTestDrive.cs` | **不改**（预测只读 `Simulator`；`Launch()` 语义不变） | `T65`–`T70` 仍绿 |
+| `PhysicsTestDrive.cs` | **改 1 处**：新增 `enableShotPrediction` 字段 + `PredictionEnabled` 读点属性（与 `aimIndicator*` 同处，`Q-17`）；**`Launch()` / `Advance()` / `SyncVisual()` 语义一字不改**；预测只读 `Simulator` | `T65`–`T70` 仍绿；`T43`（**显式字段清单**，不含新字段）仍绿 —— 是否扩面覆盖该 bool 见 §3.5 注（**待指认**） |
 | `GreyboxSceneSetup.cs` + 场景 | 增补接线 + 重建 | 生成器**仍只生成不校验**（`R2`/`R5-4`）；不得写 `EditorBuildSettings` |
 | asmdef | **无需改动**（新运行时代码落 `Billiards.Runtime`；新测试落 `Billiards.Tests.EditMode` 同目录自动纳入） | 若新增子目录，`.meta` 与 `rootNamespace` 须一致 |
 | PhysX 守卫 | 新运行时代码**不得**出现 `Rigidbody`/`Collider`/`PhysicsModule`（`R5-1`/`D4-PHY-01`） | 复用既有汇编级守卫 |
@@ -636,7 +686,7 @@ public static float  DrawScale(Transform playfieldRoot);                        
 
 | 项 | 基线（带修订锚点） | 增量 | 新值（**待实测**） |
 | --- | --- | --- | --- |
-| EditMode 测试 | **159 @ `f697378`** | **+12**（`T72`–`T83`；一条判据一个 `[Test]`，落 `ShotPredictorTests.cs`（`T72`–`T78` + `T83` = **8**）+ `AimAssistViewTests.cs`（`T79`–`T82` = **4**）） | **待实测填写** |
+| EditMode 测试 | **159 @ `f697378`** | **+13**（`T72`–`T83` 12 条 + `T72b` 1 条；一条判据一个 `[Test]`，落 `PoolSimulatorBallBallContactDiagnosticTests.cs`（`T72b` = **1**）+ `ShotPredictorTests.cs`（`T72`–`T78` + `T83` = **8**）+ `AimAssistViewTests.cs`（`T79`–`T82` = **4**）） | **待实测填写** |
 | 四验收器 | 25 / 33 / 22 / 7 | **±0**（不新增验收器） | **待实测填写**（FAIL=0） |
 
 > **双向核对**：源码 `grep -cE "^\s*\[Test\]"` 逐文件求和 == Unity 实跑 XML `testcasecount`。**终值留空待实测，不得编数字。**
@@ -647,43 +697,43 @@ public static float  DrawScale(Transform playfieldRoot);                        
 
 | 阶段 | 责任 | 内容 |
 | --- | --- | --- |
-| 独立评审（可验证性） | 复核方 | ① 逐条核对 §5 期望值**分类**（甲/乙/乙-系数选定/**乙-同源**/丙），确认 **丙 = 0**；② 核 `T75` 是否**真能打死**"Step 末端采样"（改回后 `\|Δ\| ≠ 2r` 应 FAIL）；③ 核 `T78` 的"解析直线"注入**确实**使 (a) FAIL（**不得**被"找不到接触也算过"的写法掩盖）；④ 核 `T80` 的"清晰"未退化为**主观词**；⑤ 核 `T83` 未写成"绝对性能达标"（无 CI ⇒ 不可达条款） |
-| 独立评审（可实现性） | 复核方 | ① `Q-14`（内核新增诊断）是否可接受、是否最小；② §3.2 步 2 的快照语义（排除离台球）是否与 `T74` 自洽；③ 找出"照做会卡住"之处（**唯一跨文件项 = `PoolSimulator.cs` 的只读诊断**，C-2） |
+| 独立评审（可验证性） | 复核方 | ① 逐条核对 §5 期望值**分类**（甲/乙/乙-系数选定/**乙-同源**/丙），确认 **丙 = 0**；② 核 `T75` 是否**真能打死**"Step 末端采样"（改回后 `\|Δ\| ≠ 2r` 应 FAIL）；③ 核 `T78` 的"解析直线"注入**确实同时**打红 (a) 与 (b)（**不得**被"找不到接触也算过"的写法掩盖）；④ 核 `T80` 的"清晰"未退化为**主观词**；⑤ 核 `T83` 未写成"绝对性能达标"（无 CI ⇒ 不可达条款）；⑥ 核 `T78b` 的**判别范围（同源盲带）确实在判据条目内** |
+| 独立评审（可实现性） | 复核方 | ① `Q-14` 新增诊断是否**最小**、K-1…K-4 是否可落地；② §3.2 步 2 的快照语义（排除离台球）是否与 `T74` 自洽；③ 找出"照做会卡住"之处（**跨文件项 = `PoolSimulator.cs` 的只读诊断 + `PhysicsTestDrive.cs` 的开关字段**，C-2/C-3） |
 | 独立复算（G5） | 复核方 | **不共享代码路径**地重算：① `T76`/`T77` 的**闭式**幽灵球（取 3 组几何，手算 + 独立脚本）；② `T75` 的 `2r` 恒等式在 float 下的残差量级；③ `T80` 的段数闭式 |
-| 实现 | engineering-lead | §8 交付物 1–10 |
-| 实现方自验 | engineering-lead | 跑通 `T72`–`T83`，产出 §6 证据（`-outputDir` 指向**仓库外**）+ 全量 EditMode 回归 |
+| 实现（**拆两单、串行**，C-4） | engineering-lead | **D9-A**（先在**冻结前**交付）：§8 交付物 1（内核诊断）+ 2 + 3 + 9 + 10（`T72`/`T72b`/`T73`/`T74`/`T75`/`T76`）；**D9-B**（**等 D9-A 的 `PoolSimulator.cs` 冻结后**）：4 + 5 + 6 + 7 + 8 + 11（`T77`–`T83`） |
+| 实现方自验 | engineering-lead | 跑通 `T72`–`T83` + `T72b`（共 **13**），产出 §6 证据（`-outputDir` 指向**仓库外**）+ 全量 EditMode 回归；**D9-A 收口必须附 `T32b`/`T37` 逐位不变的实测** |
 | 独立复核 | 复核方 | ① 冻结锚点核验（`git diff <提交> -- <冻结路径>` 为空）；② 复现 `T72`/`T75`/`T78`/`T82` 的注入反例**确实 FAIL**；③ 核 `T73`/`T74` 的"同源/计数"确被断言；④ 核无**第二处**坐标/方向转换（`grep`）；⑤ 核 `T83` 的实测成本记录 |
 
 **复核必须能失败**：若把幽灵球改回"Step 末端采样"而 `T75` **仍通过** ⇒ `T75` 无效；
 若把 `Predict` 改成就地用在跑内核而 `T72` **仍通过** ⇒ 零扰动守卫是空气；
+若把首接触记录**另开**一个检测点 / 让诊断动一次位置而 `T72b` **仍通过** ⇒ 惰性守卫是空气；
 若把预测换成解析直线而 `T78` **仍通过** ⇒ `T78` 无效（说明它读的是被测对象自身）。
 
 ---
 
 ## 11. 裁定与待裁定
 
-> **已裁定（本 spec 定稿口径）**：`Q-14`（**条件性**，见下）/ `Q-15` / `Q-16` / `Q-17` / `Q-18` / `Q-19`。
-> **需 team-lead / 主理人指认**：`Q-14` 的**允许性**（改内核）、`Q-17` 的**接口形态**、`Q-19` 的**同源期望是否可接受**。
+> **已裁定（主理人已批准/裁定）**：`Q-14`（**允许**，附 **K-1…K-4** 四条硬约束）/ `Q-15` / `Q-16` / `Q-17`（**最小形态、落驱动器组件**）/ `Q-18` / `Q-19`（**采纳**"甲-结构 + 乙-同源"，**不**做额外解析反射闭式）。
+> **仍待指认**：`Q-20`（`T43` 是否扩面覆盖新 bool —— 属**扩面**、非阻断）。
 
 ### 11.1 已裁定
 
 | ID | 议题 | **裁定 / 决定** | 落地位置 |
 | --- | --- | --- | --- |
-| **Q-14** | 幽灵球"接触瞬间"如何取得 | **在 `PoolSimulator` 新增只读诊断**（`BallBallContactRecord` + `HasBallBallContact` + `FirstBallBallContact`），记录**首次球-球接触、冲量施加前**的两球位置与冲量后速度。**理由**：内核只在 `Step()` 粒度可见（F-8），Step 末端采样在擦碰时偏差 **37.5 mm > 球半径**，使"幽灵球 = 接触瞬间"**不可判定**（铁律 11：不得把不可达条款写成验收）。**替代方案（闭式 2 球 TOI 内插）已评估、不采纳**（第二处接触几何 → 铁律 16 分叉；且排期明令"非解析几何"）。**⚠ 该项需 team-lead 确认"允许改内核"** | §3.1、§4.2 契约 4、`T75` |
+| **Q-14** | 幽灵球"接触瞬间"如何取得 | **在 `PoolSimulator` 新增只读诊断**（`BallBallContactRecord` + `HasBallBallContact` + `FirstBallBallContact`），记录**首次球-球接触、冲量施加前**的两球位置与冲量后速度。**主理人已批准**（理由：① 同族诊断已有先例、`ResetDiagnostics` 已统一管理；② 不做则排期任务 2 成不可达条款；③ 闭式 TOI 替代 = 第二处接触几何，否；④ 不改解算路径）。**附 K-1…K-4 四条硬约束**（单点 / 惰性逐位 / 清零语义一致 / `T55` 回归） | §3.1（K-1…K-4）、§4.2 契约 4、`T72b`、`T75` |
 | **Q-14b** | 快照里**已入袋/离台球**如何表示 | **不表示（排除）**。理由：内核**无**公开"重新冻结"入口（`LoadBalls` 必清 `_frozen`、`PlaceBall` 必解冻，F-4/F-5）⇒ 带 frozen 装载**结构上不可达**；离台球速度恒 0 且在喉平面外 ⇒ 不参与运动。**偏差登记为盲带**（`R-AP`） | §3.2 步 2、`T74`、`R-AP` |
 | **Q-15** | 虚线的表现层实现 | **`LineRenderer`**（**每条 dash 一段 2 点折线、多段拼虚线**，不依赖贴图/材质宽度曲线）+ `OnDrawGizmos` 的 Scene 预览。挂在 `PlayfieldRoot` 下、`useWorldSpace=false`（局部坐标 = 规范坐标 ⇒ 天然过显示层） | §3.4 |
 | **Q-16** | 绘制落点是否复用 `CushionGizmo.DisplayPoint` | **复用**（它是"显示映射"唯一落点的**公开包装**，已被 `T71` 钉住）⇒ 满足铁律 16 单点。**替代方案**（抽出独立 `PlayfieldDraw` 静态类）**未采纳**：会改动 `CushionGizmo` 并牵动 `T71` | §3.4、`T79` |
-| **Q-17** | "设置项预留接口"的形态 | **最小形态**：`AimAssistController.enablePrediction` 一个 public 字段 + `PredictionEnabled` 一个**唯一读点属性**；未来设置菜单**只写这一处**。**替代方案**（新建 `AimAssistSettings` ScriptableObject）未采纳（新增资产、本日无第二消费者 ⇒ 过度设计） | §3.5、`T82` |
+| **Q-17** | "设置项预留接口"的形态 | **主理人裁定：最小形态，不建独立 ScriptableObject 资产**（排期原文是"预留接口"，不是现在建设置系统；Day 13 才是最小 HUD）。**字段落点 = `PhysicsTestDrive`（驱动器组件）**，与既有 `aimIndicator` / `aimIndicatorLength` / `aimIndicatorThickness` 同处（同属"表现/辅助"而非物理参数）；**不得**塞进 `PhysicsTuning`（那会污染物理手感语义、且被 `T44` 逐字段冻结判"偏离台账"）。"预留接口" = `enableShotPrediction` **单一字段** + `PredictionEnabled` **单一读点属性** | §3.5、`T82`、§8 交付物 6 |
 | **Q-18** | 预测的刷新时机 | **仅 `TableAtRest` 时**重算与显示（球运动期间**隐藏且不重算**，与 `F-14` 同口径）；**脏标记**（方向/力度/球状态变化才重算） | §3.3、`T83` |
-| **Q-19** | **"擦库"验收的期望值同源问题** | **裁定为可接受，但必须明示盲带**：`T78` 用 **甲-结构**（反弹≥1 ∧ 幽灵球离直线 > `d_min`）+ **乙-同源**（与实跑逐位一致）。**本 spec 不声称 `T78b` 能检出内核物理缺陷**（那由 Day 4–6 承担）。**理由**：Day 9 的设计就是"预测 = 同一内核"，要求预测与实跑**不同内核**在逻辑上不可达（铁律 11） | `T78` 盲带、§5 「丙=0」注 |
+| **Q-19** | **"擦库"验收的期望值同源问题** | **主理人裁定：采纳"甲-结构 + 乙-同源（明示同源盲带）"，不做额外解析反射闭式**。理由（与"否掉闭式 TOI"同一条原则，避免对同一原则两套标准）：① Day 9 验收问的是**预测管线**对不对，**不是**内核物理对不对（内核物理由 Day 4–6 的 159 条负责，再抓 = 重复计数 + 混淆两件事）；② 若为擦库另立解析反射闭式，就与"否掉幽灵球闭式 TOI"自相矛盾。**★ 附加要求已并入**：① 判别范围（同源盲带）**写进 `T78` 判据条目内**；② "解析直线"注入必须**同时**打红（a）与（b） | `T78`（判据内判别范围框 + 注入第 1 条） |
+| **Q-14-K** | 主理人对内核诊断的四条硬约束 | 见 §3.1 表 K-1…K-4（**单点** / **惰性逐位不变** / **`ResetDiagnostics` 语义一致** / **`T55` 回归且不得放宽**），由 `T72b` 钉 | §3.1、`T72b` |
 
-### 11.2 需 **team-lead / 主理人指认**（不猜）
+### 11.2 仍待 **team-lead / 主理人指认**（不猜）
 
 | ID | 议题 | 现状 | 需要 |
 | --- | --- | --- | --- |
-| **Q-14-allow** | 是否**允许**改 `PoolSimulator.cs`（新增只读诊断）？ | 本 spec 裁定"必须"，否则幽灵球定义不可判定（§3.1） | team-lead 确认；若**不允许**，则幽灵球只能取 Step 粒度 ⇒ **排期任务 2 的"接触瞬间"不成立**，须改需求口径（本 spec **不**自行降低验收） |
-| **Q-17-form** | "设置项预留接口"要"最小字段"还是"独立 ScriptableObject 资产"？ | 本 spec 裁定**最小形态** | 若要求资产形态，请指认 |
-| **Q-19-accept** | 接受"`T78b` 为乙-同源、盲带已声明"吗？ | 本 spec 裁定可接受 | 若要求擦库**非同一代码路径**的数值期望，须另立"长库近似平直"的解析反射闭式（需先实测库段轴向偏差，属额外工作量）——**请指认是否要做** |
+| **Q-20** | 新字段 `enableShotPrediction` 是否纳入 `T43`（场景序列化值 == 代码默认）的覆盖？ | `T43` 是**显式字段清单**（不含新字段）⇒ 该 bool 的"场景漂移"**目前无守卫**。本 spec **不**自行扩面（它是表现开关、非手感入口；漂移后果 = 预测线默认隐藏/显示，非物理） | 若要求覆盖，需给 `T43` **加一行**（`Assert.AreEqual(probe.enableShotPrediction, drive.enableShotPrediction)`）—— 属**扩面**，**不影响**任何既有判据的强弱。**请指认是否要加** |
 
 ---
 
