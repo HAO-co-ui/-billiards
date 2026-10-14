@@ -345,6 +345,41 @@ namespace Billiards.Tests
                 $"iterPeak={a.BallBallMaxIterationsObserved}, envOverrun=({ox:R},{oy:R}) ✓");
         }
 
+        // ══════════════════ T38 RackPositions 向后兼容闸门（C1）══════════════
+
+        /// <summary>
+        /// **向后兼容闸门**：`RackPositions(footSpot, 3)` 必须**逐位等于**旧 4 球字面（**含顺序**）。
+        /// 旧字面 = `[footSpot, (−0.30, 0), (−0.30 − row, +half), (−0.30 − row, −half)]`，
+        /// 其中 `s = 2·BallRadius + 2e-4`、`row = s·0.8660254`、`half = s/2`。
+        /// 若内层 `k` 由降序改为升序 ⇒ 索引 2/3 互换 ⇒ 本闸门 FAIL（保护按索引读取的既有证据：验收器 / 报告项 / 逐球终态）。
+        /// </summary>
+        [Test]
+        public void T38_RackPositions_FourBall_MatchesLegacyLiteral()
+        {
+            float s = PoolConstants.BallDiameter + 2e-4f;
+            float row = s * 0.8660254f;
+            float half = s * 0.5f;
+            var footSpot = new Vector2(0.508f, 0f);
+
+            Vector2[] actual = PhysicsTestDrive.RackPositions(footSpot, 3);
+            Vector2[] legacy =
+            {
+                footSpot,
+                new Vector2(-0.30f, 0f),
+                new Vector2(-0.30f - row, half),
+                new Vector2(-0.30f - row, -half),
+            };
+
+            Assert.AreEqual(legacy.Length, actual.Length, "T38：长度应为 4（白球 + 3 球堆）。");
+            for (int i = 0; i < legacy.Length; i++)
+            {
+                Assert.AreEqual(legacy[i].x.ToString("R"), actual[i].x.ToString("R"), $"T38：索引 {i} 的 x 逐位不一致。");
+                Assert.AreEqual(legacy[i].y.ToString("R"), actual[i].y.ToString("R"), $"T38：索引 {i} 的 y 逐位不一致。");
+            }
+
+            TestContext.WriteLine("T38: RackPositions(footSpot,3) 与旧 4 球字面逐位一致（含顺序）✓");
+        }
+
         // ══════════════════ T37 真开球（15 球满堆，不含预算带断言）══════════
 
         /// <summary>
