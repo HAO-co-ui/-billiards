@@ -751,9 +751,9 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 | **D6 检查项的证据 = `Docs/Reports/d4-verification.json`** | **`D6-PHY-01`（6 袋袋口几何自洽）落在 Day4 物理验收器**（实测 `pass=7 fail=0 warn=0`）。**不再单产 `d6-verification.json`** —— 理由：D6 **未新增独立验收器**，另建一个只会**重复同一检查**（铁律 16 单点）。**原则（`D7-T01` 裁定）：spec 只指向真实存在的证据。** | 已入库 |
 | `d6-pocket-capture-scan.json` | **改为「不落盘」**：6 袋逐一捕获由 §5 `T27a` 的**断言**承担（每袋 `CapturedBallCount == 1` + `CapturedPocketIndex == p` + `ρ ≤ captureRadius_p`）。理由：**断言比落盘副本更强**，且避免第二份会分叉的数据（`D7-T01`："补上或如实收窄，二选一"⇒选**收窄**） | — |
 | **窗口重算证据** | `Docs/Tuning/d6-pocket-window-probe.json`（探针 `Docs/Tools/d6_pocket_window_probe.py`）—— ⚠ **如实降级**：该探针**只对侧袋 idx1 做了逐 1 mm 数值复算**（`numericallyReproduced: true` **仅此一袋**），**角袋是套公式**（`half − r`）而**非**数值复算 ⇒ **不得**再用它宣称"角袋已独立复算"；角袋真值 **≈5.31 mm** 由 **`D7-GATE-01` 独立复核**给出（见 §1.4） | 已入库（**声明已收窄**） |
-| `Docs/Reports/d6-break-sample.json` | 散球样例（T34）逐球轨迹 + 迭代峰值 + 判定 | 待产出 |
-| `Docs/Reports/d6-full-break-sample.json` | **真开球（15 球满堆，`T37`）** 逐球终态 + 判定（**不含预算断言**） | 待产出 |
-| `Docs/Tools/d6_pocket_window_probe.py` | **§1.4 窗口重算探针**（据 TM 逐段最近距离；**非 Unity 实测**） | 待产出 |
+| **`<outputDir>/d6-break-sample.json`** | 散球样例（`T32b`）逐球 + 判定 + **`t32bTotalContactCount`**。⚠ **本项证据不落 `Docs/Reports/`**（那目录只放"**已入库、由验收器产出**"的证据）—— 它由**测试**经 `ReportOutput.ResolveTestEvidencePathOrNull` 写到 **`-outputDir` 指定的目录**（**未给 `-outputDir` ⇒ 只跳过落盘、不跳过任何断言**）。**理由**：测试证据走 `-outputDir` 是工程标准 `R3-5`/`R3-7` 的既定姿势 | **已产出**：`<outputDir>/d6-break-sample.json`（本项目实测落在仓库外 `_d6impl/`，含 `t32bTotalContactCount: 798`） |
+| **`<outputDir>/d6-full-break-sample.json`** | **真开球（15 球满堆，`T37`）** 逐球终态 + 判定（**不含预算断言**）+ 钉基线字段（`t37BallBallContactCount` / `t37BallBallContactBaseline` / `t37CapturedBallCount` / `t37CapturedBaseline` / `t37ElapsedMs`）。路径约定同上（`-outputDir`） | **已产出**：`<outputDir>/d6-full-break-sample.json`（实测 `_d6impl/`） |
+| `Docs/Tools/d6_pocket_window_probe.py` | **§1.4 窗口重算探针**（据 TM 逐段最近距离；**非 Unity 实测**） | **已入库**（脚本本体；其产物见上"窗口重算证据"行） |
 
 ### 7.1 必填字段
 
@@ -766,9 +766,10 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 | `d6-full-break-sample.json` | 同 `d6-break-sample.json`，另加 `maxEnvelopeOverrunX`、`maxEnvelopeOverrunY`（对 `2b` 紧包络的最大越界量，须 ≤ 1e-3）、`t37ElapsedMs`（**`T37` 实测耗时** —— `A5`：供将来回归发现劣化）；**钉基线字段（`C2`）**：`t37BallBallContactCount`（本次实测）、`t37BallBallContactBaseline`（**钉定的基线 `B`**）、`t37CapturedBallCount`（本次实测）、`t37CapturedBallBaseline`（钉定的基线 `c`）—— **基线由"首次实现运行的证据"钉定，之后冻结；若要改基线须走一轮独立复核**；**不得**含任何"预算带断言"字段 |
 | `d6_pocket_window_probe.py` → JSON | `source`、`sourceSha256`（**须标明是 TM 文件哈希**）、逐袋 `windowLow`、`windowHigh`、`windowWidth`、逐 ρ 的 `minDistToSegment` |
 
-> **⚠ 实现现状（`SP-2` 附加要求的如实标注）**：当前 `D6-IMPL-01` **只产出 `d6-full-break-sample.json`（`T37`）**；
-> **`d6-break-sample.json`（`T32b`/`T34`）尚未落盘** ⇒ `t32bTotalContactCount` 的实测值（**798**）暂记在 §5 `T32b`。
-> **后续回归必须补写入**该文件与字段（代码已冻结，此项列为待补）。
+> **⚠ 落盘现状（`D7-T02` 更正；此前"尚未落盘"的说法已过期）**：`T32b` **现在会落盘** `d6-break-sample.json`
+> （实测含 **`t32bTotalContactCount: 798`**）；`T37` 落盘 `d6-full-break-sample.json`。
+> **两者都落 `-outputDir` 指定的目录**（本项目实测 = 仓库外 `_d6impl/`），**不在 `Docs/Reports/`**。
+> 数值真源 = 这两个 JSON；`§5 T32b` 正文里记的 `798` 只是**旁注**。
 
 > **数值一律 `ToString(InvariantCulture)` 显式调用**（工程标准 `R3-8`）—— 内插格式符在 Unity 下不生效，会产出非法 JSON。
 
@@ -843,7 +844,7 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 | --- | --- | --- | --- |
 | EditMode 测试 | **109 / 109** @ `2f5dd3c`→`5bfaa15` | **+19**（`T27a/T27b/T28a/T28b/T29/T30a/T30b/T31a/T31b/T31c/T35/T36` + `T32a/T32b/T33a/T33b/T34/T37` + **`T38`**＝`C1` 兼容闸门） | **128 / 128 @ `9bca79b`（实测）** |
 | Day4 物理验收器 | **6** | **+1**（`D6-PHY-01`） | **7**（实测 `@ 9bca79b`，FAIL=0 WARN=0） |
-| **Day 7（`D7-T01`）** | — | **+3**（`T39` / `T39b` / `T40`） | **EditMode 131 / 131 @ `799a8bf`**；四验收器 **25 / 33 / 22 / 7**（FAIL=0 WARN=0） |
+| **Day 7（`D7-T01` + `D7-T02`）** | — | **+4**（`T39` / `T39b` / `T40` / `T41` 接线守卫） | **EditMode 132 / 132 @ `e5df095`**；四验收器 **25 / 33 / 22 / 7**（FAIL=0 WARN=0） |
 
 > **数目以 `grep -cE "^\s*\[Test\]"` 逐文件求和 + Unity 实跑 XML 双向核对为准**；
 > 本表为**预计**，**不得**被引用为实测（`R3-6`：报数须带修订锚点，权威数字由复核方在冻结修订上测）。
