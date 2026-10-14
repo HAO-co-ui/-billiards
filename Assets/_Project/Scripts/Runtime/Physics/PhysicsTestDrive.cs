@@ -131,6 +131,15 @@ namespace Billiards.Physics
         private PoolSimulator _simulator;
         private float _accumulator;
 
+        /// <summary>
+        /// 各球可视物**上一帧写入的世界位置**（按球索引），用于求本帧世界位移 ⇒ 纯滚动自转。
+        /// <c>null</c> 表示"尚无上一帧"（首帧 / 重新装载后）⇒ 只记录、不旋转。
+        /// </summary>
+        private Vector3[] _lastVisualPositions;
+
+        /// <summary>是否已有可用的"上一帧位置"；<c>false</c> 时本帧只记录、不旋转。</summary>
+        private bool _hasLastVisualPositions;
+
         /// <summary>当前内核（未初始化时为 <c>null</c>）。</summary>
         public PoolSimulator Simulator => _simulator;
 
@@ -190,6 +199,7 @@ namespace Billiards.Physics
             _simulator = new PoolSimulator(tableConfig, parameters, captureScale, restSpeed, restFrames);
             _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
             _accumulator = 0f;
+            ResetVisualRotationTracking();   // 首帧只落位、不自转（无"上一帧位置"可用）
 
             if (cushionGizmo != null)
             {
@@ -385,6 +395,9 @@ namespace Billiards.Physics
             _simulator.LoadBalls(balls);
             _simulator.ResetDiagnostics();
             _accumulator = 0f;
+            // ⚠ 必须重置自转跟踪：`LoadBalls` 会把球位置**瞬移回开球/球堆起点**，
+            // 若沿用上一杆终态作为"上一帧位置"，这一瞬移会被当成真实位移 ⇒ 球会凭空猛转一下。
+            ResetVisualRotationTracking();
 
             SyncVisual();
             return v0;
@@ -408,19 +421,96 @@ namespace Billiards.Physics
                 int n = Mathf.Min(ballVisuals.Length, balls.Count);
                 for (int i = 0; i < n; i++)
                 {
-                    if (ballVisuals[i] != null)
-                    {
-                        ballVisuals[i].position = PoolGeometry.PhysicsBallToUnity(balls[i].position);
-                    }
+                    SyncBallVisual(ballVisuals[i], i, PoolGeometry.PhysicsBallToUnity(balls[i].position));
                 }
 
+                _hasLastVisualPositions = true;
                 return;
             }
 
             if (ballVisual != null)
             {
-                ballVisual.position = PoolGeometry.PhysicsBallToUnity(balls[0].position);
+                SyncBallVisual(ballVisual, 0, PoolGeometry.PhysicsBallToUnity(balls[0].position));
+                _hasLastVisualPositions = true;
             }
+        }
+
+        /// <summary>清空"上一帧世界位置"跟踪 ⇒ 下一次 <see cref="SyncVisual"/> 只落位、不自转。</summary>
+        private void ResetVisualRotationTracking()
+        {
+            _lastVisualPositions = null;
+            _hasLastVisualPositions = false;
+        }
+
+        /// <summary>
+        /// 同步**一个**球可视物：先按本帧世界位移加纯滚动自转，再写入世界位置，最后记录位置供下一帧求位移。
+        /// <paramref name="index"/> = 球索引（用于取出上一帧位置）；<paramref name="worldPosition"/> = 本帧目标世界位置。
+        ///
+        /// ⚠ 只有拿到"上一帧位置"（<see cref="_hasLastVisualPositions"/>）时才自转 —— 首帧 / 重新装载后
+        /// 没有可靠的前一位置，若强行相减会得出一个巨大的假位移 ⇒ 球会凭空猛转一下。
+        /// </summary>
+        private void SyncBallVisual(Transform visual, int index, Vector3 worldPosition)
+        {
+            if (visual != null)
+            {
+                if (_hasLastVisualPositions && _lastVisualPositions != null && index < _lastVisualPositions.Length)
+                {
+                    ApplyRollingRotation(visual, worldPosition - _lastVisualPositions[index]);
+                }
+
+                visual.position = worldPosition;
+            }
+
+            if (_lastVisualPositions == null)
+            {
+                _lastVisualPositions = new Vector3[Mathf.Max(4, index + 1)];
+            }
+            else if (index >= _lastVisualPositions.Length)
+            {
+                var grown = new Vector3[Mathf.Max(index + 1, _lastVisualPositions.Length * 2)];
+                System.Array.Copy(_lastVisualPositions, grown, _lastVisualPositions.Length);
+                _lastVisualPositions = grown;
+            }
+
+            _lastVisualPositions[index] = worldPosition;
+        }
+
+        /// <summary>
+        /// 位移小于该值（米）视为"没动"：不旋转。避免静止球因浮点噪声每帧空转（也避免无意义 `Rotate`）。
+        /// 取 1e-6 m 的依据：float 在 ~0.5 m 量级的绝对分辨率为 ~6e-8 m，1e-6 m 高出约 16 倍 ⇒
+        /// 足以滤掉噪声，又**远低于**任何玩法相关位移（游戏级静止阈值 1e-3 m/s ⇒ 单步 8.3e-6 m）。
+        /// </summary>
+        private const float RollingDistanceEpsilon = 1e-6f;
+
+        /// <summary>
+        /// 给球可视物施加**纯滚动自转**（无滑动）：地面法向 <c>+Y</c>，接触点速度为 0
+        /// ⇒ <c>v = ω × (r·ŷ)</c> ⇒ <c>ω = (v_z/r, 0, −v_x/r)</c>（Unity 坐标）。
+        /// 等价地：**轴 = <c>up × d̂</c>**、**转角(度) = <c>|d| / r · Rad2Deg</c>**，其中 <c>d</c> = **本帧世界位移**。
+        ///
+        /// **为什么用位移而不用速度**：位移天然含时间步长，不必去问内核 <c>FixedDeltaTime</c>，
+        /// 也不受"一帧内推进了几个物理步"影响（`SyncVisual` 每帧只被调用一次，位移就是这一帧的总位移）。
+        ///
+        /// **不变量（将来改局部坐标时依然成立，勿跟着改）**：本项目下一步的相机/指针瞄准会引入
+        /// `PlayfieldRoot` 的视觉缩放 1.2，届时 `SyncVisual` 会改写**局部坐标**。但只要本函数继续吃
+        /// **世界位移**、继续除以**世界半径**（`PoolConstants.BallRadius`），比值 <c>|d| / r</c> 在等比缩放下**不变**
+        /// ⇒ 转角依旧正确。**故本函数不得改成"局部位移 / 局部半径"之外的等比组合**（那会引入缩放平方项）。
+        /// </summary>
+        private static void ApplyRollingRotation(Transform visual, Vector3 displacement)
+        {
+            float distance = displacement.magnitude;
+            if (distance <= RollingDistanceEpsilon)
+            {
+                return;   // 静止（或数值噪声）⇒ 不旋转
+            }
+
+            Vector3 axis = Vector3.Cross(Vector3.up, displacement);
+            if (axis.sqrMagnitude <= 0f)
+            {
+                return;   // 纯竖直位移（台呢上不可能发生）⇒ 轴无定义，跳过
+            }
+
+            float angleDegrees = distance / PoolConstants.BallRadius * Mathf.Rad2Deg;
+            visual.Rotate(axis.normalized, angleDegrees, Space.World);
         }
 
         /// <summary>瞄准指示物对象名（Game 视图可见的细长立方体）。</summary>

@@ -255,5 +255,173 @@ namespace Billiards.Tests
                 Object.DestroyImmediate(go);
             }
         }
+
+        // ══════════════════ T42b 球可视物纯滚动自转（"滑行"→"滚动"）════════════
+
+        /// <summary>
+        /// **球可视物必须按位移做纯滚动自转**（纯滚动/无滑动 ⇒ 转角 = 弧长 / 半径）。
+        ///
+        /// ── 编号避让（必须保留此理由）──────────────────────────────────────────
+        /// 本文件已占 `T41`/`T42`/`T43`/`T44`；Day 8 的 spec 已把 `T45`–`T53` 划给"相机与指针瞄准"
+        /// ⇒ 本单**不得**占用上述任一编号，故取 **`T42b`**（既不与既有冲突，也不越界进 Day 8 区间）。
+        ///
+        /// ── 判据（均可被打死）──────────────────────────────────────────────────
+        /// ① **单步闭式（带符号）**：从已知初态推进**恰好一步** ⇒ 朝向必须 == 独立闭式
+        ///    `AngleAxis(|d|/r·Rad2Deg, (up × d).normalized)`（`d` = 该步世界位移）。
+        ///    用 `|Quaternion.Dot(实际, 闭式)| ≈ 1` 判定 —— 该式**带符号**，故同时分辨
+        ///    "漏转"（Dot ≈ cos(θ/2)）、"反向/轴反"（Dot ≈ cos θ）、"轴错"。
+        /// ② **平移必然伴随旋转**：出杆后推进若干步 ⇒ `Quaternion.Angle(初始, 当前) > 阈值`。
+        /// ③ **转角闭合式**：逐帧**弦长累加**的累计路径 / 半径 == 逐帧**朝向增量**累加的累计转角
+        ///    （球会撞库 ⇒ 必须逐帧弦长，不能用首末直线距离）。
+        /// ④ **不空转**：静止球连续推进若干帧 ⇒ 朝向**不变**。
+        /// ⑤ `ballVisual`（单球兼容字段）分支同样自转（不能只改 `ballVisuals` 分支）。
+        ///
+        /// ── 实测注入反例（原文见交接报告）─────────────────────────────────────
+        /// · 注入①（跳过自转那一行）⇒ ①`|Dot|≈cos(θ/2)<0.999` FAIL；②③ FAIL（转角恒 0）。
+        /// · 注入②（转角取反 / 轴取反）⇒ ①`|Dot|≈cos θ (≈0.26)<0.999` FAIL。
+        /// </summary>
+        [Test]
+        public void T42b_BallVisuals_Roll_ByDisplacement()
+        {
+            const float r = Billiards.Core.PoolConstants.BallRadius;
+
+            // ── ①②③ 数组分支（ballVisuals）+ 闭合式 ────────────────────────────
+            var driveGo = new GameObject("T42bDrive");
+            var visualGo = new GameObject("T42bBallVisual");
+            try
+            {
+                var drive = driveGo.AddComponent<PhysicsTestDrive>();
+                drive.tableConfig = AssetDatabase.LoadAssetAtPath<Billiards.Table.TableConfig>(TablePath);
+                Assert.IsNotNull(drive.tableConfig, "T42b：需要 TableConfig.asset。");
+
+                drive.loadRackForBallBallDemo = false;            // 单球：路径简单、判据可控
+                drive.ballVisuals = new[] { visualGo.transform };  // 走数组分支
+                drive.ballVisual = null;
+                drive.Initialize();
+
+                Assert.IsNotNull(drive.Simulator, "T42b：Initialize 后应有内核。");
+                Assert.AreEqual(1, drive.Simulator.Balls.Count, "T42b：单球模式应恰好 1 颗球。");
+
+                visualGo.transform.rotation = Quaternion.identity;   // 已知初态，便于与闭式直接比对
+                drive.aimDegrees = 180f;                             // 世界走向 ≈ +x（不朝袋口）
+                drive.power = 1f;                                    // 初速 4.5 m/s（单步 ≈ 0.0375 m）
+                drive.Launch();
+
+                Assert.Less(Quaternion.Angle(Quaternion.identity, visualGo.transform.rotation), 1e-3f,
+                    "T42b：出杆首帧不应自转（无可靠上一帧位置 ⇒ 只落位）。");
+
+                // ① 单步闭式（带符号 —— 同时分辨漏转/反向/轴错）
+                Vector3 p0 = Billiards.Core.PoolGeometry.PhysicsBallToUnity(drive.Simulator.Balls[0].position);
+                drive.Advance(PoolSimulator.FixedDeltaTime);
+                Vector3 p1 = Billiards.Core.PoolGeometry.PhysicsBallToUnity(drive.Simulator.Balls[0].position);
+                Vector3 d1 = p1 - p0;
+
+                Vector3 axis1 = Vector3.Cross(Vector3.up, d1).normalized;
+                float angle1Deg = d1.magnitude / r * Mathf.Rad2Deg;
+                Quaternion expected1 = Quaternion.AngleAxis(angle1Deg, axis1);
+                float dot1 = Mathf.Abs(Quaternion.Dot(visualGo.transform.rotation, expected1));
+                // 单步 ≈ 75°，净角无歧义 ⇒ ② 用它（避免长程净角绕圈后"看似没转"的假阴性）
+                Quaternion rotAfterOneStep = visualGo.transform.rotation;
+
+                // ③ 长程：逐帧弦长累加 vs 逐帧朝向增量累加
+                Quaternion prevRot = visualGo.transform.rotation;
+                Vector3 prevPos = p1;
+                float path = 0f;
+                float angleSum = 0f;
+                const int steps = 90;
+                for (int i = 0; i < steps; i++)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                    Vector3 now = Billiards.Core.PoolGeometry.PhysicsBallToUnity(drive.Simulator.Balls[0].position);
+                    path += (now - prevPos).magnitude;          // 逐帧弦长（球会撞库 ⇒ 不得用首末直线）
+                    prevPos = now;
+                    Quaternion rot = visualGo.transform.rotation;
+                    // 每步只绕**一个世界轴** `Rotate` 一次 ⇒ `prevRot⁻¹ × rot` 的转角 == 该步施加的转角，可加。
+                    angleSum += Quaternion.Angle(prevRot, rot);
+                    prevRot = rot;
+                }
+
+                float expectedAngle = path / r * Mathf.Rad2Deg;
+                float tol = Mathf.Max(1f, expectedAngle * 0.005f);
+
+                // ★ NUnit（Unity 的 `com.unity.ext.nunit` 3.5 分支）**不支持 `Assert.Multiple`**
+                //   （实测 `Assert` 无 `Multiple` 成员 ⇒ `CS0117`）。改用**手工汇总**：三条判据各自求值、
+                //   把失败项收齐后一次报告 ⇒ 单次注入能同时暴露它影响的**全部**判据，
+                //   而不是像默认快速失败那样只看到第一条（那无法证明 ②③ 也能各自红）。
+                var failures = new System.Collections.Generic.List<string>();
+                if (!(d1.magnitude > 0.005f))
+                {
+                    failures.Add("① 前提：单步位移过小 ⇒ 闭式检查无意义。");
+                }
+
+                if (!(dot1 > 0.999f))
+                {
+                    failures.Add($"① 单步自转与独立闭式不符（|Dot|={dot1:F4}；相同=1，漏转≈{Mathf.Cos(angle1Deg * 0.5f * Mathf.Deg2Rad):F4}，"
+                                 + $"反向/轴反≈{Mathf.Abs(Mathf.Cos(angle1Deg * Mathf.Deg2Rad)):F4}）⇒ 漏转 / 反向 / 轴错。");
+                }
+
+                if (!(Quaternion.Angle(Quaternion.identity, rotAfterOneStep) > 20f))
+                {
+                    failures.Add("② 球滚了 3.7 cm 而朝向几乎没变 ⇒ 出现'滑行'。");
+                }
+
+                if (!(path > 0.3f))
+                {
+                    failures.Add("③ 前提：累计路径过小 ⇒ 闭合式检查无意义。");
+                }
+
+                if (!(Mathf.Abs(angleSum - expectedAngle) < tol))
+                {
+                    failures.Add($"③ 累计转角 {angleSum:F3}° ≠ 累计路径/半径 {expectedAngle:F3}°（弦长 {path:F6} m，容差 {tol:F3}°）。");
+                }
+
+                Assert.IsEmpty(failures, "T42b 失败判据：\n" + string.Join("\n", failures));
+
+                // ④ 不空转：静止球推进多帧 ⇒ 朝向不变
+                drive.Initialize();                              // 重新装载到静止初态（球停在开球点）
+                visualGo.transform.rotation = Quaternion.identity;
+                for (int i = 0; i < 30; i++)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                }
+
+                Assert.Less(Quaternion.Angle(Quaternion.identity, visualGo.transform.rotation), 1e-3f,
+                    "T42b：静止球不应自转（无条件 Rotate / 数值噪声抖动造成的假旋转）。");
+
+                TestContext.WriteLine($"T42b: 单步闭式 |Dot|={dot1:F5}；累计路径 {path:F4} m ⇒ 期望 {expectedAngle:F1}° / 实测 {angleSum:F1}°；静止 30 帧朝向不变 ✓");
+            }
+            finally
+            {
+                Object.DestroyImmediate(driveGo);
+                Object.DestroyImmediate(visualGo);
+            }
+
+            // ── ⑤ 单球兼容字段 `ballVisual` 分支同样自转 ─────────────────────────
+            var drive2Go = new GameObject("T42bDrive2");
+            var visual2Go = new GameObject("T42bBallVisual2");
+            try
+            {
+                var drive2 = drive2Go.AddComponent<PhysicsTestDrive>();
+                drive2.tableConfig = AssetDatabase.LoadAssetAtPath<Billiards.Table.TableConfig>(TablePath);
+                drive2.loadRackForBallBallDemo = false;
+                drive2.ballVisuals = null;                       // 只走单球分支
+                drive2.ballVisual = visual2Go.transform;
+                drive2.Initialize();
+
+                visual2Go.transform.rotation = Quaternion.identity;
+                drive2.aimDegrees = 180f;
+                drive2.power = 1f;
+                drive2.Launch();
+                drive2.Advance(PoolSimulator.FixedDeltaTime);
+
+                Assert.Greater(Quaternion.Angle(Quaternion.identity, visual2Go.transform.rotation), 20f,
+                    "T42b：`ballVisual` 单球分支未自转（只改了 ballVisuals 分支）。");
+            }
+            finally
+            {
+                Object.DestroyImmediate(drive2Go);
+                Object.DestroyImmediate(visual2Go);
+            }
+        }
     }
 }
