@@ -49,7 +49,7 @@ namespace Billiards.Tests
                 cushionTangentialFriction = muCushion,
                 ballRestitution = eBall,
                 ballTangentialFriction = 1f,
-                rollingDeceleration = 0f,
+                rollingDecelerationSlide = 0f, rollingDecelerationRoll = 0f,
             };
 
             var sim = new PoolSimulator(table, p);
@@ -486,13 +486,17 @@ namespace Billiards.Tests
             PhysicsParams d = PhysicsParams.SafeDefault;
 
             TestContext.WriteLine($"F2a: cushion(e={d.cushionRestitution},μ={d.cushionTangentialFriction}) "
-                                  + $"ball(e={d.ballRestitution},μ={d.ballTangentialFriction}) a={d.rollingDeceleration}");
+                                  + $"ball(e={d.ballRestitution},μ={d.ballTangentialFriction}) "
+                                  + $"a_slide={d.rollingDecelerationSlide},a_roll={d.rollingDecelerationRoll},v_t={d.rollingTransitionSpeed}");
 
             Assert.AreEqual(1f, d.ballRestitution, "F2a：SafeDefault 的 e_ball 必须为 1.0（不得为 0）。");
             Assert.AreEqual(1f, d.ballTangentialFriction, "F2a：SafeDefault 的 μ_ball 必须为 1.0（0 会删除切向分量）。");
             Assert.AreEqual(1f, d.cushionRestitution, "F2a：SafeDefault 的库边 e 必须为 1.0。");
             Assert.AreEqual(1f, d.cushionTangentialFriction, "F2a：SafeDefault 的库边 μ 必须为 1.0。");
-            Assert.AreEqual(0f, d.rollingDeceleration, "F2a：滚阻仍为 0（单一口径）。");
+            // ⚠ 旧单值滚阻字段**已删**（退化档由"两段取同值"完整表达）⇒ 本句改为断言**两个新字段都为 0**。
+            //   两段都为 0 ⇒ 内核门控为假 ⇒ 与历史"无滚阻"逐位一致（`T59` 钉）。
+            Assert.AreEqual(0f, d.rollingDecelerationSlide, "F2a：SafeDefault 的滑动段滚阻必须为 0（历史“无滚阻”口径）。");
+            Assert.AreEqual(0f, d.rollingDecelerationRoll, "F2a：SafeDefault 的滚动段滚阻必须为 0（历史“无滚阻”口径）。");
         }
 
         [Test]

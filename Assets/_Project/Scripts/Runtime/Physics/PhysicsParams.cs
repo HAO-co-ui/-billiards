@@ -15,7 +15,19 @@ namespace Billiards.Physics
     ///    **本轮钉死 1.0**：切向相对速度的物理汇是自旋，而本模型**无角自由度**，
     ///    按 μ&lt;1 去衰减属**非物理耗散** ⇒ 光滑球（μ=1，切向不变）是无自旋下唯一自洽的选择
     ///    （允许 ≠1 的前提是引入自旋之后）；
-    ///  · <see cref="rollingDeceleration"/> = 台呢滚动减速度 a，m/s²，物理内核取 0。
+    ///  · 台呢滚阻改为**两段模型**，由三个字段承载（见下）—— 台呢减速度是**速度的函数**
+    ///    `a(v) = a_roll + (a_slide − a_roll)·clamp01(v / v_transition)`，m/s²：
+    ///      · <see cref="rollingDecelerationSlide"/> = **滑动段**减速度 a_slide（高速段取值，量级 1–3）；
+    ///      · <see cref="rollingDecelerationRoll"/> = **滚动段**减速度 a_roll（低速段取值，量级 0.10–0.30）；
+    ///      · <see cref="rollingTransitionSpeed"/> = 两段过渡速度 v_transition，m/s（量级 1–3）。
+    ///
+    /// ── 沿革 / 映射墓碑（旧单值滚阻字段**已删**）────────────────────────────
+    /// 本类型此前只有一个「**恒定减速度**」标量字段（本次删除）。映射关系：
+    ///   **旧单值 `a = X`  ⇔  `rollingDecelerationSlide = rollingDecelerationRoll = X`**
+    ///   （`v_transition` 取任意值均可 —— 退化档下 `(a_slide − a_roll) = +0` ⇒ `a(v) ≡ X` 逐位等价）。
+    /// 沿革口径：内核阶段旧单值曾取 `0`（"单一口径"，台呢滚阻恒 0）→ 调参阶段定为 `0.9` →
+    /// 本次起由上述三字段取代。**删旧字段的理由**：退化档已由"两段取同值"完整表达，
+    /// 旧字段是**同一个量的第二种写法**（必然分叉）；保留它会再造"看着能调、实际被覆盖"的字段。
     ///
     /// 注意 e 与 μ **各自独立**作用于各自分量，不得合并为一次反射后再缩放
     /// （那会把 μ 也乘到法向分量上，见 <c>PoolSimulator.ResolveSegmentContact</c>）。
@@ -36,8 +48,17 @@ namespace Billiards.Physics
         /// <summary>球-球切向保留系数 μ_ball（切向）。本轮**钉死 1.0**（见类型注释）。</summary>
         public float ballTangentialFriction;
 
-        /// <summary>台呢滚动减速度 a，m/s²。</summary>
-        public float rollingDeceleration;
+        /// <summary>台呢**滑动段**减速度 a_slide，m/s²（高速段取值；量级 1–3）。</summary>
+        public float rollingDecelerationSlide;
+
+        /// <summary>台呢**滚动段**减速度 a_roll，m/s²（低速段取值；量级 0.10–0.30）。</summary>
+        public float rollingDecelerationRoll;
+
+        /// <summary>
+        /// 两段过渡速度 v_transition，m/s。边界：`≤ 0` ⇒ `a(v) = a_slide`（不分区）；
+        /// `v ≤ 0` ⇒ `a(v) = a_roll`（两段相等时二者同值）。
+        /// </summary>
+        public float rollingTransitionSpeed;
 
         /// <summary>
         /// **安全默认值 —— 必须用它，不要用 `default(PhysicsParams)`。**
@@ -63,7 +84,9 @@ namespace Billiards.Physics
                     cushionTangentialFriction = 1f,
                     ballRestitution = 1f,
                     ballTangentialFriction = 1f,
-                    rollingDeceleration = 0f,
+                    rollingDecelerationSlide = 0f,
+                    rollingDecelerationRoll = 0f,
+                    rollingTransitionSpeed = 0f,
                 };
             }
         }

@@ -19,19 +19,19 @@ namespace Billiards.Physics
     /// ── 默认值 = 灰盒现行**实际生效**值（接线后行为不变）────────────────────
     ///  · `cushion e = 0.8` / `μ = 0.9` —— 这正是 `PhysicsGreybox` 之前走"回落路径"时**实际生效**的占位值；
     ///    把它们搬进资产 ⇒ **接线不改变行为**，但**改资产真的会改变灰盒**（R1 缓解措施成立）。
-    ///  · **排期所说的「初始阻尼」在本模型里 = `rollingDeceleration`（台呢滚阻）** ——
-    ///    **不另设字段**（避免"声明了却不生效"的惰性字段）。
-    ///  · **`rollingDeceleration` = 0.9 m/s²**（`D7-T04` 用户拍板）：**内核阶段曾取 `0`**（"单一口径"口径），
-    ///    现由 Day 7 调参定为 **0.9**。⚠ **这是「手感口径」、不是物理真值** —— 真实台呢滚阻约 **0.05–0.15 m/s²**，
-    ///    `0.9` 是其 **6–8 倍**，为"**满力一杆约 5 s 停**"而调高。仍在 spec 声明的 **`a_max = 5 m/s²`** 包线内 ⇒ 不属超纲。
-    ///    ⚠ **参照场景 = 4 球灰盒**；**15 球满堆能量耗散更多 ⇒ 将来上满堆时可能需再调**（Day 9 再议）。
-    ///  · `e_ball = 0.95`（**调参目标口径**；Day 7 依扫描裁定：白球行程随 `e_ball` 单调递减 ——
+    ///  · **台呢滚阻 = 两段模型**（本资产承载三个字段，见 <see cref="rollingDecelerationSlide"/> 等）：
+    ///    出厂口径取 **退化档**（滑动段 == 滚动段 == `0.9 m/s²`）⇒ 与历史"单一恒定减速度 0.9"**逐位等价**。
+    ///    沿革：内核阶段曾取 `0`（"单一口径"）→ 调参阶段定为 `0.9` → 本次起由三字段承载，
+    ///    并把"恒定档"表达为**两段取同值**。⚠ **这是「手感口径」、不是物理真值** —— 真实台呢滚阻约
+    ///    **0.05–0.15 m/s²**，滚动段出厂值是其 **6–8 倍**，为"**满力一杆约 5 s 停**"而调高。
+    ///    仍在 spec 声明的 **`a_max = 5 m/s²`** 包线内 ⇒ 不属超纲。
+    ///    ⚠ **参照场景 = 4 球灰盒**；**15 球满堆能量耗散更多 ⇒ 将来上满堆时可能需再调**。
+    ///  · `e_ball = 0.95`（**调参目标口径**；依扫描裁定：白球行程随 `e_ball` 单调递减 ——
     ///    1.00→2.587 m / 0.95→2.249 m / 0.90→1.883 m ⇒ 取台球实测 0.93–0.96 的中点）。
     ///    ⚠ **两个数字的关系（勿误认为矛盾）**：
     ///      · **`PhysicsParams.SafeDefault` 的 `e_ball` = 1.0** —— 它是"**字段全零**"的**解药**（安全兜底），
     ///        由 `F2a` 钉住；**它不是调参默认值**。
     ///      · **本资产 / `PhysicsTestDrive` 的默认 = 0.95** —— 那是**调参目标口径**，随调参结论而变。
-    ///  · `rollingDeceleration = 0`（内核阶段单一口径）。
     ///  · `pocketCaptureRadiusScale = 1.0`（逐袋值不变）。
     /// </summary>
     [CreateAssetMenu(fileName = "PhysicsTuning", menuName = "Billiards/Physics Tuning", order = 0)]
@@ -46,9 +46,18 @@ namespace Billiards.Physics
         [Range(0f, 1f)]
         public float cushionTangentialFriction = 0.9f;
 
-        [Header("台呢")]
-        [Tooltip("台呢滚动减速度 a，m/s²。**Day 7 调参定为 0.9**（手感口径）。⚠ 真实台呢约 0.05–0.15 ⇒ 本值是它的 6–8 倍，**为手感而调高，不是物理真值**。")]
-        public float rollingDeceleration = 0.9f;
+        [Header("台呢（滚阻两段模型 —— **手感唯一入口**）")]
+        [Tooltip("**滑动段**减速度 a_slide（高速时取值），m/s²。台呢滚阻两段模型的**高速段**；量级 1–3。"
+                 + "⚠ 与 `rollingDecelerationRoll` **取同值**即“恒定档”（与历史单一减速度逐位等价）。")]
+        public float rollingDecelerationSlide = 0.9f;
+
+        [Tooltip("**滚动段**减速度 a_roll（低速时取值），m/s²。台呢滚阻两段模型的**低速段**；量级 0.10–0.30。"
+                 + "出厂取 0.9 = 与 `rollingDecelerationSlide` 同值 ⇒ 退化恒定档（改它才会让球“滑出去”更远）。")]
+        public float rollingDecelerationRoll = 0.9f;
+
+        [Tooltip("两段过渡速度 v_transition，m/s。`a(v) = a_roll + (a_slide − a_roll)·clamp01(v / v_transition)`；"
+                 + "≤ 0 ⇒ 恒取 a_slide。量级 1–3。⚠ 两段同值时本项**不影响**结果。")]
+        public float rollingTransitionSpeed = 1.0f;
 
         [Header("球-球")]
         [Tooltip("球-球法向恢复系数 e_ball，[0,1]。台球实测 0.93–0.96；**调参目标口径 = 0.95**（Day 7 定）。")]
@@ -85,7 +94,9 @@ namespace Billiards.Physics
         {
             public float cushionRestitution;
             public float cushionTangentialFriction;
-            public float rollingDeceleration;
+            public float rollingDecelerationSlide;
+            public float rollingDecelerationRoll;
+            public float rollingTransitionSpeed;
             public float ballRestitution;
             public float ballTangentialFriction;
             public float pocketCaptureRadiusScale;
@@ -98,7 +109,9 @@ namespace Billiards.Physics
             {
                 cushionRestitution = 0.8f,
                 cushionTangentialFriction = 0.9f,
-                rollingDeceleration = 0.9f,
+                rollingDecelerationSlide = 0.9f,
+                rollingDecelerationRoll = 0.9f,
+                rollingTransitionSpeed = 1.0f,
                 ballRestitution = 0.95f,
                 ballTangentialFriction = 1f,
                 pocketCaptureRadiusScale = 1f,
@@ -116,7 +129,9 @@ namespace Billiards.Physics
                 cushionTangentialFriction = cushionTangentialFriction,
                 ballRestitution = ballRestitution,
                 ballTangentialFriction = ballTangentialFriction,
-                rollingDeceleration = rollingDeceleration,
+                rollingDecelerationSlide = rollingDecelerationSlide,
+                rollingDecelerationRoll = rollingDecelerationRoll,
+                rollingTransitionSpeed = rollingTransitionSpeed,
             };
         }
     }

@@ -49,8 +49,14 @@ namespace Billiards.Physics
         [Range(0f, 1f)]
         public float cushionTangentialFriction = 0.9f;
 
-        [Tooltip("台呢滚阻减速度 a（m/s²）。**Day 7 调参定为 0.9**（手感口径；真实台呢约 0.05–0.15 ⇒ 6–8 倍，非物理真值）。")]
-        public float rollingDeceleration = 0.9f;
+        [Tooltip("台呢**滑动段**减速度 a_slide（m/s²，高速段）。调参阶段定为 0.9（手感口径；真实台呢约 0.05–0.15 ⇒ 非物理真值）。")]
+        public float rollingDecelerationSlide = 0.9f;
+
+        [Tooltip("台呢**滚动段**减速度 a_roll（m/s²，低速段）。与 `rollingDecelerationSlide` 同值即“恒定档”（与历史行为逐位等价）。")]
+        public float rollingDecelerationRoll = 0.9f;
+
+        [Tooltip("两段过渡速度 v_transition（m/s）。≤ 0 ⇒ 恒取 a_slide；两段同值时本项不影响结果。")]
+        public float rollingTransitionSpeed = 1.0f;
 
         [Header("球-球参数（默认 = 调参口径 0.95；SafeDefault 的 1.0 是「全零解药」、非调参默认）")]
         [Tooltip("球-球法向恢复系数 e_ball。台球实测 0.93–0.96；调参目标口径 = 0.95（Day 7 定）。")]
@@ -188,7 +194,9 @@ namespace Billiards.Physics
                 parameters = PhysicsParams.SafeDefault;
                 parameters.cushionRestitution = cushionRestitution;
                 parameters.cushionTangentialFriction = cushionTangentialFriction;
-                parameters.rollingDeceleration = rollingDeceleration;
+                parameters.rollingDecelerationSlide = rollingDecelerationSlide;
+                parameters.rollingDecelerationRoll = rollingDecelerationRoll;
+                parameters.rollingTransitionSpeed = rollingTransitionSpeed;
                 parameters.ballRestitution = ballRestitution;
                 parameters.ballTangentialFriction = ballTangentialFriction;
                 captureScale = 1f;   // 袋口半径真源仍是 TableConfig.Pocket（逐袋）

@@ -69,8 +69,8 @@ namespace Billiards.Physics
 
         /// <summary>
         /// 子步数推导所用的前瞻加速度上界 <c>a_max = 5 m/s²</c>。
-        /// 这是**前瞻声明值**：实际的 <c>rollingDeceleration</c> 为 0，
-        /// 该上界用于给未来的滚动阻力留出子步数余量，不参与实际的滚动积分。
+        /// 这是**前瞻声明值**：用于给滚阻的**滑动段**减速度 <c>a_slide</c> 留出子步数余量
+        /// （出厂口径下 <c>a_slide</c> 远小于该上界），不参与实际的滚动积分。
         /// </summary>
         public const float MaxRollingDeceleration = 5f;
 
@@ -492,7 +492,7 @@ namespace Billiards.Physics
             {
                 _active[i] = !_frozen[i] && Length(_balls[i].velocity) > StoppedSpeedEpsilon;
                 _vAvg[i] = _active[i]
-                    ? AverageVelocity(_balls[i].velocity, _params.rollingDeceleration, dt)
+                    ? AverageVelocity(_balls[i].velocity, DecelerationAt(_balls[i].velocity), dt)
                     : Vector2.zero;
             }
 
@@ -589,18 +589,21 @@ namespace Billiards.Physics
                 for (int i = 0; i < _balls.Length; i++)
                 {
                     _vAvg[i] = _active[i]
-                        ? AverageVelocity(_balls[i].velocity, _params.rollingDeceleration, remaining)
+                        ? AverageVelocity(_balls[i].velocity, DecelerationAt(_balls[i].velocity), remaining)
                         : Vector2.zero;
                 }
             }
 
-            if (_params.rollingDeceleration > 0f)
+            // 门控：**两段任一非零即生效**（`||`，**不是** `&&`）。
+            // ⚠ 历史坑：原门控是"单一滚阻 > 0"；两段都取 0 时**整段跳过**（与历史"无滚阻"逐位一致）。
+            // ⚠ 若误写成 `&&`，"只有一段非零"时滚阻完全不生效（整桌永不静止）—— `T59` 专门钉这条。
+            if (_params.rollingDecelerationSlide > 0f || _params.rollingDecelerationRoll > 0f)
             {
                 for (int i = 0; i < _balls.Length; i++)
                 {
                     if (!_frozen[i])
                     {
-                        ApplyRollingDeceleration(ref _balls[i], _params.rollingDeceleration, dt);
+                        ApplyRollingDeceleration(ref _balls[i], DecelerationAt(_balls[i].velocity), dt);
                     }
                 }
             }
@@ -609,6 +612,52 @@ namespace Billiards.Physics
             {
                 CheckPocketProximity(i);
             }
+        }
+
+        /// <summary>
+        /// 台呢减速度的**唯一实现点**（两段模型）：<c>a(v) = a_roll + (a_slide − a_roll)·clamp01(v / v_transition)</c>。
+        ///
+        /// 边界（显式定义）：
+        ///  · <c>v_transition ≤ 0</c> ⇒ 取 <c>a_slide</c>（不分区）；
+        ///  · <c>speed ≤ 0</c> ⇒ 取 <c>a_roll</c>。
+        /// ⇒ <c>a_slide == a_roll</c> 时两条边界返回**同值**，故退化档**逐位等价**于历史的单一恒定减速度。
+        ///
+        /// 返回前取 <c>Max(0, ·)</c>：**不得造能**（负的滚动段会加速球）。
+        /// 本函数是**当前速度的纯函数**（无历史 / 无时间 / 无随机）⇒ 不破坏逐位确定性。
+        /// </summary>
+        private float DecelerationAt(Vector2 v)
+        {
+            float aSlide = _params.rollingDecelerationSlide;
+            float aRoll = _params.rollingDecelerationRoll;
+            float vTransition = _params.rollingTransitionSpeed;
+
+            float a;
+            if (vTransition <= 0f)
+            {
+                a = aSlide;
+            }
+            else
+            {
+                float speed = Length(v);
+                if (speed <= 0f)
+                {
+                    a = aRoll;
+                }
+                else
+                {
+                    float t = speed / vTransition;
+                    if (t > 1f)
+                    {
+                        t = 1f;
+                    }
+
+                    // ⚠ 必须写成 `a_roll + (a_slide − a_roll) * t`：退化时 `(a_slide − a_roll)` 恰为 `+0`
+                    //   ⇒ `a_roll + 0*t ≡ a_roll`（IEEE 精确）⇒ 与历史恒定档**逐位一致**。
+                    a = aRoll + (aSlide - aRoll) * t;
+                }
+            }
+
+            return Mathf.Max(0f, a);
         }
 
         /// <summary>

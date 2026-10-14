@@ -36,7 +36,7 @@ namespace Billiards.Tests
                 cushionTangentialFriction = 1f,
                 ballRestitution = 1f,
                 ballTangentialFriction = 1f,
-                rollingDeceleration = 0f,
+                rollingDecelerationSlide = 0f, rollingDecelerationRoll = 0f,
             };
         }
 

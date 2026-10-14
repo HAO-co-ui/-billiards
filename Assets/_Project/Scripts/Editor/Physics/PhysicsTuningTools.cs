@@ -49,7 +49,9 @@ namespace Billiards.EditorTools
             PhysicsTuning.Defaults d = PhysicsTuning.DefaultValues();
             asset.cushionRestitution = d.cushionRestitution;
             asset.cushionTangentialFriction = d.cushionTangentialFriction;
-            asset.rollingDeceleration = d.rollingDeceleration;
+            asset.rollingDecelerationSlide = d.rollingDecelerationSlide;
+            asset.rollingDecelerationRoll = d.rollingDecelerationRoll;
+            asset.rollingTransitionSpeed = d.rollingTransitionSpeed;
             asset.ballRestitution = d.ballRestitution;
             asset.ballTangentialFriction = d.ballTangentialFriction;
             asset.pocketCaptureRadiusScale = d.pocketCaptureRadiusScale;
@@ -134,7 +136,9 @@ namespace Billiards.EditorTools
                     cushionTangentialFriction = d.cushionTangentialFriction,
                     ballRestitution = d.ballRestitution,
                     ballTangentialFriction = d.ballTangentialFriction,
-                    rollingDeceleration = d.rollingDeceleration,
+                    rollingDecelerationSlide = d.rollingDecelerationSlide,
+                    rollingDecelerationRoll = d.rollingDecelerationRoll,
+                    rollingTransitionSpeed = d.rollingTransitionSpeed,
                 };
             }
 
@@ -260,8 +264,10 @@ namespace Billiards.EditorTools
         }
 
         /// <summary>
-        /// **台呢滚阻扫描**：单球在**空台**上以 `MaxBallSpeed` 自由滚动 ⇒ 记录"到 `TableAtRest` 的步数/时间 + 行程"。
-        /// 空台（无段无袋）是为**隔离** `rollingDeceleration` 的作用（不被碰撞耗散干扰）。**无断言**、可复现。
+        /// **台呢滚阻扫描（恒定档）**：单球在**空台**上以 `MaxBallSpeed` 自由滚动 ⇒ 记录"到 `TableAtRest` 的步数/时间 + 行程"。
+        /// 空台（无段无袋）是为**隔离**滚阻的作用（不被碰撞耗散干扰）。**无断言**、可复现。
+        /// ⚠ 本扫描走**恒定档**（滑动段 == 滚动段 == 扫描值）⇒ 与历史单值口径可直接对比；
+        /// **两段档**（滑动段 ≠ 滚动段）的扫描在 `Docs/Tools/two_stage_roll_scan`。
         /// 另附 `DeriveSubSteps` 对子步界的确认。
         /// </summary>
         private static void WriteRollingDecelerationSweep(string dir)
@@ -276,7 +282,7 @@ namespace Billiards.EditorTools
 
             PhysicsTuning.Defaults d = PhysicsTuning.DefaultValues();
             var csv = new StringBuilder();
-            csv.Append("v0,rollingDeceleration,stepsToRest,timeToRestS,travelM,rested\n");
+            csv.Append("v0,aConst,stepsToRest,timeToRestS,travelM,rested\n");
 
             foreach (float v0 in speeds)
             {
@@ -288,7 +294,8 @@ namespace Billiards.EditorTools
                         cushionTangentialFriction = d.cushionTangentialFriction,
                         ballRestitution = d.ballRestitution,
                         ballTangentialFriction = d.ballTangentialFriction,
-                        rollingDeceleration = a,
+                        rollingDecelerationSlide = a,
+                        rollingDecelerationRoll = a,
                     };
 
                     var sim = new PoolSimulator(empty, p);

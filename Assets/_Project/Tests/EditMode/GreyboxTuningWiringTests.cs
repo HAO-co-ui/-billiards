@@ -72,7 +72,12 @@ namespace Billiards.Tests
                 Assert.AreEqual(tuning.ballTangentialFriction, p.ballTangentialFriction, 1e-6f, "T41：生效 μ_ball ≠ 资产。");
                 Assert.AreEqual(tuning.cushionRestitution, p.cushionRestitution, 1e-6f, "T41：生效库边 e ≠ 资产。");
                 Assert.AreEqual(tuning.cushionTangentialFriction, p.cushionTangentialFriction, 1e-6f, "T41：生效库边 μ ≠ 资产。");
-                Assert.AreEqual(tuning.rollingDeceleration, p.rollingDeceleration, 1e-6f, "T41：生效滚阻 ≠ 资产。");
+                Assert.AreEqual(tuning.rollingDecelerationSlide, p.rollingDecelerationSlide, 1e-6f,
+                    "T41：生效滑动段滚阻 a_slide ≠ 资产（台呢两段模型的新参数未接进内核？）。");
+                Assert.AreEqual(tuning.rollingDecelerationRoll, p.rollingDecelerationRoll, 1e-6f,
+                    "T41：生效滚动段滚阻 a_roll ≠ 资产（台呢两段模型的新参数未接进内核？）。");
+                Assert.AreEqual(tuning.rollingTransitionSpeed, p.rollingTransitionSpeed, 1e-6f,
+                    "T41：生效过渡速度 v_transition ≠ 资产（台呢两段模型的新参数未接进内核？）。");
 
                 Assert.AreEqual(tuning.restSpeedThreshold, drive.Simulator.RestSpeedThresholdValue, 1e-9f,
                     "T41：生效 restSpeedThreshold ≠ 资产（不可观测参数，经只读出口比对）。");
@@ -88,7 +93,8 @@ namespace Billiards.Tests
                     "T41：生效 maxLaunchSpeed ≠ 资产（`B4`：初速未资产化）。");
 
                 TestContext.WriteLine($"T41: tuning 接线 OK；e_ball={p.ballRestitution} cushion=({p.cushionRestitution},{p.cushionTangentialFriction}) "
-                                      + $"a={p.rollingDeceleration} rest=({drive.Simulator.RestSpeedThresholdValue},{drive.Simulator.RestStableFramesValue}) "
+                                      + $"a=({p.rollingDecelerationSlide},{p.rollingDecelerationRoll},vt={p.rollingTransitionSpeed}) "
+                                      + $"rest=({drive.Simulator.RestSpeedThresholdValue},{drive.Simulator.RestStableFramesValue}) "
                                       + $"scale={drive.Simulator.PocketCaptureRadiusScaleValue} launch=[{drive.minLaunchSpeed},{drive.maxLaunchSpeed}] ✓");
             }
             finally
@@ -104,6 +110,12 @@ namespace Billiards.Tests
         /// （即"代码改了默认、场景却是旧值"这种漂移会被拦下 —— `B4` 事故正是此形）。
         ///
         /// **可被打死**：把场景里 `maxLaunchSpeed` 改回 `8`（不动代码）⇒ FAIL。**只核至少初速两项 + 已接线物理参数字段**。
+        ///
+        /// **`T62`（原地扩面）**：断言面已扩到台呢两段模型的**三个**滚动字段
+        /// （`rollingDecelerationSlide` / `rollingDecelerationRoll` / `rollingTransitionSpeed`）——
+        /// 这三项正是**最可能要调**的手感入口，不覆盖就等于"守卫恰好在最该守的地方是瞎的"。
+        /// ⚠ 注入负对照**不得写死注入值**（若写死值与出厂值相等，注入成**空动作**、会得到"守卫有效"的假象）：
+        /// 必须**先读真实出厂值**，再取一个必然不同的数（如 `出厂值 + 0.37`）。
         /// </summary>
         [Test]
         public void T43_GreyboxScene_SerializedValues_MatchCodeDefaults()
@@ -125,8 +137,12 @@ namespace Billiards.Tests
                         $"T43：场景序列化的 maxLaunchSpeed（{drive.maxLaunchSpeed}）≠ 代码默认（{probe.maxLaunchSpeed}）⇒ **场景漂移**（`B4` 同款）。");
                     Assert.AreEqual(probe.minLaunchSpeed, drive.minLaunchSpeed, 1e-6f,
                         $"T43：场景序列化的 minLaunchSpeed（{drive.minLaunchSpeed}）≠ 代码默认（{probe.minLaunchSpeed}）。");
-                    Assert.AreEqual(probe.rollingDeceleration, drive.rollingDeceleration, 1e-6f,
-                        $"T43：场景序列化的 rollingDeceleration（{drive.rollingDeceleration}）≠ 代码默认（{probe.rollingDeceleration}）。");
+                    Assert.AreEqual(probe.rollingDecelerationSlide, drive.rollingDecelerationSlide, 1e-6f,
+                        $"T62：场景序列化的 rollingDecelerationSlide（{drive.rollingDecelerationSlide}）≠ 代码默认（{probe.rollingDecelerationSlide}）⇒ 台呢两段模型的手感入口上出现了“场景漂移”（`B4` 同款）。");
+                    Assert.AreEqual(probe.rollingDecelerationRoll, drive.rollingDecelerationRoll, 1e-6f,
+                        $"T62：场景序列化的 rollingDecelerationRoll（{drive.rollingDecelerationRoll}）≠ 代码默认（{probe.rollingDecelerationRoll}）⇒ 场景漂移。");
+                    Assert.AreEqual(probe.rollingTransitionSpeed, drive.rollingTransitionSpeed, 1e-6f,
+                        $"T62：场景序列化的 rollingTransitionSpeed（{drive.rollingTransitionSpeed}）≠ 代码默认（{probe.rollingTransitionSpeed}）⇒ 场景漂移。");
                     Assert.AreEqual(probe.cushionRestitution, drive.cushionRestitution, 1e-6f,
                         $"T43：场景序列化的 cushionRestitution（{drive.cushionRestitution}）≠ 代码默认（{probe.cushionRestitution}）。");
                     Assert.AreEqual(probe.cushionTangentialFriction, drive.cushionTangentialFriction, 1e-6f,
@@ -136,7 +152,8 @@ namespace Billiards.Tests
                     Assert.AreEqual(probe.ballTangentialFriction, drive.ballTangentialFriction, 1e-6f,
                         $"T43：场景序列化的 ballTangentialFriction（{drive.ballTangentialFriction}）≠ 代码默认（{probe.ballTangentialFriction}）。");
 
-                    TestContext.WriteLine($"T43: 场景序列化值 == 代码默认 ✓（launch=[{drive.minLaunchSpeed},{drive.maxLaunchSpeed}] a={drive.rollingDeceleration}）");
+                    TestContext.WriteLine($"T43/T62: 场景序列化值 == 代码默认 ✓（launch=[{drive.minLaunchSpeed},{drive.maxLaunchSpeed}] "
+                                          + $"a=({drive.rollingDecelerationSlide},{drive.rollingDecelerationRoll},vt={drive.rollingTransitionSpeed})）");
                 }
                 finally
                 {
@@ -153,9 +170,10 @@ namespace Billiards.Tests
 
         /// <summary>
         /// **出厂口径冻结**：`PhysicsTuning.asset` 的**每一个**字段值 == 台账口径
-        /// （`0.8 / 0.9 / 0.9 / 0.95 / 1.0 / 1.0 / 1e-3 / 8 / 4.5 / 0.5`）。
+        /// （`0.8 / 0.9 / 0.9 / 0.9 / 1.0 / 0.95 / 1.0 / 1.0 / 1e-3 / 8 / 4.5 / 0.5`，**共 12 项**）。
+        /// 表项数 = **10 − 1 + 3**：旧单值滚阻字段删 1、台呢两段模型加 3（滑动段 / 滚动段 / 过渡速度）。
         /// 改值**必须显式重钉本表**（与 `T37` 基线同规）—— 否则"测试全绿而手感被悄悄改掉"。
-        /// **可被打死**：改资产任一字段 ⇒ FAIL。
+        /// **可被打死**：改资产任一字段 ⇒ FAIL（含把 `rollingDecelerationRoll` 改 `0.05`）。
         /// </summary>
         [Test]
         public void T44_FactoryConfig_MatchesLedger()
@@ -165,7 +183,10 @@ namespace Billiards.Tests
 
             Assert.AreEqual(0.8f, t.cushionRestitution, 1e-6f, "T44：cushionRestitution 偏离台账。");
             Assert.AreEqual(0.9f, t.cushionTangentialFriction, 1e-6f, "T44：cushionTangentialFriction 偏离台账。");
-            Assert.AreEqual(0.9f, t.rollingDeceleration, 1e-6f, "T44：rollingDeceleration 偏离台账。");
+            // 台呢两段模型：出厂 = **退化恒定档**（滑动段 == 滚动段 == 0.9，与历史单一减速度逐位等价）。
+            Assert.AreEqual(0.9f, t.rollingDecelerationSlide, 1e-6f, "T44：rollingDecelerationSlide 偏离台账。");
+            Assert.AreEqual(0.9f, t.rollingDecelerationRoll, 1e-6f, "T44：rollingDecelerationRoll 偏离台账。");
+            Assert.AreEqual(1.0f, t.rollingTransitionSpeed, 1e-6f, "T44：rollingTransitionSpeed 偏离台账。");
             Assert.AreEqual(0.95f, t.ballRestitution, 1e-6f, "T44：ballRestitution 偏离台账。");
             Assert.AreEqual(1f, t.ballTangentialFriction, 1e-6f, "T44：ballTangentialFriction 偏离台账。");
             Assert.AreEqual(1f, t.pocketCaptureRadiusScale, 1e-6f, "T44：pocketCaptureRadiusScale 偏离台账。");
@@ -174,7 +195,7 @@ namespace Billiards.Tests
             Assert.AreEqual(4.5f, t.maxLaunchSpeed, 1e-6f, "T44：maxLaunchSpeed 偏离台账。");
             Assert.AreEqual(0.5f, t.minLaunchSpeed, 1e-6f, "T44：minLaunchSpeed 偏离台账。");
 
-            TestContext.WriteLine("T44: 出厂口径冻结表全部吻合（0.8/0.9/0.9/0.95/1.0/1.0/1e-3/8/4.5/0.5）✓");
+            TestContext.WriteLine("T44: 出厂口径冻结表全部吻合（0.8/0.9/0.9/0.9/1.0/0.95/1.0/1.0/1e-3/8/4.5/0.5，共 12 项）✓");
         }
 
         // ══════════════════ T42 瞄准指示物跟随口径 ═════════════════════════════
