@@ -16,7 +16,11 @@ namespace Billiards.Physics
     ///    本资产只提供**全局乘子** <see cref="pocketCaptureRadiusScale"/>（默认 1.0 = 不变），
     ///    **不把逐袋值搬进来**（否则违反 `R-Y`：用单值代替逐袋）。
     ///
-    /// ── 默认值 = 现口径（保持行为不变）────────────────────────────────────────
+    /// ── 默认值 = 灰盒现行**实际生效**值（接线后行为不变）────────────────────
+    ///  · `cushion e = 0.8` / `μ = 0.9` —— 这正是 `PhysicsGreybox` 之前走"回落路径"时**实际生效**的占位值；
+    ///    把它们搬进资产 ⇒ **接线不改变行为**，但**改资产真的会改变灰盒**（R1 缓解措施成立）。
+    ///  · **排期所说的「初始阻尼」在本模型里 = `rollingDeceleration`（台呢滚阻）** ——
+    ///    **不另设字段**（避免"声明了却不生效"的惰性字段）。
     ///  · `e_ball = 0.95`（**调参目标口径**；Day 7 依扫描裁定：白球行程随 `e_ball` 单调递减 ——
     ///    1.00→2.587 m / 0.95→2.249 m / 0.90→1.883 m ⇒ 取台球实测 0.93–0.96 的中点）。
     ///    ⚠ **两个数字的关系（勿误认为矛盾）**：
@@ -30,13 +34,13 @@ namespace Billiards.Physics
     public class PhysicsTuning : ScriptableObject
     {
         [Header("库边")]
-        [Tooltip("库边法向恢复系数 e，[0,1]。1 = 完全弹性。")]
+        [Tooltip("库边法向恢复系数 e，[0,1]。默认 0.8 = **灰盒现行实际生效值**（改动会真的改变灰盒行为）。")]
         [Range(0f, 1f)]
-        public float cushionRestitution = 1f;
+        public float cushionRestitution = 0.8f;
 
-        [Tooltip("库边切向摩擦保留系数 μ，[0,1]。1 = 无摩擦。")]
+        [Tooltip("库边切向摩擦保留系数 μ，[0,1]。默认 0.9 = **灰盒现行实际生效值**。")]
         [Range(0f, 1f)]
-        public float cushionTangentialFriction = 1f;
+        public float cushionTangentialFriction = 0.9f;
 
         [Header("台呢")]
         [Tooltip("台呢滚动减速度 a，m/s²。物理内核阶段 = 0。")]
@@ -55,15 +59,11 @@ namespace Billiards.Physics
         [Tooltip("袋口捕获半径的**全局乘子**（默认 1 = 不变）。真源仍是 TableConfig.Pocket.captureRadius（逐袋）。")]
         public float pocketCaptureRadiusScale = 1f;
 
-        [Header("初始阻尼（预留）")]
-        [Tooltip("预留位：全局初始阻尼。**当前内核无此自由度 ⇒ 改它无效果**；保持 0，不得用于出厂。")]
-        public float initialDamping = 0f;
-
         [Header("运动终止（游戏级静止声明）")]
-        [Tooltip("宏观静止速度阈值，m/s。默认与 PoolSimulator.RestSpeedThreshold 一致（1e-3）。")]
+        [Tooltip("宏观静止速度阈值，m/s。默认与 PoolSimulator.RestSpeedThreshold 一致（1e-3）。**内核真的读它**。")]
         public float restSpeedThreshold = 1e-3f;
 
-        [Tooltip("宏观静止需连续满足阈值的定长步数。默认与 PoolSimulator.RestStableFrames 一致（8）。")]
+        [Tooltip("宏观静止需连续满足阈值的定长步数。默认与 PoolSimulator.RestStableFrames 一致（8）。**内核真的读它**。")]
         public int restStableFrames = 8;
 
         /// <summary>
@@ -85,8 +85,8 @@ namespace Billiards.Physics
         {
             return new Defaults
             {
-                cushionRestitution = 1f,
-                cushionTangentialFriction = 1f,
+                cushionRestitution = 0.8f,
+                cushionTangentialFriction = 0.9f,
                 rollingDeceleration = 0f,
                 ballRestitution = 0.95f,
                 ballTangentialFriction = 1f,

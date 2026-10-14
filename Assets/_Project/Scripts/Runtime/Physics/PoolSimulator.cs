@@ -137,6 +137,12 @@ namespace Billiards.Physics
 
         private readonly PhysicsParams _params;
 
+        /// <summary>宏观静止阈值（**实例字段** ⇒ 可由 `PhysicsTuning` 资产覆盖；默认 = 同名常量）。</summary>
+        private readonly float _restSpeedThreshold;
+
+        /// <summary>宏观静止连续帧数（**实例字段** ⇒ 可由 `PhysicsTuning` 资产覆盖；默认 = 同名常量）。</summary>
+        private readonly int _restStableFrames;
+
         private readonly float _ballRestitution;
         private readonly float _ballTangentialFriction;
 
@@ -280,7 +286,8 @@ namespace Billiards.Physics
         /// 用球桌碰撞几何与物理参数构造内核。构造时把 <c>TableConfig.segments</c>
         /// 摊平为数组，**保持资源/JSON 原始顺序**（顺序参与确定性，不得重排）。
         /// </summary>
-        public PoolSimulator(TableConfig table, PhysicsParams parameters, float pocketCaptureRadiusScale = 1f)
+        public PoolSimulator(TableConfig table, PhysicsParams parameters, float pocketCaptureRadiusScale = 1f,
+            float restSpeedThreshold = RestSpeedThreshold, int restStableFrames = RestStableFrames)
         {
             if (table == null)
             {
@@ -288,6 +295,8 @@ namespace Billiards.Physics
             }
 
             _params = parameters;
+            _restSpeedThreshold = restSpeedThreshold;
+            _restStableFrames = restStableFrames;
             _ballRestitution = parameters.ballRestitution;
             _ballTangentialFriction = parameters.ballTangentialFriction;
 
@@ -1279,7 +1288,7 @@ namespace Billiards.Physics
                     continue;
                 }
 
-                if (Length(_balls[i].velocity) > RestSpeedThreshold)
+                if (Length(_balls[i].velocity) > _restSpeedThreshold)
                 {
                     allAtRest = false;
                     break;
@@ -1287,7 +1296,7 @@ namespace Billiards.Physics
             }
 
             ConsecutiveRestFrameCount = allAtRest ? ConsecutiveRestFrameCount + 1 : 0;
-            TableAtRest = ConsecutiveRestFrameCount >= RestStableFrames;
+            TableAtRest = ConsecutiveRestFrameCount >= _restStableFrames;
         }
 
         // ── 几何/向量小工具（开方走 PoolMath 单一口径）─────────────────────

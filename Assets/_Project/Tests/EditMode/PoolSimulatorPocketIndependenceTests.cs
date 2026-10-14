@@ -76,8 +76,12 @@ namespace Billiards.Tests
         /// 重算**只依赖球末位与袋数据**（不调用 `CapturedBallCount`/`PocketJawCrossingCount`/`PocketProximityEvents`），
         /// 再与三个计数**逐项比对**。
         ///
-        /// **能测出**：分类错（该捕获的被判窗口 / 反之）、漏计、越界判定错（`s` 符号）。
-        /// **盲带**：`I5`（`ProximityEvents = Captured + Jaw`）是**观测等价的重构** ⇒ 本判据**抓不到**（由 `T39b` 承担）。
+        /// **能测出**：**非对称**分类错（该捕获的被判窗口 / 反之，且两类数不等）、漏计、越界判定错（`s` 符号）。
+        /// **盲带（两条，必须声明）**：
+        ///  ① `I5`（`PocketProximityEvents = Captured + Jaw`）是**观测等价的重构** ⇒ 本判据**抓不到**（由 `T39b` 白盒守卫承担）；
+        ///  ② ⚠ **对称分类错误抓不到**：本用例场景是"两类各 1"（1 捕获 + 1 窗口）⇒ 把两类**对调**后两侧计数仍是 `(1,1)`、
+        ///     交叉比对**天然相等** ⇒ 本判据**仍绿**。**该错误由 `T27a` / `T27b` / `T31a` / `T31b` / `T31c` / `T36` / `T32a` / `T32b`
+        ///     共 8 条兜住** —— 它们**钉死了"哪一类应是几"**，而本判据只做交叉比对。
         /// </summary>
         [Test]
         public void T39_IndependentCrossingEnumeration_MatchesCounters()

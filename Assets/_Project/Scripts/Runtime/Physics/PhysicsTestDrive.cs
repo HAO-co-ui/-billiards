@@ -132,10 +132,14 @@ namespace Billiards.Physics
             // 未指定 ⇒ 回落到 `SafeDefault` + 本组件的占位字段（行为不变；`F2b` 走的就是这条路径）。
             PhysicsParams parameters;
             float captureScale;
+            float restSpeed;
+            int restFrames;
             if (tuning != null)
             {
                 parameters = tuning.ToPhysicsParams();
                 captureScale = tuning.pocketCaptureRadiusScale;
+                restSpeed = tuning.restSpeedThreshold;
+                restFrames = tuning.restStableFrames;
             }
             else
             {
@@ -146,9 +150,11 @@ namespace Billiards.Physics
                 parameters.ballRestitution = ballRestitution;
                 parameters.ballTangentialFriction = ballTangentialFriction;
                 captureScale = 1f;   // 袋口半径真源仍是 TableConfig.Pocket（逐袋）
+                restSpeed = PoolSimulator.RestSpeedThreshold;
+                restFrames = PoolSimulator.RestStableFrames;
             }
 
-            _simulator = new PoolSimulator(tableConfig, parameters, captureScale);
+            _simulator = new PoolSimulator(tableConfig, parameters, captureScale, restSpeed, restFrames);
             _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
             _accumulator = 0f;
 

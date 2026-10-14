@@ -12,12 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b09f497046c2ea14480b83afa58587fc, type: 3}
   m_Name: PhysicsTuning
   m_EditorClassIdentifier: 
-  cushionRestitution: 1
-  cushionTangentialFriction: 1
+  cushionRestitution: 0.8
+  cushionTangentialFriction: 0.9
   rollingDeceleration: 0
   ballRestitution: 0.95
   ballTangentialFriction: 1
   pocketCaptureRadiusScale: 1
-  initialDamping: 0
   restSpeedThreshold: 0.001
   restStableFrames: 8

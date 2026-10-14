@@ -167,6 +167,15 @@ namespace Billiards.EditorTools
             drive.cushionGizmo = gizmo;
             drive.ballVisual = cueBall.transform;
 
+            // 3a) **把 `PhysicsTuning` 资产接进场景** —— 让"唯一可调入口"名副其实；
+            //     否则运行时恒为 null ⇒ 灰盒走回落路径 ⇒ 用户不知道自己在测哪套参数（`D7-T02` 阻塞项 ①）。
+            //     `T41` 守这条接线（把 tuning 置空 ⇒ FAIL）。
+            drive.tuning = AssetDatabase.LoadAssetAtPath<PhysicsTuning>(PhysicsTuningSetup.AssetPath);
+
+            // 3b) **球堆可见性** —— 按 `RackPositions` 生成同数量的球体并接上 `ballVisuals`，
+            //     使 Game 视图能看见散球（`D7-T02` 阻塞项 ②）；**纯可视，无任何物理组件**。
+            drive.ballVisuals = BuildRackVisuals(root, config, cueBall);
+
             // 4) 俯视相机 + 主平行光（灰盒可见即可；不引入任何物理组件）
             BuildCamera(root);
             BuildLight(root);
@@ -177,8 +186,14 @@ namespace Billiards.EditorTools
         /// <summary>白球：球体基元 + 材质；**立即移除基元自带的碰撞体**（自研物理铁律）。</summary>
         private static GameObject BuildCueBall()
         {
+            return BuildBallObject(CueBallObjectName);
+        }
+
+        /// <summary>生成一颗**纯可视**球（球体基元 + 球材质，立即移除自带碰撞体）。</summary>
+        private static GameObject BuildBallObject(string name)
+        {
             GameObject ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            ball.name = CueBallObjectName;
+            ball.name = name;
 
             Collider primitiveCollider = ball.GetComponent<Collider>();
             if (primitiveCollider != null)
@@ -198,6 +213,27 @@ namespace Billiards.EditorTools
             }
 
             return ball;
+        }
+
+        /// <summary>
+        /// 按 <see cref="PhysicsTestDrive.RackPositions"/> 生成**与内核球一一对应**的可视球体，返回 Transform 数组。
+        /// 第 0 个复用已建的白球；其余为 `RackBall_i`。**只可视**：不引入任何物理组件。
+        /// </summary>
+        private static Transform[] BuildRackVisuals(GameObject root, TableConfig config, GameObject cueBall)
+        {
+            Vector2[] positions = PhysicsTestDrive.RackPositions(config.footSpot, 3);
+            var visuals = new Transform[positions.Length];
+            visuals[0] = cueBall.transform;
+
+            for (int i = 1; i < positions.Length; i++)
+            {
+                GameObject ball = BuildBallObject("RackBall_" + i.ToString());
+                ball.transform.SetParent(root.transform, false);
+                ball.transform.position = PoolGeometry.PhysicsBallToUnity(positions[i]);
+                visuals[i] = ball.transform;
+            }
+
+            return visuals;
         }
 
         private static void BuildCamera(GameObject root)

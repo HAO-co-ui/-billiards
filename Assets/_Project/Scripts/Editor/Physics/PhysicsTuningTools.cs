@@ -117,20 +117,35 @@ namespace Billiards.EditorTools
 
             Directory.CreateDirectory(dir);
 
+            // **扫描基线 = 出厂灰盒配置**（即 `PhysicsTuning.asset` 的值）——
+            // 否则"扫描测的不是出厂配置"，结论不能外推（`D7-T02` 阻塞项 ①-4）。
+            var tuningAsset = AssetDatabase.LoadAssetAtPath<PhysicsTuning>(PhysicsTuningSetup.AssetPath);
+            PhysicsParams baseParams;
+            if (tuningAsset != null)
+            {
+                baseParams = tuningAsset.ToPhysicsParams();
+            }
+            else
+            {
+                PhysicsTuning.Defaults d = PhysicsTuning.DefaultValues();
+                baseParams = new PhysicsParams
+                {
+                    cushionRestitution = d.cushionRestitution,
+                    cushionTangentialFriction = d.cushionTangentialFriction,
+                    ballRestitution = d.ballRestitution,
+                    ballTangentialFriction = d.ballTangentialFriction,
+                    rollingDeceleration = d.rollingDeceleration,
+                };
+            }
+
             // 扫描表：球-球恢复系数（台球实测 0.93–0.96，取上下界与中点）
             float[] eBalls = { 1.0f, 0.98f, 0.95f, 0.93f, 0.90f };
             var series = new List<(float eBall, List<Vector2> cuePath)>();
 
             foreach (float eBall in eBalls)
             {
-                var p = new PhysicsParams
-                {
-                    cushionRestitution = 0.9f,
-                    cushionTangentialFriction = 0.9f,
-                    ballRestitution = eBall,
-                    ballTangentialFriction = 1f,
-                    rollingDeceleration = 0f,
-                };
+                PhysicsParams p = baseParams;   // struct 拷贝
+                p.ballRestitution = eBall;
 
                 Vector2[] rack = PhysicsTestDrive.RackPositions(table.footSpot, 3);
                 var balls = new BallState[rack.Length];
