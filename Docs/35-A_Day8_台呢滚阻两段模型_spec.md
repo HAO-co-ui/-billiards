@@ -16,6 +16,14 @@
 > **阅读约定**：本文件是**排期产物**，正文里 `Day N` 是**主题词汇**，有意义。
 > **但文中的代码片段，其注释立即适用 `Docs/注释规范.md`** —— 代码注释里不得出现开发日/批次标签；
 > 检查项 ID、标准编号、提交哈希、实测数值**必须保留**。
+>
+> **修订 v1.1（据主理人对 `Q-14`/`Q-15`/`Q-16` 的裁定；行号锚 = `4d03351`）**：
+> ① **`Q-14` 裁定 (a)：旧字段 `rollingDeceleration` 全删**（配套三条见 §4.3）；
+> ② **`Q-15` 裁定 (a)：三个新字段加进 `PhysicsTestDrive` 并进场景**，**同时删掉回落的 `rollingDeceleration`**（集合一致），**且 `T43` 的断言面必须扩到滚动字段**（§4.5 / §5 `T62`）；
+> ③ **`Q-16` 裁定 (b)：出厂值由用户挑**，并给出**"只重钉一次"的顺序**（§8.2）；
+> ④ ⚠ **本文所有 `文件:行号` 引用已改为符号引用**（方法名 / 字段名 / 参数名）——
+> 理由：并发在途改动（`PhysicsTestDrive.cs` 的球视觉自转）会让行号漂移（铁律 7：状态断言必须带时刻/修订）。
+> 若仍需行号，**一律以 `4d03351` 为准**。
 
 ---
 
@@ -63,14 +71,15 @@
 
 ## 2. 前置事实（**每条给 `文件:行号`；实现方与复核方都要能独立复现**）
 
-### 2.1 现行滚阻实现
-- **恒定减速度**，无速度依赖：`Runtime/Physics/PoolSimulator.cs:635` `ApplyRollingDeceleration(ref BallState ball, float a, float dt)` —— `dv = a·dt`，`speed ≤ dv` 时**直接置零**。
-- **三个读取点**（**都必须改**，见 §4.4）：
-  - `:495` `AverageVelocity(_balls[i].velocity, _params.rollingDeceleration, dt)`（子步内位置推进）
-  - `:592` `AverageVelocity(_balls[i].velocity, _params.rollingDeceleration, remaining)`（TOI 后用剩余时间推进）
-  - `:603` `ApplyRollingDeceleration(ref _balls[i], _params.rollingDeceleration, dt)`（子步末应用）
-- **门控**：`PoolSimulator.cs:597` `if (_params.rollingDeceleration > 0f)` —— **历史坑**：取 0 时**整条分支被跳过**（"整桌静止"从未发生）。
-- `AverageVelocity`（`:618-632`）：`v_avg = v − ½·a·Δt·v̂`；与 `v` 反向时取零。**位置推进与 TOI 共用**它。
+### 2.1 现行滚阻实现（**符号引用**；若必须给行号，锚 = `4d03351`）
+- **恒定减速度**，无速度依赖：`PoolSimulator.ApplyRollingDeceleration(ref BallState ball, float a, float dt)`
+  —— `dv = a·dt`，`speed ≤ dv` 时**直接置零**。
+- **三个读取点**（**都必须改**，见 §4.4）—— 目前**全部读** `PhysicsParams.rollingDeceleration`：
+  - `AverageVelocity(_balls[i].velocity, _params.rollingDeceleration, dt)` —— **子步内位置推进**
+  - `AverageVelocity(_balls[i].velocity, _params.rollingDeceleration, remaining)` —— **TOI 后用剩余时间推进**
+  - `ApplyRollingDeceleration(ref _balls[i], _params.rollingDeceleration, dt)` —— **子步末应用**
+- **门控**：`AdvanceSubStep` 内 `if (_params.rollingDeceleration > 0f) { … }` —— **历史坑**：取 0 时**整条分支被跳过**（"整桌静止"从未发生）。
+- `PoolSimulator.AverageVelocity(Vector2 v, float a, float dt)`：`v_avg = v − ½·a·Δt·v̂`；与 `v` 反向时取零。**位置推进与 TOI 共用**它。
 
 ### 2.2 出厂口径（已核）
 `Assets/_Project/Data/PhysicsTuning.asset`：`cushionRestitution: 0.8`、`cushionTangentialFriction: 0.9`、
@@ -154,16 +163,26 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
 **⚠ `F2c` 守卫**：`Assets/_Project/Scripts/**` 里每个 `new PhysicsParams { … }` 的**对象初始化器必须显式含 `ballRestitution` 与 `ballTangentialFriction`**（既有要求）；
 **新增字段不改变该要求**，但 `SafeDefault` 必须**显式给出 3 个新字段**（避免"字段不全"）。
 **`SafeDefault` 的取值口径**：`rollingDecelerationSlide = rollingDecelerationRoll = 0`（= 历史"无滚阻"）—— **保持"字段全零的解药"语义**（`F2a` 精神），**它不是调参默认值**（调参默认值在资产，见 §4.3）。
+**⚠ `Q-14` (a)：旧字段 `rollingDeceleration` 从 `PhysicsParams` 删除** ⇒ `F2a` 里断言它的那一句须改为**断言两个新字段为 0**（预期连带修改，须在提交说明里列出）。
 
-### 4.3 ⛔ 旧字段 `rollingDeceleration` 的处理（**待裁定 `Q-14`，本 spec 给推荐方案**）
-**推荐：`新增字段 + 旧字段墓碑`**（不静默替换）：
-1. `PhysicsTuning.rollingDeceleration` **删除**，替换为 3 个新字段；
-   资产文件里**保留一条注释墓碑**：`# 旧口径 rollingDeceleration: 0.9（内核阶段"恒定减速度"）；本模型起由 Slide/Roll/Transition 三参数取代`。
-   ⚠ **YAML 注释**：`PhysicsTuning.asset` 是 Unity 序列化资产，**手写注释会被 Unity 重写时丢弃** ⇒ **墓碑落在 `.cs` 的 Tooltip/类注释 + spec，而不是资产 YAML**（见 §12 `Q-14` 的替代方案 b）。
-2. `PhysicsParams.rollingDeceleration` 是否保留：**推荐保留为"兼容别名"**，但**语义改为"恒定档"** —— 即 `a_slide == a_roll == rollingDeceleration` 时退化为它。
-   **理由**：`T33`/`T32b`/`T37` 等既有判据与 `F2a` 的 `Assert.AreEqual(0f, d.rollingDeceleration, …)` 都直接引用它 ⇒ **删字段会连带作废多条既有判据**（铁律 17 要求"清除所有引用处"，代价大且与"逃生舱显式"冲突）。
-   ⇒ **规格口径**：**保留 `rollingDeceleration` 作为"（退化）恒定档"**，并在 `PhysicsTuning` 里**只保留 3 个新字段**；`PhysicsParams.rollingDeceleration` 由调用方按 `a_slide == a_roll` 时设为该值（见 §4.4 的映射）。
-   ⚠ **本项见 §12 `Q-14` 请主理人裁定**（我倾向"保留 + 明确其为退化档"，但这会决定 `T44` 的字段表）。
+### 4.3 ⛔ 旧字段 `rollingDeceleration` 的处理（**`Q-14` 已裁定 (a)：全删**）
+**裁定 (a)：`rollingDeceleration` 全删**（`PhysicsParams` 与 `PhysicsTuning` 都不再保留）。理由（主理人）：
+① 退化档**已完全由 `a_slide == a_roll` 表达** ⇒ 旧字段是**同一个量的第二种写法**（铁律 16 / `Docs/工程标准.md` §7 第 4 条：必然分叉）；
+② "逃生舱"**不需要**旧字段（把两个新参数设成同值就是，且**在资产里一眼可见**）；
+③ 保留它会再造一个 `B4` 同族陷阱（Inspector 里"看着能调、实际被覆盖"的字段）。
+
+**⚠ 删它必须配套三条，否则就是"静默替换"（本项目明令禁止）**：
+1. **显式替换现值，不许"删了让它自己消失"**：
+   - `PhysicsTuning.asset` 现有 `rollingDeceleration: 0.9` ⇒ **显式写成** `rollingDecelerationSlide: 0.9` + `rollingDecelerationRoll: 0.9`（+ `rollingTransitionSpeed`）；
+   - `PhysicsGreybox.unity` 里 `PhysicsTestDrive` 的同一序列化值 ⇒ **同样显式替换**（并重建场景）。
+2. **映射墓碑**（写 `.cs` 类注释/Tooltip 与 spec，**不写资产 YAML** —— Unity 重写会丢注释）：
+   **`rollingDeceleration = X  ⇔  a_slide = a_roll = X`**（旧"恒定减速度"= 两段取同值的退化档）；
+   并写明沿革：**旧口径曾 = `0`（内核阶段"单一口径"）→ 后调参 = `0.9` → 本模型起由三参数取代**。
+3. **引用处逐处改 + 零残留证明**（铁律 17）：
+   `PhysicsParams` / `PhysicsTuning` / `PhysicsTestDrive` / `PhysicsParamScan` / 各测试（**`T33` / `T32b` / `T37` / `F2a`** 等）**逐处改**；
+   实现后**必须**给出 `grep -rn "rollingDeceleration" Assets/ Docs/` 的**实测输出**，并证明**旧名零残留**
+   （新名同前缀 ⇒ 按**词边界**判：`rollingDeceleration\b` 的命中数须为 **0**）。
+   ⚠ `F2a` 会因删字段而需要改（现含 `Assert.AreEqual(0f, d.rollingDeceleration, …)`）⇒ **这是预期的连带修改**，须在提交说明里列出。
 
 ### 4.4 内核改法（**单点**）
 1. 新增 `private float DecelerationAt(Vector2 v)`（**唯一的 `a(v)` 实现**）：
@@ -171,9 +190,9 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
    // a(v) = a_roll + (a_slide - a_roll) * clamp01(v / v_transition)
    // 边界：v_transition <= 0 ⇒ a_slide；speed <= 0 ⇒ a_roll（a_slide==a_roll 时两条同值 ⇒ 退化逐位等价）
    ```
-2. **三个调用点**（§2.1 的 `:495` / `:592` / `:603`）**全部**改为 `DecelerationAt(_balls[i].velocity)`
+2. **三个调用点**（§2.1 列出的三处：**子步内位置推进** / **TOI 后剩余时间推进** / **子步末应用**）**全部**改为 `DecelerationAt(_balls[i].velocity)`
    ⇒ **`PoolSimulator.cs` 中除 `DecelerationAt` 内部与构造缓存外，不得再出现 `_params.rollingDeceleration` 的直接读取**（由 `T55` 白盒守卫钉）。
-3. **门控** `:597`：`if (_params.rollingDeceleration > 0f)` ⇒ **`if (a_slide > 0f || a_roll > 0f)`**。
+3. **门控**（`AdvanceSubStep` 内，§2.1 已列）：`if (_params.rollingDeceleration > 0f)` ⇒ **`if (a_slide > 0f || a_roll > 0f)`**。
    - **"两段都取 0"时的行为**：门控为假 ⇒ **与历史一致**（分支整段跳过）⇒ 由 `T59` 钉。
    - ⚠ **不得**把门控写成 `&&`（那会在"只有一段非零"时错误地跳过 ⇒ `T59` 的注入负对照）。
 4. **不升能**：`DecelerationAt` 返回前**必须** `Mathf.Max(0f, a)`（负的 `a_roll` 会造能）—— `T57` 钉。
@@ -182,10 +201,10 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
 | 既有项 | 影响 | 要求 |
 |---|---|---|
 | **`T41`**（接线） | **必然需要扩面**：新增 3 个参数 ⇒ 其"全部已接线参数 == 资产值"的比对必须**加上 3 项** | 若内核用**实例字段/只读出口**暴露 `a_slide`/`a_roll`/`v_transition`（推荐，照 `RestSpeedThresholdValue` 的先例）⇒ `T41` 直接比对；否则补出口 |
-| **`T43`**（场景漂移） | **取决于 `Q-15`**：`PhysicsGreybox.unity` 的 `PhysicsTestDrive` 序列化**含 `rollingDeceleration: 0.9`**；新增字段后**代码默认值变化会连带影响它** | **推荐**：把 3 个新字段**也加进 `PhysicsTestDrive`**（与资产接线一致），并把 `T43` 的断言面**扩到 3 个新字段**；场景**必须重建**一次（照 `B4` 的做法） |
-| **`T44`**（出厂口径冻结） | **必然需要更新**：其冻结表是**资产字段 == 台账字面量** ⇒ 新增 3 项后表要重钉 | `T44` 的表由 10 项 → **13 项**（若 `Q-14` 决定删 `rollingDeceleration` 则册数变化，见 §12） |
-| `T33a` | **用自设 `a = 0`** ⇒ 门控为假 ⇒ 与历史一致，**不受影响** | 不需要改；但**若 `Q-14` 删字段则要改** |
-| `T32b`/`T37` | 读**资产**的滚阻 ⇒ 出厂值变化后**基线需重钉**（`t32bTotalContactCount` / `t37BallBallContactContactBaseline` / `c` / `elapsed`） | **实现后按实测重钉**，并**报旧值→新值**（照 `D7-T04` 的做法） |
+| **`T43`**（场景漂移） | **`Q-15` 已裁定 (a)**：3 个新字段**加进 `PhysicsTestDrive` 并进场景**，**同时删掉回落的 `rollingDeceleration`**（回落集合须与 `PhysicsParams` 一致） | ★ **`T43` 的断言面必须扩到滚动字段** —— 现状它只钉 `maxLaunchSpeed` / `minLaunchSpeed` **两个**；不覆盖新的三个 ⇒ **"场景漂移"守卫恰好在最新、最可能要调的三个参数上是瞎的**（比"重建会不会改 fileID"重要得多）。场景**须重建**（照 `950c78f` 先例）；**并加注入：只改场景里某个滚动字段的值 ⇒ `T43` 必须红**（由 §5 `T62` 钉） |
+| **`T44`**（出厂口径冻结） | **必然需要更新**：其冻结表是**资产字段 == 台账字面量** ⇒ 新增 3 项后表要重钉 | `T44` 表由 10 项 → **12 项**（`rollingDeceleration` 删、加 3 新字段 ⇒ 10 − 1 + 3 = **12**；具体项见 §12 `Q-14` 落地后的表） |
+| `T33a` | **`Q-14` (a) 删字段 ⇒ 必须改**（它现在读 `PhysicsParams.rollingDeceleration`） | 改为读两个新字段（都设 0 ⇒ 门控为假 ⇒ 与历史一致） |
+| `T32b`/`T37` | 读**资产**的滚阻 ⇒ 出厂值变化后**基线需重钉**（`t32bTotalContactCount` / `t37BallBallContactBaseline` / `t37CapturedBaseline` / `t37ElapsedMs`） | **按 §8.2 的顺序只重钉一次**，并**报旧值→新值** |
 
 ### 4.6 确定性 / 纯函数
 - `a(v)` 是**当前速度的纯函数**（无历史、无时间、无随机）⇒ 不破坏逐位确定性。
@@ -216,7 +235,7 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
 - **期望值来源**：**乙-结构**（"单点实现"的结构要求）。
 - **判别力**：**漏改任一调用点**（仍读常量）⇒ FAIL —— 这正是 `T54` 抓不到的那一类。
 - **盲带**：文本检查、**非语义证明**（别名/局部变量转发可绕过）。
-- **注入负对照**：把 `:592` 改回 `_params.rollingDeceleration` ⇒ `T55` FAIL。
+- **注入负对照**：把「**TOI 后剩余时间推进**」那一处改回 `_params.rollingDeceleration`（§2.1 第二处）⇒ `T55` FAIL。
 
 ### T56a **两段形状（快-慢）**：前段减速显著大于后段
 - **做法**：取**非退化**参数（`a_slide = 2.0`、`a_roll = 0.1`、`v_transition = 2.0`），记录速度曲线；
@@ -264,18 +283,18 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
 - **注入负对照**：把 `Initialize()` 里 `restSpeed = tuning.…` 那类赋值**连同新参数一起**注释掉 ⇒ FAIL。
 
 ### T61 **出厂口径冻结扩展**（`T44` **原地重钉**）
-- **做法**：`T44` 的冻结表**重钉为 13 项**（10 旧 + 3 新）—— 具体项取决于 `Q-14`（是否保留 `rollingDeceleration`）。
+- **做法**：`T44` 的冻结表**重钉为 12 项**（`Q-14` (a) 已裁定：删 `rollingDeceleration`、加 3 新字段 ⇒ 10 − 1 + 3 = 12）。
 - **期望值来源**：**乙-系数选定**（台账表；改值须显式重钉）。
 - **判别力**：资产被悄悄改动 ⇒ FAIL。
 - **盲带**：不覆盖"代码默认"侧面（与 `T43` 同族，见 §9 最危险条）。
 - **注入负对照**：资产 `rollingDecelerationRoll` 改 `0.05` ⇒ `T61` FAIL。
 
-### T62 **场景漂移扩展**（`T43` **原地扩面**，取决于 `Q-15`）
-- **做法**：把 `T43` 的断言面**扩到 3 个新字段**（`PhysicsTestDrive` 上新增的同名序列化字段），并在**场景重建后**核对。
+### T62 **场景漂移扩展**（`T43` **原地扩面** —— `Q-15` (a) 已裁定 ⇒ **必做**）
+- **做法**：把 `T43` 的断言面**扩到 3 个滚动字段**（`PhysicsTestDrive` 上新增的同名序列化字段，与回落集合一致），并在**场景重建后**核对。
 - **期望值来源**：**乙-结构**（场景序列化值 == 代码默认值）。
-- **判别力**：照 `B4` 的机械复现：把场景里 `rollingDecelerationSlide` 改回旧值 ⇒ FAIL。
-- **盲带**：只覆盖**已列入断言的字段**（若新字段**不进场景**，则本条不适用 —— 见 §12 `Q-15`）。
-- **注入负对照**：场景 `rollingDecelerationSlide: 2.0 → 0.9`（不改代码）⇒ FAIL。
+- **判别力**：★ **只改场景里某个滚动字段（不动代码）⇒ 必须红** —— 这正是"守卫恰好在最可能要调的三个参数上瞎"的机械复现。
+- **盲带**：只覆盖**已列入断言的字段**；`v_transition` 若未进场景则不适用（`Q-15` (a) 下应已进）。
+- **注入负对照**：场景 `rollingDecelerationSlide: 2.0 → 0.9`（不改代码）⇒ `T43`/`T62` **必须 FAIL**。
 
 ---
 
@@ -313,7 +332,15 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
 - **另出一张**：**各力度档**（0 / 25 / 50 / 75 / 100 %）在同一参数下的 ① ② ③（照 §2.3 的表样）。
 - **对照列**：把**现行恒定档 `a = 0.9`** 的同一批数字并列（用户要的是"和现在比，变了多少"）。
 - **可复现**：固定初态（单球、台面中心、`+x`）+ 固定步数上限；**扫描表随产物落盘**；**不含任何断言**。
-- **选值**：由**主理人 + 用户**拍板（本 spec **不预设**）。
+- **选值**：由 **用户** 拍板（`Q-16` (b) 已裁定；本 spec **不预设**）。
+
+### 8.2 ★ 顺序要求：**基线只重钉一次**（`Q-16` 配套）
+1. **实现模型 + 扫描工具**。**扫描工具必须用显式参数、不读出厂资产** ⇒ 跑完 §8 的 12 格**不需要先定出厂值**。
+2. 主理人把表**表格化给用户** → **用户挑定**。
+3. **落出厂值 ⇒ 这时才**重钉 `T32b` / `T37` 基线与 `T44` 的表项 —— **只重钉一次**。
+4. 若实现过程中确实**需要个临时值**才能让测试全绿：**允许一次临时值**，但报告**必须**写明
+   「**临时值 → 最终值**」**两轮**的重钉数字（旧值 → 临时 → 最终）。
+   **不许**为了少改一次就把出厂值直接写成推荐值（那等于**替用户做决定**）。
 
 ---
 
@@ -350,11 +377,13 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
 
 ---
 
-## 12. 待裁定（**交主理人；不自行拍板**）
-| ID | 议题 | 选项 | 本 spec 倾向 |
+## 12. 裁定记录（**`Q-14` / `Q-15` / `Q-16` —— 主理人已裁定**）
+| ID | 议题 | **裁定** | 落地位置 |
 |---|---|---|---|
-| **Q-14** | 旧字段 `rollingDeceleration` **去留** | **(a)** 删（`PhysicsParams`/`PhysicsTuning` 都删，改 3 新字段）；**(b)** `PhysicsTuning` 删、`PhysicsParams` **保留为"退化恒定档"** | **(b)** —— 理由：删它要**清除所有引用处**（`T33`/`T32b`/`T37`/`F2a`…）且与"逃生舱显式"冲突，代价大；但**须你裁定**（它决定 `T44`/`T61` 的字段表） |
-| **Q-15** | 3 个新字段**是否也加进 `PhysicsTestDrive`**（并进场景） | **(a)** 加（`T62` 扩面 + 重建场景）；**(b)** 只在资产/内核，`PhysicsTestDrive` 不暴露 | **(a)** —— 理由：与 `B4` 的"资产 = 唯一入口 + 场景漂移守卫"一致；但**重建场景会改 fileID**，需你确认 |
-| **Q-16** | 出厂值的**选定权** | **(a)** 你 + 用户定；**(b)** 我方按扫描给"推荐值"你再定 | **(b)** —— 我出表 + 推荐，**定值仍归你与用户**（照 `D7-T04` 的 `rollingDeceleration` 先例） |
+| **Q-14** | 旧字段 `rollingDeceleration` 去留 | **(a) 全删**（`PhysicsParams` 与 `PhysicsTuning` 都不保留）—— 退化档已由 `a_slide == a_roll` 完整表达（铁律 16 / 工程标准 §7-4：同一量的第二种写法必然分叉）；保留它会再造 `B4` 同族的"看着能调、实际被覆盖"字段 | §4.3（**配套三条**：显式替换现值 / 映射墓碑 `rollingDeceleration = X ⇔ a_slide = a_roll = X` / 引用处逐处改 + `grep` 零残留） |
+| **Q-15** | 3 个新字段是否进 `PhysicsTestDrive` + 进场景 | **(a) 加**，**同时删掉回落的 `rollingDeceleration`**（回落集合须与 `PhysicsParams` 一致 ⇒ 否则回落路径缺参数，与 `default(PhysicsParams)` 全零陷阱同族）；**且 `T43` 的断言面必须扩到滚动字段** | §4.5（`T43` 行）、§5 `T62`（含"只改场景里某个滚动字段 ⇒ 必红"的注入）；场景**重建**（照 `950c78f` 先例） |
+| **Q-16** | 出厂值选定权 | **(b) 确认，且定值权归用户**（照 `D7-T04` 先例）：我方出表 + 推荐 → 主理人表格化给用户 → **用户挑定**；**实现方不得自选** | §8.2（"基线只重钉一次"的顺序；**允许一次临时值**但须报「旧值 → 临时 → 最终」两轮数字） |
 
-> 另：**§0.3 的"两次抱怨不矛盾"解释**已按你的要求写入（恒定 `a` 的两端都不像真球）；若你认为该解释的**措辞**需要调整（例如面向用户的表达），请示意。
+> **§0.3 的"两轮抱怨不矛盾"解释**已按主理人要求写入（恒定 `a` 的两端都不像真球）。
+> **`Q-14` (a) 的连带预期改动**（须在实现提交说明里逐条列出）：`PhysicsParams` / `PhysicsTuning` / `PhysicsTestDrive` /
+> `PhysicsParamScan` / `PhysicsTuning.asset` / `PhysicsGreybox.unity` / `F2a` / `T33a` / `T32b` / `T37` / `T43` / `T44`。
