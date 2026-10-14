@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cushionRestitution: 0.8
   cushionTangentialFriction: 0.9
-  rollingDeceleration: 0
+  rollingDeceleration: 0.9
   ballRestitution: 0.95
   ballTangentialFriction: 1
   pocketCaptureRadiusScale: 1

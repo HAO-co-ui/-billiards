@@ -49,8 +49,8 @@ namespace Billiards.Physics
         [Range(0f, 1f)]
         public float cushionTangentialFriction = 0.9f;
 
-        [Tooltip("台呢滚阻减速度 a（m/s²）。物理内核阶段 = 0（spec §2.1 单一口径）。")]
-        public float rollingDeceleration = 0f;
+        [Tooltip("台呢滚阻减速度 a（m/s²）。**Day 7 调参定为 0.9**（手感口径；真实台呢约 0.05–0.15 ⇒ 6–8 倍，非物理真值）。")]
+        public float rollingDeceleration = 0.9f;
 
         [Header("球-球参数（默认 = 调参口径 0.95；SafeDefault 的 1.0 是「全零解药」、非调参默认）")]
         [Tooltip("球-球法向恢复系数 e_ball。台球实测 0.93–0.96；调参目标口径 = 0.95（Day 7 定）。")]
@@ -76,7 +76,9 @@ namespace Billiards.Physics
         [Tooltip("力度 → 初速映射的端点（m/s）。")]
         public float minLaunchSpeed = 0.5f;
 
-        public float maxLaunchSpeed = PoolConstants.MaxBallSpeed;
+        [Tooltip("力度 → 初速映射的**上界**（m/s）。**Day 7 调参定为 4.5**（原 8）。⚠ **不是** `PoolConstants.MaxBallSpeed` ——"
+                 + "那个常量喂 `DeriveSubSteps`（子步数），**必须保持 8** 作保守余量。")]
+        public float maxLaunchSpeed = 4.5f;
 
         [Header("瞄准指示物（Game 视图可见；无物理组件）")]
         [Tooltip("瞄准指示物的 Transform（细长立方体）。留空 ⇒ Initialize 时按需自动创建（开箱即用）。")]

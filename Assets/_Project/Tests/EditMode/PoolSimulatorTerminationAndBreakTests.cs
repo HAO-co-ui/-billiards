@@ -46,6 +46,16 @@ namespace Billiards.Tests
             };
         }
 
+        /// <summary>
+        /// **出厂灰盒的台呢滚阻**（读 `PhysicsTuning.asset`；缺资产则回落 `DefaultValues()`）。
+        /// 这样 `T32`/`T34`/`T37` 跑的是**出厂口径**，而不是写死的 0（`D7-T04` 后 = 0.9）。
+        /// </summary>
+        private static float ShipRolling()
+        {
+            var tuning = AssetDatabase.LoadAssetAtPath<PhysicsTuning>("Assets/_Project/Data/PhysicsTuning.asset");
+            return tuning != null ? tuning.rollingDeceleration : PhysicsTuning.DefaultValues().rollingDeceleration;
+        }
+
         private static TableConfig Synthetic(params Pocket[] pockets)
         {
             var t = ScriptableObject.CreateInstance<TableConfig>();
@@ -194,8 +204,8 @@ namespace Billiards.Tests
                 Ball(-0.20f, 0.20f, 2f, 0f),    // 撞袋角面 1 次后反射
             };
 
-            var a = new PoolSimulator(t, Params(0.9f, 0.8f));
-            var b = new PoolSimulator(t, Params(0.9f, 0.8f));
+            var a = new PoolSimulator(t, Params(0.9f, 0.8f, ShipRolling()));
+            var b = new PoolSimulator(t, Params(0.9f, 0.8f, ShipRolling()));
             a.LoadBalls(initial);
             b.LoadBalls(initial);
             Step(a, 60);
@@ -237,8 +247,8 @@ namespace Billiards.Tests
                 Ball(0f, 0.45f, 0.15f, 0f),                                                          // 居中滚动
             };
 
-            var a = new PoolSimulator(_config, Params(0.9f, 0.8f));
-            var b = new PoolSimulator(_config, Params(0.9f, 0.8f));
+            var a = new PoolSimulator(_config, Params(0.9f, 0.8f, ShipRolling()));
+            var b = new PoolSimulator(_config, Params(0.9f, 0.8f, ShipRolling()));
             a.LoadBalls(initial);
             b.LoadBalls(initial);
             Step(a, 120);
@@ -356,8 +366,8 @@ namespace Billiards.Tests
 
             initial[0].velocity = new Vector2(-PoolConstants.MaxBallSpeed, 0f);
 
-            var a = new PoolSimulator(_config, Params(0.9f, 0.8f));
-            var b = new PoolSimulator(_config, Params(0.9f, 0.8f));
+            var a = new PoolSimulator(_config, Params(0.9f, 0.8f, ShipRolling()));
+            var b = new PoolSimulator(_config, Params(0.9f, 0.8f, ShipRolling()));
             a.LoadBalls(initial);
             b.LoadBalls(initial);
             Step(a, 240);
@@ -447,8 +457,8 @@ namespace Billiards.Tests
 
             initial[0].velocity = new Vector2(-PoolConstants.MaxBallSpeed, 0f);
 
-            var a = new PoolSimulator(_config, Params(0.9f, 0.8f));
-            var b = new PoolSimulator(_config, Params(0.9f, 0.8f));
+            var a = new PoolSimulator(_config, Params(0.9f, 0.8f, ShipRolling()));
+            var b = new PoolSimulator(_config, Params(0.9f, 0.8f, ShipRolling()));
             a.LoadBalls(initial);
             b.LoadBalls(initial);
 

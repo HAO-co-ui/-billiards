@@ -21,6 +21,10 @@ namespace Billiards.Physics
     ///    把它们搬进资产 ⇒ **接线不改变行为**，但**改资产真的会改变灰盒**（R1 缓解措施成立）。
     ///  · **排期所说的「初始阻尼」在本模型里 = `rollingDeceleration`（台呢滚阻）** ——
     ///    **不另设字段**（避免"声明了却不生效"的惰性字段）。
+    ///  · **`rollingDeceleration` = 0.9 m/s²**（`D7-T04` 用户拍板）：**内核阶段曾取 `0`**（"单一口径"口径），
+    ///    现由 Day 7 调参定为 **0.9**。⚠ **这是「手感口径」、不是物理真值** —— 真实台呢滚阻约 **0.05–0.15 m/s²**，
+    ///    `0.9` 是其 **6–8 倍**，为"**满力一杆约 5 s 停**"而调高。仍在 spec 声明的 **`a_max = 5 m/s²`** 包线内 ⇒ 不属超纲。
+    ///    ⚠ **参照场景 = 4 球灰盒**；**15 球满堆能量耗散更多 ⇒ 将来上满堆时可能需再调**（Day 9 再议）。
     ///  · `e_ball = 0.95`（**调参目标口径**；Day 7 依扫描裁定：白球行程随 `e_ball` 单调递减 ——
     ///    1.00→2.587 m / 0.95→2.249 m / 0.90→1.883 m ⇒ 取台球实测 0.93–0.96 的中点）。
     ///    ⚠ **两个数字的关系（勿误认为矛盾）**：
@@ -43,8 +47,8 @@ namespace Billiards.Physics
         public float cushionTangentialFriction = 0.9f;
 
         [Header("台呢")]
-        [Tooltip("台呢滚动减速度 a，m/s²。物理内核阶段 = 0。")]
-        public float rollingDeceleration = 0f;
+        [Tooltip("台呢滚动减速度 a，m/s²。**Day 7 调参定为 0.9**（手感口径）。⚠ 真实台呢约 0.05–0.15 ⇒ 本值是它的 6–8 倍，**为手感而调高，不是物理真值**。")]
+        public float rollingDeceleration = 0.9f;
 
         [Header("球-球")]
         [Tooltip("球-球法向恢复系数 e_ball，[0,1]。台球实测 0.93–0.96；**调参目标口径 = 0.95**（Day 7 定）。")]
@@ -87,7 +91,7 @@ namespace Billiards.Physics
             {
                 cushionRestitution = 0.8f,
                 cushionTangentialFriction = 0.9f,
-                rollingDeceleration = 0f,
+                rollingDeceleration = 0.9f,
                 ballRestitution = 0.95f,
                 ballTangentialFriction = 1f,
                 pocketCaptureRadiusScale = 1f,

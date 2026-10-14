@@ -180,6 +180,10 @@
 - **`RestSpeedThreshold` 与 `StoppedSpeedEpsilon` 是两个不同层**（§2.5）：**不得合并字段、不得互相代替**。
 - **`e_ball` 的两个数字（`D7-T01` 裁定）**：`PhysicsParams.SafeDefault.ballRestitution = 1.0`（"字段全零"的**解药**，`F2a` 钉）
   **vs** 资产 / `PhysicsTestDrive` 默认 = **0.95**（**Day 7 调参口径**，`F2b` 钉）—— **不是矛盾**：一个是"安全兜底"，一个是"调参目标"。
+- **台呢滚阻 `rollingDeceleration`（`D7-T04` 用户拍板）**：**内核阶段曾取 `0`**（"单一口径"—— **墓碑，不静默替换**），
+  现定为 **`0.9 m/s²`**。⚠ **这是「手感口径」、不是物理真值**：真实台呢约 **0.05–0.15**，`0.9` 是其 **6–8 倍**，
+  为"**满力一杆约 5 s 停**"而调高；仍在本文声明的 **`a_max = 5 m/s²`** 包线内。**满力初速同时 8 → 4.5 m/s**（`PhysicsTestDrive.maxLaunchSpeed`；
+  ⛔ **`PoolConstants.MaxBallSpeed` 保持 8** —— 它喂 `DeriveSubSteps`）。**参照场景 = 4 球灰盒**；**15 球满堆耗散更多 ⇒ 将来上满堆可能需再调**（Day 9 再议）。
 
 ### 2.2 捕获判据的精确几何（本轮核心）
 
@@ -686,7 +690,7 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 | 1 | **不飞台** | 未捕获球中心满足 `R-B` **收紧后**的包络（判据 `2b` 口径）：`\|x\| ≤ ClothHalfLength − r + 1e-3`、`\|y\| ≤ ClothHalfWidth − r + 1e-3` |
 | 2 | **不 NaN / Inf** | 所有球 `position`/`velocity` 有限 |
 | 3 | **无升能** | `EnergyGainViolations == 0` |
-| 4 | **非空转下界 + 不静默（`A1`：独立断言）** | **球-球碰撞确实发生**：`BallBallContactCount ≥ 15`（**经验下界** —— "白球必撞顶点、动量穿过 15 球堆 ⇒ 每颗堆球至少被撞一次"是**物理/经验**论断、**非几何必然**；**由实测 `B` 校核：`B ≥ 40` 时余量充足（≈2.7×）**；**若"球-球未实现" ⇒ =0 ⇒ FAIL**）；`TotalContactCount ≥ BallBallContactCount`；**两条钉基线带（`C2`/`C3`）**：首次运行记录 `B = BallBallContactCount`、`c = CapturedBallCount` ⇒ **流程性**回归带（**非测试断言** —— 见下方降级说明）`BallBallContactCount ∈ [0.8·B, 1.2·B]`（**`乙-系数选定`** ±20%）**且** `CapturedBallCount ∈ [max(0, c − 1), c + 1]`（**`乙-系数选定`**；**取代原先无判别力的 `∈ [0, 15]`** —— 后者是形式上界、实质永真，**已删**） |
+| 4 | **非空转下界 + 不静默（`A1`：独立断言）** | **球-球碰撞确实发生**：`BallBallContactCount ≥ 15`（**经验下界** —— "白球必撞顶点、动量穿过 15 球堆 ⇒ 每颗堆球至少被撞一次"是**物理/经验**论断、**非几何必然**；**由实测 `B` 校核（`D7-T04` 后实测 `B = 30`，≥15 仍成立、余量 2×）****若"球-球未实现" ⇒ =0 ⇒ FAIL**）；`TotalContactCount ≥ BallBallContactCount`；**两条钉基线带（`C2`/`C3`）**：首次运行记录 `B = BallBallContactCount`、`c = CapturedBallCount` ⇒ **流程性**回归带（**非测试断言** —— 见下方降级说明）`BallBallContactCount ∈ [0.8·B, 1.2·B]`（**`乙-系数选定`** ±20%）**且** `CapturedBallCount ∈ [max(0, c − 1), c + 1]`（**`乙-系数选定`**；**取代原先无判别力的 `∈ [0, 15]`** —— 后者是形式上界、实质永真，**已删**） |
 | 5 | **归类完备（`A3`：内联 `R-A` 前提）** | `PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount`。**以 §3.2 `R-A`（三计数独立累加）为前提**；若实现以相加求 `ProximityEvents`，本判据恒真 |
 | 6 | **确定性逐位一致** | 同初态双跑逐位一致 |
 | 7 | **迭代守卫（`D1`，硬上界 —— **非**预算带）** | `ToiIterationGuardTrips == 0`（= "**未触顶 `MaxToiIterations`**"） |
@@ -801,7 +805,7 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 | **R-W** | 密集开球的**迭代峰值余量**被误用（内核 II `R-L` 已声明**不适用**于 16 球类密集场景） | 中 | 中 | **`Q-5` 已裁定 (c) 两者都做**：`T34`（受控 4 球）**保留预算带断言**；**`T37`（15 球满堆）有硬判据（含 `A1` 非空转下界 `≥15` + 基线 ±20%，**不含预算带断言**，只 `ToiIterationGuardTrips == 0` 硬上界）**；报告 `BallBallMaxIterationsObserved` |
 | **R-X** | 捕获代码引入**无序容器 / 破坏升序球遍历字面量** ⇒ `D-3` 失败 | 中 | 中 | §2.7 / §3.3；新增代码**不得**动那条 `for (int i = 0; i < _balls.Length; i++)`；6 袋扫描用**数组 + 升序**（不用 `Dictionary`） |
 | **R-Y** | 用 `PoolConstants.PocketCaptureRadius`（单值）代替**逐袋** `Pocket.captureRadius` ⇒ 6 袋 5e-8 差使逐袋边界用例不可预期 | 低 | 中 | §2.1 **写死取逐袋值**；单值常量仅作 `ConsistencyErrors` 校核 |
-| **R-Z** | 袋角 / 贴库**楔入** ⇒ 每子步重复解算（`R12` 家族：贴库 / 贴角静止球的每子步触发，**已知且可接受**）⇒ 接触数达 **798（`T32b` 单用例）/ 5064（15 球满堆）** | 中 | 中 | 已声明为**可接受**；上界口径见 §5 `T32b`（量级界 3000）；**并列为 Day 7 的性能 / 手感复核点**（`SP-2`） |
+| **R-Z** | 袋角 / 贴库**楔入** ⇒ 每子步重复解算（`R12` 家族：贴库 / 贴角静止球的每子步触发，**已知且可接受**）⇒ 接触数曾达 **798（`T32b` 单用例）/ 5064（15 球满堆）** —— ⚠ **该两数为"`rollingDeceleration = 0`"时代的旧值（墓碑）**；`D7-T04` 起 `a = 0.9` ⇒ **实测降至 62 / 40**（球会真的停下，不再无限抖动） | 中 | 中 | 已声明为**可接受**；上界口径见 §5 `T32b`（量级界 3000）；**并列为 Day 7 的性能 / 手感复核点**（`SP-2`） |
 
 ---
 
@@ -844,7 +848,7 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 | --- | --- | --- | --- |
 | EditMode 测试 | **109 / 109** @ `2f5dd3c`→`5bfaa15` | **+19**（`T27a/T27b/T28a/T28b/T29/T30a/T30b/T31a/T31b/T31c/T35/T36` + `T32a/T32b/T33a/T33b/T34/T37` + **`T38`**＝`C1` 兼容闸门） | **128 / 128 @ `9bca79b`（实测）** |
 | Day4 物理验收器 | **6** | **+1**（`D6-PHY-01`） | **7**（实测 `@ 9bca79b`，FAIL=0 WARN=0） |
-| **Day 7（`D7-T01` + `D7-T02`）** | — | **+4**（`T39` / `T39b` / `T40` / `T41` 接线守卫） | **EditMode 132 / 132 @ `e5df095`**；四验收器 **25 / 33 / 22 / 7**（FAIL=0 WARN=0） |
+| **Day 7（`D7-T01`…`D7-T04`）** | — | **+4**（`T39` / `T39b` / `T40` / `T41` 接线守卫）+ `T42`（瞄准指示物） | **EditMode 133 / 133**；四验收器 **25 / 33 / 22 / 7**（FAIL=0 WARN=0）。**`D7-T04`**：`a` 0→**0.9**、`maxLaunchSpeed` 8→**4.5**；`T37` 基线重钉 **B=30 / c=1 / 467.9 ms**（`≥15` 仍成立） |
 
 > **数目以 `grep -cE "^\s*\[Test\]"` 逐文件求和 + Unity 实跑 XML 双向核对为准**；
 > 本表为**预计**，**不得**被引用为实测（`R3-6`：报数须带修订锚点，权威数字由复核方在冻结修订上测）。
