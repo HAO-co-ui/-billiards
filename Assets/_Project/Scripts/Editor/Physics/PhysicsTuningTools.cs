@@ -271,65 +271,120 @@ namespace Billiards.EditorTools
             empty.pockets = new List<Pocket>();
 
             float[] decels = { 0f, 0.05f, 0.10f, 0.15f, 0.20f, 0.30f, 0.50f };
+            float[] speeds = { 4f, 5f, 6f, 8f };
             const int cap = 3600;
 
             PhysicsTuning.Defaults d = PhysicsTuning.DefaultValues();
             var csv = new StringBuilder();
-            csv.Append("rollingDeceleration,stepsToRest,timeToRestS,cueTravelM,rested\n");
+            csv.Append("v0,rollingDeceleration,stepsToRest,timeToRestS,travelM,rested\n");
 
-            foreach (float a in decels)
+            foreach (float v0 in speeds)
             {
-                var p = new PhysicsParams
+                foreach (float a in decels)
                 {
-                    cushionRestitution = d.cushionRestitution,
-                    cushionTangentialFriction = d.cushionTangentialFriction,
-                    ballRestitution = d.ballRestitution,
-                    ballTangentialFriction = d.ballTangentialFriction,
-                    rollingDeceleration = a,
-                };
+                    var p = new PhysicsParams
+                    {
+                        cushionRestitution = d.cushionRestitution,
+                        cushionTangentialFriction = d.cushionTangentialFriction,
+                        ballRestitution = d.ballRestitution,
+                        ballTangentialFriction = d.ballTangentialFriction,
+                        rollingDeceleration = a,
+                    };
 
-                var sim = new PoolSimulator(empty, p);
-                sim.LoadBalls(new[]
-                {
-                    new BallState { position = Vector2.zero, velocity = new Vector2(PoolConstants.MaxBallSpeed, 0f) },
-                });
-                sim.ResetDiagnostics();
+                    var sim = new PoolSimulator(empty, p);
+                    sim.LoadBalls(new[]
+                    {
+                        new BallState { position = Vector2.zero, velocity = new Vector2(v0, 0f) },
+                    });
+                    sim.ResetDiagnostics();
 
-                int steps = 0;
-                float travel = 0f;
-                Vector2 prev = sim.Balls[0].position;
-                while (steps < cap && !sim.TableAtRest)
-                {
-                    sim.Step();
-                    steps++;
-                    Vector2 cur = sim.Balls[0].position;
-                    travel += (cur - prev).magnitude;
-                    prev = cur;
+                    int steps = 0;
+                    float travel = 0f;
+                    Vector2 prev = sim.Balls[0].position;
+                    while (steps < cap && !sim.TableAtRest)
+                    {
+                        sim.Step();
+                        steps++;
+                        Vector2 cur = sim.Balls[0].position;
+                        travel += (cur - prev).magnitude;
+                        prev = cur;
+                    }
+
+                    csv.Append(v0.ToString("F0", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(a.ToString("F2", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(steps.ToString(CultureInfo.InvariantCulture)).Append(',')
+                       .Append((steps / 120f).ToString("F2", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(travel.ToString("F1", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(sim.TableAtRest ? "1" : "0").Append('\n');
                 }
-
-                csv.Append(a.ToString("F2", CultureInfo.InvariantCulture)).Append(',')
-                   .Append(steps.ToString(CultureInfo.InvariantCulture)).Append(',')
-                   .Append((steps / 120f).ToString("F2", CultureInfo.InvariantCulture)).Append(',')
-                   .Append(travel.ToString("F3", CultureInfo.InvariantCulture)).Append(',')
-                   .Append(sim.TableAtRest ? "1" : "0").Append('\n');
             }
 
             File.WriteAllText(Path.Combine(dir, "param-scan-rolling.csv"), csv.ToString());
 
             int subSteps = PoolSimulator.DeriveSubSteps(PoolConstants.MaxBallSpeed);
             var txt = new StringBuilder();
-            txt.Append("台呢滚阻扫描（单球、**空台**、v0=").Append(PoolConstants.MaxBallSpeed)
-               .Append(" m/s；上限 ").Append(cap).Append(" 步 = ").Append(cap / 120).Append(" s）\n");
-            txt.Append(csv);
-            txt.Append("\n**子步界确认**：`DeriveSubSteps` = ").Append(subSteps)
-               .Append("，它**只依赖常量** `MaxRollingDeceleration = 5`（**前瞻值**，与运行时 `a` 无关）⇒\n")
-               .Append("候选 `a ∈ [0, 0.5]` **远小于 5** ⇒ 子步界**不受影响**（由速度项 nA = ceil(v·dt / (r)) = ")
-               .Append(Mathf.CeilToInt((PoolConstants.MaxBallSpeed * (1f / 120f)) / (PoolConstants.BallDiameter * 0.5f)))
-               .Append(" 主导）。\n");
-            txt.Append("说明：本扫描**不含任何断言**；选值由主理人 + 用户拍板。\n");
+            txt.Append("**滚阻 × 初速 交叉表**（单球、**空台**；每格 = 到 `TableAtRest`；上限 ")
+               .Append(cap).Append(" 步 = ").Append(cap / 120).Append(" s；**不含任何断言**）\n\n");
+            txt.Append("—— 时间 (s) 矩阵（行 = 初速 m/s，列 = 滚阻 m/s²）——\n");
+            txt.Append("v0\\a |").Append(string.Join("|", System.Array.ConvertAll(decels, x => x.ToString("F2", CultureInfo.InvariantCulture)))).Append('\n');
+            foreach (float v0 in speeds)
+            {
+                txt.Append(v0.ToString("F0", CultureInfo.InvariantCulture).PadLeft(4)).Append(" |");
+                foreach (float a in decels)
+                {
+                    txt.Append(Cell(csv.ToString(), v0, a, 3)).Append('|');
+                }
+
+                txt.Append('\n');
+            }
+
+            txt.Append("\n—— 白球总行程 (m) 矩阵 ——\n");
+            foreach (float v0 in speeds)
+            {
+                txt.Append(v0.ToString("F0", CultureInfo.InvariantCulture).PadLeft(4)).Append(" |");
+                foreach (float a in decels)
+                {
+                    txt.Append(Cell(csv.ToString(), v0, a, 4)).Append('|');
+                }
+
+                txt.Append('\n');
+            }
+
+            txt.Append("\n**★ 满力那一杆（v0 = 8 m/s）**：");
+            foreach (float a in decels)
+            {
+                txt.Append(" a=").Append(a.ToString("F2", CultureInfo.InvariantCulture))
+                   .Append(" → ").Append(Cell(csv.ToString(), 8f, a, 3)).Append(" s / ")
+                   .Append(Cell(csv.ToString(), 8f, a, 4)).Append(" m；");
+            }
+
+            txt.Append("\n\n**子步界确认**：`DeriveSubSteps` = ").Append(subSteps)
+               .Append("，只依赖常量 `MaxBallSpeed = ").Append(PoolConstants.MaxBallSpeed)
+               .Append("`（**与 `PhysicsTestDrive.maxLaunchSpeed` 无关**）⇒ **只降 `maxLaunchSpeed` 不影响子步数**。\n");
+            txt.Append("⚠ **但不得把 `PoolConstants.MaxBallSpeed` 降下来** —— 它喂 `DeriveSubSteps`：\n")
+               .Append("  v0=4 ⇒ nA = ceil(v·dt/r) = ")
+               .Append(Mathf.CeilToInt((4f * (1f / 120f)) / (PoolConstants.BallDiameter * 0.5f)))
+               .Append(" ⇒ `SubSteps` 由 3 变 2 ⇒ 会打破 `FixedDeltaTimeAndSubSteps_ArePinnedByIndependentLiterals`（钉字面量 3）。\n");
+            txt.Append("说明：**选值由主理人 + 用户拍板**；本扫描不含任何断言。\n");
             File.WriteAllText(Path.Combine(dir, "param-scan-rolling-summary.txt"), txt.ToString());
 
-            Debug.Log("滚阻扫描 → " + Path.Combine(dir, "param-scan-rolling.csv"));
+            Debug.Log("滚阻 × 初速 交叉表 → " + Path.Combine(dir, "param-scan-rolling.csv"));
+        }
+
+        /// <summary>从 CSV 文本里取某格的第 <paramref name="column"/> 列（0 基）。**纯读，无断言**。</summary>
+        private static string Cell(string csv, float v0, float a, int column)
+        {
+            foreach (string line in csv.Split('\n'))
+            {
+                string[] parts = line.Split(',');
+                if (parts.Length > column && parts[0] == v0.ToString("F0", CultureInfo.InvariantCulture)
+                    && parts[1] == a.ToString("F2", CultureInfo.InvariantCulture))
+                {
+                    return parts[column];
+                }
+            }
+
+            return "?";
         }
     }
 }
