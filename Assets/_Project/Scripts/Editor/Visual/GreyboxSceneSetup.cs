@@ -49,6 +49,9 @@ namespace Billiards.EditorTools
         /// </summary>
         public const string PlayfieldRootObjectName = "PlayfieldRoot";
 
+        /// <summary>指针瞄准控制器宿主对象名（交互胶水；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
+        public const string PointerAimControllerObjectName = "PointerAimController";
+
         // ── 入口 ───────────────────────────────────────────────────────────
 
         [MenuItem("Billiards/Visual/Build Physics Greybox Scene", false, 402)]
@@ -196,9 +199,18 @@ namespace Billiards.EditorTools
             //     球与白球同挂**缩放根**下（见 `BuildRackVisuals`）。
             drive.ballVisuals = BuildRackVisuals(playfieldRoot, config, cueBall);
 
-            // 4) 俯视相机 + 主平行光（灰盒可见即可；不引入任何物理组件）
-            BuildCamera(root);
+            // 4) 俯视相机（含视口适配器）+ 主平行光（灰盒可见即可；不引入任何物理组件）
+            Camera cam = BuildCamera(root);
             BuildLight(root);
+
+            // 5) **指针瞄准控制器** —— 交互胶水：读输入 → 纯状态机 → **只写** `drive.aimDegrees`。
+            //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。
+            var aimGo = new GameObject(PointerAimControllerObjectName);
+            aimGo.transform.SetParent(root.transform, false);
+            var aimController = aimGo.AddComponent<PointerAimController>();
+            aimController.aimCamera = cam;
+            aimController.playfieldRoot = playfieldRoot.transform;
+            aimController.drive = drive;
 
             EditorSceneManager.SaveScene(scene, ScenePath);
         }
@@ -257,7 +269,7 @@ namespace Billiards.EditorTools
             return visuals;
         }
 
-        private static void BuildCamera(GameObject root)
+        private static Camera BuildCamera(GameObject root)
         {
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
@@ -267,11 +279,20 @@ namespace Billiards.EditorTools
             camGo.transform.position = new Vector3(0f, 2.10f, -0.75f);
             camGo.transform.rotation = Quaternion.LookRotation(
                 new Vector3(0f, 0.02f, 0.06f) - camGo.transform.position, Vector3.up);
-            cam.fieldOfView = 40f;
+            cam.fieldOfView = 52f;
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = 60f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.055f, 0.052f, 0.06f, 1f);
+
+            // 4a) **视口适配器**（16:9 基准 + 窄窗回落，保持水平 FOV）。
+            //     基准垂直 FOV **实测定为 52**（spec 假定的 40 装不下 `×1.2` 后的内库四角；见 `CameraViewportFitter`
+            //     的字段注释与 `Docs/35-A_Day8_相机与指针瞄准_执行记录.md`）。**从相机取** ⇒ 二者不可能漂移（`T53` 守）。
+            CameraViewportFitter fitter = camGo.AddComponent<CameraViewportFitter>();
+            fitter.targetCamera = cam;
+            fitter.baseVerticalFovDeg = cam.fieldOfView;
+
+            return cam;
         }
 
         private static void BuildLight(GameObject root)

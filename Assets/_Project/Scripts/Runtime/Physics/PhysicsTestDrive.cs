@@ -234,7 +234,8 @@ namespace Billiards.Physics
             }
 
             bool fine = Input.GetKey(fineKey);
-            float aStep = fine ? aimStepDegrees * 0.2f : aimStepDegrees;
+            // 细调系数**唯一真源**在 `PointerAimController.FineAimStepFactor`（不再于此处另写一个字面量）。
+            float aStep = fine ? aimStepDegrees * PointerAimController.FineAimStepFactor : aimStepDegrees;
             float pStep = fine ? powerStep * 0.25f : powerStep;
 
             if (Input.GetKey(aimLeftKey)) { aimDegrees += aStep; }
