@@ -28,9 +28,17 @@ namespace Billiards.Physics
         [Tooltip("可选：运行时把内核注入该 Gizmo 组件。")]
         public CushionGizmo cushionGizmo;
 
-        /// <summary>可选：与该球位置同步的视觉 Transform（白球）。</summary>
-        [Tooltip("可选：白球视觉 Transform，每步后同步到内核球位。")]
+        /// <summary>可选：与各球位置依次同步的视觉 Transform（球 0 = 白球）。</summary>
+        [Tooltip("可选：与内核球位一一对应的视觉 Transform（球 0 = 白球）。留空则只同步球 0。")]
+        public Transform[] ballVisuals;
+
+        /// <summary>兼容旧字段：单球视觉（当 <see cref="ballVisuals"/> 未配置时使用）。</summary>
+        [Tooltip("可选：白球视觉 Transform（兼容用；优先使用 ballVisuals）。")]
         public Transform ballVisual;
+
+        [Header("球-球演示（开箱即可看到碰撞）")]
+        [Tooltip("勾选后装载「白球 + 球堆」而非单球，便于在编辑器里直接观察球-球碰撞。")]
+        public bool loadRackForBallBallDemo = true;
 
         [Header("物理参数（占位值；正式值待手感标定）")]
         [Tooltip("库边法向恢复系数 e。占位值，未经策划确认。")]
@@ -83,10 +91,7 @@ namespace Billiards.Physics
             };
 
             _simulator = new PoolSimulator(tableConfig, parameters);
-            _simulator.LoadBalls(new[]
-            {
-                new BallState { position = tableConfig.footSpot, velocity = Vector2.zero },
-            });
+            _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
             _accumulator = 0f;
 
             if (cushionGizmo != null)
@@ -171,9 +176,38 @@ namespace Billiards.Physics
             return Mathf.FloorToInt(accumulated / fixedStep);
         }
 
+        /// <summary>单球模式：白球静止于开球点。</summary>
+        private BallState[] BuildSingleBall()
+        {
+            return new[]
+            {
+                new BallState { position = tableConfig.footSpot, velocity = Vector2.zero },
+            };
+        }
+
         /// <summary>
-        /// 冒烟测试发射：把白球以 <see cref="PoolConstants.MaxBallSpeed"/> 沿物理平面 +y 打出。
-        /// 方向固定为正对长库（垂直入射），便于肉眼观察往返；**这不是最终交互**。
+        /// 球堆模式：白球 + 三球小堆（间距 = 2r + 2e-4 ⇒ **合法不重叠**）。
+        /// 用于在编辑器里**直接观察球-球碰撞**（本驱动器是调试入口，不是最终交互）。
+        /// </summary>
+        private BallState[] BuildRack()
+        {
+            float s = PoolConstants.BallDiameter + 2e-4f;
+            float half = s * 0.5f;
+            float row = s * 0.8660254f;
+
+            return new[]
+            {
+                new BallState { position = tableConfig.footSpot, velocity = Vector2.zero },
+                new BallState { position = new Vector2(-0.30f, 0f), velocity = Vector2.zero },
+                new BallState { position = new Vector2(-0.30f - row, half), velocity = Vector2.zero },
+                new BallState { position = new Vector2(-0.30f - row, -half), velocity = Vector2.zero },
+            };
+        }
+
+        /// <summary>
+        /// 冒烟测试发射。**球堆模式下**给白球一个朝向球堆（−x）的初速 ⇒ 球堆散开，
+        /// 可直接看到球-球碰撞；单球模式下沿 +y 正对长库打出。
+        /// **这不是最终交互**（瞄准与力度属交互层）。
         /// </summary>
         public void Launch()
         {
@@ -182,14 +216,12 @@ namespace Billiards.Physics
                 return;
             }
 
-            _simulator.LoadBalls(new[]
-            {
-                new BallState
-                {
-                    position = tableConfig.footSpot,
-                    velocity = new Vector2(0f, PoolConstants.MaxBallSpeed),
-                },
-            });
+            BallState[] balls = loadRackForBallBallDemo ? BuildRack() : BuildSingleBall();
+            balls[0].velocity = loadRackForBallBallDemo
+                ? new Vector2(-PoolConstants.MaxBallSpeed, 0f)
+                : new Vector2(0f, PoolConstants.MaxBallSpeed);
+
+            _simulator.LoadBalls(balls);
             _simulator.ResetDiagnostics();
             _accumulator = 0f;
 
@@ -198,7 +230,7 @@ namespace Billiards.Physics
 
         private void SyncVisual()
         {
-            if (ballVisual == null || _simulator == null)
+            if (_simulator == null)
             {
                 return;
             }
@@ -209,7 +241,24 @@ namespace Billiards.Physics
                 return;
             }
 
-            ballVisual.position = PoolGeometry.PhysicsBallToUnity(balls[0].position);
+            if (ballVisuals != null && ballVisuals.Length > 0)
+            {
+                int n = Mathf.Min(ballVisuals.Length, balls.Count);
+                for (int i = 0; i < n; i++)
+                {
+                    if (ballVisuals[i] != null)
+                    {
+                        ballVisuals[i].position = PoolGeometry.PhysicsBallToUnity(balls[i].position);
+                    }
+                }
+
+                return;
+            }
+
+            if (ballVisual != null)
+            {
+                ballVisual.position = PoolGeometry.PhysicsBallToUnity(balls[0].position);
+            }
         }
 
         private void OnGUI()
@@ -228,9 +277,11 @@ namespace Billiards.Physics
             float speed = (balls != null && balls.Count > 0) ? balls[0].velocity.magnitude : 0f;
 
             string text =
-                $"contacts={_simulator.TotalContactCount}   guardTrips={_simulator.ToiIterationGuardTrips}   "
-                + $"energyGain={_simulator.EnergyGainViolations}   pocketEvents={_simulator.PocketProximityEvents}\n"
-                + $"subSteps={_simulator.SubSteps}   |v|={speed:F3} m/s   [{launchKey}] 发射 {PoolConstants.MaxBallSpeed} m/s";
+                $"balls={balls.Count}  contacts={_simulator.TotalContactCount}  "
+                + $"ballBall={_simulator.BallBallContactCount}  guardTrips={_simulator.ToiIterationGuardTrips}  "
+                + $"energyGain={_simulator.EnergyGainViolations}  pocketEvents={_simulator.PocketProximityEvents}\n"
+                + $"subSteps={_simulator.SubSteps}   |v_0|={speed:F3} m/s   [{launchKey}] 发射 {PoolConstants.MaxBallSpeed} m/s"
+                + (loadRackForBallBallDemo ? "（球堆模式：白球朝球堆）" : "（单球模式：正对长库）");
 
             GUI.Label(rect, text);
         }
