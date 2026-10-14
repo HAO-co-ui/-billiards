@@ -10,10 +10,10 @@ namespace Billiards.Tests
     /// <summary>
     /// **积分格式（端点精确）与子步推导（判据 B）** 验证。
     ///
-    /// 补 `Docs/Reviews/D4-Day4独立复核.md` §三 / §7.3 指出的三处零覆盖：
+    /// 补 `Docs/Reviews/D4-Day4独立复核.md` §三 / §7.3 D-2 指出的三处零覆盖：
     ///  1. spec §5 T11 自由飞行位移精确性（a=0 与 a≠0 合成档）；
     ///  2. spec §5 T12 终点精确性有限差分自检（位移法 == 速度法）；
-    ///  3. `MaxRollingDeceleration` / 判据 B 的子步数推导从未被执行过。
+    ///  3. D-2：`MaxRollingDeceleration` / 判据 B 的子步数推导从未被执行过。
     ///
     /// ## 判别力预算（为什么容差是这么定的）
     ///
@@ -251,10 +251,10 @@ namespace Billiards.Tests
                 $"；前向欧拉预估 a·dt/(2n)={forwardEulerVelocityDiff:E3} m/s（= 本容差的 {forwardEulerVelocityDiff / tolV:F0} 倍）");
         }
 
-        // ── 判据 B 的子步数推导 ──────────────────────────────────────
+        // ── D-2：判据 B 的子步数推导 ──────────────────────────────────────
 
         /// <summary>
-        /// `MaxRollingDeceleration` 与判据 B 的推导**从未被执行过**（此前 a 恒 0）。
+        /// 复核 D-2：`MaxRollingDeceleration` 与判据 B 的推导**从未被执行过**（此前 a 恒 0）。
         ///
         /// 断言两件事：
         ///  1. **生产不等式** `½·a_max·dt_sub² ≤ ContactArcErrorBound`（spec §6 判据 3 的式子）；
@@ -269,8 +269,8 @@ namespace Billiards.Tests
         /// **对"判据 B 的公式本身写错"完全盲**（把公式改错、测试跟着抄错，两边同错 ⇒ 照样 PASS）。
         /// ⇒ **本用例验证的是"判据 B 分支是活的"（没被删掉、没被短路），不验证该公式本身正确。**
         /// 公式无关的那一半由
-        /// <see cref="D2b_JudgementB_SufficiencyAndMinimality_AreFormulaAgnostic"/> 承担：
-        /// 两者**两向互补**（本用例对"任何公式改动"是 fail-closed；性质断言抓"公式错但自洽"），
+        /// <see cref="JudgementB_SufficiencyAndMinimality_AreFormulaAgnostic"/> 承担：
+        /// 两者**两向互补**（本用例对"任何公式改动"是 fail-closed；JudgementB_SufficiencyAndMinimality 抓"公式错但自洽"），
         /// 与 `D4-PHY-01` ↔ 汇编级 PhysX 检查是**同一个模式**。**两者都不得删**（铁律 4）。
         ///
         /// **判别力实测**：临时删掉 `DeriveSubSteps` 里的判据 B 分支 ⇒ 本断言 FAIL
@@ -281,7 +281,7 @@ namespace Billiards.Tests
         /// **因此本用例的期望值也刻意不硬编码 a_max 的效果**：a_max 5→20 时 nB 2→4，断言随之成立，不假失败。
         /// </summary>
         [Test]
-        public void D2_JudgementB_SubStepDerivation_IsLive()
+        public void JudgementB_SubStepDerivation_IsLive()
         {
             var sim = new PoolSimulator(_config, Params(0.9f, 0.8f, 0f));
             float aMax = PoolSimulator.MaxRollingDeceleration;
@@ -295,7 +295,7 @@ namespace Billiards.Tests
                 $"D-2：½·a_max·dt_sub² = {lhs:E3} m 超过弧误差界 {bound:E3} m。");
 
             // (2) 判据 B 分支活体：期望值在本测试内算出（**独立于常量的取值**，但**不**独立于公式 ——
-            //     见本测试 doc：本断言对"公式写错"是盲的，那由性质断言覆盖）。
+            //     见本测试 doc：本断言对"公式写错"是盲的，那由 JudgementB_SufficiencyAndMinimality 的性质断言覆盖）。
             float halfDiameter = PoolConstants.BallDiameter * 0.5f;
             float vA1 = 0.9f * halfDiameter / dt;                       // 判据 A 的比值 = 0.9 ⇒ nA = 1
             float dtForArc = Mathf.Sqrt((2f * bound) / aMax);
@@ -331,17 +331,17 @@ namespace Billiards.Tests
         /// | **删掉判据 B 分支** ⇒ `n = 1` | 充分性：`½·5·(1/120)² = 1.736e-4 > 5e-5` ⇒ **违反 ⇒ FAIL** |
         /// | **公式漏掉因子 2**（`dtForArc = sqrt(bound/a_max)`）⇒ `n = 3` | 充分性满足；但最小性：`½·5·(1/240)² = 4.34e-5 ≤ 5e-5` ⇒ `n=3` **不是最小 ⇒ FAIL** |
         ///
-        /// ⇒ 本条**严格强于** <see cref="D2_JudgementB_SubStepDerivation_IsLive"/> 的转写断言
+        /// ⇒ 本条**严格强于** <see cref="JudgementB_SubStepDerivation_IsLive"/> 的转写断言
         /// （后者只需换成另一种**自洽的**错公式即可通过）。**但转写断言不删** —— 两者**两向互补**：
         /// 转写断言抓"任何公式改动"（fail-closed），本条抓"公式错但自洽"。与
         /// `D4-PHY-01` ↔ 汇编级 PhysX 检查是**同一个模式**。
         ///
         /// 数值核对（正确实现）：`nB = ceil(dt / sqrt(2·bound/a_max)) = ceil(1.8634) = 2` ⇒ `n = max(nA=1, nB=2) = 2`；
         /// 充分性 `½·5·(1/240)² = 4.340e-5 ≤ 5e-5` ✓；最小性 `½·5·(1/120)² = 1.736e-4 > 5e-5` ✓。
-        /// **注意 `n = 2` 而非全局 `SubSteps = 3`**：后者由判据 A 主导（见 `D4GAP02_3_…` 的锚定）。
+        /// **注意 `n = 2` 而非全局 `SubSteps = 3`**：后者由判据 A 主导（见 `FixedDeltaTimeAndSubSteps_…` 的锚定）。
         /// </summary>
         [Test]
-        public void D2b_JudgementB_SufficiencyAndMinimality_AreFormulaAgnostic()
+        public void JudgementB_SufficiencyAndMinimality_AreFormulaAgnostic()
         {
             float aMax = PoolSimulator.MaxRollingDeceleration;
             float bound = PoolSimulator.ContactArcErrorBound;
@@ -353,26 +353,26 @@ namespace Billiards.Tests
             // 前提自证：nA 确为 1。若该前提不成立，本用例就不再"只测判据 B"，性质断言随之失去意义。
             float ratioA = (vA1 * dt) / halfDiameter;
             Assert.LessOrEqual(ratioA, 1f - 1e-4f,
-                $"D2b：前提不成立 —— 判据 A 的比值 {ratioA:R} 未 < 1，nA 可能 > 1，本用例不再只测判据 B。");
+                $"JudgementB_SufficiencyAndMinimality：前提不成立 —— 判据 A 的比值 {ratioA:R} 未 < 1，nA 可能 > 1，本用例不再只测判据 B。");
 
             int n = PoolSimulator.DeriveSubSteps(vA1);
 
             float suffLhs = 0.5f * aMax * (dt / n) * (dt / n);
             Assert.LessOrEqual(suffLhs, bound + 1e-12f,
-                $"D2b：**充分性**违反 —— ½·a_max·(dt/n)² = {suffLhs:E3} m > 弧误差界 {bound:E3} m（n={n}）。" +
+                $"JudgementB_SufficiencyAndMinimality：**充分性**违反 —— ½·a_max·(dt/n)² = {suffLhs:E3} m > 弧误差界 {bound:E3} m（n={n}）。" +
                 " n=1 通常意味着判据 B 分支被删/被短路。");
 
             if (n >= 2)
             {
                 float minLhs = 0.5f * aMax * (dt / (n - 1)) * (dt / (n - 1));
                 Assert.Greater(minLhs, bound,
-                    $"D2b：**最小性**违反 —— ½·a_max·(dt/(n−1))² = {minLhs:E3} m ≤ 弧误差界 {bound:E3} m，" +
+                    $"JudgementB_SufficiencyAndMinimality：**最小性**违反 —— ½·a_max·(dt/(n−1))² = {minLhs:E3} m ≤ 弧误差界 {bound:E3} m，" +
                     $"故 n={n} 不是最小整数（n−1 也满足不等式）⇒ 判据 B 的公式有问题（例如漏掉因子 2）。");
             }
 
             float minLhsReport = 0.5f * aMax * (dt / Mathf.Max(1, n - 1)) * (dt / Mathf.Max(1, n - 1));
             TestContext.WriteLine(
-                $"D2b: a_max={aMax:R}, bound={bound:E1} m, dt={dt:R} s, vA1={vA1:R} m/s, ratioA={ratioA:F4}（<1 ⇒ nA=1）; " +
+                $"JudgementB_SufficiencyAndMinimality: a_max={aMax:R}, bound={bound:E1} m, dt={dt:R} s, vA1={vA1:R} m/s, ratioA={ratioA:F4}（<1 ⇒ nA=1）; " +
                 $"DeriveSubSteps(vA1)={n}; 充分性 {suffLhs:E3} ≤ {bound:E3} ✓; " +
                 $"最小性 {minLhsReport:E3} > {bound:E3}（n≥2 时检查 n−1）✓");
         }
@@ -392,21 +392,21 @@ namespace Billiards.Tests
         /// 判据 B `ceil(1.8634) = 2` ⇒ `max(3, 2) = 3`（判据 A 主导**仅因** `MaxBallSpeed = 8`）。
         /// </summary>
         [Test]
-        public void D4GAP02_3_FixedDeltaTimeAndSubSteps_ArePinnedByIndependentLiterals()
+        public void FixedDeltaTimeAndSubSteps_ArePinnedByIndependentLiterals()
         {
             Assert.AreEqual(1f / 120f, PoolSimulator.FixedDeltaTime, 0f,
-                $"D4-GAP-02-3：定长步应为字面量 1/120 s（spec §2.1），实测 {PoolSimulator.FixedDeltaTime:R}。");
+                $"FixedDeltaTimeAndSubSteps：定长步应为字面量 1/120 s（spec §2.1），实测 {PoolSimulator.FixedDeltaTime:R}。");
 
             int subSteps = PoolSimulator.DeriveSubSteps(PoolConstants.MaxBallSpeed);
             Assert.AreEqual(3, subSteps,
-                $"D4-GAP-02-3：DeriveSubSteps(MaxBallSpeed={PoolConstants.MaxBallSpeed:R}) 应等于字面量 3，实测 {subSteps}。");
+                $"FixedDeltaTimeAndSubSteps：DeriveSubSteps(MaxBallSpeed={PoolConstants.MaxBallSpeed:R}) 应等于字面量 3，实测 {subSteps}。");
 
             // 交叉印证：运行期实例的 SubSteps / SubStepDeltaTime 必须与上面同源（防"两处各算一份"分叉）。
             var sim = new PoolSimulator(_config, Params(0.9f, 0.8f, 0f));
             Assert.AreEqual(subSteps, sim.SubSteps,
-                "D4-GAP-02-3：实例 SubSteps 与 DeriveSubSteps(MaxBallSpeed) 不一致（两处推导已分叉）。");
+                "FixedDeltaTimeAndSubSteps：实例 SubSteps 与 DeriveSubSteps(MaxBallSpeed) 不一致（两处推导已分叉）。");
 
-            // ⚠ 必须落在 **float32 域**比较，用 `"R"` 串（本工程既有惯例，见逐位比较）：
+            // ⚠ 必须落在 **float32 域**比较，用 `"R"` 串（本工程既有惯例，见 D-3 的逐位比较）：
             //   `Assert.AreEqual(float, float, 0f)` 会选中 **double** 重载；而 C# 允许浮点运算**以高于结果
             //   类型的精度**进行 ⇒ 左侧 `FixedDeltaTime / subSteps` 可能带着"多出来的中间位"直接当 double 传入，
             //   右侧 `SubStepDeltaTime` 则是 **float 字段存储后**再拓宽 ⇒ 二者差 1 ULP 以下也判失败。
@@ -415,10 +415,10 @@ namespace Billiards.Tests
             //   ⇒ 两者**是同一个 float32**。故换域比较是**修正比较域**，**不是**放宽判据（仍是 0 容差的逐位相等）。
             float dtSubExpected = PoolSimulator.FixedDeltaTime / subSteps;
             Assert.AreEqual(dtSubExpected.ToString("R"), sim.SubStepDeltaTime.ToString("R"),
-                $"D4-GAP-02-3：SubStepDeltaTime({sim.SubStepDeltaTime:R}) != FixedDeltaTime/SubSteps({dtSubExpected:R})。");
+                $"FixedDeltaTimeAndSubSteps：SubStepDeltaTime({sim.SubStepDeltaTime:R}) != FixedDeltaTime/SubSteps({dtSubExpected:R})。");
 
             TestContext.WriteLine(
-                $"D4-GAP-02-3: FixedDeltaTime={PoolSimulator.FixedDeltaTime:R} s（= 字面量 1/120 ✓）, " +
+                $"FixedDeltaTimeAndSubSteps: FixedDeltaTime={PoolSimulator.FixedDeltaTime:R} s（= 字面量 1/120 ✓）, " +
                 $"SubSteps={subSteps}（= 字面量 3 ✓）, dt_sub={sim.SubStepDeltaTime:R} s");
         }
 

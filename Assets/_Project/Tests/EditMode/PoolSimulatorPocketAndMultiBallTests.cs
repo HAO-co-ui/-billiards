@@ -9,9 +9,9 @@ using UnityEngine;
 namespace Billiards.Tests
 {
     /// <summary>
-    /// **袋喉冻结（T13）** 与 **多球遍历顺序确定性**。
+    /// **袋喉冻结（T13）** 与 **多球遍历顺序确定性（D-3）**。
     ///
-    /// 补 `Docs/Reviews/D4-Day4独立复核.md` §7.2（袋喉冻结路径零覆盖）与 §7.3（多球遍历顺序未测）。
+    /// 补 `Docs/Reviews/D4-Day4独立复核.md` §7.2（袋喉冻结路径零覆盖）与 §7.3 D-3（多球遍历顺序未测）。
     ///
     /// 判别力声明：
     ///  · T13a 正向 —— `PocketProximityEvents` 在旧套件里**只被断言 `== 0`**，冻结分支
@@ -21,7 +21,7 @@ namespace Billiards.Tests
     ///  · **T13c 正向（补 T13a 盲带）** —— 同构探针，速度取 2.5 ⇒ 越界子步 **101**（`%3=2`）
     ///    ⇒ 对"袋喉检查由每子步改成每 3 子步"敏感。**T13a 与 T13c 不可互相替代**（铁律 4）。
     ///  · T13b 负向 —— 台面正中滚动的球**不得**触发冻结，防"恒冻结"式假通过。
-    ///  · 多球确定性 —— 旧套件**全部只装 1 球**；本用例装 16 球，同初态跑两次逐位比较，
+    ///  · D-3 —— 旧套件**全部只装 1 球**；本用例装 16 球，同初态跑两次逐位比较，
     ///    并**读取源码**断言热路径无非确定性容器 / 重排算子 / 并行。
     ///    ⚠ 源码断言是**禁用清单（denylist）**：**"没出现这些词" ≠ "确定性已证明"**（见其 doc）。
     /// </summary>
@@ -224,7 +224,7 @@ namespace Billiards.Tests
                 $"T13b: 60 步后台面内位置={sim.Balls[0].position:R}, 速度={sim.Balls[0].velocity:R}, events={sim.PocketProximityEvents}（应为 0）");
         }
 
-        // ── 多球遍历顺序确定性 ───────────────────────────────────────
+        // ── D-3：多球遍历顺序确定性 ───────────────────────────────────────
 
         /// <summary>
         /// 装 **16 球**（4×4 网格，|x| ≥ 0.20 避开中袋缺口，速度指向长库以制造多次接触），
@@ -239,7 +239,7 @@ namespace Billiards.Tests
         /// 非空转：断言确有接触发生（`TotalContactCount > 0`），否则"一致"只说明球都没动。
         /// </summary>
         [Test]
-        public void D3_SixteenBalls_TraversalOrder_IsBitIdentical()
+        public void SixteenBalls_TraversalOrder_IsBitIdentical()
         {
             BallState[] initial = BuildSixteenBalls();
             const int steps = 120;
@@ -343,7 +343,7 @@ namespace Billiards.Tests
         /// ⇒ **不得**把本断言当「遍历顺序只由数组下标决定」的**充分**证明引用 ——
         /// 它证明的只是「热路径没有用**这批已知**危险写法」。
         /// 真正的确定性证据是**逐位一致**那条（
-        /// <see cref="D3_SixteenBalls_TraversalOrder_IsBitIdentical"/> 的 16 球双跑逐位比较）；
+        /// <see cref="SixteenBalls_TraversalOrder_IsBitIdentical"/> 的 16 球双跑逐位比较）；
         /// 本断言是它的**结构性补充**，两者**互补、都不可删**（铁律 4）。
         ///
         /// **脆性说明**：下面的**正证据**改为**空白归一化**后匹配，

@@ -15,7 +15,7 @@ namespace Billiards.Tests
     /// **T7 全 82 段覆盖扫描**。
     ///
     /// 补 `Docs/Reviews/D4-Day4独立复核.md` §7.1：76 条袋角/弧段（段长 4.29–32.4 mm ≪ 球直径 57.15 mm）
-    /// 的 TOI 分支（端点圆 + 线段分支同时命中、`MaxToiIterations` 触发）**完全无测试覆盖**。
+    /// 的 TOI 分支（端点圆 + 线段分支同时命中、`MaxToiIterations` R-C 触发）**完全无测试覆盖**。
     ///
     /// ## 方案（判据自定，写清如下）
     ///
@@ -31,7 +31,7 @@ namespace Billiards.Tests
     ///
     /// · **硬门 1**：6 条直库段（索引 6/20/33/47/61/74）每段命中 &gt; 0；
     /// · **硬门 2 / 3**：`ToiIterationGuardTrips == 0` 且 `EnergyGainViolations == 0`（spec §6 判据 10）。
-    ///   本测试最初实测 `guardTrips = 1810`（角点迭代守卫触发实证）；经随后的角点迭代守卫修复
+    ///   本测试最初实测 `guardTrips = 1810`（R-C 现象实证）；经随后的 R-C 修复
     ///   （`StoppedSpeedEpsilon` 近零即停 + "连续两次零时间推进即停" + `MaxToiIterations` 16→128）
     ///   后实测 **0**（`1810 → 1196 → 339 → 3 → 0`）⇒ 判据 10 **不是不可达条款**，按原样保留为硬门（team-lead 裁定 ①.2）。
     /// · 76 条袋角段**逐条枚举**命中数，未命中的**逐条列出并给原因**（被遮挡 / 袋口区（后续实现） / 未触达）；
@@ -163,7 +163,7 @@ namespace Billiards.Tests
             }
 
             // ── 先落盘与打印（**在任何断言之前**）──────────────────────────
-            // 理由：本测试是角点迭代守卫与 96 段覆盖的**探针**，其诊断值必须先成为可查证据，
+            // 理由：本测试是 R-C 与 96 段覆盖的**探针**，其诊断值必须先成为可查证据，
             // 再谈硬门槛；否则一旦某个断言失败，证据就丢了（铁律 1）。
             List<ReasonEntry> reasons = BuildReasons(records, unhit, nearestApproach, hitCount);
             WriteReport(records, hitCount, nearestApproach, reasons, straightText.ToString(),
@@ -198,8 +198,8 @@ namespace Billiards.Tests
             Assert.IsEmpty(straightMissing,
                 $"T7 硬门槛失败：直库段 {string.Join(",", straightMissing)} 命中 0 次（{straightText}）。");
 
-            // ── 硬断言：角点迭代守卫与能量增益（spec §6 判据 10，**该守卫修复后已可达**）──────
-            // 角点迭代守卫的修复（PoolSimulator：StoppedSpeedEpsilon 近零即停 +
+            // ── 硬断言：R-C 守卫与能量增益（spec §6 判据 10，**R-C 修复后已可达**）──────
+            // R-C 的修复（PoolSimulator：StoppedSpeedEpsilon 近零即停 +
             // "连续两次零时间推进即停" + MaxToiIterations 16→128）后实测 `guardTrips = 0`：
             //   `1810（原）→ 1196（仅近零速度）→ 339（+零时间推进即停）→ 3（预算 64）→ 0（预算 128）`。
             // ⇒ 判据 10 的"全测试族 == 0"**不是不可达条款**，按原样保留为硬门（team-lead 裁定 ①.2）。
@@ -312,7 +312,7 @@ namespace Billiards.Tests
         private List<ReasonEntry> BuildReasons(List<AimRecord> records, List<int> unhit,
             float[] nearestApproach, int[] hitCount)
         {
-            // 测试内部统计用（**不参与被测内核**；热路径无序容器由内核源码守卫单独覆盖）。
+            // 测试内部统计用（**不参与被测内核**；热路径无序容器由 D-3 源码守卫单独覆盖）。
             var bySeg = new Dictionary<int, List<AimRecord>>();
             foreach (AimRecord rec in records)
             {
@@ -574,7 +574,7 @@ namespace Billiards.Tests
             int passCount = 4 - warnCount - failCount;
             string overall = failCount > 0 ? "FAIL" : (warnCount > 0 ? "PASS_WITH_WARNINGS" : "PASS");
 
-            // 守卫触发的分布（定位证据）。
+            // 守卫触发的分布（R-C 定位证据）。
             int guardTrippedLaunches = 0;
             int maxGuardPerLaunch = 0;
             foreach (AimRecord r in records)
