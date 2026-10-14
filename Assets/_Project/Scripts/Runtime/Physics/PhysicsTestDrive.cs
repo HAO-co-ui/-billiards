@@ -153,6 +153,13 @@ namespace Billiards.Physics
         /// <summary>本帧待推进的累计时间余量（秒）。仅用于显示/调试。</summary>
         public float Accumulator => _accumulator;
 
+        /// <summary>
+        /// **最近一次 <see cref="Launch"/> 是否因为白球已离台（入袋 / 擦袋角）而把它显式放回了开球点**
+        /// （`footSpot`）。**只读状态出口** —— 让"白球重摆"这件事**可观测**（判据可断言、日志亦打一条）。
+        /// 正常出杆（白球仍在场上）为 `false`。
+        /// </summary>
+        public bool LastLaunchRespawnedCueBall { get; private set; }
+
         private void Awake()
         {
             Initialize();
@@ -378,14 +385,23 @@ namespace Billiards.Physics
         }
 
         /// <summary>
-        /// 冒烟测试发射。**球堆模式下**给白球一个朝向球堆（−x）的初速 ⇒ 球堆散开，
-        /// 可直接看到球-球碰撞；单球模式下沿 +y 正对长库打出。
-        /// **这不是最终交互**（瞄准与力度属交互层）。
-        /// </summary>
-        /// <summary>
         /// **按 <see cref="aimDegrees"/> / <see cref="power"/> 打出一杆**（键盘最小可玩）。
-        /// 初速方向 = `(cos θ, sin θ)`（θ = `aimDegrees`），大小 = `lerp(minLaunchSpeed, maxLaunchSpeed, power)`。
+        /// 初速方向 = `(cos θ, sin θ)`（θ = `aimDegrees`），大小 = `Lerp(minLaunchSpeed, maxLaunchSpeed, power)`。
         /// 返回白球初速（供测试 / 日志断言）。
+        ///
+        /// ── 三条语义（本驱动器的"连续对局"契约）──────────────────────────────
+        /// ① **球滚到哪就从哪打**：白球**不改位置**，只把速度换成 `v0`；**任何其他球都不动**
+        ///    （既不动球位，也不动它们的入袋记录）。
+        ///    ⇒ 实现走内核的单用途入口 `PoolSimulator.PlaceBall`，**不再** `LoadBalls` 整盘重置。
+        /// ② **门控 = `TableAtRest`**：整盘未静止（含"刚 `Initialize()`、还没满 `RestStableFrames` 帧"）
+        ///    ⇒ **拒绝出杆**：返回 `Vector2.zero` 且**不改任何状态**。
+        ///    ⇒ 调用方可据"返回值是否为零向量"区分"没打出"与"打出但初速为 0"。
+        /// ③ **白球入袋 ⇒ 显式放回 `footSpot`**，并**留痕**（<see cref="LastLaunchRespawnedCueBall"/> + 一条日志），
+        ///    **不许静默**。
+        ///
+        /// ⚠ **不再做**的事（与旧实现相反）：不再 `BuildRack()`/`LoadBalls()`（那会把整盘摆回开球位、
+        /// 并把已入袋的球"复活"）、不再无条件 `ResetVisualRotationTracking()`
+        /// （正常出杆时球位不瞬移，重置会白吞一帧自转；**只有白球重摆那一杆**才需要重置）。
         /// </summary>
         public Vector2 Launch()
         {
@@ -394,19 +410,34 @@ namespace Billiards.Physics
                 return Vector2.zero;
             }
 
-            BallState[] balls = loadRackForBallBallDemo ? BuildRack() : BuildSingleBall();
+            // ② 门控：整盘未静止 ⇒ 拒绝（不改任何状态）。
+            if (!_simulator.TableAtRest)
+            {
+                return Vector2.zero;
+            }
+
             float rad = aimDegrees * Mathf.Deg2Rad;
             var direction = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
             float speed = Mathf.Lerp(minLaunchSpeed, maxLaunchSpeed, Mathf.Clamp01(power));
             Vector2 v0 = direction * speed;
-            balls[0].velocity = v0;
 
-            _simulator.LoadBalls(balls);
+            // ③ 白球不在场上（已入袋 / 擦袋角离台）⇒ 显式放回开球点；否则 ① 就在它停下的地方出杆。
+            bool cueOffTable = !_simulator.IsBallInPlay(0);
+            Vector2 from = cueOffTable ? tableConfig.footSpot : _simulator.Balls[0].position;
+
+            _simulator.PlaceBall(0, from, v0);
+
+            // 只清**每杆计数**；逐球入袋记录是跨杆状态，**不得**在此抹掉（否则入袋球会复活）。
             _simulator.ResetDiagnostics();
             _accumulator = 0f;
-            // ⚠ 必须重置自转跟踪：`LoadBalls` 会把球位置**瞬移回开球/球堆起点**，
-            // 若沿用上一杆终态作为"上一帧位置"，这一瞬移会被当成真实位移 ⇒ 球会凭空猛转一下。
-            ResetVisualRotationTracking();
+            LastLaunchRespawnedCueBall = cueOffTable;
+
+            if (cueOffTable)
+            {
+                // 白球从袋口**瞬移**回开球点 ⇒ 必须重置自转跟踪，否则这一瞬移会被当成真实位移、球凭空猛转一下。
+                ResetVisualRotationTracking();
+                Debug.Log($"PhysicsTestDrive：白球已离台（入袋/擦袋角）⇒ 放回开球点 {tableConfig.footSpot} 后出杆。", this);
+            }
 
             SyncVisual();
             return v0;

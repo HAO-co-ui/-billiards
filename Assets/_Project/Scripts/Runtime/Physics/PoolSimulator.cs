@@ -407,7 +407,18 @@ namespace Billiards.Physics
 
         // ── 装载与推进 ────────────────────────────────────────────────────
 
-        /// <summary>装载球状态（拷贝进内核，外部数组后续变动不影响内核）。</summary>
+        /// <summary>
+        /// **装载球状态 = "全新一局"**（拷贝进内核，外部数组后续变动不影响内核）。
+        ///
+        /// <para>**语义（与 <see cref="ResetDiagnostics"/> / <see cref="PlaceBall"/> 三者的分工）**：
+        /// 本方法把**全部**球位/速度设为传入值，并**清空全部逐球状态** ——
+        /// 每颗球的 <c>_frozen = false</c>（回到场上）与 <c>_capturedPocket = -1</c>（清掉入袋记录）。
+        /// ⇒ 它**故意**让"上一局入袋的球重新出现在场上"，这正是"重新摆局"的定义。</para>
+        ///
+        /// <para>**⚠ 因此它<b>不能</b>用来"再出一杆"**：那会把已入袋的球复活、把滚到别处的球摆回起点。
+        /// 出杆请用 <see cref="PlaceBall"/>（只动被指定的那一颗球）。
+        /// 另外本方法**不清每杆计数** —— 需要归零请显式调用 <see cref="ResetDiagnostics"/>。</para>
+        /// </summary>
         public void LoadBalls(IReadOnlyList<BallState> balls)
         {
             if (balls == null)
@@ -433,7 +444,23 @@ namespace Billiards.Physics
             }
         }
 
-        /// <summary>清零全部诊断计数器。</summary>
+        /// <summary>
+        /// 清零**每杆计数**（接触数 / 守卫计数 / 各类事件计数 / 终止状态）。
+        ///
+        /// <para>**⚠ 它<b>不</b>清"逐球入袋记录"**（<c>_capturedPocket</c>）—— 该记录是**跨杆状态**：
+        /// "连续对局"要求**上一杆入袋的球在下一杆里依然在袋里**。
+        /// 若在此处清它，任何"出新杆前先清计数"的调用点都会**把入袋记录一并抹掉**
+        /// （本工程真实缺陷：`PhysicsTestDrive.Launch()` 曾经因此让入袋球"复活"）。</para>
+        ///
+        /// <para>**两种重置的语义对照（不得混用）**：
+        /// <list type="bullet">
+        /// <item>**每杆计数** → 本方法（出新杆时用）；</item>
+        /// <item>**逐球入袋记录 + 在场标记 + 球位** → <see cref="LoadBalls"/>（"**全新一局**"时用，
+        ///   它会把所有球的 <c>_frozen</c> 清 0、<c>_capturedPocket</c> 清 −1）。</item>
+        /// </list></para>
+        ///
+        /// <para>**不动球位与速度**（本方法不改变物理状态）—— 只改诊断量。也**不动 `_frozen`**。</para>
+        /// </summary>
         public void ResetDiagnostics()
         {
             TotalContactCount = 0;
@@ -447,11 +474,82 @@ namespace Billiards.Physics
             PocketJawCrossingCount = 0;
             TableAtRest = false;
             ConsecutiveRestFrameCount = 0;
+        }
 
-            for (int i = 0; i < _capturedPocket.Length; i++)
+        /// <summary>
+        /// **把第 <paramref name="index"/> 号球放回场上**：设定其位置与速度，并把该球的
+        /// **逐球派生缓存**与**在场标记**同步成"该球刚摆好"的等价状态。
+        ///
+        /// <para>**它做什么（只碰这一个球）**：
+        /// <list type="bullet">
+        /// <item><c>_balls[index]</c> 的 <c>position</c> / <c>velocity</c>；</item>
+        /// <item><c>_frozen[index] = false</c>（该球回到场上，参与后续子步）与 <c>_capturedPocket[index] = -1</c>；</item>
+        /// <item><c>_vAvg[index] = AverageVelocity(velocity, DecelerationAt(velocity), SubStepDeltaTime)</c>
+        ///   —— 取"**下一个子步会重算出的那个值**"（端点精确均速的梯形均值），不是裸的 <c>velocity</c>；</item>
+        /// <item><b>表级</b> <c>TableAtRest = false</c>、<c>ConsecutiveRestFrameCount = 0</c>
+        ///   —— 刚给了速度 ⇒ "整盘静止"的旧声明不再成立（见下）。</item>
+        /// </list></para>
+        ///
+        /// <para>**它明确不做什么（这三条是本入口存在的理由）**：
+        /// <list type="bullet">
+        /// <item>**不动任何其他球**（位置 / 速度 / 缓存 / 在场标记 / 入袋记录）—— 这是它与
+        ///   <see cref="LoadBalls"/> 的**关键差别**；</item>
+        /// <item>**不清任何每杆计数**（要清零请另行调用 <see cref="ResetDiagnostics"/>）；</item>
+        /// <item>**不清其他球的入袋记录** —— 判据：**已入袋的球不得因为再出一杆而"复活"**；</item>
+        /// <item>**不作废任何每杆计数**（接触数等一律保留）—— 只作废**表级终止标志**
+        ///   `TableAtRest` / `ConsecutiveRestFrameCount`（见下，物理状态一变它就必须降级）。</item>
+        /// </list></para>
+        ///
+        /// <para>**为什么不能用"复制当前状态 + 改一颗球 + 再 <see cref="LoadBalls"/> 一次"来省事**：
+        /// <list type="bullet">
+        /// <item><see cref="LoadBalls"/> 会把**所有**球的 <c>_frozen</c> 清 0、<c>_capturedPocket</c> 清 −1
+        ///   ⇒ **已入袋的球会被重新摆回场上**；</item>
+        /// <item>它还会把所有球的位置重置为传入数组的值 ⇒ 与"**球滚到哪就从哪打**"直接冲突。</item>
+        /// </list></para>
+        ///
+        /// <para>**⚠ 关于 <c>_vAvg</c> 的诚实说明（不得过度声称）**：<c>_vAvg</c> 是"端点精确均速"的梯形均值，
+        /// 被位置推进（`AdvanceSubStep` 内三处）与两处 TOI 搜索读取。
+        /// 但 `AdvanceSubStep` 在**每个子步开头都会重算**它，**且重算发生在任何读取之前**
+        /// ⇒ 本方法对 `_vAvg` 的同步在**当前实现下不可观测**（属**防御性**同步：
+        /// `ResolveDeepOverlaps()` 恰好位于该重算之前，将来若有人在那里读 `_vAvg`，本同步就不会成为隐患）。
+        /// **不得**据此声称"不漏设 `_vAvg` 会被判据抓住" —— **实测抓不住**。</para>
+        ///
+        /// <para>**边界**：<paramref name="index"/> 越界（含尚未 <see cref="LoadBalls"/>）⇒ 抛
+        /// <see cref="ArgumentOutOfRangeException"/>。</para>
+        /// </summary>
+        public void PlaceBall(int index, Vector2 position, Vector2 velocity)
+        {
+            if (index < 0 || index >= _balls.Length)
             {
-                _capturedPocket[i] = -1;
+                throw new ArgumentOutOfRangeException(nameof(index),
+                    $"PlaceBall：球索引越界（{index}；当前共 {_balls.Length} 颗球）。");
             }
+
+            _balls[index] = new BallState { position = position, velocity = velocity };
+            _frozen[index] = false;
+            _capturedPocket[index] = -1;
+            _vAvg[index] = AverageVelocity(velocity, DecelerationAt(velocity), SubStepDeltaTime);
+
+            // ★ **必须作废"整盘静止"声明**：刚给该球一个速度，原先的 `TableAtRest == true`
+            // 已经**不再成立**（它只在 `UpdateTermination` 里按"连续 N 步全慢"重新挣得）。
+            // 若不作废，调用方会看到"球在动却仍报静止"的陈旧状态
+            // （实测后果：`PhysicsTestDrive.Launch()` 的门控会**放行下一次出杆**、而测试里"推进到静止"的循环会**立即返回**）。
+            // ⚠ 这不是"球的状态"，故不属于上面"只碰该球"的约束范围；它是**表级终止标志**，物理状态一变就必须降级。
+            TableAtRest = false;
+            ConsecutiveRestFrameCount = 0;
+        }
+
+        /// <summary>
+        /// 第 <paramref name="index"/> 号球是否**在场上**（未因越过袋喉平面而冻结离台）。越界索引 ⇒ <c>false</c>。
+        ///
+        /// <para>**⚠ 与 <see cref="CapturedPocketIndex"/> 的区别（两者都必需，不得互相代替）**：
+        /// 擦袋角越界（面内偏移 <c>ρ &gt; captureRadius</c>）的球**已经离台**（`_frozen = true`），
+        /// 但它的 <c>_capturedPocket</c> **仍是 −1** ⇒ "在不在场上"**必须**看本出口，
+        /// 不能用"入袋索引 ≥ 0"代替。</para>
+        /// </summary>
+        public bool IsBallInPlay(int index)
+        {
+            return index >= 0 && index < _frozen.Length && !_frozen[index];
         }
 
         /// <summary>

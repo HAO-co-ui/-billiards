@@ -109,7 +109,7 @@
 | F-12 | `AimDirectionUnity`（`getter` `:100-107`）**现已经 `PoolGeometry.PhysicsDirectionToUnity`（`:105`）返回 `(−cosθ, 0, −sinθ)`** —— **180° 反向缺陷已由 `5189d4d` 修正**（此前曾返回 `(cosθ, 0, sinθ)`；见 `Q-11`）。**方向一律走该入口，别处禁手写** | `PhysicsTestDrive.cs:93-107`；`PoolGeometry.cs:95-98` |
 | F-13 | `aimStepDegrees = 1f`（基础步长）；`fineKey = LeftShift`；细调系数 **×0.2** ⇒ **细调 = 0.2°** | `:110`、`:116`、`:211` |
 | F-14 | 键盘：`←/→` 改 `aimDegrees`（`←` **+**、`→` **−**）；`↑/↓` 改 `power`；`Space` 出杆 | 键位 `:118-126`、Update `:214-224` |
-| F-15 | `Launch()`：**白球初速在物理平面** = `(cosθ, sinθ) · lerp(min,max,power)`；**每次 `Launch()` 都 `BuildRack()` 重建整个球堆** | `Launch` `:371-390`（`BuildRack()` 调用 `:378`；定义 `:301`） |
+| F-15 | `Launch()`：**白球初速在物理平面** = `(cosθ, sinθ) · lerp(min,max,power)`；**门控 `PoolSimulator.TableAtRest`**（整盘未静止 ⇒ 返回 `Vector2.zero` 且不改状态）；**不再重建球堆** —— 只把白球放回场上（走 `PoolSimulator.PlaceBall`，**不动其他球**），**白球离台时显式放回 `footSpot`**（留痕出口 `LastLaunchRespawnedCueBall`）⇒ 语义 = **"球滚到哪就从哪打"** | `PhysicsTestDrive.cs` 的 `Launch()`；`PoolSimulator.PlaceBall`；**判据 `T65`–`T69`**（`Tests/EditMode/PhysicsTestDriveLaunchStateTests.cs`） |
 | F-16 | `SyncVisual()`：把 `ballVisuals[i].position`（**世界坐标**）设为 `PoolGeometry.PhysicsBallToUnity(...)` ⇒ **球可视物一旦挂到 1.2 的 `PlayfieldRoot` 下，世界坐标写入不会随缩放**（见 §3.1 交付物 6 / 风险 `R-AB`） | `SyncVisual` `:393`、写入点 `:413` |
 | F-17 | `SyncAimIndicator()`：按需创建细长立方体，`position`（**世界**）= 白球世界位置 + `dir·len/2`；`rotation = LookRotation(dir)`；无碰撞体；**球运动期间隐藏** | `:464`、`position` `:501`、`rotation` `:503` |
 | F-18 | 键盘瞄准用**旧版 `Input.GetKey`**；项目 `activeInputHandler: 2`（**Both**）⇒ 新旧输入可共存 | `:214-224`；`ProjectSettings/ProjectSettings.asset:917` |

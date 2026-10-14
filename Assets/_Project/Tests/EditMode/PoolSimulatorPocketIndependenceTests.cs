@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -46,6 +47,26 @@ namespace Billiards.Tests
             t.segments = new List<CushionSegment>();
             t.pockets = new List<Pocket>(pockets);
             return t;
+        }
+
+        /// <summary>
+        /// 全盘球的**位置 + 速度**逐位快照（`R` 往返格式）。用途：断言"被拒绝的出杆**没动任何球**"。
+        /// 纯读，无断言。
+        /// </summary>
+        private static string SnapshotBalls(PhysicsTestDrive drive)
+        {
+            var sb = new StringBuilder();
+            System.Collections.Generic.IReadOnlyList<BallState> balls = drive.Simulator.Balls;
+            for (int i = 0; i < balls.Count; i++)
+            {
+                sb.Append(i).Append(':')
+                  .Append(balls[i].position.x.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                  .Append(balls[i].position.y.ToString("R", CultureInfo.InvariantCulture)).Append('|')
+                  .Append(balls[i].velocity.x.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                  .Append(balls[i].velocity.y.ToString("R", CultureInfo.InvariantCulture)).Append('\n');
+            }
+
+            return sb.ToString();
         }
 
         private static Pocket MakePocket(int index, Vector2 tc, Vector2 tn, float captureRadius)
@@ -189,6 +210,11 @@ namespace Billiards.Tests
         /// ⇒ <see cref="PhysicsTestDrive.Launch"/> ⇒ 断言初速 = `(maxLaunchSpeed, 0)`；再推进 1 s，
         /// 断言白球**确实位移**（非空转）且**确实发生碰撞**。
         /// 这条是"③ 灰盒可打"在没有人手点键时的**自动化替身**。
+        ///
+        /// **⚠ 关于门控（前置条件显式化，不是放宽断言）**：`Launch()` 现在**门控 `<see cref="PoolSimulator.TableAtRest"/>`**
+        /// ⇒ 刚 `Initialize()` 时（`RestStableFrames` 尚未满足）出杆**必须被拒绝**。
+        /// 本用例因此**先断言"未静止时被拒绝"**，再**推进到静止**后才出杆 ——
+        /// 这两步把"什么时候才能出杆"从隐含约定变成**显式前置条件**，判据本身一字未放宽。
         /// </summary>
         [Test]
         public void T40_GreyboxDrive_KeyboardAimAndPower_ProducesShot()
@@ -207,6 +233,29 @@ namespace Billiards.Tests
 
                 drive.aimDegrees = 0f;      // +x
                 drive.power = 1f;           // 满力
+
+                // ★ 前置条件①：整盘未静止 ⇒ 必须**拒绝出杆**（返回零向量），且不改状态。
+                if (drive.Simulator.TableAtRest)
+                {
+                    Assert.Fail("T40：前提不成立 —— 刚 Initialize 时 TableAtRest 应为 false。");
+                }
+
+                string snapshotBefore = SnapshotBalls(drive);
+                Vector2 rejected = drive.Launch();
+                Assert.AreEqual(Vector2.zero, rejected,
+                    "T40：整盘未静止（刚 Initialize、未满足 RestStableFrames）时 `Launch()` 必须被拒绝并返回零向量。");
+                Assert.AreEqual(snapshotBefore, SnapshotBalls(drive),
+                    "T40：被拒绝的出杆**不得**改任何球的位置/速度。");
+
+                // ★ 前置条件②：推进到静止（`RestStableFrames` + 2 步余量）后才允许出杆。
+                for (int i = 0; i < PoolSimulator.RestStableFrames + 2; i++)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                }
+
+                Assert.IsTrue(drive.Simulator.TableAtRest,
+                    "T40：前提不成立 —— 推进 RestStableFrames + 2 步后整盘应静止。");
+
                 Vector2 v0 = drive.Launch();
 
                 Assert.AreEqual(drive.maxLaunchSpeed, v0.x, 1e-3f, "T40：0° + 满力 ⇒ vx = maxLaunchSpeed。");

@@ -301,6 +301,13 @@ namespace Billiards.Tests
         /// ── 实测注入反例（原文见交接报告）─────────────────────────────────────
         /// · 注入①（跳过自转那一行）⇒ ①`|Dot|≈cos(θ/2)<0.999` FAIL；②③ FAIL（转角恒 0）。
         /// · 注入②（转角取反 / 轴取反）⇒ ①`|Dot|≈cos θ (≈0.26)<0.999` FAIL。
+        ///
+        /// ── ⚠ 前置条件（**不是放宽断言**）────────────────────────────────────
+        /// `Launch()` 现在**门控 `PoolSimulator.TableAtRest`**（"整盘未静止不许出杆"）。
+        /// 本用例原先是"`Initialize()` 之后**立刻** `Launch()`" —— 那时 `RestStableFrames` 尚未满足，
+        /// 出杆**会被拒绝**。故两处 `Launch()` 之前都**先推进到静止**（`RestStableFrames` + 2 步）。
+        /// 这两步把"什么时候才能出杆"从**隐含约定**变成**显式前置条件**：
+        /// 断言一条没删、阈值一处没动，只是把**被门控挡住的那次出杆**换成了合法出杆。
         /// </summary>
         [Test]
         public void T42b_BallVisuals_Roll_ByDisplacement()
@@ -327,6 +334,17 @@ namespace Billiards.Tests
                 visualGo.transform.rotation = Quaternion.identity;   // 已知初态，便于与闭式直接比对
                 drive.aimDegrees = 180f;                             // 世界走向 ≈ +x（不朝袋口）
                 drive.power = 1f;                                    // 初速 4.5 m/s（单步 ≈ 0.0375 m）
+
+                // ★ 前置条件显式化（不是放宽断言）：`Launch()` 现在门控 `PoolSimulator.TableAtRest`
+                // ⇒ 必须先推进到静止（`RestStableFrames` + 2 步余量）才可能出杆成功。
+                // 推进期间球静止 ⇒ `SyncBallVisual` 的位移为 0 ⇒ **不自转**，故不影响下面的自转闭式。
+                for (int i = 0; i < PoolSimulator.RestStableFrames + 2; i++)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                }
+
+                Assert.IsTrue(drive.Simulator.TableAtRest,
+                    "T42b：前提 —— 推进 RestStableFrames + 2 步后整盘应静止（否则出杆会被门控拒绝）。");
                 drive.Launch();
 
                 Assert.Less(Quaternion.Angle(Quaternion.identity, visualGo.transform.rotation), 1e-3f,
@@ -433,6 +451,15 @@ namespace Billiards.Tests
                 visual2Go.transform.rotation = Quaternion.identity;
                 drive2.aimDegrees = 180f;
                 drive2.power = 1f;
+
+                // ★ 前置条件显式化：同 T42b 主分支 —— 先推进到静止，`Launch()` 才会被门控放行。
+                for (int i = 0; i < PoolSimulator.RestStableFrames + 2; i++)
+                {
+                    drive2.Advance(PoolSimulator.FixedDeltaTime);
+                }
+
+                Assert.IsTrue(drive2.Simulator.TableAtRest,
+                    "T42b(⑤)：前提 —— 推进 RestStableFrames + 2 步后整盘应静止。");
                 drive2.Launch();
                 drive2.Advance(PoolSimulator.FixedDeltaTime);
 

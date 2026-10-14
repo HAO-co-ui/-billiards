@@ -224,6 +224,11 @@ namespace Billiards.Tests
         ///    —— 这才是"漏改调用点"的**可判定**形式；
         /// ④ 三个字段必须真的从 `_params` 读出来（否则实现根本没接线）。
         ///
+        /// ⚠ **③ 的计数已由 2 重钉为 3（`AverageVelocity`）**：新增的 `PoolSimulator.PlaceBall`
+        /// （出杆入口的 `_vAvg` 同步）是**第 3 个合法调用点**，它也传 `DecelerationAt(...)`。
+        /// 该计数的作用是"**没有第 4 个绕过 `DecelerationAt` 的调用点**"（"每个都传"这一条始终不变）⇒
+        /// 重钉的是**期望值**，不是判据强度。
+        ///
         /// ⚠ **② 为什么是"穷举前缀"而不是"grep 旧字段名"（两点都要说清）**：
         ///  · **语义上更强**：旧字段名只是"别的名字"的一个特例；穷举 `_params.rolling*` 能抓住
         ///    **任何**新造的重复存储，而不只是那一个名字；
@@ -309,9 +314,9 @@ namespace Billiards.Tests
                 }
             }
 
-            if (avgCalls != 2)
+            if (avgCalls != 3)
             {
-                failures.Add($"③ `AverageVelocity` 调用点应为 **2** 处（子步内位置推进 / TOI 后剩余时间推进），实测 {avgCalls}。");
+                failures.Add($"③ `AverageVelocity` 调用点应为 **3** 处（子步内位置推进 / TOI 后剩余时间推进 / `PlaceBall` 的出杆缓存同步），实测 {avgCalls}。");
             }
 
             if (rollCalls != 1)
