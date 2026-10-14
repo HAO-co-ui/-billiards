@@ -25,7 +25,7 @@ namespace Billiards.EditorTools
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
-        [MenuItem("Billiards/Verify/Validate Day-3 Visuals (materials/scene/camera)", false, 401)]
+        [MenuItem("Billiards/Verify/Validate Visuals (materials/scene/camera)", false, 401)]
         public static void ValidateInteractive()
         {
             // ⚠ R2：**不重建被校验对象** —— 校验“仓库里既有的 Main.unity”，而不是自己刚造的。
@@ -50,7 +50,7 @@ namespace Billiards.EditorTools
             }
             catch (Exception ex)
             {
-                Debug.LogError("Day-3 渲染失败：" + ex);
+                Debug.LogError("渲染失败：" + ex);
                 exit = 1;
             }
 
@@ -75,7 +75,7 @@ namespace Billiards.EditorTools
             }
             catch (Exception ex)
             {
-                Debug.LogError("Day-3 校验过程中抛出异常：" + ex);
+                Debug.LogError("材质视觉校验过程中抛出异常：" + ex);
                 exitCode = 2;
             }
 
@@ -405,7 +405,7 @@ namespace Billiards.EditorTools
             report.Add(cueMesh != null && Mathf.Abs(cueLen - PoolConstants.CueLength) < 1e-3f
                 ? CheckResult.Ok("GEO-02", "球杆网格长 = PoolConstants.CueLength（轴向已实测记录）",
                     PoolConstants.CueLength.ToString("R"), $"{cueLen:F4} m（长轴 = {cueAxis}）",
-                    $"Unity 导入后网格本地长轴 = {cueAxis}；文档声称杆身 +Z，**实测为准**，Day 10 球杆动画需据此定向。")
+                    $"Unity 导入后网格本地长轴 = {cueAxis}；文档声称杆身 +Z，**实测为准**，球杆动画（交互层）需据此定向。")
                 : CheckResult.Fail("GEO-02", "球杆网格长 = PoolConstants.CueLength", PoolConstants.CueLength.ToString("R"),
                     $"{cueLen:F4} m（长轴 = {cueAxis}）"));
 

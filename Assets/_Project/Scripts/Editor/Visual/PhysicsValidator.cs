@@ -40,11 +40,11 @@ namespace Billiards.EditorTools
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
-        [MenuItem("Billiards/Verify/Validate Day-4 Physics Greybox", false, 403)]
+        [MenuItem("Billiards/Verify/Validate Physics Greybox", false, 403)]
         public static void ValidateInteractive()
         {
             int exitCode = RunAndWrite();
-            Debug.Log("Day-4 验收退出码：" + exitCode);
+            Debug.Log("物理验收退出码：" + exitCode);
         }
 
         /// <summary>供 <c>-executeMethod</c> 使用；退出码 0 = 全过，1 = 有 FAIL，2 = 抛异常。</summary>
@@ -68,7 +68,7 @@ namespace Billiards.EditorTools
             }
             catch (Exception ex)
             {
-                Debug.LogError("Day-4 校验过程中抛出异常：" + ex);
+                Debug.LogError("物理校验过程中抛出异常：" + ex);
                 return 2;
             }
 
@@ -269,7 +269,7 @@ namespace Billiards.EditorTools
             report.Add(ok
                 ? CheckResult.Ok("D4-BAN-01", "Scenes + Prefabs 无 Rigidbody/Collider（含新灰盒场景）",
                     "0 / 0，且扫描非空转", actual,
-                    "复用 `PhysicsBanAudit` 单点实现（铁律 16）；扫描范围含本切片新增的 PhysicsGreybox.unity。")
+                    "复用 `PhysicsBanAudit` 单点实现（铁律 16）；扫描范围含新增的 PhysicsGreybox.unity。")
                 : CheckResult.Fail("D4-BAN-01", "Scenes + Prefabs 无 Rigidbody/Collider（含新灰盒场景）",
                     "0 / 0，且扫描非空转",
                     actual + (scan.Offenders.Count > 0 ? "；违规：" + string.Join(" | ", scan.Offenders) : "（扫描空转！）")));
@@ -290,7 +290,7 @@ namespace Billiards.EditorTools
             report.Add(ok
                 ? CheckResult.Ok("D4-BLD-01", "build list 场景数 == 1（灰盒场景未被注册）",
                     "仅 " + MainScenePath, actual,
-                    "R-J：灰盒场景**刻意不注册**。若注册，Day 1 的 SCN-02（build list 恰含 Main.unity）会失败、其 26/26 证据作废。")
+                    "R-J：灰盒场景**刻意不注册**。若注册，工程配置阶段的 SCN-02（build list 恰含 Main.unity）会失败、其 26/26 证据作废。")
                 : CheckResult.Fail("D4-BLD-01", "build list 场景数 == 1（灰盒场景未被注册）",
                     "仅 " + MainScenePath, actual));
         }

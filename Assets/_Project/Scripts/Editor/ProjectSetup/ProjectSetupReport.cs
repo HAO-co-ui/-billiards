@@ -177,7 +177,7 @@ namespace Billiards.EditorTools
         public string ToConsoleSummary()
         {
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("================ Billiards Day-1 工程配置验收 ================");
+            sb.AppendLine("================ Billiards 验收报告 ================");
             sb.AppendLine("Unity " + unityVersion + "  |  target " + activeBuildTarget + "  |  batch " + isBatchMode);
             sb.AppendLine("--------------------------------------------------------------");
 

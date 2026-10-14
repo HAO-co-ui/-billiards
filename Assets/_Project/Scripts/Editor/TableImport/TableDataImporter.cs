@@ -74,7 +74,7 @@ namespace Billiards.EditorTools
             }
             catch (Exception ex)
             {
-                Debug.LogError("Day-2 数据导入抛出异常：" + ex);
+                Debug.LogError("数据导入抛出异常：" + ex);
                 summary = "IMPORT_FAILED: " + ex;
                 exitCode = 1;
             }
@@ -99,7 +99,7 @@ namespace Billiards.EditorTools
             public string ToConsoleSummary()
             {
                 var sb = new StringBuilder();
-                sb.AppendLine("================ Billiards Day-2 数据导入 ================");
+                sb.AppendLine("================ Billiards 数据导入 ================");
                 sb.AppendLine((Regenerated ? "[REGENERATED] " : "[SKIPPED-UPTODATE] ") + Message);
                 if (Config != null)
                 {

@@ -68,12 +68,12 @@ namespace Billiards.EditorTools
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
-        [MenuItem("Billiards/Visual/Build Day-3 Materials, Scene & Prefabs", false, 400)]
+        [MenuItem("Billiards/Visual/Build Materials, Scene & Prefabs", false, 400)]
         public static void ApplyInteractive()
         {
             Apply();
-            Debug.Log("Day-3 视觉基础构建完成。");
-            EditorUtility.DisplayDialog("Billiards Day-3 Setup",
+            Debug.Log("视觉基础构建完成。");
+            EditorUtility.DisplayDialog("Billiards Material Visual Setup",
                 "材质 / 场景 / Prefab 构建完成。\n\n材质：" + BodyMaterialPath + "\n" + NetsMaterialPath, "OK");
         }
 

@@ -45,22 +45,22 @@ namespace Billiards.EditorTools
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
-        [MenuItem("Billiards/Visual/Build Day-4 Physics Greybox Scene", false, 402)]
+        [MenuItem("Billiards/Visual/Build Physics Greybox Scene", false, 402)]
         public static void ApplyInteractive()
         {
             Apply();
-            Debug.Log("Day-4 灰盒物理场景可用：" + ScenePath);
-            EditorUtility.DisplayDialog("Billiards Day-4 Setup",
+            Debug.Log("灰盒物理场景可用：" + ScenePath);
+            EditorUtility.DisplayDialog("Billiards Physics Greybox Setup",
                 "灰盒物理场景已就绪（幂等：已存在则不重写）：\n\n" + ScenePath
                 + "\n\n注意：本场景刻意**不**注册进 Build Settings（见 spec §8 H-6）。", "OK");
         }
 
-        [MenuItem("Billiards/Visual/Rebuild Day-4 Physics Greybox Scene (force overwrite)", false, 403)]
+        [MenuItem("Billiards/Visual/Rebuild Physics Greybox Scene (force overwrite)", false, 403)]
         public static void RebuildInteractive()
         {
             Rebuild();
-            Debug.Log("Day-4 灰盒物理场景已强制重建：" + ScenePath);
-            EditorUtility.DisplayDialog("Billiards Day-4 Setup",
+            Debug.Log("灰盒物理场景已强制重建：" + ScenePath);
+            EditorUtility.DisplayDialog("Billiards Physics Greybox Setup",
                 "灰盒物理场景已**强制重建**（覆盖）：\n\n" + ScenePath, "OK");
         }
 
@@ -120,7 +120,7 @@ namespace Billiards.EditorTools
             }
             catch (Exception ex)
             {
-                Debug.LogError("Day-4 灰盒场景构建失败：" + ex);
+                Debug.LogError("灰盒场景构建失败：" + ex);
                 exitCode = 1;
             }
 

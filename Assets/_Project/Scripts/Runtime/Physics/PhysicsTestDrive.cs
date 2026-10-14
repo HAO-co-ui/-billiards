@@ -32,7 +32,7 @@ namespace Billiards.Physics
         [Tooltip("可选：白球视觉 Transform，每步后同步到内核球位。")]
         public Transform ballVisual;
 
-        [Header("物理参数（Day 4 占位值；正式值 Day 7）")]
+        [Header("物理参数（占位值；正式值待手感标定）")]
         [Tooltip("库边法向恢复系数 e。占位值，未经策划确认。")]
         [Range(0f, 1f)]
         public float cushionRestitution = 0.8f;
@@ -41,7 +41,7 @@ namespace Billiards.Physics
         [Range(0f, 1f)]
         public float cushionTangentialFriction = 0.9f;
 
-        [Tooltip("台呢滚阻减速度 a（m/s²）。Day 4 = 0（spec §2.1 单一口径）。")]
+        [Tooltip("台呢滚阻减速度 a（m/s²）。物理内核阶段 = 0（spec §2.1 单一口径）。")]
         public float rollingDeceleration = 0f;
 
         [Header("冒烟测试")]

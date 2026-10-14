@@ -85,7 +85,7 @@ namespace Billiards.EditorTools
             TableDataImporter.Import();
         }
 
-        [MenuItem("Billiards/Verify/Validate Table Data & Art (Day 2)", false, 201)]
+        [MenuItem("Billiards/Verify/Validate Table Data & Art", false, 201)]
         public static void ValidateInteractive()
         {
             // 只校验；**不重建**（前置条件走单点 helper）
@@ -97,7 +97,7 @@ namespace Billiards.EditorTools
             File.WriteAllText(path, JsonUtility.ToJson(report, true), new UTF8Encoding(false));
             Debug.Log(report.ToConsoleSummary());
             EditorUtility.DisplayDialog(
-                "Billiards Day-2 Validate",
+                "Billiards Table Data Validate",
                 $"校验完成（**未重建任何产物**）。\n\nPASS {report.passCount}  WARN {report.warnCount}  FAIL {report.failCount}\n结论：{report.overallStatus}",
                 "OK");
             Debug.Log("验收报告已写入：" + path);
@@ -107,7 +107,7 @@ namespace Billiards.EditorTools
         /// **名字自证其行**的重建入口：显式重建 TableConfig.asset，然后校验。
         /// 与 <see cref="ValidateInteractive"/> 分开，是为了让"会重建"这件事在菜单名里可见。
         /// </summary>
-        [MenuItem("Billiards/Verify/Rebuild && Validate Table Data (Day 2)", false, 203)]
+        [MenuItem("Billiards/Verify/Rebuild && Validate Table Data", false, 203)]
         public static void RebuildAndValidateInteractive()
         {
             Debug.Log("[Rebuild & Validate] **显式重建** TableConfig.asset（本入口的名字已说明它会重建）");
@@ -119,7 +119,7 @@ namespace Billiards.EditorTools
             File.WriteAllText(path, JsonUtility.ToJson(report, true), new UTF8Encoding(false));
             Debug.Log(report.ToConsoleSummary());
             EditorUtility.DisplayDialog(
-                "Billiards Day-2 Rebuild & Validate",
+                "Billiards Table Data Rebuild & Validate",
                 $"已**重建** TableConfig.asset 并校验。\n\nPASS {report.passCount}  WARN {report.warnCount}  FAIL {report.failCount}\n结论：{report.overallStatus}",
                 "OK");
             Debug.Log("验收报告已写入：" + path);
@@ -146,7 +146,7 @@ namespace Billiards.EditorTools
             }
             catch (Exception ex)
             {
-                Debug.LogError("Day-2 校验过程中抛出异常：" + ex);
+                Debug.LogError("数据校验过程中抛出异常：" + ex);
                 exitCode = 2;
             }
 
@@ -809,7 +809,7 @@ namespace Billiards.EditorTools
                 report.Add(ok
                     ? CheckResult.Ok("IMP-01", "模型导入设置即代码",
                         "useFileScale=false, globalScale=1, readable, no compression, no auto-material, MikkTSpace",
-                        "全部符合", "杜绝二次缩放；材质留待 Day 3 手建。")
+                        "全部符合", "杜绝二次缩放；材质留待材质视觉阶段手建。")
                     : CheckResult.Fail("IMP-01", "模型导入设置即代码",
                         "useFileScale=false, globalScale=1, readable, no compression, no auto-material, MikkTSpace",
                         $"useFileScale={model.useFileScale}, globalScale={model.globalScale}, readable={model.isReadable}, "
@@ -901,7 +901,7 @@ namespace Billiards.EditorTools
                     BilliardsAssetPostprocessor.PackedMaskPath, "存在")
                 : CheckResult.Warn("ART-03", "Metallic-Roughness 打包贴图已生成（R2 提前处置）",
                     BilliardsAssetPostprocessor.PackedMaskPath, "未生成",
-                    "URP Lit 需 Metallic(R)+Smoothness(A)。可运行 Billiards/Art/Pack Table Metallic-Roughness Mask；Day 3 处理。"));
+                    "URP Lit 需 Metallic(R)+Smoothness(A)。可运行 Billiards/Art/Pack Table Metallic-Roughness Mask；材质视觉阶段处理。"));
         }
 
         private static string Sha256Hex(string fullPath)
