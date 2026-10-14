@@ -1,0 +1,174 @@
+using System.Collections.Generic;
+using Billiards.Table;
+using UnityEngine;
+
+namespace Billiards.Physics
+{
+    /// <summary>
+    /// **击球预测的纯核**：把"当前全盘状态 + 期望初速"喂给一个**独立的**内核实例，向前推演到
+    /// **首次球-球接触**，取出**幽灵球**与两个出射方向。
+    ///
+    /// ── 三条结构保证（把"只读"变成可判定）────────────────────────────────
+    /// ① **零扰动**：探测内核是**函数内的局部变量**，且本类**只读** `source` 的公开出口
+    ///    （`Balls` / `Params` / `RestSpeedThresholdValue` / `RestStableFramesValue` /
+    ///    `PocketCaptureRadiusScaleValue` / `IsBallInPlay`），**从不**调用 `source` 的
+    ///    `Step` / `PlaceBall` / `LoadBalls` / `ResetDiagnostics`。
+    /// ② **同源**：探测内核的构造参数**逐字段取自** `source` 的只读出口 ⇒ 参数 / 步长 / 终止 / 袋口乘子一致。
+    /// ③ **纯函数**：无 `Input`、无 `Time`、无 `Random`、无 `MonoBehaviour` ⇒ 同一输入必得同一输出。
+    ///
+    /// ── 快照语义（**只装在场上球**）────────────────────────────────────────
+    /// <see cref="PoolSimulator.LoadBalls"/> 会清掉 `_frozen` 与 `_capturedPocket`（= "全新一局"的定义）
+    /// ⇒ **带冻结状态装载在结构上不可达**。故快照只收 `IsBallInPlay(i)` 为真的球（位置/速度原样照抄），
+    /// **已入袋/擦袋角离台的球不表示**。白球若也不在场上，则按出杆口径补一颗在 `footSpot` 的白球。
+    /// ⚠ **已知偏差（盲带）**：在跑内核里"运动球 vs 已冻结球"的对**不会**被跳过，理论上白球仍可撞到
+    /// **袋里的球**；探测内核里没有那颗球 ⇒ 该窗口预测与实跑会分叉。窗口极窄（白球须自己也进入同一袋口区域），
+    /// 本核**不声称**全场景等价。
+    ///
+    /// ── 盲带（如实声明）────────────────────────────────────────────────────
+    /// · **虚线粒度**：路径按 `Step()`（1/120 s）采样 ⇒ 库边拐角处虚线有最多 ~37.5 mm 的圆角误差。
+    ///   它**只影响虚线观感**；<see cref="ShotPrediction.GhostBall"/> 与出射方向来自内核 TOI 记录（~1e-6 m），**不受影响**。
+    /// · **段接触计数粒度**：<see cref="ShotPrediction.CushionBounceCountBeforeContact"/> 只能按 `Step` 增量判定，
+    ///   ⇒ 本核**只累计"接触之前那些完整 Step"**的段接触增量，**接触所在 Step 内**的段接触不参与判定
+    ///   （保守、可判定；跨该 Step 的细分时刻无法从计数粒度分辨）。
+    /// </summary>
+    public static class ShotPredictor
+    {
+        /// <summary>
+        /// 预测一杆。白球约定 = **索引 0**（与 `PhysicsTestDrive.Launch()` 同口径）。
+        /// </summary>
+        /// <param name="table">球桌几何真源；须与 <paramref name="source"/> 用同一资产。</param>
+        /// <param name="source">在跑内核（**只读**；本方法不改它任何状态）。</param>
+        /// <param name="cueVelocity">白球初速（规范物理平面，m/s）。</param>
+        /// <param name="maxSteps">步数上限（≥1）。达到上限仍无首次接触 ⇒ <see cref="ShotPrediction.HasFirstContact"/> 为 false。</param>
+        public static ShotPrediction Predict(TableConfig table, PoolSimulator source, Vector2 cueVelocity, int maxSteps)
+        {
+            var result = new ShotPrediction { CueWorldPath = new List<Vector2>() };
+            if (table == null || source == null || maxSteps <= 0)
+            {
+                return result;
+            }
+
+            // ── ① 独立探测内核：参数 / 步长 / 终止 / 袋口乘子**逐字段取自只读出口** ──
+            var probe = new PoolSimulator(table, source.Params, source.PocketCaptureRadiusScaleValue,
+                source.RestSpeedThresholdValue, source.RestStableFramesValue);
+
+            // ── ② 快照：只装在场上球（白球离台时补一颗在 footSpot） ──
+            IReadOnlyList<BallState> srcBalls = source.Balls;
+            var snapshot = new List<BallState>(srcBalls.Count + 1);
+            int cueLocalIndex = -1;
+
+            if (!source.IsBallInPlay(0))
+            {
+                // 白球不在场上（入袋 / 擦袋角离台）⇒ 与出杆口径一致：放回开球点。
+                snapshot.Add(new BallState { position = table.footSpot, velocity = Vector2.zero });
+                cueLocalIndex = 0;
+            }
+
+            for (int i = 0; i < srcBalls.Count; i++)
+            {
+                if (!source.IsBallInPlay(i))
+                {
+                    continue;   // 已离台：不表示（见类型注释的盲带）
+                }
+
+                if (i == 0)
+                {
+                    cueLocalIndex = snapshot.Count;
+                }
+
+                snapshot.Add(new BallState { position = srcBalls[i].position, velocity = srcBalls[i].velocity });
+            }
+
+            if (cueLocalIndex < 0)
+            {
+                // 兜底：源内核一颗球都没有（`LoadBalls` 之前）⇒ 至少放一颗白球在开球点。
+                snapshot.Add(new BallState { position = table.footSpot, velocity = Vector2.zero });
+                cueLocalIndex = 0;
+            }
+
+            probe.LoadBalls(snapshot);
+
+            // ── ③ 置初速：只动白球（`PlaceBall` 同时同步 `_vAvg` 与表级终止标志） ──
+            Vector2 cueStart = snapshot[cueLocalIndex].position;
+            probe.PlaceBall(cueLocalIndex, cueStart, cueVelocity);
+
+            var path = new List<Vector2> { cueStart };
+
+            // ── ④ 步进到首接触（首接触**即停**：不跑到整盘静止） ──
+            int steps = 0;
+            int bounces = 0;
+            while (steps < maxSteps && !probe.HasBallBallContact)
+            {
+                int segmentContactsBefore = probe.TotalContactCount - probe.BallBallContactCount;
+
+                probe.Step();
+                steps++;
+
+                if (probe.HasBallBallContact)
+                {
+                    break;   // 本步的"白球位置"由幽灵球承担（下面补），不采接触后的位置
+                }
+
+                path.Add(probe.Balls[cueLocalIndex].position);
+                bounces += (probe.TotalContactCount - probe.BallBallContactCount) - segmentContactsBefore;
+            }
+
+            result.CueStart = cueStart;
+            result.StepsSimulated = steps;
+            result.CushionBounceCountBeforeContact = bounces;
+            result.BallBallContactCount = probe.BallBallContactCount;
+            result.TotalContactCount = probe.TotalContactCount;
+            result.ProbeBallCount = snapshot.Count;
+            result.HasFirstContact = probe.HasBallBallContact;
+
+            if (!probe.HasBallBallContact)
+            {
+                result.CueWorldPath = path;
+                return result;
+            }
+
+            // ── ⑤ 出几何：白球那一侧的位置 = 幽灵球；另一颗 = 目标球 ──
+            BallBallContactRecord rec = probe.FirstBallBallContact;
+            bool cueIsFirst = rec.first == cueLocalIndex;
+
+            Vector2 ghost = cueIsFirst ? rec.firstPosition : rec.secondPosition;
+            Vector2 targetCenter = cueIsFirst ? rec.secondPosition : rec.firstPosition;
+            Vector2 cueVelocityAfter = cueIsFirst ? rec.firstVelocityAfter : rec.secondVelocityAfter;
+            Vector2 targetVelocityAfter = cueIsFirst ? rec.secondVelocityAfter : rec.firstVelocityAfter;
+
+            path.Add(ghost);   // 末点 == 幽灵球（逐位）
+
+            result.GhostBall = ghost;
+            result.TargetBallCenter = targetCenter;
+            result.TimeToFirstContactSeconds = rec.timeSeconds;
+            result.CueWorldPath = path;
+            result.CueOutgoingDirection = Normalize(cueVelocityAfter);
+            // 目标球出射：解算后速度方向；退化（≈0）⇒ 回落到"幽灵球 → 目标球心"连线
+            //（等质量、无自旋下的精确出射方向，与法向 `n̂` 同向）。
+            result.TargetOutgoingDirection = Normalize(targetVelocityAfter);
+            if (IsDegenerate(result.TargetOutgoingDirection))
+            {
+                result.TargetOutgoingDirection = Normalize(targetCenter - ghost);
+            }
+
+            return result;
+        }
+
+        private static Vector2 Normalize(Vector2 v)
+        {
+            float len2 = v.x * v.x + v.y * v.y;
+            if (len2 <= 1e-24f)
+            {
+                return Vector2.zero;
+            }
+
+            float inv = 1f / PoolMath.Sqrt(len2);
+            return new Vector2(v.x * inv, v.y * inv);
+        }
+
+        private static bool IsDegenerate(Vector2 v)
+        {
+            return v.x == 0f && v.y == 0f;
+        }
+    }
+}

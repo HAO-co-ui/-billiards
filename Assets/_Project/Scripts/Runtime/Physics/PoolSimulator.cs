@@ -163,6 +163,27 @@ namespace Billiards.Physics
         /// <summary>子步内该球是否仍在参与事件循环（低于近零速度即退出）。</summary>
         private bool[] _active = new bool[0];
 
+        // ── 只读诊断：首次球-球接触（**只记录，不参与物理**）──────────────────
+
+        /// <summary>是否已记录过首次球-球接触（只记第一次）。由 <see cref="ResetDiagnostics"/> 归零。</summary>
+        private bool _hasFirstBallBallContact;
+
+        /// <summary>首次球-球接触的记录（仅在 <see cref="_hasFirstBallBallContact"/> 为真时有意义）。</summary>
+        private BallBallContactRecord _firstBallBallContact;
+
+        /// <summary>已**完成**的 <see cref="Step"/> 次数（自上次 <see cref="ResetDiagnostics"/> 起）。</summary>
+        private int _completedSteps;
+
+        /// <summary>当前 <see cref="Step"/> 内**已开始**的子步数（用于时间口径，见 <see cref="FirstBallBallContact"/>）。</summary>
+        private int _completedSubStepsInCurrentStep;
+
+        /// <summary>
+        /// 接触瞬间的"**当前子步内剩余时间**"（= `AdvanceSubStep` 内局部变量 `remaining` 的镜像）。
+        /// 仅用于把接触时刻折算成 `timeSeconds`（见 <see cref="BallBallContactRecord.timeSeconds"/>）。
+        /// **不参与任何解算** —— 只在 `remaining` 被赋值处同步一份副本。
+        /// </summary>
+        private float _subStepRemainingAtContact;
+
         // 段接触组：必须**同时记录"哪个球"与"哪个段"** —— 只记段索引会把该段解算到全部球上（越界反射）。
         private readonly List<int> _segBall = new List<int>(8);
         private readonly List<int> _segIndex = new List<int>(8);
@@ -234,6 +255,24 @@ namespace Billiards.Physics
         /// 若改成"按事件计数"，一次同刻事件里 A-B 与 B-C 会合并成 1 ⇒ 通过/失败不可预期。
         /// </summary>
         public int BallBallContactCount { get; private set; }
+
+        /// <summary>
+        /// **是否已记录"首次球-球接触"**（只读诊断）。由 <see cref="ResetDiagnostics"/> 归零 ⇒ 新实例天然为 <c>false</c>。
+        /// </summary>
+        public bool HasBallBallContact => _hasFirstBallBallContact;
+
+        /// <summary>
+        /// **首次球-球接触**的记录（**只读诊断**）：两球索引、**冲量施加前**的位置与**解算后**的速度、以及接触时刻。
+        /// 仅当 <see cref="HasBallBallContact"/> 为真时有意义。
+        ///
+        /// <para>**记录时机 = <see cref="ResolveBallBallContact"/> 的函数入口** —— 此刻"所有活跃球刚推进到 `earliest`、
+        /// 冲量尚未施加"，正是"**相切那一瞬**"。<b>不是</b> <see cref="Step"/> 末端采样
+        /// （那会让白球在接触后又走 `1/120 s`：擦碰时偏差可达 **37.5 mm &gt; 球半径**）。</para>
+        ///
+        /// <para>**它完全不参与物理**：只在既有解算路径上读一次值、写一份副本；不新增任何 TOI 扫描/配对循环
+        /// （单点性由 `T72b` 钉），也不改两个既有计数的任何一处。</para>
+        /// </summary>
+        public BallBallContactRecord FirstBallBallContact => _firstBallBallContact;
 
         /// <summary>
         /// **每个定长步**（一次 <see cref="Step"/>）内、**所有子步的全局事件循环迭代数的最大值**。
@@ -445,7 +484,7 @@ namespace Billiards.Physics
         }
 
         /// <summary>
-        /// 清零**每杆计数**（接触数 / 守卫计数 / 各类事件计数 / 终止状态）。
+        /// 清零**每杆计数**（接触数 / 守卫计数 / 各类事件计数 / 终止状态 / **首次球-球接触诊断**）。
         ///
         /// <para>**⚠ 它<b>不</b>清"逐球入袋记录"**（<c>_capturedPocket</c>）—— 该记录是**跨杆状态**：
         /// "连续对局"要求**上一杆入袋的球在下一杆里依然在袋里**。
@@ -474,6 +513,13 @@ namespace Billiards.Physics
             PocketJawCrossingCount = 0;
             TableAtRest = false;
             ConsecutiveRestFrameCount = 0;
+
+            // 只读诊断：首次球-球接触与时间口径一并归零（与上面的"每杆计数"同族语义）。
+            _hasFirstBallBallContact = false;
+            _firstBallBallContact = default;
+            _completedSteps = 0;
+            _completedSubStepsInCurrentStep = 0;
+            _subStepRemainingAtContact = 0f;
         }
 
         /// <summary>
@@ -573,8 +619,13 @@ namespace Billiards.Physics
         {
             for (int sub = 0; sub < SubSteps; sub++)
             {
+                // 诊断用时间口径：本子步"已开始"但尚未完成（接触记录发生在子步**内**）。
+                _completedSubStepsInCurrentStep = sub;
                 AdvanceSubStep(SubStepDeltaTime);
             }
+
+            _completedSteps++;
+            _completedSubStepsInCurrentStep = 0;
 
             UpdateTermination();
         }
@@ -595,6 +646,7 @@ namespace Billiards.Physics
             }
 
             float remaining = dt;
+            _subStepRemainingAtContact = dt;   // 诊断：子步起点对应的"剩余时间"
             int iterations = 0;
             bool previousIterationWasZeroTime = false;
 
@@ -624,6 +676,7 @@ namespace Billiards.Physics
                     }
 
                     CollectSubstepEndContacts();
+                    _subStepRemainingAtContact = 0f;   // 诊断：本分支在**子步末**采样 ⇒ 剩余记 0
                     ResolveContactGroup();
                     remaining = 0f;
                     break;
@@ -663,6 +716,7 @@ namespace Billiards.Physics
                 }
 
                 remaining -= earliest;
+                _subStepRemainingAtContact = remaining;   // 诊断：接触瞬间的"子步内剩余时间"
 
                 ResolveContactGroup();
 
@@ -1137,6 +1191,30 @@ namespace Billiards.Physics
         /// </summary>
         private void ResolveBallBallContact(int i, int k)
         {
+            // ★ **只读诊断：首次球-球接触的单一记录点**（`BallBallContactCount` 的两处递增都在本函数内
+            //   ⇒ 在**函数入口**记录 = 一处记录点，**不新开**任何"检测球-球接触"的地方）。
+            //   此刻"所有活跃球刚推进到 `earliest`、**冲量尚未施加**" ⇒ 正是"相切那一瞬"，
+            //   满足 `|p_i − p_k| == 2r`（由 `SolveBallBallToi` 解析求得，float 残差 ~1e-7 m）。
+            //   ⚠ **不得**改成 `Step()` 末端采样：擦碰时白球会多走 ~37.5 mm（> 球半径）。
+            bool recordsFirstContact = !_hasFirstBallBallContact;
+            if (recordsFirstContact)
+            {
+                _hasFirstBallBallContact = true;
+                _firstBallBallContact = new BallBallContactRecord
+                {
+                    first = i,
+                    second = k,
+                    firstPosition = _balls[i].position,
+                    secondPosition = _balls[k].position,
+                    // 先填"冲量前"的速度；下面若真的施加了冲量，再就地覆盖为"解算后"的速度。
+                    firstVelocityAfter = _balls[i].velocity,
+                    secondVelocityAfter = _balls[k].velocity,
+                    timeSeconds = _completedSteps * FixedDeltaTime
+                                  + _completedSubStepsInCurrentStep * SubStepDeltaTime
+                                  + (SubStepDeltaTime - _subStepRemainingAtContact),
+                };
+            }
+
             Vector2 pi = _balls[i].position;
             Vector2 pk = _balls[k].position;
 
@@ -1206,6 +1284,13 @@ namespace Billiards.Physics
             // 冲量已施加 ⇒ 这是一次真实解算（与上面的"只分离不施冲量"情形区分开）。
             BallBallContactCount++;
             TotalContactCount++;
+
+            // 诊断：把"解算后"的速度补进首接触记录（**同一函数内**、同一次调用；不改任何解算量）。
+            if (recordsFirstContact)
+            {
+                _firstBallBallContact.firstVelocityAfter = vi;
+                _firstBallBallContact.secondVelocityAfter = vk;
+            }
 
             float energyAfter = vi.x * vi.x + vi.y * vi.y + vk.x * vk.x + vk.y * vk.y;
             if (energyAfter > energyBefore * (1f + 1e-6f))
@@ -1505,5 +1590,43 @@ namespace Billiards.Physics
             float inv = 1f / PoolMath.Sqrt(len2);
             return new Vector2(v.x * inv, v.y * inv);
         }
+    }
+
+    /// <summary>
+    /// **首次球-球接触**的一次记录（**只读诊断**，供"击球预测"取幽灵球与出射方向用）。
+    ///
+    /// <para>语义：在 <see cref="PoolSimulator.ResolveBallBallContact"/> 的**函数入口**（= 所有活跃球刚推进到
+    /// `earliest`、**冲量尚未施加**）记下两球的位置与索引；其中 <c>*VelocityAfter</c> 在**同一次调用内**、
+    /// 冲量施加之后补成"解算后"的速度。</para>
+    ///
+    /// <para>⚠ <b>不是</b>"`Step()` 末端采样"：那会让白球在接触后又走 `1/120 s`（擦碰时偏差 ~37.5 mm &gt; 球半径）。
+    /// 本记录保证 <c>|firstPosition − secondPosition| == 2r</c>（float 残差 ~1e-7 m）。</para>
+    ///
+    /// <para>**时间口径**（<c>timeSeconds</c>，**不读 `Time`** ⇒ 不破坏确定性）：
+    /// `已完成Step数 × FixedDeltaTime + 本Step内已开始子步数 × SubStepDeltaTime + (SubStepDeltaTime − 接触瞬间该子步内剩余时间)`；
+    /// 时间原点 = 最近一次 <see cref="PoolSimulator.ResetDiagnostics"/>。</para>
+    /// </summary>
+    public struct BallBallContactRecord
+    {
+        /// <summary>球索引（升序对的第一颗）。</summary>
+        public int first;
+
+        /// <summary>球索引（升序对的第二颗）。</summary>
+        public int second;
+
+        /// <summary><see cref="first"/> 在**冲量施加前**的位置（米，物理平面）。</summary>
+        public Vector2 firstPosition;
+
+        /// <summary><see cref="second"/> 在**冲量施加前**的位置（米，物理平面）。</summary>
+        public Vector2 secondPosition;
+
+        /// <summary><see cref="first"/> 在**解算后**的速度（m/s）。"只分离不施冲量"的分支下等于冲量前的速度。</summary>
+        public Vector2 firstVelocityAfter;
+
+        /// <summary><see cref="second"/> 在**解算后**的速度（m/s）。</summary>
+        public Vector2 secondVelocityAfter;
+
+        /// <summary>自最近一次 <see cref="PoolSimulator.ResetDiagnostics"/> 起、到**接触发生那一瞬**的累计仿真时间（秒）。</summary>
+        public float timeSeconds;
     }
 }
