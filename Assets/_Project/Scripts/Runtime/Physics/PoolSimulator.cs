@@ -36,18 +36,22 @@ namespace Billiards.Physics
         /// <summary>
         /// 单子步内 TOI 迭代次数上限。超过即计 <see cref="ToiIterationGuardTrips"/> 并截断该子步（不静默）。
         ///
-        /// **R-C 修复后迭代预算由 16 提升为 128**：原 16 在"球楔死在凹袋角、
-        /// 以 nm 级间隙反复微接触"时不足（实测 `ToiIterationGuardTrips = 1810`，326/1230 次发射）。
-        /// 配合 <see cref="StoppedSpeedEpsilon"/> 与"零时间推进即停"，实测 `guardTrips` 变化：
-        /// `1810（原）→ 1196（仅近零速度）→ 339（+零时间推进即停）→ 3（预算 64）→ 0（预算 128）`，
-        /// 且 `EnergyGainViolations = 0`、最大嵌入 6.147e-08 m、全量测试全绿。
-        /// 128 仍是**有限**安全网（配合两个即停判据，循环不会无进展空转），仅覆盖"真实多次接触链"。
+        /// **R-C 缺陷的幅度（这是"为什么需要两个即停判据"的依据，仍然有效）**：
+        /// 球楔死在凹袋角、以 nm 级间隙反复微接触时，原实现（精确零判速度停止）实测触发
+        /// `ToiIterationGuardTrips = 1810`（326/1230 次发射）⇒ 故引入
+        /// <see cref="StoppedSpeedEpsilon"/>（近零速度即停）与"连续两次零时间推进即停"。
         ///
-        /// **⚠ R-L 的语义变更（引入球-球之后）**：本常量原为"**每球每子步**"的迭代上限；
-        /// 引入球-球后事件循环提升为"**每子步全局**" ⇒ 迭代上限的**统计口径**变了
-        /// ⇒ 上段那串上游实测依据是在"每球每子步"口径下测得的，**在"每子步全局"口径下不再直接适用**。
-        /// 现由 <see cref="BallBallMaxIterationsObserved"/> **重新实测并核验余量**
-        /// （实测值见该属性；余量结论**不适用于 16 球密集场景**）。
+        /// **⚠ 迭代预算的依据已随事件循环的作用域变更而作废、并已重写（R-L）**：
+        /// 本常量原为"**每球每子步**"的迭代上限；引入球-球后事件循环提升为"**每子步全局**"
+        /// （见 <see cref="AdvanceSubStep"/>）⇒ 统计口径变了。
+        /// **上一版此处曾写"`16 → 128` 逐档实测（`1810 → 1196 → 339 → 3 → 0`）⇒ 0"作为 128 的取值依据 ——
+        /// 那串数据是在"每球每子步"口径下测得的，在新口径下不再适用，故已从此处移除**
+        ///（历史记录保留在 `Docs/35-A_Day4_物理内核I_spec.md` / `…_执行记录.md`，并已加勘误块）。
+        ///
+        /// **现行依据（新口径下自证）**：**"每子步全局"的迭代峰值**由
+        /// <see cref="BallBallMaxIterationsObserved"/> 实测，并由判据断言其落在 `[1, 0.5 × MaxToiIterations]`
+        /// ⇒ 即要求**余量 ≥ 2×**（实测峰值远低于该上界；余量结论**不适用于 16 球密集场景**）。
+        /// **取值本身仍为 128（未改）**；`0.5 × 128 = 64` 是**判据的上界阈值**，不是常量被改过。
         /// </summary>
         public const int MaxToiIterations = 128;
 
@@ -141,6 +145,16 @@ namespace Billiards.Physics
 
         /// <summary>接触后速度模长增大的次数（应为 0；非 0 表示接触解算引入了能量增益）。</summary>
         public int EnergyGainViolations { get; private set; }
+
+        /// <summary>
+        /// **球-球位置修正真的把两球推开了**的次数 —— 即"**位置修正是否被走到**"的**可观测量**。
+        ///
+        /// 为什么需要它：此前位置修正**零覆盖**（`ResolveDeepOverlaps` 里的一处重复实现总先把它抹平），
+        /// 而"是否走到了"只能靠间接推断。把它变成计数器后，判据可以直接断言它 ≥1。
+        /// **注意**：本计数只说明"走到了"，**"推得对不对"由结果断言守**
+        /// （分开后间距须 == `2r`）—— 两者合起来才是双边约束。
+        /// </summary>
+        public int BallBallSeparationCount { get; private set; }
 
         /// <summary>球心越过袋喉平面的次数（每次随即冻结该球）。</summary>
         public int PocketProximityEvents { get; private set; }
@@ -343,6 +357,7 @@ namespace Billiards.Physics
             PocketProximityEvents = 0;
             BallBallContactCount = 0;
             BallBallMaxIterationsObserved = 0;
+            BallBallSeparationCount = 0;
         }
 
         /// <summary>
@@ -942,13 +957,9 @@ namespace Billiards.Physics
 
         /// <summary>
         /// 位置修正：把重叠的两球沿 <c>n̂</c> **各推一半**，使间距 = <c>2r</c>。
-        /// 修正量只依赖 `(n̂, 重叠量, <see cref="BallBallSeparationShare"/>)` ⇒ **不依赖访问顺序**。
-        /// </summary>
-        /// <summary>
-        /// 位置修正：把重叠的两球沿 <c>n̂</c> **各推一半**，使间距 = <c>2r</c>。
         /// **本函数是"把重叠推开"这条不变量在本类内的单点实现**（另一处曾有的"手动贴到相切"
         /// 已删除 —— 那是重复实现，且会让本函数永不被走到）。
-        /// 修正量只依赖 `(n̂, 重叠量, <see cref="BallBallSeparationShare"/>)` ⇒ 不依赖访问顺序。
+        /// 修正量只依赖 `(n̂, 重叠量, <see cref="BallBallSeparationShare"/>)` ⇒ **不依赖访问顺序**。
         /// 返回**是否真的发生了分离**（供调用方决定是否计入"真实解算"）。
         /// </summary>
         private bool SeparatePair(int i, int k, Vector2 n)
@@ -966,6 +977,7 @@ namespace Billiards.Physics
             float push = overlap * BallBallSeparationShare;
             _balls[i].position = pi + push * n;
             _balls[k].position = pk - push * n;
+            BallBallSeparationCount++;
             return true;
         }
 

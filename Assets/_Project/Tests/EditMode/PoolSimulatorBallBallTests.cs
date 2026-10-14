@@ -367,6 +367,8 @@ namespace Billiards.Tests
             Assert.IsFalse(float.IsNaN(a.x) || float.IsNaN(a.y) || float.IsNaN(b.x) || float.IsNaN(b.y), "T22：不得产生 NaN。");
             Assert.GreaterOrEqual(dist, D - 1e-6f, "T22：首次子步后应被分离到 ≈ 2r。");
             Assert.GreaterOrEqual(sim.BallBallContactCount, 1, "T22：深层重叠必须被计一次接触（不得静默）。");
+            Assert.GreaterOrEqual(sim.BallBallSeparationCount, 1,
+                "T22：**位置修正必须被走到**（可观测量）—— 零覆盖时这条会 FAIL。");
         }
 
         [Test]
@@ -455,6 +457,8 @@ namespace Billiards.Tests
             Assert.GreaterOrEqual(sim.BallBallMaxIterationsObserved, 2,
                 "T24a：B 的段接触以 t=0 紧跟球-球 ⇒ 至少两轮迭代（顺序路径的可观测签名）。");
             Assert.GreaterOrEqual(distToSeg, R - 1e-6f, "T24a：B 不得钻入库边。");
+            Assert.LessOrEqual(sim.BallBallSeparationCount, 8,
+                "T24a：位置修正次数须有上界（双边约束）。");
         }
 
         [Test]
