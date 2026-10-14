@@ -365,15 +365,15 @@ namespace Billiards.Tests
                 }
                 else if (frozenCount == aimed.Count)
                 {
-                    category = $"仅袋口区可达（{aimed.Count}/{aimed.Count} 次在到达前穿出袋口被冻结）⇒ 归 Day 6";
+                    category = $"仅袋口区可达（{aimed.Count}/{aimed.Count} 次在到达前穿出袋口被冻结）⇒ 袋口区（后续实现）";
                 }
                 else if (onNetSide)
                 {
-                    category = "网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 归 Day 6";
+                    category = "网侧（段中点越过某袋喉平面，仅袋口内可达）⇒ 袋口区（后续实现）";
                 }
                 else if (pocketDist <= PoolConstants.PocketOpeningRadius)
                 {
-                    category = $"袋口张开区内（距袋心 {InvF(pocketDist * 1000f, "F1")} mm ≤ 张开半径）⇒ 归 Day 6";
+                    category = $"袋口张开区内（距袋心 {InvF(pocketDist * 1000f, "F1")} mm ≤ 张开半径）⇒ 袋口区（后续实现）";
                 }
                 else
                 {
