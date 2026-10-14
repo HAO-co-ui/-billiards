@@ -251,7 +251,51 @@ namespace Billiards.Tests
             Assert.LessOrEqual(a.TotalContactCount, 3000,
                 "T32b：段接触数超量级上界 3000（重复解算失控？）。");
             AssertBitIdentical(a, b, "T32b");
+            WriteBreakSampleEvidence(a);
             TestContext.WriteLine($"T32b: contacts={a.TotalContactCount}, captured={a.CapturedBallCount}, 双跑逐位一致 ✓");
+        }
+
+        /// <summary>
+        /// 写 `d6-break-sample.json`（`§7.1` 必填字段 + `t32bTotalContactCount`）。
+        /// **本方法内不得有任何断言**（跳过落盘 ⇒ 不得跳过任何检查）；未给 `-outputDir` ⇒ 只跳过落盘。
+        /// </summary>
+        private static void WriteBreakSampleEvidence(PoolSimulator sim)
+        {
+            string path = ReportOutput.ResolveTestEvidencePathOrNull("d6-break-sample.json");
+            if (path == null)
+            {
+                return;
+            }
+
+            string root = Path.GetDirectoryName(Application.dataPath) ?? string.Empty;
+            var sb = new StringBuilder();
+            sb.Append("{\n");
+            sb.Append("  \"schema\": \"billiards.d6-break-sample.v1\",\n");
+            sb.Append("  \"generatedAtUtc\": \"").Append(System.DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)).Append("\",\n");
+            sb.Append("  \"unityVersion\": \"").Append(Application.unityVersion).Append("\",\n");
+            sb.Append("  \"projectRoot\": \"").Append(root.Replace("\\", "\\\\")).Append("\",\n");
+            sb.Append("  \"isBatchMode\": ").Append(Application.isBatchMode ? "true" : "false").Append(",\n");
+            sb.Append("  \"passCount\": 1,\n");
+            sb.Append("  \"warnCount\": 0,\n");
+            sb.Append("  \"failCount\": 0,\n");
+            sb.Append("  \"overallStatus\": \"PASS\",\n");
+            sb.Append("  \"ballCount\": ").Append(sim.Balls.Count.ToString(CultureInfo.InvariantCulture)).Append(",\n");
+            sb.Append("  \"cueSpeed\": ").Append(2f.ToString("R", CultureInfo.InvariantCulture)).Append(",\n");
+            sb.Append("  \"t32bTotalContactCount\": ").Append(sim.TotalContactCount.ToString(CultureInfo.InvariantCulture)).Append(",\n");
+            sb.Append("  \"totalContactCount\": ").Append(sim.TotalContactCount.ToString(CultureInfo.InvariantCulture)).Append(",\n");
+            sb.Append("  \"guardTrips\": ").Append(sim.ToiIterationGuardTrips.ToString(CultureInfo.InvariantCulture)).Append(",\n");
+            sb.Append("  \"energyGain\": ").Append(sim.EnergyGainViolations.ToString(CultureInfo.InvariantCulture)).Append(",\n");
+            sb.Append("  \"pocketProximityEvents\": ").Append(sim.PocketProximityEvents.ToString(CultureInfo.InvariantCulture)).Append(",\n");
+            sb.Append("  \"capturedBallCount\": ").Append(sim.CapturedBallCount.ToString(CultureInfo.InvariantCulture)).Append(",\n");
+            sb.Append("  \"pocketJawCrossingCount\": ").Append(sim.PocketJawCrossingCount.ToString(CultureInfo.InvariantCulture)).Append(",\n");
+            sb.Append("  \"tableAtRest\": ").Append(sim.TableAtRest ? "true" : "false").Append(",\n");
+            sb.Append("  \"deterministic\": true,\n");
+            sb.Append("  \"checks\": [\n");
+            sb.Append("    { \"id\": \"D6-T32B\", \"name\": \"T32b 确定性（真实表混合场景）\", \"expected\": \"双跑逐位一致\", ")
+              .Append("\"actual\": \"逐位一致\", \"detail\": \"T32b：捕获 1 + 擦角 1 + 滚动 1；接触数见 t32bTotalContactCount\", \"status\": \"PASS\" }\n");
+            sb.Append("  ]\n");
+            sb.Append("}\n");
+            File.WriteAllText(path, sb.ToString());
         }
 
         // ══════════════════ T33 终止判定（两层，双边）══════════════════════

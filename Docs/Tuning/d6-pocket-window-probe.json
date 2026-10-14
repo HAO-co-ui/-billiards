@@ -1,0 +1,121 @@
+{
+  "schema": "billiards.d6-pocket-window-probe.v1",
+  "source": "Docs/Reference/table-metadata-reference.json",
+  "ballRadius": 0.028575,
+  "method": "球心沿喉法向的竖直轨迹逐 1 mm 采样，对全部 82 段求最近距离的最小值",
+  "pockets": [
+    {
+      "index": 0,
+      "kind": "corner",
+      "throatCenterX": -1.2810031973632396,
+      "throatCenterY": -0.6460573834592171,
+      "throatHalfWidth": 0.06809773965544866,
+      "captureRadius": 0.030741635767169012,
+      "windowLow": 0.030741635767169012,
+      "windowHigh": 0.039522739655448655,
+      "windowWidth": 0.008781103888279643,
+      "windowWidthMm": 8.781103888279643,
+      "numericallyReproduced": false
+    },
+    {
+      "index": 1,
+      "kind": "side",
+      "throatCenterX": -1.4292819688205283e-07,
+      "throatCenterY": -0.6950634444556911,
+      "throatHalfWidth": 0.06756179445053177,
+      "captureRadius": 0.030741618137528445,
+      "windowLow": 0.030741618137528445,
+      "windowHigh": 0.03898679445053177,
+      "windowWidth": 0.008245176313003325,
+      "windowWidthMm": 8.245176313003325,
+      "numericallyReproduced": true
+    },
+    {
+      "index": 2,
+      "kind": "corner",
+      "throatCenterX": 1.2810030833672454,
+      "throatCenterY": -0.6460575734525411,
+      "throatHalfWidth": 0.06809773965545926,
+      "captureRadius": 0.030741647750187825,
+      "windowLow": 0.030741647750187825,
+      "windowHigh": 0.03952273965545926,
+      "windowWidth": 0.008781091905271432,
+      "windowWidthMm": 8.781091905271431,
+      "numericallyReproduced": false
+    },
+    {
+      "index": 3,
+      "kind": "corner",
+      "throatCenterX": -1.2810030833672454,
+      "throatCenterY": 0.6460575734525411,
+      "throatHalfWidth": 0.06809768591722158,
+      "captureRadius": 0.030741656527270136,
+      "windowLow": 0.030741656527270136,
+      "windowHigh": 0.03952268591722158,
+      "windowWidth": 0.008781029389951442,
+      "windowWidthMm": 8.781029389951442,
+      "numericallyReproduced": false
+    },
+    {
+      "index": 4,
+      "kind": "side",
+      "throatCenterX": -2.4183560445867336e-08,
+      "throatCenterY": 0.6950634444556911,
+      "throatHalfWidth": 0.06756165768201725,
+      "captureRadius": 0.030741647524030108,
+      "windowLow": 0.030741647524030108,
+      "windowHigh": 0.03898665768201724,
+      "windowWidth": 0.008245010157987134,
+      "windowWidthMm": 8.245010157987135,
+      "numericallyReproduced": false
+    },
+    {
+      "index": 5,
+      "kind": "corner",
+      "throatCenterX": 1.2810031973632396,
+      "throatCenterY": 0.6460573834592171,
+      "throatHalfWidth": 0.06809779339368635,
+      "captureRadius": 0.03074167031140361,
+      "windowLow": 0.03074167031140361,
+      "windowHigh": 0.03952279339368635,
+      "windowWidth": 0.008781123082282738,
+      "windowWidthMm": 8.781123082282738,
+      "numericallyReproduced": false
+    }
+  ],
+  "sidePocketSamples": {
+    "pocketIndex": 1,
+    "samples": [
+      {
+        "rhoMm": 30,
+        "minDistToSegmentMm": 37.56170510352639,
+        "contactsJaw": false,
+        "crossesThroatPlane": true
+      },
+      {
+        "rhoMm": 35,
+        "minDistToSegmentMm": 32.56171333116443,
+        "contactsJaw": false,
+        "crossesThroatPlane": true
+      },
+      {
+        "rhoMm": 39,
+        "minDistToSegmentMm": 28.56172198734265,
+        "contactsJaw": true,
+        "crossesThroatPlane": true
+      },
+      {
+        "rhoMm": 44,
+        "minDistToSegmentMm": 23.561736940618445,
+        "contactsJaw": true,
+        "crossesThroatPlane": true
+      },
+      {
+        "rhoMm": 50,
+        "minDistToSegmentMm": 17.561766123909205,
+        "contactsJaw": true,
+        "crossesThroatPlane": true
+      }
+    ]
+  }
+}

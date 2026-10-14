@@ -61,6 +61,38 @@ namespace Billiards.Physics
         [Range(0f, 1f)]
         public float ballTangentialFriction = 1f;
 
+        [Header("物理调参资产（参数唯一可调入口）")]
+        [Tooltip("留空 ⇒ 回落到 SafeDefault + 本组件的占位值（行为不变）。指定后由该资产统一提供参数。")]
+        public PhysicsTuning tuning;
+
+        [Header("键盘瞄准与力度（最小可玩；指针瞄准属交互层，不在本组件范围）")]
+        [Tooltip("当前瞄准方向（度）。0° = 指向 +x，逆时针为正。")]
+        public float aimDegrees = 180f;
+
+        [Tooltip("当前力度 ∈ [0,1]（线性映射到 [minLaunchSpeed, maxLaunchSpeed]）。")]
+        [Range(0f, 1f)]
+        public float power = 0.5f;
+
+        [Tooltip("力度 → 初速映射的端点（m/s）。")]
+        public float minLaunchSpeed = 0.5f;
+
+        public float maxLaunchSpeed = PoolConstants.MaxBallSpeed;
+
+        [Tooltip("方向键每按一次的瞄准粒度（度）。")]
+        public float aimStepDegrees = 1f;
+
+        [Tooltip("力度键每按一次的力度粒度。")]
+        public float powerStep = 0.02f;
+
+        [Tooltip("按住此键 ⇒ 瞄准 / 力度走细粒度（0.2° / 0.005）。")]
+        public KeyCode fineKey = KeyCode.LeftShift;
+
+        [Header("键位")]
+        public KeyCode aimLeftKey = KeyCode.LeftArrow;
+        public KeyCode aimRightKey = KeyCode.RightArrow;
+        public KeyCode powerUpKey = KeyCode.UpArrow;
+        public KeyCode powerDownKey = KeyCode.DownArrow;
+
         [Header("冒烟测试")]
         [Tooltip("按此键把白球以 PoolConstants.MaxBallSpeed 打出。")]
         public KeyCode launchKey = KeyCode.Space;
@@ -96,16 +128,27 @@ namespace Billiards.Physics
             // 而 `ballTangentialFriction = 0` 会把切向分量整个删除（非物理耗散）、
             // `ballRestitution = 0` 会让球-球碰撞完全非弹性。
             // 起点取 SafeDefault，再覆盖本组件的可调字段 ⇒ 既安全又不依赖默认值。
-            PhysicsParams parameters = PhysicsParams.SafeDefault;
-            parameters.cushionRestitution = cushionRestitution;
-            parameters.cushionTangentialFriction = cushionTangentialFriction;
-            parameters.rollingDeceleration = rollingDeceleration;
+            // **参数来源（单一入口）**：指定了 `tuning` 资产 ⇒ 由它统一提供；
+            // 未指定 ⇒ 回落到 `SafeDefault` + 本组件的占位字段（行为不变；`F2b` 走的就是这条路径）。
+            PhysicsParams parameters;
+            float captureScale;
+            if (tuning != null)
+            {
+                parameters = tuning.ToPhysicsParams();
+                captureScale = tuning.pocketCaptureRadiusScale;
+            }
+            else
+            {
+                parameters = PhysicsParams.SafeDefault;
+                parameters.cushionRestitution = cushionRestitution;
+                parameters.cushionTangentialFriction = cushionTangentialFriction;
+                parameters.rollingDeceleration = rollingDeceleration;
+                parameters.ballRestitution = ballRestitution;
+                parameters.ballTangentialFriction = ballTangentialFriction;
+                captureScale = 1f;   // 袋口半径真源仍是 TableConfig.Pocket（逐袋）
+            }
 
-            // 新增球-球字段：本组件也暴露它们，默认即 SafeDefault 的 1.0
-            parameters.ballRestitution = ballRestitution;
-            parameters.ballTangentialFriction = ballTangentialFriction;
-
-            _simulator = new PoolSimulator(tableConfig, parameters);
+            _simulator = new PoolSimulator(tableConfig, parameters, captureScale);
             _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
             _accumulator = 0f;
 
@@ -123,6 +166,15 @@ namespace Billiards.Physics
             {
                 return;
             }
+
+            bool fine = Input.GetKey(fineKey);
+            float aStep = fine ? aimStepDegrees * 0.2f : aimStepDegrees;
+            float pStep = fine ? powerStep * 0.25f : powerStep;
+
+            if (Input.GetKey(aimLeftKey)) { aimDegrees += aStep; }
+            if (Input.GetKey(aimRightKey)) { aimDegrees -= aStep; }
+            if (Input.GetKey(powerUpKey)) { power = Mathf.Clamp01(power + pStep); }
+            if (Input.GetKey(powerDownKey)) { power = Mathf.Clamp01(power - pStep); }
 
             if (Input.GetKeyDown(launchKey))
             {
@@ -269,23 +321,31 @@ namespace Billiards.Physics
         /// 可直接看到球-球碰撞；单球模式下沿 +y 正对长库打出。
         /// **这不是最终交互**（瞄准与力度属交互层）。
         /// </summary>
-        public void Launch()
+        /// <summary>
+        /// **按 <see cref="aimDegrees"/> / <see cref="power"/> 打出一杆**（键盘最小可玩）。
+        /// 初速方向 = `(cos θ, sin θ)`（θ = `aimDegrees`），大小 = `lerp(minLaunchSpeed, maxLaunchSpeed, power)`。
+        /// 返回白球初速（供测试 / 日志断言）。
+        /// </summary>
+        public Vector2 Launch()
         {
             if (_simulator == null)
             {
-                return;
+                return Vector2.zero;
             }
 
             BallState[] balls = loadRackForBallBallDemo ? BuildRack() : BuildSingleBall();
-            balls[0].velocity = loadRackForBallBallDemo
-                ? new Vector2(-PoolConstants.MaxBallSpeed, 0f)
-                : new Vector2(0f, PoolConstants.MaxBallSpeed);
+            float rad = aimDegrees * Mathf.Deg2Rad;
+            var direction = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
+            float speed = Mathf.Lerp(minLaunchSpeed, maxLaunchSpeed, Mathf.Clamp01(power));
+            Vector2 v0 = direction * speed;
+            balls[0].velocity = v0;
 
             _simulator.LoadBalls(balls);
             _simulator.ResetDiagnostics();
             _accumulator = 0f;
 
             SyncVisual();
+            return v0;
         }
 
         private void SyncVisual()
@@ -325,7 +385,7 @@ namespace Billiards.Physics
         {
             const int x = 10;
             const int y = 10;
-            var rect = new Rect(x, y, 760f, 76f);
+            var rect = new Rect(x, y, 920f, 116f);
 
             if (_simulator == null)
             {
@@ -337,11 +397,13 @@ namespace Billiards.Physics
             float speed = (balls != null && balls.Count > 0) ? balls[0].velocity.magnitude : 0f;
 
             string text =
-                $"balls={balls.Count}  contacts={_simulator.TotalContactCount}  "
-                + $"ballBall={_simulator.BallBallContactCount}  guardTrips={_simulator.ToiIterationGuardTrips}  "
-                + $"energyGain={_simulator.EnergyGainViolations}  pocketEvents={_simulator.PocketProximityEvents}\n"
-                + $"subSteps={_simulator.SubSteps}   |v_0|={speed:F3} m/s   [{launchKey}] 发射 {PoolConstants.MaxBallSpeed} m/s"
-                + (loadRackForBallBallDemo ? "（球堆模式：白球朝球堆）" : "（单球模式：正对长库）");
+                $"瞄准 {aimDegrees:F1}°   力度 {power * 100f:F0}%   初速 {Mathf.Lerp(minLaunchSpeed, maxLaunchSpeed, power):F2} m/s\n"
+                + $"balls={balls.Count}  contacts={_simulator.TotalContactCount}  ballBall={_simulator.BallBallContactCount}  "
+                + $"pocketEvents={_simulator.PocketProximityEvents}  captured={_simulator.CapturedBallCount}  jawCrossing={_simulator.PocketJawCrossingCount}\n"
+                + $"guardTrips={_simulator.ToiIterationGuardTrips}  energyGain={_simulator.EnergyGainViolations}  "
+                + $"atRest={_simulator.TableAtRest}  restFrames={_simulator.ConsecutiveRestFrameCount}  |v_0|={speed:F3} m/s\n"
+                + $"[{aimLeftKey}/{aimRightKey}] 方向   [{powerUpKey}/{powerDownKey}] 力度   [{fineKey}] 细调   [{launchKey}] 出杆"
+                + (loadRackForBallBallDemo ? "（球堆模式）" : "（单球模式）");
 
             GUI.Label(rect, text);
         }

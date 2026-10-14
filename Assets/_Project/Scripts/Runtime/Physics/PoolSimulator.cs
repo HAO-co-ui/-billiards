@@ -131,6 +131,7 @@ namespace Billiards.Physics
         /// 语义 = "开口内**容一球**"的**横向（面内）偏移上限** = `openingRadius − BallRadius − 0.002`。
         /// **必须用逐袋值**：6 袋的 `captureRadius` 在 1e-8 量级互不相同，
         /// 用 `PoolConstants.PocketCaptureRadius`（单值代表）做判定会使逐袋边界用例不可预期。
+        /// 构造时按可选全局乘子 <c>pocketCaptureRadiusScale</c>（默认 1.0）整体缩放 —— **真源仍是逐袋值**。
         /// </summary>
         private readonly float[] _pocketCaptureRadius;
 
@@ -279,7 +280,7 @@ namespace Billiards.Physics
         /// 用球桌碰撞几何与物理参数构造内核。构造时把 <c>TableConfig.segments</c>
         /// 摊平为数组，**保持资源/JSON 原始顺序**（顺序参与确定性，不得重排）。
         /// </summary>
-        public PoolSimulator(TableConfig table, PhysicsParams parameters)
+        public PoolSimulator(TableConfig table, PhysicsParams parameters, float pocketCaptureRadiusScale = 1f)
         {
             if (table == null)
             {
@@ -309,7 +310,7 @@ namespace Billiards.Physics
                 Pocket p = table.pockets[i];
                 _pocketThroatCenter[i] = p.throatCenter;
                 _pocketThroatNormal[i] = p.throatNormal;
-                _pocketCaptureRadius[i] = p.captureRadius;
+                _pocketCaptureRadius[i] = p.captureRadius * pocketCaptureRadiusScale;
             }
 
             SubSteps = DeriveSubSteps(PoolConstants.MaxBallSpeed);
