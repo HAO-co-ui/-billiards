@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using Billiards.Core;
 using Billiards.Physics;
 using Billiards.Table;
@@ -532,16 +533,73 @@ namespace Billiards.Tests
         }
 
         [Test]
-        public void F2c_DefaultStructParams_AreZero_AndThatIsWhySafeDefaultExists()
+        public void F2c_RuntimeCode_NeverUsesDefaultOrFieldIncompletePhysicsParams()
         {
-            // 记录这条**语言事实**：`default(T)`（struct）恒为字段全零，与"字段初始化器"无关
-            // ⇒ 判据不能指望 `default` 安全，只能断言 SafeDefault 与"内核生效值"。
-            PhysicsParams d = default;
-            TestContext.WriteLine($"F2c: default = e_ball {d.ballRestitution}, μ_ball {d.ballTangentialFriction}"
-                                  + "（C# 定义为全零 ⇒ 危险值，必须用 PhysicsParams.SafeDefault）");
+            // 本判据**替换**原先那条恒真断言：`default(PhysicsParams).ballRestitution == 0` 是 **C# 语言语义**，
+            // 与产品代码无关 ⇒ **打不死**，违反工程标准 R3-2「禁止恒真断言」。改成**源码级守卫**（能被打死）。
+            //
+            // 断言：扫 `Runtime/**/*.cs` 的**代码**（剔除 `//` 行注释），
+            //   ① 不出现 `default(PhysicsParams)`（= 字段全零 = 危险值）；
+            //   ② 每个 `new PhysicsParams` 的**对象初始化器**必须显式含 `ballRestitution` 与
+            //      `ballTangentialFriction`（否则会**静默漏设**球-球两字段 ⇒ 回到 e_ball=μ_ball=0 的老缺陷）。
+            //
+            // 今天：唯一运行时调用点走 `PhysicsParams.SafeDefault`，其初始化器含全 5 字段 ⇒ PASS。
+            // **可被打死**：在 `PhysicsTestDrive` 插 `default(PhysicsParams)`（见注入 I6），
+            // 或从 `SafeDefault` 初始化器删一个 ball 字段（见注入 I6b）⇒ 本判据 FAIL。
+            string runtimeDir = Path.Combine(Path.GetDirectoryName(Application.dataPath),
+                "Assets/_Project/Scripts/Runtime");
+            Assert.IsTrue(Directory.Exists(runtimeDir), "F2c：找不到 Runtime 源码目录 " + runtimeDir);
 
-            Assert.AreEqual(0f, d.ballRestitution,
-                "F2c：`default(PhysicsParams)` 的 e_ball 恒为 0（语言定义）—— 故必须用 SafeDefault。");
+            string[] files = Directory.GetFiles(runtimeDir, "*.cs", SearchOption.AllDirectories);
+            System.Array.Sort(files, System.StringComparer.Ordinal);
+            Assert.IsTrue(files.Length > 0, "F2c：扫描空间为空（守卫会空转）。");
+
+            int constructions = 0;
+            foreach (string file in files)
+            {
+                string code = StripLineComments(File.ReadAllText(file));
+
+                Assert.IsFalse(code.Contains("default(PhysicsParams)"),
+                    $"F2c：`{Path.GetFileName(file)}` 代码出现 `default(PhysicsParams)`（字段全零危险值）"
+                    + " —— 必须用 `PhysicsParams.SafeDefault` 或逐字段赋值。");
+
+                int at = code.IndexOf("new PhysicsParams", System.StringComparison.Ordinal);
+                while (at >= 0)
+                {
+                    int open = code.IndexOf('{', at);
+                    int close = code.IndexOf('}', at);
+                    Assert.IsTrue(open >= 0 && close > open,
+                        $"F2c：`{Path.GetFileName(file)}` 的 `new PhysicsParams` 未用对象初始化器，"
+                        + "无法确认逐字段赋值。");
+
+                    string init = code.Substring(open, close - open);
+                    Assert.IsTrue(init.Contains("ballRestitution") && init.Contains("ballTangentialFriction"),
+                        $"F2c：`{Path.GetFileName(file)}` 的 `new PhysicsParams` 初始化器**未显式含**球-球两字段"
+                        + " —— 会静默落到 0（非物理耗散）。");
+
+                    constructions++;
+                    at = code.IndexOf("new PhysicsParams", at + 1, System.StringComparison.Ordinal);
+                }
+            }
+
+            TestContext.WriteLine($"F2c: 扫 {files.Length} 个 Runtime 源文件；"
+                                  + $"`new PhysicsParams` 构造 {constructions} 处（均含球-球两字段）；`default(PhysicsParams)` 0 处。");
+
+            Assert.Greater(constructions, 0,
+                "F2c：应至少有 1 处 `new PhysicsParams`（SafeDefault）—— 若为 0，说明扫描空间/写法变了，守卫会空转。");
+        }
+
+        /// <summary>剔除 `//` 行注释（与 D-3 源码守卫同法），避免注释里的 `default(PhysicsParams)` 假阳性。</summary>
+        private static string StripLineComments(string src)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (string line in src.Split('\n'))
+            {
+                int cut = line.IndexOf("//", System.StringComparison.Ordinal);
+                sb.Append(cut >= 0 ? line.Substring(0, cut) : line).Append('\n');
+            }
+
+            return sb.ToString();
         }
 
         // ══════════════════ F1 初始摆放校验（含负路径）════════════════════════
