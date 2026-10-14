@@ -761,7 +761,7 @@ PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount
 | --- | --- |
 | 全部 | `schema`、`generatedAtUtc`、`unityVersion`、`projectRoot`、`isBatchMode`、`passCount`/`warnCount`/`failCount`、`overallStatus`、`checks[]` |
 | 全部 `checks[]` | `id`、`name`、`expected`、`actual`、`detail`、`status` |
-| `d6-pocket-capture-scan.json` | 逐袋 `pocketIndex`、`kind`、`throatCenterX/Y`、`throatNormalX/Y`、`captureRadius`、`openingRadius`、`throatWidth`、`rMeasuredAtCapture`、`sAtCapture`、`captured`、`jawCrossing`、`proximityEvents` |
+| `d6-pocket-capture-scan.json`（⚠ **不落盘** —— 见 §7 该行；以下仅为"若将来落盘"的字段清单） | 逐袋 `pocketIndex`、`kind`、`throatCenterX/Y`、`throatNormalX/Y`、`captureRadius`、`openingRadius`、`throatWidth`、`rMeasuredAtCapture`、`sAtCapture`、`captured`、`jawCrossing`、`proximityEvents` |
 | `d6-break-sample.json` | `ballCount`、`cueSpeed`、逐球 `finalX/Y`、`capturedPocketIndex`、`ballBallMaxIterationsObserved`、`guardTrips`、`energyGain`、`pocketProximityEvents`、`capturedBallCount`、`pocketJawCrossingCount`、`tableAtRest`、`deterministic`、**`t32bTotalContactCount`**（**`T32b` 实测接触数** —— `SP-2`：供回归发现劣化） |
 | `d6-full-break-sample.json` | 同 `d6-break-sample.json`，另加 `maxEnvelopeOverrunX`、`maxEnvelopeOverrunY`（对 `2b` 紧包络的最大越界量，须 ≤ 1e-3）、`t37ElapsedMs`（**`T37` 实测耗时** —— `A5`：供将来回归发现劣化）；**钉基线字段（`C2`）**：`t37BallBallContactCount`（本次实测）、`t37BallBallContactBaseline`（**钉定的基线 `B`**）、`t37CapturedBallCount`（本次实测）、`t37CapturedBallBaseline`（钉定的基线 `c`）—— **基线由"首次实现运行的证据"钉定，之后冻结；若要改基线须走一轮独立复核**；**不得**含任何"预算带断言"字段 |
 | `d6_pocket_window_probe.py` → JSON | `source`、`sourceSha256`（**须标明是 TM 文件哈希**）、逐袋 `windowLow`、`windowHigh`、`windowWidth`、逐 ρ 的 `minDistToSegment` |
