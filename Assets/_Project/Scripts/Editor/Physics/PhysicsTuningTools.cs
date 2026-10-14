@@ -172,6 +172,7 @@ namespace Billiards.EditorTools
             WriteCsv(Path.Combine(dir, "param-scan-eball.csv"), series);
             WriteSvg(Path.Combine(dir, "param-scan-eball.svg"), series);
             WriteSummary(Path.Combine(dir, "param-scan-summary.txt"), series);
+            WriteRollingDecelerationSweep(dir);
 
             Debug.Log("参数扫描产物 → " + dir);
             Debug.Log("PARAM_SCAN=" + dir + " series=" + series.Count + " steps=" + Steps);
@@ -256,6 +257,79 @@ namespace Billiards.EditorTools
 
             sb.Append("\n说明：本扫描**不含任何断言**，仅供调参参考（`乙-系数选定` 的复核手段）。\n");
             File.WriteAllText(path, sb.ToString());
+        }
+
+        /// <summary>
+        /// **台呢滚阻扫描**：单球在**空台**上以 `MaxBallSpeed` 自由滚动 ⇒ 记录"到 `TableAtRest` 的步数/时间 + 行程"。
+        /// 空台（无段无袋）是为**隔离** `rollingDeceleration` 的作用（不被碰撞耗散干扰）。**无断言**、可复现。
+        /// 另附 `DeriveSubSteps` 对子步界的确认。
+        /// </summary>
+        private static void WriteRollingDecelerationSweep(string dir)
+        {
+            var empty = ScriptableObject.CreateInstance<TableConfig>();
+            empty.segments = new List<CushionSegment>();
+            empty.pockets = new List<Pocket>();
+
+            float[] decels = { 0f, 0.05f, 0.10f, 0.15f, 0.20f, 0.30f, 0.50f };
+            const int cap = 3600;
+
+            PhysicsTuning.Defaults d = PhysicsTuning.DefaultValues();
+            var csv = new StringBuilder();
+            csv.Append("rollingDeceleration,stepsToRest,timeToRestS,cueTravelM,rested\n");
+
+            foreach (float a in decels)
+            {
+                var p = new PhysicsParams
+                {
+                    cushionRestitution = d.cushionRestitution,
+                    cushionTangentialFriction = d.cushionTangentialFriction,
+                    ballRestitution = d.ballRestitution,
+                    ballTangentialFriction = d.ballTangentialFriction,
+                    rollingDeceleration = a,
+                };
+
+                var sim = new PoolSimulator(empty, p);
+                sim.LoadBalls(new[]
+                {
+                    new BallState { position = Vector2.zero, velocity = new Vector2(PoolConstants.MaxBallSpeed, 0f) },
+                });
+                sim.ResetDiagnostics();
+
+                int steps = 0;
+                float travel = 0f;
+                Vector2 prev = sim.Balls[0].position;
+                while (steps < cap && !sim.TableAtRest)
+                {
+                    sim.Step();
+                    steps++;
+                    Vector2 cur = sim.Balls[0].position;
+                    travel += (cur - prev).magnitude;
+                    prev = cur;
+                }
+
+                csv.Append(a.ToString("F2", CultureInfo.InvariantCulture)).Append(',')
+                   .Append(steps.ToString(CultureInfo.InvariantCulture)).Append(',')
+                   .Append((steps / 120f).ToString("F2", CultureInfo.InvariantCulture)).Append(',')
+                   .Append(travel.ToString("F3", CultureInfo.InvariantCulture)).Append(',')
+                   .Append(sim.TableAtRest ? "1" : "0").Append('\n');
+            }
+
+            File.WriteAllText(Path.Combine(dir, "param-scan-rolling.csv"), csv.ToString());
+
+            int subSteps = PoolSimulator.DeriveSubSteps(PoolConstants.MaxBallSpeed);
+            var txt = new StringBuilder();
+            txt.Append("台呢滚阻扫描（单球、**空台**、v0=").Append(PoolConstants.MaxBallSpeed)
+               .Append(" m/s；上限 ").Append(cap).Append(" 步 = ").Append(cap / 120).Append(" s）\n");
+            txt.Append(csv);
+            txt.Append("\n**子步界确认**：`DeriveSubSteps` = ").Append(subSteps)
+               .Append("，它**只依赖常量** `MaxRollingDeceleration = 5`（**前瞻值**，与运行时 `a` 无关）⇒\n")
+               .Append("候选 `a ∈ [0, 0.5]` **远小于 5** ⇒ 子步界**不受影响**（由速度项 nA = ceil(v·dt / (r)) = ")
+               .Append(Mathf.CeilToInt((PoolConstants.MaxBallSpeed * (1f / 120f)) / (PoolConstants.BallDiameter * 0.5f)))
+               .Append(" 主导）。\n");
+            txt.Append("说明：本扫描**不含任何断言**；选值由主理人 + 用户拍板。\n");
+            File.WriteAllText(Path.Combine(dir, "param-scan-rolling-summary.txt"), txt.ToString());
+
+            Debug.Log("滚阻扫描 → " + Path.Combine(dir, "param-scan-rolling.csv"));
         }
     }
 }

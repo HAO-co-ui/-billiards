@@ -77,5 +77,52 @@ namespace Billiards.Tests
                 EditorSceneManager.CloseScene(scene, true);
             }
         }
+
+        /// <summary>
+        /// **瞄准指示物守卫**（`D7-T03`）：Game 视图必须有一条**可见**的瞄准指示物，且其**朝向 == 当前瞄准方向**
+        /// （用户实测"点方向键有角度变化、但 Game 里看不见"⇒ 必须有可见载体）。
+        ///
+        /// **可被打死**：把指示物朝向写死（不随 `aimDegrees` 变，例如 `AimDirectionUnity` 恒返回 `forward`）⇒ FAIL。
+        /// </summary>
+        [Test]
+        public void T42_AimIndicator_IsVisibleAndPointsAlongAimDegrees()
+        {
+            var go = new GameObject("T42Drive");
+            try
+            {
+                var drive = go.AddComponent<PhysicsTestDrive>();
+                drive.tableConfig = AssetDatabase.LoadAssetAtPath<Billiards.Table.TableConfig>(
+                    "Assets/_Project/Data/TableConfig.asset");
+                Assert.IsNotNull(drive.tableConfig, "T42：需要 TableConfig.asset。");
+                drive.Initialize();
+
+                Assert.IsNotNull(drive.aimIndicator, "T42：瞄准指示物未创建 ⇒ Game 视图看不到瞄准方向。");
+                Assert.IsNotNull(drive.aimIndicator.GetComponent<MeshRenderer>(), "T42：指示物必须**可渲染**。");
+                Assert.IsNull(drive.aimIndicator.GetComponent<Collider>(), "T42：指示物**不得**带碰撞体（R5-1）。");
+                Assert.Greater(drive.aimIndicator.lossyScale.z, drive.aimIndicator.lossyScale.x * 5f,
+                    "T42：指示物应为**细长条**（长轴 = 局部 +Z）。");
+
+                foreach (float deg in new[] { 0f, 90f, 217f })
+                {
+                    drive.aimDegrees = deg;
+                    drive.SyncAimIndicator();
+
+                    // ⚠ **期望值必须独立闭式给出**（**不得**读 `drive.AimDirectionUnity` —— 那与被测物同源，
+                    //   会把"朝向写死"的注入变成恒真；本条的第一个版本正是这样，被自己的注入证明抓到）。
+                    float rad = deg * Mathf.Deg2Rad;
+                    var expected = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+
+                    Vector3 actual = drive.aimIndicator.forward;
+                    Assert.Less(Vector3.Angle(expected, actual), 0.1f,
+                        $"T42：aimDegrees={deg} 时指示物朝向与**独立算得**的瞄准方向不符（Δ={Vector3.Angle(expected, actual):F3}°）。");
+                }
+
+                TestContext.WriteLine("T42: 指示物存在、可渲染、无碰撞体、朝向 == 瞄准方向（0°/90°/217°）✓");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
     }
 }

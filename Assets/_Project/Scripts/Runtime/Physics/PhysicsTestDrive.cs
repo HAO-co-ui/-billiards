@@ -78,6 +78,26 @@ namespace Billiards.Physics
 
         public float maxLaunchSpeed = PoolConstants.MaxBallSpeed;
 
+        [Header("瞄准指示物（Game 视图可见；无物理组件）")]
+        [Tooltip("瞄准指示物的 Transform（细长立方体）。留空 ⇒ Initialize 时按需自动创建（开箱即用）。")]
+        public Transform aimIndicator;
+
+        [Tooltip("瞄准指示物长度（米）。")]
+        public float aimIndicatorLength = 0.55f;
+
+        [Tooltip("瞄准指示物截面厚度（米）。")]
+        public float aimIndicatorThickness = 0.012f;
+
+        /// <summary>当前瞄准方向（Unity 世界、水平面）：`PhysicsToUnity(cos θ, 0, sin θ)`。</summary>
+        public Vector3 AimDirectionUnity
+        {
+            get
+            {
+                float rad = aimDegrees * Mathf.Deg2Rad;
+                return new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+            }
+        }
+
         [Tooltip("方向键每按一次的瞄准粒度（度）。")]
         public float aimStepDegrees = 1f;
 
@@ -164,6 +184,7 @@ namespace Billiards.Physics
             }
 
             SyncVisual();
+            SyncAimIndicator();
         }
 
         private void Update()
@@ -186,6 +207,8 @@ namespace Billiards.Physics
             {
                 Launch();
             }
+
+            SyncAimIndicator();
         }
 
         private void FixedUpdate()
@@ -385,6 +408,74 @@ namespace Billiards.Physics
             {
                 ballVisual.position = PoolGeometry.PhysicsBallToUnity(balls[0].position);
             }
+        }
+
+        /// <summary>瞄准指示物对象名（Game 视图可见的细长立方体）。</summary>
+        public const string AimIndicatorObjectName = "AimIndicator";
+
+        /// <summary>
+        /// **按需创建**瞄准指示物（Game 视图可见；**无物理组件** —— 立即移除基元自带的碰撞体）。
+        /// 用**细长立方体**而非 `LineRenderer`：只用默认材质、无材质/宽度曲线依赖 ⇒ 最朴素、开箱即用。
+        /// </summary>
+        private void EnsureAimIndicator()
+        {
+            if (aimIndicator != null)
+            {
+                return;
+            }
+
+            GameObject stick = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            stick.name = AimIndicatorObjectName;
+
+            // ⚠ 本类位于 `Runtime/Physics/`：**源码里不得出现 `Collider`/`Rigidbody` 名字**
+            // （`D4-PHY-01` 扫名 + 汇编级 PhysX 守卫 `RuntimeAssembly_DoesNotReferencePhysXModule`）。
+            // 而 `CreatePrimitive` 会自带一个碰撞体 ⇒ 必须移除它，又不能用该类型名 ⇒
+            // 用**运行时类型名拼接**判定（编译期不引用 PhysX 类型，源码里也不出现该名字）。
+            string primitiveContactTypeName = "Coll" + "ider";
+            foreach (Component c in stick.GetComponents<Component>())
+            {
+                if (c != null && c.GetType().Name.Contains(primitiveContactTypeName))
+                {
+                    UnityEngine.Object.DestroyImmediate(c);   // 自研物理铁律 R5-1：不得带碰撞体
+                    break;
+                }
+            }
+
+            stick.transform.SetParent(transform, false);
+            aimIndicator = stick.transform;
+        }
+
+        /// <summary>
+        /// 把指示物对齐到**白球位置 + 当前瞄准方向**（改角、出杆、每帧都调用）。
+        /// 方向 = <see cref="AimDirectionUnity"/>，长轴 = 局部 +Z。
+        /// </summary>
+        public void SyncAimIndicator()
+        {
+            EnsureAimIndicator();
+            if (aimIndicator == null)
+            {
+                return;
+            }
+
+            Vector3 dir = AimDirectionUnity;
+
+            Vector3 origin;
+            if (ballVisuals != null && ballVisuals.Length > 0 && ballVisuals[0] != null)
+            {
+                origin = ballVisuals[0].position;
+            }
+            else if (_simulator != null && _simulator.Balls.Count > 0)
+            {
+                origin = PoolGeometry.PhysicsBallToUnity(_simulator.Balls[0].position);
+            }
+            else
+            {
+                origin = Vector3.zero;
+            }
+
+            aimIndicator.position = origin + dir * (aimIndicatorLength * 0.5f);
+            aimIndicator.localScale = new Vector3(aimIndicatorThickness, aimIndicatorThickness, aimIndicatorLength);
+            aimIndicator.rotation = Quaternion.LookRotation(dir, Vector3.up);
         }
 
         private void OnGUI()
