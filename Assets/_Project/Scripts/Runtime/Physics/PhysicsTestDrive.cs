@@ -90,13 +90,19 @@ namespace Billiards.Physics
         [Tooltip("瞄准指示物截面厚度（米）。")]
         public float aimIndicatorThickness = 0.012f;
 
-        /// <summary>当前瞄准方向（Unity 世界、水平面）：`PhysicsToUnity(cos θ, 0, sin θ)`。</summary>
+        /// <summary>
+        /// 当前瞄准方向（**Unity 世界、水平面**）= 物理方向 `(cos θ, sin θ)` 经
+        /// <see cref="PoolGeometry.PhysicsDirectionToUnity"/> 映射 ⇒ **`(−cos θ, 0, −sin θ)`**。
+        ///
+        /// ⚠ **必须过映射**：`Launch()` 的物理初速是 `speed·(cos θ, sin θ)`，其**世界走向**为
+        /// `(−cos θ, 0, −sin θ)`；若本属性直接返回 `(cos θ, 0, sin θ)`，指示物就会与白球真实走向**相差 180°**。
+        /// </summary>
         public Vector3 AimDirectionUnity
         {
             get
             {
                 float rad = aimDegrees * Mathf.Deg2Rad;
-                return new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+                return PoolGeometry.PhysicsDirectionToUnity(new Vector2(Mathf.Cos(rad), Mathf.Sin(rad)));
             }
         }
 
@@ -434,10 +440,8 @@ namespace Billiards.Physics
             GameObject stick = GameObject.CreatePrimitive(PrimitiveType.Cube);
             stick.name = AimIndicatorObjectName;
 
-            // ⚠ 本类位于 `Runtime/Physics/`：**源码里不得出现 `Collider`/`Rigidbody` 名字**
-            // （`D4-PHY-01` 扫名 + 汇编级 PhysX 守卫 `RuntimeAssembly_DoesNotReferencePhysXModule`）。
-            // 而 `CreatePrimitive` 会自带一个碰撞体 ⇒ 必须移除它，又不能用该类型名 ⇒
-            // 用**运行时类型名拼接**判定（编译期不引用 PhysX 类型，源码里也不出现该名字）。
+            // ⚠ 本类位于 `Runtime/Physics/`：**源码里不得出现 PhysX 的两个类型名**
+            //（`D4-PHY-01` 扫名 + 汇编级 PhysX 守卫）。故下面用**运行时类型名拼接**，不写出该名字。
             string primitiveContactTypeName = "Coll" + "ider";
             foreach (Component c in stick.GetComponents<Component>())
             {
@@ -454,7 +458,8 @@ namespace Billiards.Physics
 
         /// <summary>
         /// 把指示物对齐到**白球位置 + 当前瞄准方向**（改角、出杆、每帧都调用）。
-        /// 方向 = <see cref="AimDirectionUnity"/>，长轴 = 局部 +Z。
+        /// 方向 = <see cref="AimDirectionUnity"/> = 世界 **`(−cos θ, 0, −sin θ)`**（与 `Launch()` 的白球世界走向同向），
+        /// 长轴 = 局部 +Z。
         /// </summary>
         public void SyncAimIndicator()
         {

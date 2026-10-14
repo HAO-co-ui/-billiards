@@ -212,19 +212,38 @@ namespace Billiards.Tests
                 Assert.IsTrue(drive.aimIndicator.gameObject.activeSelf, "T42：全静止时指示物应**可见**。");
 
                 float rad = 30f * Mathf.Deg2Rad;
-                var expectedDir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+
+                // 独立闭式：物理方向 `(cos θ, sin θ)` 经唯一转换链的**线性部分** ⇒ 世界 `(−cos θ, 0, −sin θ)`
+                var expectedDir = new Vector3(-Mathf.Cos(rad), 0f, -Mathf.Sin(rad));
                 Assert.Less(Vector3.Angle(expectedDir, drive.aimIndicator.forward), 0.1f,
-                    "T42：静止时指示物朝向与独立算得的瞄准方向不符。");
+                    "T42：静止时指示物朝向与独立算得的**世界**方向不符（约定：世界 = (−cos θ, 0, −sin θ)）。");
 
                 Vector3 cue = Billiards.Core.PoolGeometry.PhysicsBallToUnity(drive.Simulator.Balls[0].position);
                 Vector3 expectedPos = cue + expectedDir * (drive.aimIndicatorLength * 0.5f);
                 Assert.Less((expectedPos - drive.aimIndicator.position).magnitude, 1e-4f,
                     "T42：指示物位置应 == 白球位置 + dir·(len/2)（独立闭式）。");
 
-                // ③ 运动中隐藏
+                // ★ **经验交叉校验**：显示方向与**仿真位移**走**不同路径** ⇒ 任一侧的符号/约定再翻都会红。
+                //   （这一条正是为"整类约定性错误"（如 180° 反向）加的牙：闭式段只证"实现 == 我写的约定"，
+                //     经验段证"约定 == 白球真实走向"。）
+                Vector3 shownDir = drive.aimIndicator.forward;   // 用户看到的方向（**Launch 前**捕获）
+                Vector3 p0 = drive.Simulator.Balls[0].position;
+
                 drive.power = 1f;
                 drive.Launch();
-                drive.Advance(PoolSimulator.FixedDeltaTime);
+                for (int i = 0; i < 3; i++)                      // 3 步 ≈ 0.22 m：不触库、不触球
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                }
+
+                Vector3 moved = Billiards.Core.PoolGeometry.PhysicsBallToUnity(drive.Simulator.Balls[0].position)
+                                - Billiards.Core.PoolGeometry.PhysicsBallToUnity(p0);
+                Assert.Greater(moved.magnitude, 0.1f,
+                    "T42：位移过小 ⇒ 经验交叉校验无意义（用例应保证不触库/不触球）。");
+                Assert.Less(Vector3.Angle(shownDir, moved.normalized), 1f,
+                    $"T42：指示物方向（显示路径）与白球世界位移方向（仿真路径）夹角 {Vector3.Angle(shownDir, moved.normalized):F3}° ⇒ 约定不一致。");
+
+                // ③ 运动中隐藏
                 drive.SyncAimIndicator();
                 Assert.IsFalse(drive.aimIndicator.gameObject.activeSelf,
                     "T42：球运动期间指示物应**隐藏**（不得粘着滚动中的白球乱跑）。");

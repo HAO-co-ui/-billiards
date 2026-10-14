@@ -84,6 +84,19 @@ namespace Billiards.Core
             return PhysicsToUnity(physics, PoolConstants.BallRadius);
         }
 
+        /// <summary>
+        /// **方向**（物理平面 → Unity 世界）。与 <see cref="PhysicsBallToUnity"/> **同一条转换链**，
+        /// 但只取链的**线性部分**（无高度项、无平移项）⇒ `(dx, dy) → (−dx, 0, −dy)`。
+        ///
+        /// 为什么单独开一个方向入口：点与方向的映射**不同**（点带高度/平移，方向不带），
+        /// 若在别处手写 `(−x, −y)`，就出现了**第二个转换点**（铁律 16）—— 而"显示方向与白球真实走向"
+        /// 恰恰是两处必须一致的地方。**方向请一律走本入口，别处禁手写。**
+        /// </summary>
+        public static Vector3 PhysicsDirectionToUnity(Vector2 physicsDirection)
+        {
+            return ModelOrientation * PhysicsToModelLocal(physicsDirection, 0f);
+        }
+
         /// <summary>Unity 世界坐标 → 规范二维物理平面（指针拾取、调试回读用）。见 <see cref="PhysicsToModelLocal"/> 的逆。</summary>
         public static Vector2 UnityToPhysics(Vector3 world)
         {
