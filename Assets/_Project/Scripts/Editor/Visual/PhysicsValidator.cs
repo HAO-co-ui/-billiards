@@ -277,7 +277,7 @@ namespace Billiards.EditorTools
                     actual + (scan.Offenders.Count > 0 ? "；违规：" + string.Join(" | ", scan.Offenders) : "（扫描空转！）")));
         }
 
-        // ── build list（R-J）───────────────────────────────────────────────
+        // ── 球-球初始摆放（R-P②交付物）─────────────────────────────────────
 
         /// <summary>
         /// 球-球初始摆放重叠校验（新增检查项，编号族规 = `D{轮次}-{域}-{序号}` ⇒ `D5-PHY-01`）。
@@ -299,6 +299,8 @@ namespace Billiards.EditorTools
                 : CheckResult.Fail("D5-PHY-01", "球-球初始摆放无重叠（间距 ≥ 2r − 容差）",
                     $"全部 {pairCount} 对均合法", violation));
         }
+
+        // ── build list（R-J）───────────────────────────────────────────────
 
         private static void VerifyBuildSettings(SetupReport report)
         {

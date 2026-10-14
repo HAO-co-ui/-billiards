@@ -1046,7 +1046,6 @@ namespace Billiards.Physics
                 // ⚠ **不在此处手动"贴到相切"**：那与 `SeparatePair` **在实现同一不变量**
                 //（把重叠推开）—— 属重复实现，且会让 `SeparatePair` 永远走不到（零覆盖）。
                 // 改为直接把球交给解算路径：法向由现场几何求得，**位置修正由 `SeparatePair` 单点完成**。
-                _ = dist;
                 ResolveBallBallContact(i, k);
             }
         }
