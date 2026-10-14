@@ -184,7 +184,7 @@ def self_check(paths):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="D4 灰盒场景跨会话重建幂等性证据（归一化 fileID 后比对）")
+        description="灰盒场景跨会话重建幂等性证据（归一化 fileID 后比对）")
     parser.add_argument("scenes", nargs="*", help="待比较的 .unity（第 1 份为基准）；省略则用默认 3 份")
     parser.add_argument("--self-check", action="store_true", help="注入实验（离线，写仓库外临时目录）")
     args = parser.parse_args(argv)

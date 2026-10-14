@@ -152,7 +152,7 @@ def main():
     cfg = parse_tableconfig(ASSET)
 
     print("=" * 78)
-    print("D2-T02B 独立复核：TableConfig.asset  vs  D2-T02A 基线")
+    print("独立复核：TableConfig.asset  vs  独立数据基线")
     print("=" * 78)
     print(f"解析段数={len(cfg['segments'])}  袋数={len(cfg['pockets'])}  "
           f"sourceSha256={cfg.get('sourceSha256')}")

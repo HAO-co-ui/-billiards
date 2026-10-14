@@ -222,7 +222,7 @@ def main():
     threshold = 0.5 * SPEED * DT_SUB
 
     print("=" * 78)
-    print("D4 T5b 独立复算（禁用 TOI 采样推进；Step 边界口径与测试一致）")
+    print("物理内核 T5b 独立复算（禁用 TOI 采样推进；Step 边界口径与测试一致）")
     print("=" * 78)
     print(f"几何来源            : {REFERENCE_JSON}")
     print(f"段数 / 袋数         : {len(segs)} / {len(pockets)}")

@@ -185,7 +185,7 @@ def main():
         print(f"  seg[{e['segmentIndex']:2d}] {e['rail']:24s} {e['endpoint']} "
               f"-> pocket[{e['nearestPocket']}].{e['nearestMouthVertex']:6s} "
               f"偏差 = {e['deviation']:.9f} m")
-    print(f"  最大偏差 = {g1_max:.9f} m  (Day 2 容差 1e-5 m)")
+    print(f"  最大偏差 = {g1_max:.9f} m  (数据导入容差 1e-5 m)")
     print()
     print("=== G2 12 个悬空链端点 ===")
     print(f"  触发半径 = {trigger:.9f} m")

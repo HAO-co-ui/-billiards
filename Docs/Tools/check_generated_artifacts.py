@@ -530,7 +530,7 @@ def run_all(root, with_fbx=False, quiet=False):
 
 def print_report(findings):
     print("=" * 78)
-    print("D2-T04 生成物一致性守卫")
+    print("生成物一致性守卫")
     print("=" * 78)
     npass = sum(1 for f in findings if f.status == "PASS")
     nfail = sum(1 for f in findings if f.status == "FAIL")
@@ -547,7 +547,7 @@ def print_report(findings):
 # ---------------------------------------------------------------------------
 def self_test():
     print("=" * 78)
-    print("D2-T04 反向用例（每条守卫必须能 FAIL）")
+    print("反向用例（每条守卫必须能 FAIL）")
     print("=" * 78)
     tmp = tempfile.mkdtemp(prefix="d2t04_")
     # 造一个最小镜像：复制被守卫读取的构件（含证据内嵌指纹所指向的文件）

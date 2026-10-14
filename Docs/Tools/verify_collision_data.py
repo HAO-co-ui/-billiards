@@ -563,7 +563,7 @@ def main():
     baseline = build_baseline(tm)
 
     print("=" * 78)
-    print("Idea #35 · D2-T02A · 碰撞几何独立基线与交叉比对")
+    print("Idea #35 · 碰撞几何独立基线与交叉比对")
     print("=" * 78)
     print(f"TM sha256 = {baseline['sources']['table_metadata_sha256']}")
     print(f"GM sha256 = {baseline['sources']['gameplay_markers_sha256']}")
