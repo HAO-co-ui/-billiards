@@ -585,5 +585,397 @@ namespace Billiards.Tests
             Assert.IsEmpty(failures, "T76 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine($"T76: 幽灵球闭式差 {err:E3} m；出射方向夹角 {angle:F4}°；库接触 {p.CushionBounceCountBeforeContact} 次 ✓");
         }
+
+        // ══════════════════ T77 斜碰（无库）闭式一致 ═════════════════════════════
+
+        /// <summary>
+        /// **斜碰**的独立闭式（**排期点名的情形之一**）：射线与"半径 `2r` 的圆"的首次交点 + 等质量冲量闭式。
+        ///
+        /// 期望值来源：**甲**（射线-圆求交 + 等质量弹性碰撞的代数闭式；**不**转写内核代码）
+        /// ＋ **乙**（`e_ball` 取资产常量值，**不是**预测输出）。
+        /// **几何选择**：`d = |t − c0| = 0.10 m` ⇒ 最大可接触偏角 `asin(2r/d) ≈ 34.8°` ⇒ 三档 `φ = 5° / 20° / 30°` **全部可接触**
+        /// （spec 原文的三档 φ 在 `d = 0.6 m` 下不可达：`d·sinφ ≤ 2r` 要求 `φ ≤ 5.46°`）。
+        /// **盲带**：不覆盖库边（`T78`）、不覆盖袋口。
+        /// **判别力**：（b）（c）是斜碰核心 —— 解析近似实现常把出射取成 `u` 或取成"球心连线但幽灵球用球心距"，
+        /// 方向偏差随 `φ` 增大而增大。
+        /// **注入负对照**：幽灵球改用 `s* = s`（忽略横截 `per`）⇒ **(a)(b) FAIL**；
+        /// 目标出射取 `u` ⇒ **(b) FAIL**（`φ=30°` 时偏 30°）；白球出射取纯切向（漏法向反弹项）⇒ **(c) FAIL**。
+        /// </summary>
+        [Test]
+        public void T77_ObliqueCut_MatchesClosedForm()
+        {
+            TableConfig table = Table();
+            PhysicsParams pm = FactoryParams();
+            float twoR = 2f * PoolConstants.BallRadius;
+
+            Vector2 c0 = new Vector2(-0.05f, 0f);
+            Vector2 t = new Vector2(0.05f, 0f);
+            float d = (t - c0).magnitude;
+
+            var failures = new List<string>();
+            var report = new List<string>();
+            float[] phisDeg = { 5f, 20f, 30f };
+
+            foreach (float phiDeg in phisDeg)
+            {
+                float phi = phiDeg * Mathf.Deg2Rad;
+                var u = new Vector2(Mathf.Cos(phi), Mathf.Sin(phi));
+
+                if (!(d * Mathf.Sin(phi) <= twoR))
+                {
+                    failures.Add($"前提：φ={phiDeg:R}° 时 d·sinφ = {d * Mathf.Sin(phi):R} > 2r = {twoR:R} ⇒ 本档无法接触。");
+                    continue;
+                }
+
+                ShotPrediction pred = ShotPredictor.Predict(
+                    table, SimOf(pm, Ball(c0.x, c0.y, 0f, 0f), Ball(t.x, t.y, 0f, 0f)), u * 4.5f, 1200);
+
+                if (!pred.HasFirstContact)
+                {
+                    failures.Add($"φ={phiDeg:R}°：应发生首次球-球接触。");
+                    continue;
+                }
+
+                // (a) 射线-圆闭式（取首次交点）
+                Vector2 delta = t - c0;
+                float sAlong = Vector2.Dot(delta, u);
+                float per = Mathf.Abs(u.x * delta.y - u.y * delta.x);
+                float inner = twoR * twoR - per * per;
+                if (!(inner > 0f))
+                {
+                    failures.Add($"φ={phiDeg:R}°：闭式内根 2r² − per² = {inner:R} 不为正（该档不应接触）。");
+                    continue;
+                }
+
+                Vector2 ghostClosed = c0 + u * (sAlong - Mathf.Sqrt(inner));
+                float errGhost = (pred.GhostBall - ghostClosed).magnitude;
+                if (!(errGhost <= 1e-6f))
+                {
+                    failures.Add($"(a) φ={phiDeg:R}°：幽灵球 {RVec(pred.GhostBall)} ≠ 闭式 {RVec(ghostClosed)}（差 {errGhost:E3} m）。");
+                }
+
+                // (b) 目标球出射 == 球心连线（等质量、无自旋下的精确方向）
+                Vector2 targetLine = (t - pred.GhostBall).normalized;
+                float angleB = Vector2.Angle(pred.TargetOutgoingDirection, targetLine);
+                if (!(angleB < 0.05f))
+                {
+                    failures.Add($"(b) φ={phiDeg:R}°：目标球出射 {RVec(pred.TargetOutgoingDirection)} 与球心连线 {RVec(targetLine)}"
+                                 + $" 夹角 {angleB:F4}° ≥ 0.05°。");
+                }
+
+                // (c) 白球出射闭式：u − ((1+e)/2)·(u·n̂)·n̂，n̂ = normalize(ghost − t)
+                Vector2 nHat = (pred.GhostBall - t).normalized;
+                float e = pm.ballRestitution;
+                Vector2 cueClosed = (u - ((1f + e) * 0.5f) * Vector2.Dot(u, nHat) * nHat).normalized;
+                float angleC = Vector2.Angle(pred.CueOutgoingDirection, cueClosed);
+                if (!(angleC < 0.05f))
+                {
+                    failures.Add($"(c) φ={phiDeg:R}°：白球出射 {RVec(pred.CueOutgoingDirection)} ≠ 闭式 {RVec(cueClosed)}"
+                                 + $"（夹角 {angleC:F4}° ≥ 0.05°）。");
+                }
+
+                // (d) 无库接触
+                if (pred.CushionBounceCountBeforeContact != 0)
+                {
+                    failures.Add($"(d) φ={phiDeg:R}°：首次接触前库接触 {pred.CushionBounceCountBeforeContact} ≠ 0。");
+                }
+
+                report.Add($"φ={phiDeg:R}°: Δghost={errGhost:E2} ∠tgt={angleB:F4}° ∠cue={angleC:F4}°");
+            }
+
+            Assert.IsEmpty(failures, "T77 失败判据：\n" + string.Join("\n", failures));
+            TestContext.WriteLine("T77: " + string.Join("；", report) + " ✓");
+        }
+
+        // ══════════════════ T78 擦库（银行球）与实跑一致 ═════════════════════════
+
+        /// <summary>
+        /// **擦库（银行球）**（**排期点名的情形之二**）：白球**先撞长库**再命中目标球。
+        ///
+        /// ★ **本判据的判别范围（写在判据内）**：**(b) 的期望值与被测对象「同内核」** ⇒ 它检的是
+        /// **预测管线绑定正确性**（快照 / 参数 / 步长 / 触发 / 时间轴），**不能检出内核物理缺陷**
+        /// （内核错则两路一起错）；**内核物理正确性由 Day 4–6 的判据承担**，本判据**不重复计数**。
+        ///
+        /// 期望值来源：**(a) 甲**（直线距离的几何构造）；**(b) 乙-同源**。
+        /// **几何（实测选定）**：白球 `footSpot (0.51, 0)`、目标 `(−0.40, 0.30)`、瞄准 `172.50°`、力度 1
+        /// ⇒ 先撞**左长库**（`x = −1.27`）再命中目标；实测反弹 **1** 次、幽灵球离直线 **0.0412 m**、需 **78** 步。
+        /// **盲带**：`d_min` 是**选定门限**（只判"离直线足够远"，不判具体落点）；`(b)` 的同源盲带见上。
+        /// **注入负对照**：预测改用**解析直线**（沿瞄准方向直走、忽略库边）⇒ 白球打不到目标球
+        /// ⇒ `HasFirstContact == false` ⇒ **(a) 与 (b) 同时红**；步长/参数不同源 ⇒ **(b) FAIL**。
+        /// </summary>
+        [Test]
+        public void T78_BankShot_MatchesProductionRun()
+        {
+            const float dMin = 0.02f;                 // 实测 dLine = 0.0412 m ⇒ 下界取约一半
+            const float aimDeg = 172.50f;
+            var targetPos = new Vector2(-0.40f, 0.30f);
+
+            var failures = new List<string>();
+            var driveGo = new GameObject("T78Drive");
+            var probeGo = new GameObject("T78Probe");
+            try
+            {
+                int maxSteps = probeGo.AddComponent<AimAssistController>().maxPredictSteps;
+
+                var drive = driveGo.AddComponent<PhysicsTestDrive>();
+                drive.tableConfig = AssetDatabase.LoadAssetAtPath<TableConfig>(TablePath);
+                Assert.IsNotNull(drive.tableConfig, "T78：需要 TableConfig.asset。");
+                drive.loadRackForBallBallDemo = true;
+                drive.Initialize();
+                Assert.IsNotNull(drive.Simulator, "T78：Initialize 后应有内核。");
+
+                // 把 1 号球摆成目标（其余堆球不动；实测它们不参与本场景的接触）。
+                drive.Simulator.PlaceBall(1, targetPos, Vector2.zero);
+                for (int i = 0; i < PoolSimulator.RestStableFrames + 2; i++)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                }
+
+                Assert.IsTrue(drive.Simulator.TableAtRest, "T78：前提 —— 应已静止（否则 Launch 被门控拒绝）。");
+
+                Vector2 c0 = drive.Simulator.Balls[0].position;
+                drive.aimDegrees = aimDeg;
+                drive.power = 1f;
+                float rad = aimDeg * Mathf.Deg2Rad;
+                Vector2 v0 = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad))
+                             * Mathf.Lerp(drive.minLaunchSpeed, drive.maxLaunchSpeed, 1f);
+
+                // ── 预测（在跑内核保持静止时取值）──
+                ShotPrediction pred = ShotPredictor.Predict(drive.tableConfig, drive.Simulator, v0, maxSteps);
+
+                // ── 生产路径实跑 ──
+                Vector2 launched = drive.Launch();
+                if (launched != v0)
+                {
+                    failures.Add($"前提：`Launch()` 初速 {RVec(launched)} ≠ 预测用初速 {RVec(v0)}（两路口径不一致）。");
+                }
+
+                int stepped = 0;
+                while (stepped < 4000 && !drive.Simulator.HasBallBallContact)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                    stepped++;
+                }
+
+                if (!drive.Simulator.HasBallBallContact)
+                {
+                    failures.Add($"(b) 实跑未发生首次球-球接触（{stepped} 步）⇒ 无法比对（且说明场景构造失败）。");
+                }
+
+                if (!pred.HasFirstContact)
+                {
+                    failures.Add($"(a) 预测未发生首次接触（StepsSimulated={pred.StepsSimulated}, "
+                                 + $"bounces={pred.CushionBounceCountBeforeContact}）⇒ 预测很可能没跑库边（解析直线近似）。");
+                }
+
+                // ── (a) 甲-结构：真的跑了库边，且幽灵球**不在**直线上 ──
+                if (pred.CushionBounceCountBeforeContact < 1)
+                {
+                    failures.Add($"(a) 首次接触前的库边反弹次数 {pred.CushionBounceCountBeforeContact} < 1"
+                                 + "（银行球必先撞库；0 说明预测走的是直线）。");
+                }
+
+                float distToLine = DistanceToLine(pred.GhostBall, c0, targetPos);
+                if (!(distToLine > dMin))
+                {
+                    failures.Add($"(a) 幽灵球到直线 '{RVec(c0)}→{RVec(targetPos)}' 的距离 {distToLine:F6} m ≤ d_min {dMin:R} m"
+                                 + "（幽灵球落在直线上 ⇒ 预测没跑库边）。");
+                }
+
+                // ── (b) 乙-同源：与生产路径实跑逐位/逐分量一致 ──
+                if (drive.Simulator.HasBallBallContact)
+                {
+                    BallBallContactRecord rec = drive.Simulator.FirstBallBallContact;
+                    bool cueIsFirst = rec.first == 0;
+                    Vector2 actGhost = cueIsFirst ? rec.firstPosition : rec.secondPosition;
+                    Vector2 actTarget = cueIsFirst ? rec.secondPosition : rec.firstPosition;
+                    Vector2 actCueV = cueIsFirst ? rec.firstVelocityAfter : rec.secondVelocityAfter;
+                    Vector2 actTargetV = cueIsFirst ? rec.secondVelocityAfter : rec.firstVelocityAfter;
+
+                    if (RVec(pred.GhostBall) != RVec(actGhost))
+                    {
+                        failures.Add($"(b) 幽灵球不逐位相等：预测 {RVec(pred.GhostBall)} / 实跑 {RVec(actGhost)}。");
+                    }
+
+                    if (RVec(pred.TargetBallCenter) != RVec(actTarget))
+                    {
+                        failures.Add($"(b) 目标球心不逐位相等：预测 {RVec(pred.TargetBallCenter)} / 实跑 {RVec(actTarget)}。");
+                    }
+
+                    if (pred.TimeToFirstContactSeconds.ToString("R", CultureInfo.InvariantCulture)
+                        != rec.timeSeconds.ToString("R", CultureInfo.InvariantCulture))
+                    {
+                        failures.Add($"(b) 到首接触时间不逐位相等：预测 {pred.TimeToFirstContactSeconds:R} / 实跑 {rec.timeSeconds:R}");
+                    }
+
+                    // 方向量：同一归一口径下的 float 级联差异 ⇒ 逐分量容差 1e-6（位置与时间仍是逐位）。
+                    CheckDirection(failures, "(b) 目标球出射", pred.TargetOutgoingDirection, actTargetV, 1e-6f);
+                    CheckDirection(failures, "(b) 白球出射", pred.CueOutgoingDirection, actCueV, 1e-6f);
+                }
+
+                // ── (c) 非空转 ──
+                if (pred.StepsSimulated < 1)
+                {
+                    failures.Add($"(c) `StepsSimulated` = {pred.StepsSimulated}（应 ≥ 1）。");
+                }
+
+                Assert.IsEmpty(failures, "T78 失败判据：\n" + string.Join("\n", failures));
+                TestContext.WriteLine($"T78: 反弹 {pred.CushionBounceCountBeforeContact} 次；幽灵球离直线 {distToLine:F6} m (> d_min {dMin:R})；"
+                                      + $"Steps={pred.StepsSimulated}；幽灵球/目标球心/时间**逐位**等于实跑；两方向逐分量差 ≤1e-6 ✓");
+            }
+            finally
+            {
+                Object.DestroyImmediate(probeGo);
+                Object.DestroyImmediate(driveGo);
+            }
+        }
+
+        private static void CheckDirection(List<string> failures, string label, Vector2 predicted, Vector2 actual, float tol)
+        {
+            Vector2 normalized = actual.magnitude > 0f ? actual / actual.magnitude : Vector2.zero;
+            if (Mathf.Abs(predicted.x - normalized.x) > tol || Mathf.Abs(predicted.y - normalized.y) > tol)
+            {
+                failures.Add($"{label} 与实跑不一致：预测 {RVec(predicted)} / 实跑（归一）{RVec(normalized)}（容差 {tol:E0}）");
+            }
+        }
+
+        /// <summary>点到直线段所在**直线**的距离（甲：几何构造）。</summary>
+        private static float DistanceToLine(Vector2 p, Vector2 a, Vector2 b)
+        {
+            Vector2 ab = b - a;
+            float len = ab.magnitude;
+            if (!(len > 1e-9f))
+            {
+                return (p - a).magnitude;
+            }
+
+            return Mathf.Abs(ab.x * (p.y - a.y) - ab.y * (p.x - a.x)) / len;
+        }
+
+        // ══════════════════ T83 成本上限（首次接触即停）═════════════════════════
+
+        /// <summary>
+        /// **成本上限**：① 预测**在首次球-球接触的**那一步**停下**（时间落在最后一步的窗口内）；
+        /// ② 步数有上界（`≤ maxPredictSteps`，取自代码默认）；③ 打不到球时**有界停止**；
+        /// ④ 接触总量**远小于**整盘满堆开球的 **6746**（`F-26`，量级参照）。
+        ///
+        /// 期望值来源：**乙**（实跑计数）＋ **乙-系数选定**（`maxPredictSteps` 与比值门限）。
+        /// **盲带**：不判绝对性能（无 CI / 无固定机型）⇒ 只判"有界 + 停在首接触步 + 量级远低于整盘"。
+        /// **注入负对照**：循环条件改成"跑到 `TableAtRest`" ⇒ 步数远超上界且时间不再落在末步窗口 ⇒ **(a)(b)(d) FAIL**；
+        /// 删掉步数上限 ⇒ 无接触场景 **(c) FAIL**（无限跑）。
+        /// ⚠ **与 spec 的偏差（如实）**：spec `T83a` 写 "`BallBallContactCount == 1`"。**实测不可达** ——
+        /// 一个 `Step` 含 3 个子步，首接触那一步内可解算**多次**球-球接触（实测：直球 3 / 银行球 2 / 4 球堆 **7**）。
+        /// ⇒ 把"首次接触即停"落成可判定的**结构形式**：`BallBallContactCount ≥ 1` **且**
+        /// `(StepsSimulated−1)·dt < TimeToFirstContact ≤ StepsSimulated·dt`（接触恰落在**最后一步**内）。
+        /// </summary>
+        [Test]
+        public void T83_PredictionCost_IsBoundedAndStopsAtFirstContact()
+        {
+            TableConfig table = Table();
+            PhysicsParams pm = FactoryParams();
+
+            var probeGo = new GameObject("T83Probe");
+            int maxPredictSteps;
+            try
+            {
+                maxPredictSteps = probeGo.AddComponent<AimAssistController>().maxPredictSteps;
+            }
+            finally
+            {
+                Object.DestroyImmediate(probeGo);
+            }
+
+            float dt = PoolSimulator.FixedDeltaTime;
+            const int WholeTableBreakContacts = 6746;   // F-26：整盘满堆开球到静止的接触解算总次数（量级参照）
+            const int MinRatioVsWholeTable = 10;        // 乙-系数选定：预测侧接触数至少比整盘小 10 倍
+
+            Vector2[] rack = PhysicsTestDrive.RackPositions(table.footSpot, 3);
+            var rackBalls = new BallState[rack.Length];
+            for (int i = 0; i < rack.Length; i++)
+            {
+                rackBalls[i] = Ball(rack[i].x, rack[i].y, 0f, 0f);
+            }
+
+            var scenarios = new (string name, PhysicsParams p, Vector2 v0, bool expectContact, List<BallState> balls)[]
+            {
+                ("直球", pm, new Vector2(4.5f, 0f), true, new List<BallState> { Ball(-0.40f, 0f, 0f, 0f), Ball(0.20f, 0f, 0f, 0f) }),
+                ("斜碰20°", pm, new Vector2(Mathf.Cos(20f * Mathf.Deg2Rad), Mathf.Sin(20f * Mathf.Deg2Rad)) * 4.5f, true, new List<BallState> { Ball(-0.05f, 0f, 0f, 0f), Ball(0.05f, 0f, 0f, 0f) }),
+                ("银行球", pm, new Vector2(Mathf.Cos(172.50f * Mathf.Deg2Rad), Mathf.Sin(172.50f * Mathf.Deg2Rad)) * 4.5f, true, new List<BallState> { Ball(table.footSpot.x, table.footSpot.y, 0f, 0f), Ball(-0.40f, 0.30f, 0f, 0f) }),
+                ("4球小堆", pm, new Vector2(-4.5f, 0f), true, new List<BallState>(rackBalls)),
+                ("打不到", pm, new Vector2(0f, 4.5f), false, new List<BallState> { Ball(-0.40f, 0f, 0f, 0f), Ball(0.20f, 0.55f, 0f, 0f) }),
+            };
+
+            var failures = new List<string>();
+            var report = new List<string>();
+
+            foreach ((string name, PhysicsParams prm, Vector2 v0, bool expectContact, List<BallState> balls) in scenarios)
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                ShotPrediction pred = ShotPredictor.Predict(table, SimOf(prm, balls.ToArray()), v0, maxPredictSteps);
+                sw.Stop();
+
+                int ratio = pred.TotalContactCount > 0 ? WholeTableBreakContacts / pred.TotalContactCount : int.MaxValue;
+                report.Add($"{name}: steps={pred.StepsSimulated} bb={pred.BallBallContactCount} tot={pred.TotalContactCount} "
+                           + $"bounce={pred.CushionBounceCountBeforeContact} ratio≈{(ratio == int.MaxValue ? "∞" : ratio.ToString())} "
+                           + $"ms={sw.Elapsed.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)}");
+
+                // (b) 步数有上界
+                if (!(pred.StepsSimulated <= maxPredictSteps))
+                {
+                    failures.Add($"({name}) 步数 {pred.StepsSimulated} > 上界 {maxPredictSteps}。");
+                }
+
+                if (!(pred.StepsSimulated > 0))
+                {
+                    failures.Add($"({name}) 步数 {pred.StepsSimulated}（应 > 0，非空转）。");
+                }
+
+                // (d) 成本量级
+                if (pred.TotalContactCount * MinRatioVsWholeTable > WholeTableBreakContacts)
+                {
+                    failures.Add($"({name}) 接触总量 {pred.TotalContactCount} 未比整盘开球 {WholeTableBreakContacts} 小到"
+                                 + $" {MinRatioVsWholeTable} 倍以上（比值门限不满足）。");
+                }
+
+                if (expectContact)
+                {
+                    if (!pred.HasFirstContact)
+                    {
+                        failures.Add($"({name}) 应发生首次接触。");
+                        continue;
+                    }
+
+                    // (a) 首次接触即停：球-球接触 ≥1 且**时间落在最后一步窗口内**
+                    if (pred.BallBallContactCount < 1)
+                    {
+                        failures.Add($"({name}) `BallBallContactCount` = {pred.BallBallContactCount}（应 ≥ 1）。");
+                    }
+
+                    float lower = (pred.StepsSimulated - 1) * dt;
+                    float upper = pred.StepsSimulated * dt;
+                    if (!(pred.TimeToFirstContactSeconds > lower) || !(pred.TimeToFirstContactSeconds <= upper))
+                    {
+                        failures.Add($"({name}) 首接触时间 {pred.TimeToFirstContactSeconds:R} 不在最后一步窗口 "
+                                     + $"({lower:R}, {upper:R}] 内 ⇒ 预测**没有**在首接触那一步停下（跑过头了）。");
+                    }
+                }
+                else
+                {
+                    // (c) 无接触 ⇒ 有界停止
+                    if (pred.HasFirstContact)
+                    {
+                        failures.Add($"({name}) 前提不成立 —— 该方向本应打不到球。");
+                    }
+
+                    if (pred.StepsSimulated <= 0 || pred.StepsSimulated > maxPredictSteps)
+                    {
+                        failures.Add($"({name}) 无接触场景步数 {pred.StepsSimulated} 越界（要求 0 < steps ≤ {maxPredictSteps}）。");
+                    }
+                }
+            }
+
+            Assert.IsEmpty(failures, "T83 失败判据：\n" + string.Join("\n", failures));
+            TestContext.WriteLine($"T83: 上界 maxPredictSteps={maxPredictSteps}；" + string.Join("；", report) + " ✓");
+        }
     }
 }

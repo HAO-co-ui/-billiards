@@ -52,6 +52,9 @@ namespace Billiards.EditorTools
         /// <summary>指针瞄准控制器宿主对象名（交互胶水；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string PointerAimControllerObjectName = "PointerAimController";
 
+        /// <summary>瞄准辅助宿主对象名（预测线控制器 + 视图；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
+        public const string AimAssistObjectName = "AimAssist";
+
         // ── 入口 ───────────────────────────────────────────────────────────
 
         [MenuItem("Billiards/Visual/Build Physics Greybox Scene", false, 402)]
@@ -211,6 +214,19 @@ namespace Billiards.EditorTools
             aimController.aimCamera = cam;
             aimController.playfieldRoot = playfieldRoot.transform;
             aimController.drive = drive;
+
+            // 6) **瞄准辅助**（预测线）：控制器（胶水：只读内核 + 读驱动器开关）+ 视图（绘制：过显示层单点）。
+            //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。
+            var assistGo = new GameObject(AimAssistObjectName);
+            assistGo.transform.SetParent(root.transform, false);
+            var assistController = assistGo.AddComponent<AimAssistController>();
+            assistController.drive = drive;
+            assistController.aimCamera = cam;
+            assistController.playfieldRoot = playfieldRoot.transform;
+
+            var assistView = assistGo.AddComponent<AimAssistView>();
+            assistView.controller = assistController;
+            assistView.playfieldRoot = playfieldRoot.transform;
 
             EditorSceneManager.SaveScene(scene, ScenePath);
         }

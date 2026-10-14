@@ -650,14 +650,14 @@ public static float  DrawScale(Transform playfieldRoot);                        
 
 ### 8.3 需实测定值（**实现后按实测填写，不得编数字**）
 
-| 项 | 用途 | 填值时机 |
-| --- | --- | --- |
-| `maxPredictSteps` | 预测步数上限（`T83b/c`） | 实测"银行球首接触所需步数"后取 ≥2× 余量 |
-| `PredictionDashLength` / `PredictionGapLength` | 虚线几何（`T80`） | 实测屏幕可辨后填 |
-| `MinGapWorld` | 屏幕 ≥1 px 对应的世界米数（`T80d`） | 由 16:9 基准取景实测 |
-| `d_min` | 银行球"幽灵球离直线"的下界（`T78a`） | 由银行球场景实测 |
-| 参考场景的 `ghostBall` / 方向 / `StepsSimulated` / `TotalContactCount` / `elapsedMs` | 证据数值（§6.1） | 实跑记录 |
-| `TotalContactCount` 与 6746 的比值门限 | `T83d` | 实测后填 |
+| 项 | 用途 | 填值时机 | **实测值（切片 B 回填）** |
+| --- | --- | --- | --- |
+| `maxPredictSteps` | 预测步数上限（`T83b/c`） | 实测"银行球首接触所需步数"后取 ≥2× 余量 | **240**（银行球实测 **78** 步 ⇒ ≈3.1×；实测步数：直球 15 / 斜碰 2 / 银行球 78 / 4 球堆 21 / 打不到 240） |
+| `PredictionDashLength` / `PredictionGapLength` | 虚线几何（`T80`） | 实测屏幕可辨后填 | **0.06 / 0.025 规范米**（1.2 根下世界 0.072 / 0.030 m） |
+| `MinGapWorld` | 屏幕 ≥1 px 对应的世界米数（`T80d`） | 由 16:9 基准取景实测 | **0.0017 m**（实测 `viewport/米 = 0.310438871` ⇒ 1920 px 下 596.04 px/米 ⇒ 1 px = 0.00167773 m） |
+| `d_min` | 银行球"幽灵球离直线"的下界（`T78a`） | 由银行球场景实测 | **0.02 m**（实测幽灵球离直线 **0.041232 m**） |
+| 参考场景的 `ghostBall` / 方向 / `StepsSimulated` / `TotalContactCount` / `elapsedMs` | 证据数值（§6.1） | 实跑记录 | 见 `Docs/35-A_Day9_瞄准辅助与击球预测_执行记录.md` §2.1 / §3 |
+| `TotalContactCount` 与 6746 的比值门限 | `T83d` | 实测后填 | **≥ 10×**（实测比值 963×–3373×） |
 
 ---
 
@@ -684,10 +684,14 @@ public static float  DrawScale(Transform playfieldRoot);                        
 > `PoolSimulatorTwoStageRollingTests`7 / `TableConfigTests`24 / `TableImporterErrorPathTests`8 ⇒ **合计 159**）。
 > **四验收器基线**：Day1/2/3/4 = **25 / 33 / 22 / 7**（本日**不新增验收器** ⇒ 期望 ±0）。
 
-| 项 | 基线（带修订锚点） | 增量 | 新值（**待实测**） |
+| 项 | 基线（带修订锚点） | 增量 | 新值（**实测**） |
 | --- | --- | --- | --- |
-| EditMode 测试 | **159 @ `f697378`** | **+13**（`T72`–`T83` 12 条 + `T72b` 1 条；一条判据一个 `[Test]`，落 `PoolSimulatorBallBallContactDiagnosticTests.cs`（`T72b` = **1**）+ `ShotPredictorTests.cs`（`T72`–`T78` + `T83` = **8**）+ `AimAssistViewTests.cs`（`T79`–`T82` = **4**）） | **待实测填写** |
-| 四验收器 | 25 / 33 / 22 / 7 | **±0**（不新增验收器） | **待实测填写**（FAIL=0） |
+| EditMode 测试 | **159 @ `f697378`**（本 spec 定稿时实测） | **+13**（`T72`–`T83` 12 条 + `T72b` 1 条）⇒ **切片 A +6**（`165 @ d83b941`）+ **切片 B +7**（`172`） | **172 / 172**（**实测**；failed 0 / skipped 0；源码 `[Test]` 计数 **172** 双向一致） |
+| 四验收器 | 25 / 33 / 22 / 7 | **±0**（不新增验收器） | **25 / 33 / 22 / 7，FAIL = 0，`overallStatus = PASS`**（**实测**） |
+
+> **切片划分（`C-4`，两单串行）**：**D9-A** @ `d83b941` ⇒ **165 / 165**（`+6`：`ShotPredictorTests` ×5 = `T72`/`T73`/`T74`/`T75`/`T76`；`PoolSimulatorBallBallContactDiagnosticTests` ×1 = `T72b`）；
+> **D9-B** @ 本单 ⇒ **172 / 172**（`+7`：`ShotPredictorTests` **追加** `T77`/`T78`/`T83`；新文件 `AimAssistViewTests` ×4 = `T79`/`T80`/`T81`/`T82`）。
+> 详细实测、注入原文与偏差见 **`Docs/35-A_Day9_瞄准辅助与击球预测_执行记录.md`**。
 
 > **双向核对**：源码 `grep -cE "^\s*\[Test\]"` 逐文件求和 == Unity 实跑 XML `testcasecount`。**终值留空待实测，不得编数字。**
 

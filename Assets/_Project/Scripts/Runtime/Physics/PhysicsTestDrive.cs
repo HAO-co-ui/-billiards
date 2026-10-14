@@ -97,6 +97,9 @@ namespace Billiards.Physics
         [Tooltip("瞄准指示物截面厚度（米）。")]
         public float aimIndicatorThickness = 0.012f;
 
+        [Tooltip("瞄准辅助：预测线开关（设置项预留接口）。")]
+        public bool enableShotPrediction = true;
+
         /// <summary>
         /// 当前瞄准方向（**Unity 世界、水平面**）= 物理方向 `(cos θ, sin θ)` 经
         /// <see cref="PoolGeometry.PhysicsDirectionToUnity"/> 映射 ⇒ **`(−cos θ, 0, −sin θ)`**。
@@ -159,6 +162,14 @@ namespace Billiards.Physics
         /// 正常出杆（白球仍在场上）为 `false`。
         /// </summary>
         public bool LastLaunchRespawnedCueBall { get; private set; }
+
+        /// <summary>
+        /// **瞄准辅助预测线开关的唯一读点**（= <see cref="enableShotPrediction"/>）。
+        ///
+        /// 未来设置菜单**只写**那个字段，不新增第二处开关状态；<see cref="AimAssistController"/> **不另存**副本。
+        /// 关闭 ⇒ 预测**零成本**（不重算、不绘制）。
+        /// </summary>
+        public bool PredictionEnabled => enableShotPrediction;
 
         private void Awake()
         {
