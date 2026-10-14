@@ -52,6 +52,15 @@ namespace Billiards.Physics
         [Tooltip("台呢滚阻减速度 a（m/s²）。物理内核阶段 = 0（spec §2.1 单一口径）。")]
         public float rollingDeceleration = 0f;
 
+        [Header("球-球参数（默认取 SafeDefault = 1.0）")]
+        [Tooltip("球-球法向恢复系数 e_ball。1.0 = 完全弹性（默认）；台球实测 0.93–0.96。")]
+        [Range(0f, 1f)]
+        public float ballRestitution = 1f;
+
+        [Tooltip("球-球切向保留系数 μ_ball。**本模型无自旋 ⇒ 必须保持 1.0**（<1 属非物理耗散）。")]
+        [Range(0f, 1f)]
+        public float ballTangentialFriction = 1f;
+
         [Header("冒烟测试")]
         [Tooltip("按此键把白球以 PoolConstants.MaxBallSpeed 打出。")]
         public KeyCode launchKey = KeyCode.Space;
@@ -83,12 +92,18 @@ namespace Billiards.Physics
                 return;
             }
 
-            var parameters = new PhysicsParams
-            {
-                cushionRestitution = cushionRestitution,
-                cushionTangentialFriction = cushionTangentialFriction,
-                rollingDeceleration = rollingDeceleration,
-            };
+            // ⚠ **必须逐字段显式赋值**：`default(PhysicsParams)` 恒为全零（C# 语言定义），
+            // 而 `ballTangentialFriction = 0` 会把切向分量整个删除（非物理耗散）、
+            // `ballRestitution = 0` 会让球-球碰撞完全非弹性。
+            // 起点取 SafeDefault，再覆盖本组件的可调字段 ⇒ 既安全又不依赖默认值。
+            PhysicsParams parameters = PhysicsParams.SafeDefault;
+            parameters.cushionRestitution = cushionRestitution;
+            parameters.cushionTangentialFriction = cushionTangentialFriction;
+            parameters.rollingDeceleration = rollingDeceleration;
+
+            // 新增球-球字段：本组件也暴露它们，默认即 SafeDefault 的 1.0
+            parameters.ballRestitution = ballRestitution;
+            parameters.ballTangentialFriction = ballTangentialFriction;
 
             _simulator = new PoolSimulator(tableConfig, parameters);
             _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
@@ -191,16 +206,33 @@ namespace Billiards.Physics
         /// </summary>
         private BallState[] BuildRack()
         {
+            Vector2[] positions = RackPositions(tableConfig.footSpot);
+            var balls = new BallState[positions.Length];
+            for (int i = 0; i < positions.Length; i++)
+            {
+                balls[i] = new BallState { position = positions[i], velocity = Vector2.zero };
+            }
+
+            return balls;
+        }
+
+        /// <summary>
+        /// 球堆位置（**纯函数**，供验收器与测试共用同一口径）。
+        /// 间距 = <c>2r + 2e-4</c> ⇒ 满足 <see cref="PoolSimulator.BallInitialOverlapTolerance"/>
+        /// 的"合法摆放"要求（任意两球间距 ≥ <c>2r − 1e-4</c>）。
+        /// </summary>
+        public static Vector2[] RackPositions(Vector2 footSpot)
+        {
             float s = PoolConstants.BallDiameter + 2e-4f;
             float half = s * 0.5f;
             float row = s * 0.8660254f;
 
             return new[]
             {
-                new BallState { position = tableConfig.footSpot, velocity = Vector2.zero },
-                new BallState { position = new Vector2(-0.30f, 0f), velocity = Vector2.zero },
-                new BallState { position = new Vector2(-0.30f - row, half), velocity = Vector2.zero },
-                new BallState { position = new Vector2(-0.30f - row, -half), velocity = Vector2.zero },
+                footSpot,
+                new Vector2(-0.30f, 0f),
+                new Vector2(-0.30f - row, half),
+                new Vector2(-0.30f - row, -half),
             };
         }
 

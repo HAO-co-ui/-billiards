@@ -333,6 +333,8 @@ namespace Billiards.Tests
                                   + $"guardTrips={a.ToiIterationGuardTrips}");
 
             Assert.Greater(a.BallBallContactCount, 0, "T20：必须真的发生球-球接触（非空转）。");
+            Assert.LessOrEqual(a.BallBallContactCount, 30,
+                "T20：球-球解算次数须有上界（计数与动量交换解耦时会虚增到千级）。");
 
             for (int i = 0; i < 3; i++)
             {
@@ -416,6 +418,9 @@ namespace Billiards.Tests
             Assert.AreEqual(0, sim.EnergyGainViolations, "T23：不得升能。");
             Assert.AreEqual(0, sim.ToiIterationGuardTrips, "T23：迭代守卫必须为 0。");
             Assert.GreaterOrEqual(sim.BallBallContactCount, 2, "T23：三球链至少两次球-球接触（否则空实现也能过）。");
+            Assert.LessOrEqual(sim.BallBallContactCount, 8,
+                "T23：球-球解算次数必须有**上界**（解析事件数级）—— 抖动/重复解算会把计数放大数十倍。");
+            Assert.LessOrEqual(sim.TotalContactCount, 16, "T23：总解算次数同样须有上界。");
         }
 
         // ══════════════════ T24 库边夹心（零时间推进 + 顺序解算）══════════════
@@ -445,6 +450,8 @@ namespace Billiards.Tests
             Assert.AreEqual(0, sim.EnergyGainViolations, "T24a：同刻顺序解算不得升能。");
             Assert.AreEqual(0, sim.ToiIterationGuardTrips, "T24a：迭代守卫必须为 0。");
             Assert.GreaterOrEqual(sim.BallBallContactCount, 1, "T24a：非空转（必须发生球-球接触）。");
+            Assert.LessOrEqual(sim.BallBallContactCount, 8, "T24a：球-球解算次数须有上界。");
+            Assert.LessOrEqual(sim.TotalContactCount, 16, "T24a：总解算次数须有上界。");
             Assert.GreaterOrEqual(sim.BallBallMaxIterationsObserved, 2,
                 "T24a：B 的段接触以 t=0 紧跟球-球 ⇒ 至少两轮迭代（顺序路径的可观测签名）。");
             Assert.GreaterOrEqual(distToSeg, R - 1e-6f, "T24a：B 不得钻入库边。");
@@ -464,6 +471,92 @@ namespace Billiards.Tests
             Assert.LessOrEqual(speedA, 1e-4f,
                 "T24b：球-球冲量等大反向的可观测推论 —— A 应把全部动量交出（墙吸收）。");
             Assert.AreEqual(0, sim.ToiIterationGuardTrips, "T24b：迭代守卫必须为 0。");
+        }
+
+        // ══════════════════ F2 参数安全默认（实机档不得跑在 e=0/μ=0 上）══════════
+
+        [Test]
+        public void F2a_SafeDefault_HasSafePhysicalValues()
+        {
+            PhysicsParams d = PhysicsParams.SafeDefault;
+
+            TestContext.WriteLine($"F2a: cushion(e={d.cushionRestitution},μ={d.cushionTangentialFriction}) "
+                                  + $"ball(e={d.ballRestitution},μ={d.ballTangentialFriction}) a={d.rollingDeceleration}");
+
+            Assert.AreEqual(1f, d.ballRestitution, "F2a：SafeDefault 的 e_ball 必须为 1.0（不得为 0）。");
+            Assert.AreEqual(1f, d.ballTangentialFriction, "F2a：SafeDefault 的 μ_ball 必须为 1.0（0 会删除切向分量）。");
+            Assert.AreEqual(1f, d.cushionRestitution, "F2a：SafeDefault 的库边 e 必须为 1.0。");
+            Assert.AreEqual(1f, d.cushionTangentialFriction, "F2a：SafeDefault 的库边 μ 必须为 1.0。");
+            Assert.AreEqual(0f, d.rollingDeceleration, "F2a：滚阻仍为 0（单一口径）。");
+        }
+
+        [Test]
+        public void F2b_RuntimeCallSite_PassesEffectiveSafeParamsToKernel()
+        {
+            // ⚠ **本判据在 F2 修复前必然 FAIL**：`PhysicsTestDrive.Initialize()` 当时用
+            // `new PhysicsParams{…只填 3 个字段…}` ⇒ 球-球两字段为 0 ⇒ 实机档 e_ball=0（完全非弹性）、
+            // μ_ball=0（命中 μ<1 分支、切向分量被整个删除 = 非物理耗散）。
+            // 断言的是**内核实际生效的参数**，而不是调用点源码 —— 因为 `default(PhysicsParams)` 恒为全零
+            // 且能一路静默传到内核里。
+            var config = UnityEditor.AssetDatabase.LoadAssetAtPath<TableConfig>(
+                "Assets/_Project/Data/TableConfig.asset");
+            Assert.IsNotNull(config, "F2b：需要真实 TableConfig.asset。");
+
+            var go = new GameObject("F2bDrive");
+            try
+            {
+                var drive = go.AddComponent<PhysicsTestDrive>();
+                drive.tableConfig = config;
+                drive.Initialize();
+
+                Assert.IsNotNull(drive.Simulator, "F2b：Initialize 后应已构造内核。");
+                PhysicsParams effective = drive.Simulator.Params;
+
+                TestContext.WriteLine($"F2b: 生效 e_ball={effective.ballRestitution} "
+                                      + $"μ_ball={effective.ballTangentialFriction} "
+                                      + $"cushion(e={effective.cushionRestitution},μ={effective.cushionTangentialFriction})");
+
+                Assert.AreEqual(1f, effective.ballRestitution,
+                    "F2b：实机档 e_ball 必须为 1.0（0 = 球-球完全非弹性）。");
+                Assert.AreEqual(1f, effective.ballTangentialFriction,
+                    "F2b：实机档 μ_ball 必须为 1.0（0 = 切向分量被整个删除）。");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void F2c_DefaultStructParams_AreZero_AndThatIsWhySafeDefaultExists()
+        {
+            // 记录这条**语言事实**：`default(T)`（struct）恒为字段全零，与"字段初始化器"无关
+            // ⇒ 判据不能指望 `default` 安全，只能断言 SafeDefault 与"内核生效值"。
+            PhysicsParams d = default;
+            TestContext.WriteLine($"F2c: default = e_ball {d.ballRestitution}, μ_ball {d.ballTangentialFriction}"
+                                  + "（C# 定义为全零 ⇒ 危险值，必须用 PhysicsParams.SafeDefault）");
+
+            Assert.AreEqual(0f, d.ballRestitution,
+                "F2c：`default(PhysicsParams)` 的 e_ball 恒为 0（语言定义）—— 故必须用 SafeDefault。");
+        }
+
+        // ══════════════════ F1 初始摆放校验（含负路径）════════════════════════
+
+        [Test]
+        public void F1a_ValidateInitialPlacement_AcceptsLegalRack_RejectsOverlap()
+        {
+            Vector2[] rack = PhysicsTestDrive.RackPositions(new Vector2(0.5f, 0f));
+            Assert.IsNull(PoolSimulator.ValidateInitialPlacement(rack),
+                "F1a：合法球堆（间距 2r+2e-4）不得被判违规。");
+
+            // 负路径：把某球挪到与另一球重叠
+            Vector2[] bad = PhysicsTestDrive.RackPositions(new Vector2(0.5f, 0f));
+            bad[2] = bad[1] + new Vector2(1e-3f, 0f);
+
+            string violation = PoolSimulator.ValidateInitialPlacement(bad);
+            TestContext.WriteLine($"F1a: 合法→{(violation == null ? "通过" : "误报")}；重叠注入→{violation ?? "未检出(错)"}");
+
+            Assert.IsNotNull(violation, "F1a：重叠摆放必须被拒绝（否则本校验项无判别力）。");
         }
 
         // ══════════════════ T25 候选对完备性 ═════════════════════════════════
@@ -518,6 +611,9 @@ namespace Billiards.Tests
             Assert.AreEqual(0, sim.ToiIterationGuardTrips, "T26：迭代守卫必须为 0。");
             Assert.GreaterOrEqual(sim.BallBallContactCount, 1, "T26：非空转（球-球接触必须发生）。");
             Assert.GreaterOrEqual(sim.TotalContactCount, 2, "T26：段接触与球-球接触都应发生（佐证同 group）。");
+            Assert.LessOrEqual(sim.TotalContactCount, 8,
+                "T26：总解算次数须有**上界**（删掉球-段接近判据会让它涨到数百）。");
+            Assert.LessOrEqual(sim.BallBallContactCount, 4, "T26：球-球解算次数须有上界。");
             Assert.GreaterOrEqual(distB, R - 1e-6f, "T26：B 不得钻入库边。");
         }
 

@@ -38,5 +38,34 @@ namespace Billiards.Physics
 
         /// <summary>台呢滚动减速度 a，m/s²。</summary>
         public float rollingDeceleration;
+
+        /// <summary>
+        /// **安全默认值 —— 必须用它，不要用 `default(PhysicsParams)`。**
+        ///
+        /// ⚠ **语言事实**：`default(T)`（T 为 struct）由 C# **定义为"字段全部清零"**，
+        /// 与 C# 10+ 的"字段初始化器 / 显式无参构造"**无关** ⇒ 给字段写初始化器**改不了** `default` 的值。
+        /// 因此"让 `default(PhysicsParams)` 成为安全值"这条要求**在 struct 上不可达**。
+        ///
+        /// 而全零对物理参数是**危险值**：`ballTangentialFriction = 0` 会命中
+        /// <c>PoolSimulator</c> 的 `μ &lt; 1` 分支、把切向分量**整个删除**，
+        /// 那正是明令禁止的**非物理耗散**；`ballRestitution = 0` 则让球-球碰撞**完全非弹性**。
+        ///
+        /// ⇒ 可取的做法是**两条防线**：① 调用点一律用本属性显式取值；
+        /// ② 判据断言"内核**实际生效**的参数"是安全值（见 `PoolSimulator.Params`）。
+        /// </summary>
+        public static PhysicsParams SafeDefault
+        {
+            get
+            {
+                return new PhysicsParams
+                {
+                    cushionRestitution = 1f,
+                    cushionTangentialFriction = 1f,
+                    ballRestitution = 1f,
+                    ballTangentialFriction = 1f,
+                    rollingDeceleration = 0f,
+                };
+            }
+        }
     }
 }

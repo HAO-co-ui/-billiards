@@ -195,6 +195,13 @@ namespace Billiards.Physics
         /// <summary>当前球状态（只读视图）。返回元素为值类型副本。</summary>
         public IReadOnlyList<BallState> Balls => _balls;
 
+        /// <summary>
+        /// 本内核**实际生效**的参数（值语义副本）。
+        /// 用途：判据可断言"调用点是否真的传了**安全值**"——只断言调用点源码不够，
+        /// 因为 `default(PhysicsParams)` 恒为全零且能一路静默传到物理内核里。
+        /// </summary>
+        public PhysicsParams Params => _params;
+
         // ── 构造 ──────────────────────────────────────────────────────────
 
         /// <summary>
@@ -270,6 +277,36 @@ namespace Billiards.Physics
         private static int CeilWithEpsilon(float ratio)
         {
             return Mathf.CeilToInt(ratio - SubStepCeilEpsilon);
+        }
+
+        /// <summary>
+        /// **初始摆放校验（校验期单点实现）**：任意两球间距须 ≥ `2r − BallInitialOverlapTolerance`。
+        /// 合法摆放可落在**边界**上（与"贴库静止球"同族），故用的是**容差**而非严格不等。
+        /// 无违规返回 <c>null</c>；否则返回首个违规的可读描述。
+        ///
+        /// 由 `PhysicsValidator` 的球-球检查项与 EditMode 判据**共用**（同一不变量单点实现）。
+        /// </summary>
+        public static string ValidateInitialPlacement(IReadOnlyList<Vector2> positions)
+        {
+            if (positions == null)
+            {
+                return null;
+            }
+
+            float minAllowed = 2f * PoolConstants.BallRadius - BallInitialOverlapTolerance;
+            for (int i = 0; i < positions.Count; i++)
+            {
+                for (int k = i + 1; k < positions.Count; k++)
+                {
+                    float d = Length(positions[i] - positions[k]);
+                    if (d < minAllowed)
+                    {
+                        return $"球 {i} 与球 {k} 间距 {d:F9} m < 下限 {minAllowed:F9} m（重叠摆放）";
+                    }
+                }
+            }
+
+            return null;
         }
 
         // ── 装载与推进 ────────────────────────────────────────────────────
@@ -850,19 +887,23 @@ namespace Billiards.Physics
                 n = d / PoolMath.Sqrt(d2);
             }
 
-            // 无论是否需要冲量，本对在此刻被**解算过一次** ⇒ 计数。
-            BallBallContactCount++;
-            TotalContactCount++;
-
             Vector2 vi = _balls[i].velocity;
             Vector2 vk = _balls[k].velocity;
 
             Vector2 rel = vi - vk;
             float vn = Dot(rel, n);
+
+            // ⚠ **计数必须反映"真实解算"**：只在"确实施加了冲量"或"确实做了位置分离"时才计。
+            // 否则"保留计数、停止解算"的注入会因计数虚增而**全部通过**（计数与动量交换解耦）。
             if (vn >= 0f)
             {
-                // 已在分离 ⇒ 不产生冲量；只做位置修正（深层重叠路径会走到这里）。
-                SeparatePair(i, k, n);
+                // 已在分离 ⇒ 不产生冲量；只做位置修正（深层重叠/球心重合路径会走到这里）。
+                if (SeparatePair(i, k, n))
+                {
+                    BallBallContactCount++;
+                    TotalContactCount++;
+                }
+
                 return;
             }
 
@@ -888,6 +929,10 @@ namespace Billiards.Physics
 
             SeparatePair(i, k, n);
 
+            // 冲量已施加 ⇒ 这是一次真实解算（与上面的"只分离不施冲量"情形区分开）。
+            BallBallContactCount++;
+            TotalContactCount++;
+
             float energyAfter = vi.x * vi.x + vi.y * vi.y + vk.x * vk.x + vk.y * vk.y;
             if (energyAfter > energyBefore * (1f + 1e-6f))
             {
@@ -899,7 +944,14 @@ namespace Billiards.Physics
         /// 位置修正：把重叠的两球沿 <c>n̂</c> **各推一半**，使间距 = <c>2r</c>。
         /// 修正量只依赖 `(n̂, 重叠量, <see cref="BallBallSeparationShare"/>)` ⇒ **不依赖访问顺序**。
         /// </summary>
-        private void SeparatePair(int i, int k, Vector2 n)
+        /// <summary>
+        /// 位置修正：把重叠的两球沿 <c>n̂</c> **各推一半**，使间距 = <c>2r</c>。
+        /// **本函数是"把重叠推开"这条不变量在本类内的单点实现**（另一处曾有的"手动贴到相切"
+        /// 已删除 —— 那是重复实现，且会让本函数永不被走到）。
+        /// 修正量只依赖 `(n̂, 重叠量, <see cref="BallBallSeparationShare"/>)` ⇒ 不依赖访问顺序。
+        /// 返回**是否真的发生了分离**（供调用方决定是否计入"真实解算"）。
+        /// </summary>
+        private bool SeparatePair(int i, int k, Vector2 n)
         {
             Vector2 pi = _balls[i].position;
             Vector2 pk = _balls[k].position;
@@ -908,12 +960,13 @@ namespace Billiards.Physics
             float overlap = 2f * PoolConstants.BallRadius - dist;
             if (overlap <= 0f)
             {
-                return;
+                return false;
             }
 
             float push = overlap * BallBallSeparationShare;
             _balls[i].position = pi + push * n;
             _balls[k].position = pk - push * n;
+            return true;
         }
 
         // ── 深层重叠（球-球 与 球-段 共用同一套处置）──────────────────────
@@ -978,9 +1031,10 @@ namespace Billiards.Physics
                     continue;
                 }
 
-                // 先把 i 放到"恰好相切"的位置 ⇒ 随后的解算/分离都在合法几何上进行。
-                Vector2 n = delta / dist;
-                _balls[i].position = _balls[k].position + (2f * r) * n;
+                // ⚠ **不在此处手动"贴到相切"**：那与 `SeparatePair` **在实现同一不变量**
+                //（把重叠推开）—— 属重复实现，且会让 `SeparatePair` 永远走不到（零覆盖）。
+                // 改为直接把球交给解算路径：法向由现场几何求得，**位置修正由 `SeparatePair` 单点完成**。
+                _ = dist;
                 ResolveBallBallContact(i, k);
             }
         }

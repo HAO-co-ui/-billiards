@@ -91,6 +91,8 @@ namespace Billiards.EditorTools
             VerifyGreyboxScene(report);
             VerifyPhysicsSourcesArePhysXFree(report);
             VerifyPhysicsBanScan(report);
+            VerifyBallBallInitialPlacement(report);
+
             VerifyBuildSettings(report);
 
             report.Finalise();
@@ -276,6 +278,27 @@ namespace Billiards.EditorTools
         }
 
         // ── build list（R-J）───────────────────────────────────────────────
+
+        /// <summary>
+        /// 球-球初始摆放重叠校验（新增检查项，编号族规 = `D{轮次}-{域}-{序号}` ⇒ `D5-PHY-01`）。
+        /// 校验对象 = 灰盒演示所用的**球堆摆放**（与 `PhysicsTestDrive.RackPositions` 同一函数）。
+        /// 判据由 `PoolSimulator.ValidateInitialPlacement` 单点实现（校验器与测试共用）。
+        /// </summary>
+        private static void VerifyBallBallInitialPlacement(SetupReport report)
+        {
+            Vector2[] rack = PhysicsTestDrive.RackPositions(
+                new Vector2(Billiards.Core.PoolConstants.ClothHalfLength * 0.4f, 0f));
+
+            string violation = PoolSimulator.ValidateInitialPlacement(rack);
+            int pairCount = rack.Length * (rack.Length - 1) / 2;
+
+            report.Add(violation == null
+                ? CheckResult.Ok("D5-PHY-01", "球-球初始摆放无重叠（间距 ≥ 2r − 容差）",
+                    $"全部 {pairCount} 对均合法；下限 = 2r − {PoolSimulator.BallInitialOverlapTolerance:E0} m",
+                    $"球数={rack.Length}，配对数={pairCount}，最小间距 ≥ 下限")
+                : CheckResult.Fail("D5-PHY-01", "球-球初始摆放无重叠（间距 ≥ 2r − 容差）",
+                    $"全部 {pairCount} 对均合法", violation));
+        }
 
         private static void VerifyBuildSettings(SetupReport report)
         {

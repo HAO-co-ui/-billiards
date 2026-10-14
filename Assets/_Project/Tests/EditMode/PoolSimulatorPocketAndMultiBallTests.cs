@@ -376,7 +376,9 @@ namespace Billiards.Tests
                 "Dictionary<", "HashSet<", "SortedDictionary<", "SortedSet<", "Hashtable",
                 "OrderBy", "GroupBy", "ToLookup", "Random",
                 // 补齐三项（此前缺失 ⇒ 清单不完备）：
-                "ToDictionary<", "ToHashSet<", "Parallel."
+                "ToDictionary<", "ToHashSet<", "Parallel.",
+                // 补齐两项（清单此前仍不完备）：
+                "AsParallel", ".Order("
             };
 
             foreach (string token in forbidden)
