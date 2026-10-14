@@ -24,6 +24,12 @@
 > ④ ⚠ **本文所有 `文件:行号` 引用已改为符号引用**（方法名 / 字段名 / 参数名）——
 > 理由：并发在途改动（`PhysicsTestDrive.cs` 的球视觉自转）会让行号漂移（铁律 7：状态断言必须带时刻/修订）。
 > 若仍需行号，**一律以 `4d03351` 为准**。
+>
+> **修订 v1.2（主理人三处追加）**：
+> ① **§4.3 补实现口径**：`PhysicsParams.SetConstantRolling(a)` —— 把 **19 处** `rollingDeceleration =` 赋值**收敛为单点**，
+>    并**写清"便利构造 ≠ 第二个存储"**（前者不违反 `Q-14` (a)，后者才是被删的理由）；
+> ② **§5 `T62` 补注入值盲带**：注入值**不得写死**（出厂值一改，写死的注入就成**空动作**）⇒ **由真实出厂值推出**（如 `+0.37`）；
+> ③ **新增 §12.1「实现排序硬约束」**：本 spec 的实现**必须等 `d7spin-01` 的 `T42b` 合入后**再动 `GreyboxTuningWiringTests.cs`（同文件并发写者）。
 
 ---
 
@@ -184,6 +190,27 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
    （新名同前缀 ⇒ 按**词边界**判：`rollingDeceleration\b` 的命中数须为 **0**）。
    ⚠ `F2a` 会因删字段而需要改（现含 `Assert.AreEqual(0f, d.rollingDeceleration, …)`）⇒ **这是预期的连带修改**，须在提交说明里列出。
 
+**★ 实现口径：把 19 处赋值收敛成一处（主理人复核后追加；**不改裁定**）**
+实测 `grep -rn "rollingDeceleration\b" Assets/` = **42 处 / 17 文件**，其中 **19 处是 `rollingDeceleration =` 赋值**
+（几乎都在各测试文件的 `Params(...)` 辅助函数里），另 23 处是读取与注释 ⇒ **(a) 的代价绝大部分是机械展开，不是语义改动**。
+⇒ 给 `PhysicsParams` 加**一个方法（不是字段）**：
+```csharp
+/// <summary>把滚阻设成"恒定档"（滑动段 == 滚动段 ⇒ 与历史单值语义逐位等价）。
+/// **这是"恒定档"的唯一实现点** —— 不要在各测试里各写一遍两字段赋值。</summary>
+public void SetConstantRolling(float a)
+{
+    rollingDecelerationSlide = a;
+    rollingDecelerationRoll = a;
+}
+```
+⇒ 19 处 `p.rollingDeceleration = a;` **一行换一行**改成 `p.SetConstantRolling(a);`。
+
+> ⚠ **关键区别（必须写清，否则后人会以为我们自相矛盾）**：
+> `SetConstantRolling` 是**便利构造**、**只写那两个已存在的字段**，**不新增存储** ⇒ **不违反 `Q-14` (a) 的裁定**，
+> 反而把"恒定档"变成**单点、具名**的概念（**铁律 16 满足**）。
+> 而**旧字段 `rollingDeceleration` 是真正的第二个存储**（同一个量两种写法，必然分叉）—— **那才是被删的理由**。
+> ⇒ **"加一个便利方法" 与 "删一个重复字段" 是两件性质相反的事**，不得混为一谈。
+
 ### 4.4 内核改法（**单点**）
 1. 新增 `private float DecelerationAt(Vector2 v)`（**唯一的 `a(v)` 实现**）：
    ```csharp
@@ -293,8 +320,11 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
 - **做法**：把 `T43` 的断言面**扩到 3 个滚动字段**（`PhysicsTestDrive` 上新增的同名序列化字段，与回落集合一致），并在**场景重建后**核对。
 - **期望值来源**：**乙-结构**（场景序列化值 == 代码默认值）。
 - **判别力**：★ **只改场景里某个滚动字段（不动代码）⇒ 必须红** —— 这正是"守卫恰好在最可能要调的三个参数上瞎"的机械复现。
-- **盲带**：只覆盖**已列入断言的字段**；`v_transition` 若未进场景则不适用（`Q-15` (a) 下应已进）。
-- **注入负对照**：场景 `rollingDecelerationSlide: 2.0 → 0.9`（不改代码）⇒ `T43`/`T62` **必须 FAIL**。
+- **盲带**：① 只覆盖**已列入断言的字段**；`v_transition` 若未进场景则不适用（`Q-15` (a) 下应已进）。
+  ⚠ ② ★ **注入值的盲带（主理人追加，`R-A2`/`R-E2` 同族）**：本条的注入**只在"注入值与出厂值必然不同"时有效** ——
+  若**出厂值恰好等于写死的注入值**（或在容差内），注入就变成**空动作** ⇒ 会得到"守卫有效"的**假象**。
+  ⇒ **注入值不得写死**（例如不许写死 `0.9`），必须**先读取真实出厂值，再取一个必然不同的数**（例如 `出厂值 + 0.37f`）。
+- **注入负对照**：**读真实出厂值** `v = 资产.rollingDecelerationSlide`；把**场景**里的该字段改成 **`v + 0.37`**（**不改代码**）⇒ `T43`/`T62` **必须 FAIL**。
 
 ---
 
@@ -386,4 +416,15 @@ a(v) = a_roll + (a_slide − a_roll) · clamp01(v / v_transition)
 
 > **§0.3 的"两轮抱怨不矛盾"解释**已按主理人要求写入（恒定 `a` 的两端都不像真球）。
 > **`Q-14` (a) 的连带预期改动**（须在实现提交说明里逐条列出）：`PhysicsParams` / `PhysicsTuning` / `PhysicsTestDrive` /
-> `PhysicsParamScan` / `PhysicsTuning.asset` / `PhysicsGreybox.unity` / `F2a` / `T33a` / `T32b` / `T37` / `T43` / `T44`。
+> `PhysicsParamScan` / `PhysicsTuning.asset` / `PhysicsGreybox.unity` / `F2a` / `T33a` / `T32b` / `T37` / `T43` / `T44` /
+> **`GreyboxTuningWiringTests.cs`**（⚠ **等 `T42b` 合入后再改**，见 §12.1）。
+
+### 12.1 ⛔ **实现排序的硬约束**（主理人追加）
+`Assets/_Project/Tests/EditMode/GreyboxTuningWiringTests.cs` **此刻有另一 worker（`d7spin-01`，球视觉自转）的在途改动**：
+`+144` 行、新增 `T42b_BallVisuals_Roll_ByDisplacement`（**编号避让做对了**：避开 `T41`–`T44` 与 `T45`–`T53`）。
+但**本 spec 的实现单也要改同一个文件**（`T41` 扩面 / `T43` 扩到滚动字段 / 新增 `T62`）。
+⇒ **硬约束**：
+1. **两段滚阻的实现单必须等 `d7spin-01` 提交（含 `T42b`）之后再开工**，且**必须基于含它的新修订**动工；
+2. **先决条件 = 该文件工作区干净**（开工前 `git status --porcelain` 对该文件**无 ` M`**）；
+3. **理由**：同文件并发写者 ⇒ 后开工的会把前者改动**覆盖掉**（本项目在切片 C 时踩过"把别人已暂存的东西卷进提交"）。
+⇒ 该文件在连带改动清单里标注为「**等 `T42b` 合入后再改**」。
