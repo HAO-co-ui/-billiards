@@ -533,24 +533,41 @@ namespace Billiards.Tests
         }
 
         [Test]
-        public void F2c_RuntimeCode_NeverUsesDefaultOrFieldIncompletePhysicsParams()
+        public void F2c_ScriptsCode_NeverUsesDefaultOrFieldIncompletePhysicsParams()
         {
             // 本判据**替换**原先那条恒真断言：`default(PhysicsParams).ballRestitution == 0` 是 **C# 语言语义**，
             // 与产品代码无关 ⇒ **打不死**，违反工程标准 R3-2「禁止恒真断言」。改成**源码级守卫**（能被打死）。
             //
-            // 断言：扫 `Runtime/**/*.cs` 的**代码**（剔除 `//` 行注释），
+            // 断言：扫代码（剔除 `//` 行注释），
             //   ① 不出现 `default(PhysicsParams)`（= 字段全零 = 危险值）；
             //   ② 每个 `new PhysicsParams` 的**对象初始化器**必须显式含 `ballRestitution` 与
             //      `ballTangentialFriction`（否则会**静默漏设**球-球两字段 ⇒ 回到 e_ball=μ_ball=0 的老缺陷）。
             //
-            // 今天：唯一运行时调用点走 `PhysicsParams.SafeDefault`，其初始化器含全 5 字段 ⇒ PASS。
-            // **可被打死**：在 `PhysicsTestDrive` 插 `default(PhysicsParams)`（见注入 I6），
-            // 或从 `SafeDefault` 初始化器删一个 ball 字段（见注入 I6b）⇒ 本判据 FAIL。
-            string runtimeDir = Path.Combine(Path.GetDirectoryName(Application.dataPath),
-                "Assets/_Project/Scripts/Runtime");
-            Assert.IsTrue(Directory.Exists(runtimeDir), "F2c：找不到 Runtime 源码目录 " + runtimeDir);
+            // ── 扫描范围与排除（D5-FIX-04）──────────────────────────────────────
+            //   · 扫 `Assets/_Project/Scripts/**` = **Runtime(9) + Editor(16) + Diagnostics(4) = 29 文件**（实测）。
+            //   · **Editor 区 16 文件已逐个核**：`new PhysicsParams` / `default(PhysicsParams)` **各 0 处** ⇒ 无假阳性。
+            //   · **`Tests/**` 明确排除**：测试侧构造是**诊断/白盒用、不喂给出厂内核**。
+            //     例：`PoolSimulatorBallBallTests.cs:281`（T18b）的
+            //     `new PoolSimulator(EmptyTable(), default(PhysicsParams)).SubSteps` —— **只读 `SubSteps`**
+            //     （一个与入口参数无关的推导量），**不参与任何物理解算** ⇒ 属良性用法；
+            //     纳入会**假 FAIL** 并迫使改掉良性测试代码。**产线风险由 F2b（唯一运行时调用点）承担。**
+            //
+            // ── ⚠ 三条**模式级盲带**（本守卫是**文本检查**，**非语义证明**；已逐条核实）──────
+            //   ① **只匹配字面量**：`default (PhysicsParams)`（带空格）、`PhysicsParams p = default;`（目标类型推断）、
+            //      `new()`、`Activator.CreateInstance<PhysicsParams>()` **均可绕过** check①（不检出）。
+            //   ② **只剔 `//` 行注释**（未做词法分析）：**块注释 `/* … */` 与字符串字面量**里出现同名文本会**假 FAIL**。
+            //   ③ 初始化器按**花括号配平**切取（D5-FIX-04 改进，取代"首个 `{` 到首个 `}`"，消除嵌套对象/lambda 假 FAIL）；
+            //      残余：字符串字面量里的花括号仍可致错位（② 同族）。另，"**无初始化器**的 `new PhysicsParams()` +
+            //      其后恰好有含字段名的无关 `{…}`"曾是**假 PASS**（漏报，soundness）——
+            //      **已修**：要求 `{` 必须**紧接构造、其间无 `;`**，否则判"未用初始化器" ⇒ FAIL。
+            //
+            // 今天：唯一运行时构造点 `PhysicsParams.SafeDefault` 初始化器含全 5 字段 ⇒ PASS。
+            // **可被打死**：调用点插 `default(PhysicsParams)`（注入 I6）⇒ FAIL；`SafeDefault` 删一 ball 字段（注入 I6b）⇒ FAIL。
+            string scriptsDir = Path.Combine(Path.GetDirectoryName(Application.dataPath),
+                "Assets/_Project/Scripts");
+            Assert.IsTrue(Directory.Exists(scriptsDir), "F2c：找不到 Scripts 源码目录 " + scriptsDir);
 
-            string[] files = Directory.GetFiles(runtimeDir, "*.cs", SearchOption.AllDirectories);
+            string[] files = Directory.GetFiles(scriptsDir, "*.cs", SearchOption.AllDirectories);
             System.Array.Sort(files, System.StringComparer.Ordinal);
             Assert.IsTrue(files.Length > 0, "F2c：扫描空间为空（守卫会空转）。");
 
@@ -567,10 +584,35 @@ namespace Billiards.Tests
                 while (at >= 0)
                 {
                     int open = code.IndexOf('{', at);
-                    int close = code.IndexOf('}', at);
-                    Assert.IsTrue(open >= 0 && close > open,
-                        $"F2c：`{Path.GetFileName(file)}` 的 `new PhysicsParams` 未用对象初始化器，"
-                        + "无法确认逐字段赋值。");
+                    int semi = code.IndexOf(';', at);
+
+                    // ③ 反"假 PASS"：初始化器的 `{` 必须紧接构造（其间无 `;`）——否则是"无初始化器的 new PhysicsParams()"
+                    Assert.IsTrue(open >= 0 && (semi < 0 || open < semi),
+                        $"F2c：`{Path.GetFileName(file)}` 的 `new PhysicsParams` 未用对象初始化器"
+                        + "（无法确认逐字段赋值）。");
+
+                    // ③ 反"假 FAIL"：花括号配平取初始化器（取代"首个 { 到首个 }"）
+                    int depth = 0;
+                    int close = -1;
+                    for (int i = open; i < code.Length; i++)
+                    {
+                        if (code[i] == '{')
+                        {
+                            depth++;
+                        }
+                        else if (code[i] == '}')
+                        {
+                            depth--;
+                            if (depth == 0)
+                            {
+                                close = i;
+                                break;
+                            }
+                        }
+                    }
+
+                    Assert.IsTrue(close > open,
+                        $"F2c：`{Path.GetFileName(file)}` 的 `new PhysicsParams` 初始化器花括号不配平。");
 
                     string init = code.Substring(open, close - open);
                     Assert.IsTrue(init.Contains("ballRestitution") && init.Contains("ballTangentialFriction"),
@@ -582,7 +624,7 @@ namespace Billiards.Tests
                 }
             }
 
-            TestContext.WriteLine($"F2c: 扫 {files.Length} 个 Runtime 源文件；"
+            TestContext.WriteLine($"F2c: 扫 {files.Length} 个 Scripts 源文件（Runtime+Editor+Diagnostics，Tests 除外）；"
                                   + $"`new PhysicsParams` 构造 {constructions} 处（均含球-球两字段）；`default(PhysicsParams)` 0 处。");
 
             Assert.Greater(constructions, 0,
