@@ -532,6 +532,160 @@ namespace Billiards.Tests
                 $"iterPeak={a.BallBallMaxIterationsObserved}, elapsed={elapsedMs:F1} ms ✓");
         }
 
+        // ══════════════════ T111 满堆开球必须收敛（球堆卡死闸门）═════════════
+
+        /// <summary>满堆开球达到整盘静止的步数上限（实测 493 ⇒ 取 3.6× 余量；见判据说明）。</summary>
+        private const int BreakSettleStepCap = 1800;
+
+        /// <summary>
+        /// **`T111`：满堆开球必须在有界步数内整盘静止**（排期 Day 15「球堆卡死」极端用例）。
+        ///
+        /// **为什么这条闸门必须有（此前是空的）**：`PhysicsTestDrive.Launch()` **门控 `TableAtRest`**
+        /// （"整盘未静止不许出杆"）⇒ 一旦开球后永不静止，**玩家就再也出不了杆**（卡死），
+        /// 而 `T37`（同场景）**只把 `tableAtRest` 写进证据 JSON、没有任何断言** ⇒ 没有任何判据会红。
+        ///
+        /// 场景与 `T37` 逐字相同（`RackPositions(footSpot, 15)` + 白球 `MaxBallSpeed` 朝 −x）——
+        /// **刻意重述而非复用**：本判据锁的是**另一个不变量**（收敛性 ，`T37` 锁包络/确定性/迭代守卫），
+        /// 复用会把两条判据的失效面绑在一起。
+        ///
+        /// 断言：`TableAtRest == true` 且达到步数 ≤ <see cref="BreakSettleStepCap"/>、
+        /// `ToiIterationGuardTrips == 0`、`EnergyGainViolations == 0`、全部球位有限。
+        ///
+        /// **实测（首钉）**：**493 步**（≈4.1 s；`contacts = 49`、`captured = 2`、`guard = 0`、`energy = 0`）。
+        /// **能测出**：滚阻被改到 0（永不静止）、袋角/球-球解算注入能量（速度不衰减）、
+        /// 静止阈值被改到不可达、迭代预算被打满（子步被截断 ⇒ 迟迟不收敛）。
+        /// **盲带**：只覆盖这一种初始姿态（`footSpot` 三角摆 + 8 m/s 正撞）；换瞄准角度/力度可能更长。
+        /// </summary>
+        [Test]
+        public void T111_BreakMustSettle_WithinBoundedSteps()
+        {
+            Vector2[] rack = PhysicsTestDrive.RackPositions(_config.footSpot, 15);
+            var initial = new BallState[rack.Length];
+            for (int i = 0; i < rack.Length; i++)
+            {
+                initial[i] = new BallState { position = rack[i], velocity = Vector2.zero };
+            }
+
+            initial[0].velocity = new Vector2(-PoolConstants.MaxBallSpeed, 0f);
+
+            var sim = new PoolSimulator(_config, ShipParams(0.9f, 0.8f));
+            sim.LoadBalls(initial);
+
+            int steps = 0;
+            while (steps < BreakSettleStepCap && !sim.TableAtRest)
+            {
+                sim.Step();
+                steps++;
+            }
+
+            Assert.IsTrue(sim.TableAtRest,
+                $"T111：满堆开球在 {BreakSettleStepCap} 步（{BreakSettleStepCap / 120f:F1} s）内**未达整盘静止**"
+                + $" ⇒ 球堆卡死。`Launch()` 门控 `TableAtRest` ⇒ 玩家再也出不了杆。"
+                + $"（实测连续静止帧 = {sim.ConsecutiveRestFrameCount}）");
+            Assert.AreEqual(0, sim.ToiIterationGuardTrips, "T111：TOI 迭代守护触发（子步被截断）。");
+            Assert.AreEqual(0, sim.EnergyGainViolations, "T111：能量增益违规。");
+            AssertFinite(sim, "T111");
+
+            TestContext.WriteLine($"T111: 满堆开球 {steps} 步（{steps / 120f:F2} s）后整盘静止（cap {BreakSettleStepCap}）；"
+                                  + $"contacts={sim.TotalContactCount}, captured={sim.CapturedBallCount} ✓");
+        }
+
+        // ══════════════════ T112 静止判定不得抖动 ═══════════════════════════
+
+        /// <summary>单个姿态允许的静止判定观察窗口（步）；实测最长 45 ⇒ 取值留 13× 余量。</summary>
+        private const int RestFlapStepCap = 600;
+
+        /// <summary>
+        /// **`T112`：静止判定不得抖动**（排期 Day 15「静止判定抖动」极端用例），
+        /// 也正是 `T33a` 的 doc **自述盲带**（"不覆盖『永远在微抖』本身 —— **未构造抖动反例**"）。
+        ///
+        /// 抖动为什么致命：`TableAtRest` 是"本杆结束"的信号，`Launch()` 与 HUD 的 `Shoot` 可用性都门控它
+        /// ⇒ 一旦它来回翻，玩家**看到按钮反复亮灭**、按下又被拒。
+        ///
+        /// 姿态（12 个，都是"最容易被微抖卡住"的形态）：① 袋角凹角内 3 深度 × 3 微速（0.0015 / 0.01 / 0.08 m/s，
+        /// 跨在宏观静止阈值 `RestSpeedThreshold = 1e-3` 的上下）；② 贴长库滚动的 2 个微速；
+        /// ③ **两球初始重叠 5 mm**（球-球位置分离也在每子步进行）。
+        /// 每个姿态断言：`TableAtRest` 的**上升沿恰 1 次**、`guardTrips == 0`、`EnergyGainViolations == 0`。
+        ///
+        /// **实测（首钉）**：**全部上升沿 = 1**、静止步数 8–45 ⇒ **未观察到抖动**。
+        /// （历史上"每子步无冲量反射"那一类抖动源已在第四轮修掉：`ResolveSegmentContact` 补了接近判据。）
+        /// **盲带（如实）**：只覆盖这 12 个姿态；"抖动"不可枚举 ⇒ 本判据只给"可构造的若干反例不抖"，
+        /// **不声称**"任何姿态都不抖"。
+        /// </summary>
+        [Test]
+        public void T112_RestDeclaration_MustNotFlap()
+        {
+            var failures = new List<string>();
+            var report = new List<string>();
+            Pocket jaw = _config.GetPocket(1);
+            Vector2 tn = jaw.throatNormal;
+            Vector2 td = new Vector2(-tn.y, tn.x);
+
+            void CheckPose(string tag, params BallState[] balls)
+            {
+                var sim = new PoolSimulator(_config, ShipParams(0.9f, 0.8f));
+                sim.LoadBalls(balls);
+
+                int edges = 0;
+                int restAt = -1;
+                bool previous = false;
+                for (int step = 0; step < RestFlapStepCap; step++)
+                {
+                    sim.Step();
+                    if (sim.TableAtRest && !previous)
+                    {
+                        edges++;
+                        if (restAt < 0)
+                        {
+                            restAt = step + 1;
+                        }
+                    }
+
+                    previous = sim.TableAtRest;
+                }
+
+                if (edges != 1)
+                {
+                    failures.Add($"{tag}：`TableAtRest` 上升沿应为 **1**，实测 {edges}"
+                                 + "（抖动 ⇒ `Launch()` 门控与 HUD `Shoot` 可用性会反复翻）。");
+                }
+
+                if (sim.ToiIterationGuardTrips != 0)
+                {
+                    failures.Add($"{tag}：TOI 迭代守护触发 {sim.ToiIterationGuardTrips}。");
+                }
+
+                if (sim.EnergyGainViolations != 0)
+                {
+                    failures.Add($"{tag}：能量增益违规 {sim.EnergyGainViolations}。");
+                }
+
+                report.Add($"{tag}: rest@{restAt} 边沿={edges}");
+            }
+
+            foreach (float depth in new[] { 0f, 0.03f, 0.06f })
+            {
+                foreach (float speed in new[] { 0.0015f, 0.01f, 0.08f })
+                {
+                    CheckPose($"凹角d{depth * 1000f:F0}mm/v{speed * 1000f:F0}mm",
+                        Ball(jaw.throatCenter.x - depth * tn.x + 0.045f * td.x,
+                             jaw.throatCenter.y - depth * tn.y + 0.045f * td.y,
+                             speed * tn.x, speed * tn.y));
+                }
+            }
+
+            CheckPose("贴库/v1.5mm", Ball(0.5f, -0.6351f + PoolConstants.BallRadius, 0.0015f, 0f));
+            CheckPose("贴库/v10mm", Ball(0.5f, -0.6351f + PoolConstants.BallRadius, 0.01f, 0f));
+
+            float overlap = 0.005f;
+            CheckPose("两球重叠5mm",
+                Ball(0.10f, 0.30f, 0f, 0f),
+                Ball(0.10f + 2f * PoolConstants.BallRadius - overlap, 0.30f, 0f, 0f));
+
+            Assert.IsEmpty(failures, "T112 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine("T112: 静止判定无抖动（12 姿态，上升沿各 1）✓ " + string.Join(" | ", report));
+        }
+
         /// <summary>
         /// 写 `d6-full-break-sample.json`。**本方法内不得有任何断言**（跳过落盘 ⇒ 不得跳过任何检查）。
         /// 路径走 <see cref="ReportOutput.ResolveTestEvidencePathOrNull"/> 单点：**未给 `-outputDir` 时返回 null ⇒ 只跳过落盘**。

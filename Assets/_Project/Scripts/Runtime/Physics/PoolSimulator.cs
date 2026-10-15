@@ -1485,10 +1485,17 @@ namespace Billiards.Physics
 
                 Vector2 delta = _balls[i].position - _balls[k].position;
                 float dist = Length(delta);
-                if (dist >= 2f * r || dist < 1e-9f)
+                if (dist >= 2f * r)
                 {
                     continue;
                 }
+
+                // ⚠ **两球心完全重合（`dist == 0`）也必须交给解算路径**，不得在此跳过。
+                //   历史实现写作 `dist < 1e-9f ⇒ continue`，后果（实测）：**两球同位且都静止时永不分离**
+                //   （末间距 = 0，两球在原位叠着；"白球放回 `footSpot` 而该点已被别的球占住"就是这个姿态），
+                //   而 `ResolveBallBallContact` **本来就能处理它**：重合时取相对速度方向、仍为零则取 `(1,0)`
+                //   （退化分支），`SeparatePair` 只用到 `n` 与距离、**不做除法** ⇒ 不会 NaN。
+                //   ⇒ 本处只保留"未重叠即早退"，退化情形交给那条单点实现（铁律 16：不得两处各写一份）。
 
                 // ⚠ **不在此处手动"贴到相切"**：那与 `SeparatePair` **在实现同一不变量**
                 //（把重叠推开）—— 属重复实现，且会让 `SeparatePair` 永远走不到（零覆盖）。

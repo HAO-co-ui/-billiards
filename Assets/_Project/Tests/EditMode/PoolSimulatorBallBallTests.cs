@@ -387,6 +387,20 @@ namespace Billiards.Tests
             TestContext.WriteLine($"T22b: |Δp|={Mag(a - b):E3} ballBall={sim.BallBallContactCount}");
 
             Assert.IsFalse(float.IsNaN(a.x) || float.IsNaN(a.y) || float.IsNaN(b.x) || float.IsNaN(b.y), "T22b：不得产生 NaN。");
+
+            // ★ 标题写的是 `DeterministicSeparation` ⇒ **必须真的锁住"分离"**（原版只断言了"无 NaN"，
+            //   于是"两球同位且静止 ⇒ 永不分离"这个真实缺口从判据底下漏了过去，直到 Day 15 的
+            //   边界用例探针才把它抓出来）。两条：① 必须分离到相切 `2r`；② 双跑逐位一致。
+            float gap = Mag(a - b);
+            Assert.AreEqual(D, gap, 2e-5f,
+                $"T22b：球心几乎重合的一对必须被**分离到相切**（2r = {D:R}），实测间距 {gap:R}"
+                + "（同位静止的两球若永不分离，就会叠在原位 ⇒ `footSpot` 被占住时白球会与它重合）。");
+
+            PoolSimulator again = Sim(EmptyTable(), 1.0f, 1.0f, 1.0f,
+                Ball(0f, 0f, 0f, 0f), Ball(1e-10f, 0f, 0f, 0f));
+            Step(again, 1);
+            Assert.AreEqual(0f, (again.Balls[0].position - a).magnitude, "T22b：分离必须确定性（球 0 逐位一致）。");
+            Assert.AreEqual(0f, (again.Balls[1].position - b).magnitude, "T22b：分离必须确定性（球 1 逐位一致）。");
         }
 
         // ══════════════════ T23 三球链式接触（先后链式，非"同刻"）════════════

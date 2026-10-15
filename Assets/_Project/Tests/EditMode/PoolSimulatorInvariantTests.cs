@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Billiards.Core;
 using Billiards.Physics;
 using Billiards.Table;
@@ -179,6 +180,107 @@ namespace Billiards.Tests
             // 判别力对比：T5a 上界 1e-5 m 与 T5b 实测差 ≥ 3 个数量级。
             Assert.Greater(worst, 1e-5f * 100f,
                 $"T5b：禁用 TOI 的实测最大嵌入量仅 {worst * 1000f:F6} mm，与 T5a 的 1e-5 m 上界区分不足。");
+        }
+
+        // ── T110 高速撞"最短段"（隧穿风险最大的几何）──────────────────────
+
+        /// <summary>
+        /// **`T110`：`MaxBallSpeed` 撞极短库段不得隧穿**（排期 Day 15「8 m/s 高速穿透」极端用例的补格）。
+        ///
+        /// 为什么单独立这一条：本工程库边段短到 **4.29 mm**，而 8 m/s 的球**单子步位移 22.2 mm**
+        /// （段的 5 倍）。`T5a` 覆盖的是 6 条 **1.06 m** 的直库 —— 段长差 250 倍 ⇒ 两者能测出的失效不同：
+        /// 长段只会"嵌入"，短段才可能被**整段跨过**（隧穿）。
+        ///
+        /// (a) **合成 5 mm 单段**（隔离口径：无相邻袋角几何干扰，这样"是否弹回"只由该段决定）：
+        ///     球以 8 m/s 正撞 ⇒ 断言**必须弹回**（`v·v0 &lt; 0`）、`TotalContactCount ≥ 1`、
+        ///     全轨迹最大嵌入量 ≤ 1e-5 m、`guardTrips == 0`、`EnergyGainViolations == 0`。
+        /// (b) **真实表**：8 m/s 撞中袋袋角（`ρ0 = 0.055`）⇒ 断言不飞出台面外轮廓、
+        ///     必须发生接触（非空转）、`guardTrips == 0`、`EnergyGainViolations == 0`。
+        ///
+        /// **实测（首钉）**：(a) 8 m/s 撞 5 mm 段 ⇒ `contacts = 1`、速度反向、嵌入量 0（未隧穿）；
+        /// (b) 真表 ⇒ `contacts = 1` 后落袋（`captured = 1`）、末位在包络内、`guard = 0`、`energy = 0`。
+        ///
+        /// **能测出**：TOI 被短路（段长 &lt; 子步位移时，只有"子步末采样"必然隧穿 —— `T5b` 是同类负对照）、
+        /// 子步数推导被改坏（`v·dt_sub` 变大 ⇒ 相位构造失效 ⇒ 穿透）。
+        /// **盲带**：只锁"球心不得穿过库面"，**不覆盖**"球横向绕行擦过段两端"（那由袋角几何与 (b) 承担）。
+        /// </summary>
+        [Test]
+        public void T110_HighSpeed_ShortestSegment_DoesNotTunnel()
+        {
+            // ── (a) 合成 5 mm 单段 ────────────────────────────────────────
+            var synthetic = ScriptableObject.CreateInstance<TableConfig>();
+            synthetic.segments = new List<CushionSegment>
+            {
+                new CushionSegment { a = new Vector2(0f, -0.0025f), b = new Vector2(0f, 0.0025f), rail = "synthetic" },
+            };
+            synthetic.pockets = new List<Pocket>();
+
+            var shortSeg = new PoolSimulator(synthetic, Params());
+            float dtSub = shortSeg.SubStepDeltaTime;
+            var segA = new Vector2(0f, -0.0025f);
+            var segB = new Vector2(0f, 0.0025f);
+            // 从 −x 侧朝 +x 正撞段面（`StartClearance` 已含球半径 ⇒ 它就是球心到段面的距离）
+            Vector2 start = new Vector2(-StartClearance(Speed, dtSub, shortSeg.SubSteps), 0f);
+
+            shortSeg.LoadBalls(new[] { new BallState { position = start, velocity = new Vector2(Speed, 0f) } });
+
+            float maxPen = 0f;
+            bool bounced = false;
+            for (int s = 0; s < 8; s++)
+            {
+                shortSeg.Step();
+                BallState ball = shortSeg.Balls[0];
+                if (ball.velocity.x < 0f)
+                {
+                    bounced = true;   // 弹回 −x 侧 = 撞上了段面
+                }
+
+                float pen = PoolConstants.BallRadius - DistancePointToSegment(ball.position, segA, segB);
+                if (pen > maxPen)
+                {
+                    maxPen = pen;
+                }
+            }
+
+            Assert.IsTrue(bounced, "T110(a)：8 m/s 撞 5 mm 段**必须弹回**（未弹回 = 已隧穿）。");
+            Assert.GreaterOrEqual(shortSeg.TotalContactCount, 1, "T110(a)：无接触记录（空转）。");
+            Assert.LessOrEqual(maxPen, 1e-5f, $"T110(a)：最大嵌入量 {maxPen * 1000f:F6} mm 超过 1e-5 m。");
+            Assert.AreEqual(0, shortSeg.ToiIterationGuardTrips, "T110(a)：TOI 迭代守护触发。");
+            Assert.AreEqual(0, shortSeg.EnergyGainViolations, "T110(a)：能量增益违规。");
+            Assert.Less(shortSeg.Balls[0].position.x, 0f,
+                "T110(a)：弹回后球心应回到来侧（−x）；仍在 +x 侧 = 已穿过段面。");
+
+            // ── (b) 真实表中袋袋角，8 m/s ─────────────────────────────────
+            Pocket jaw = _config.GetPocket(1);
+            Vector2 tn = jaw.throatNormal;
+            Vector2 td = new Vector2(-tn.y, tn.x);
+            var realSeg = new PoolSimulator(_config, Params());
+            realSeg.LoadBalls(new[]
+            {
+                new BallState
+                {
+                    position = jaw.throatCenter - 0.45f * tn + 0.055f * td,
+                    velocity = PoolConstants.MaxBallSpeed * tn,
+                },
+            });
+
+            for (int s = 0; s < 120; s++)
+            {
+                realSeg.Step();
+            }
+
+            Vector2 p = realSeg.Balls[0].position;
+            Assert.GreaterOrEqual(realSeg.TotalContactCount, 1, "T110(b)：8 m/s 撞袋角应发生接触（空转）。");
+            Assert.AreEqual(0, realSeg.ToiIterationGuardTrips, "T110(b)：TOI 迭代守护触发。");
+            Assert.AreEqual(0, realSeg.EnergyGainViolations, "T110(b)：能量增益违规。");
+            Assert.LessOrEqual(Mathf.Abs(p.x), PoolGeometry.OuterBoundsMax.x + 1e-4f,
+                $"T110(b)：球飞出台面外轮廓（x = {p.x:R}）。");
+            Assert.LessOrEqual(Mathf.Abs(p.y), PoolGeometry.OuterBoundsMax.z + 1e-4f,
+                $"T110(b)：球飞出台面外轮廓（y = {p.y:R}）。");
+
+            TestContext.WriteLine($"T110: (a) 5 mm 段 8 m/s ⇒ contacts={shortSeg.TotalContactCount}、"
+                                  + $"嵌入量 {maxPen * 1000f:F6} mm、已弹回 ✓；(b) 真表袋角 8 m/s ⇒ "
+                                  + $"contacts={realSeg.TotalContactCount}、captured={realSeg.CapturedBallCount}、末位=({p.x:R},{p.y:R}) ✓");
         }
 
         // ── 测试辅助 ──────────────────────────────────────────────────────
