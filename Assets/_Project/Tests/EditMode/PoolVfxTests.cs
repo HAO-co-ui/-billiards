@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Billiards.Core;
 using Billiards.Physics;
 using Billiards.Table;
 using NUnit.Framework;
@@ -65,6 +66,37 @@ namespace Billiards.Tests
             {
                 failures.Add($"(d) 下沉曲线应为 (0,1)/(−0.04,0.5)/(−0.08,0)，"
                              + $"实际 ({y0:R},{sc0:R})/({y5:R},{sc5:R})/({y1:R},{sc1:R})。");
+            }
+
+            // (e) 入袋动画必须"**先滑到洞口、再落下**"（用户实测："贴着库边原地慢慢往下掉，像滑墙"）。
+            //     球被冻结/判入的位置常离洞口几十毫米 ⇒ 只做垂直下沉就会被看成"滑库边"。
+            Vector3 origin = new Vector3(0.30f, PoolConstants.BallRadius, -0.20f);
+            Vector3 hole = PoolGeometry.PhysicsToUnity(new Vector2(0f, -0.6951f), PoolConstants.BallRadius);
+            Vector3 q0 = PoolVfxView.PocketSinkLocalPosition(origin, hole, 0f);
+            Vector3 q6 = PoolVfxView.PocketSinkLocalPosition(origin, hole, PoolVfxView.SinkSlideFraction);
+            Vector3 q1 = PoolVfxView.PocketSinkLocalPosition(origin, hole, 1f);
+
+            if ((new Vector3(q0.x, 0f, q0.z) - new Vector3(origin.x, 0f, origin.z)).magnitude > 1e-6f)
+            {
+                failures.Add($"(e) p=0 应停在原位，实际水平 {q0}（原位 {origin}）。");
+            }
+
+            if (Mathf.Abs(q6.x - hole.x) > 1e-6f || Mathf.Abs(q6.z - hole.z) > 1e-6f
+                || Mathf.Abs(q1.x - hole.x) > 1e-6f || Mathf.Abs(q1.z - hole.z) > 1e-6f)
+            {
+                failures.Add($"(e) 滑动段结束（p={PoolVfxView.SinkSlideFraction:R}）起应已到洞口水平位置 "
+                             + $"{hole}，实际 p={PoolVfxView.SinkSlideFraction:R} → {q6}、p=1 → {q1}"
+                             + " ⇒ 会在库边原地往下掉。");
+            }
+
+            if (!(q0.y > q6.y) || !(q6.y > q1.y))
+            {
+                failures.Add($"(e) 垂直应单调下沉，实际 {q0.y:R}/{q6.y:R}/{q1.y:R}。");
+            }
+
+            if (Mathf.Abs(q1.y - (origin.y - 0.08f)) > 1e-6f)
+            {
+                failures.Add($"(e) 终点下沉量应为 −0.08，实际 {q1.y - origin.y:R}。");
             }
 
             Assert.IsEmpty(failures, "T92 失败：\n" + string.Join("\n", failures));

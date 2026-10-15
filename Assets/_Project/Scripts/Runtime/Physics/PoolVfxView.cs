@@ -150,6 +150,33 @@ namespace Billiards.Physics
             scale = 1f - p;
         }
 
+        /// <summary>入袋动画里**水平滑向洞口**所占的进度比例：前 60% 滚到洞口，之后原地落下。</summary>
+        public const float SinkSlideFraction = 0.6f;
+
+        /// <summary>
+        /// 入袋动画的**水平滑动进度**（0→1，Hermite 平滑）：`clamp01(p / SinkSlideFraction)` 平滑。
+        /// 之所以"先滑后落"：球被冻结/判入的位置常**离洞口还有几十毫米**（骑在袋角上、或在库边附近），
+        /// 若整段动画都只做垂直下沉，观感就是"贴着库边原地往下滑"（用户实测："像是滑墙，不符现实"）。
+        /// </summary>
+        public static float PocketSinkSlide(float progress)
+        {
+            return Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(Mathf.Clamp01(progress) / SinkSlideFraction));
+        }
+
+        /// <summary>
+        /// 入袋动画的**局部位置**（与球可视物同一个坐标系）：水平从 `originLocal` 滑到 `holeLocal`（洞口中心），
+        /// 垂直按 <see cref="PocketSinkPose"/> 下沉、并按它缩小 —— 即"**滚进洞口再落下**"。
+        /// </summary>
+        public static Vector3 PocketSinkLocalPosition(Vector3 originLocal, Vector3 holeLocal, float progress)
+        {
+            PocketSinkPose(progress, out float yOffset, out _);
+            float s = PocketSinkSlide(progress);
+            return new Vector3(
+                Mathf.Lerp(originLocal.x, holeLocal.x, s),
+                originLocal.y + yOffset,
+                Mathf.Lerp(originLocal.z, holeLocal.z, s));
+        }
+
         /// <summary>
         /// **碰球接触推导**（参考实现的质量排序）：在"距离 ≈ 2r（±0.007）且对速度和 > 0.1"的球对中，
         /// 取 `quality = speed / (0.002 + |dist − 2r|)` 最大者 ⇒ 中点 / 连心线角度 / 对速度和。

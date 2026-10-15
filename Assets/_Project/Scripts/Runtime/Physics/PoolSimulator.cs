@@ -141,6 +141,18 @@ namespace Billiards.Physics
         /// </summary>
         private readonly float[] _pocketOpeningRadius;
 
+        /// <summary>
+        /// **逐袋的"洞口中心"**（物理平面，米）= **台面矩形上距 <c>throatCenter</c> 最近的点**
+        /// （= 把 `throatCenter` 夹进 `±ClothHalfLength / ±ClothHalfWidth`）。
+        /// 对两类袋都正好落在**视觉上的洞口中心**：角袋 ⇒ 台面角点；中袋 ⇒ 袋口线中点。
+        ///
+        /// **⚠ 它只服务表现层**（入袋动画的水平落点：<see cref="PhysicsTestDrive"/> 用它把入袋球
+        /// **滑到洞口再落下**）—— **不参与任何判定**：
+        /// 静止补判入袋用的是**喉心**圆盘（见 <see cref="DropBallsRestingInsidePocketMouths"/>），
+        /// 实测改用洞口中心会**引入假进球**（半径 61.3 mm 的角袋圆盘会吞掉"沿库边停在离袋口 5 cm 处"的球）。
+        /// </summary>
+        private readonly Vector2[] _pocketHoleCenter;
+
         private readonly PhysicsParams _params;
 
         /// <summary>宏观静止阈值（**实例字段** ⇒ 可由 `PhysicsTuning` 资产覆盖；默认 = 同名常量）。</summary>
@@ -403,12 +415,16 @@ namespace Billiards.Physics
             _pocketThroatCenter = new Vector2[pocketCount];
             _pocketThroatNormal = new Vector2[pocketCount];
             _pocketOpeningRadius = new float[pocketCount];
+            _pocketHoleCenter = new Vector2[pocketCount];
             for (int i = 0; i < pocketCount; i++)
             {
                 Pocket p = table.pockets[i];
                 _pocketThroatCenter[i] = p.throatCenter;
                 _pocketThroatNormal[i] = p.throatNormal;
                 _pocketOpeningRadius[i] = p.openingRadius;
+                _pocketHoleCenter[i] = new Vector2(
+                    Mathf.Clamp(p.throatCenter.x, -PoolConstants.ClothHalfLength, PoolConstants.ClothHalfLength),
+                    Mathf.Clamp(p.throatCenter.y, -PoolConstants.ClothHalfWidth, PoolConstants.ClothHalfWidth));
             }
 
             SubSteps = DeriveSubSteps(PoolConstants.MaxBallSpeed);
@@ -622,6 +638,16 @@ namespace Billiards.Physics
             // ⚠ 这不是"球的状态"，故不属于上面"只碰该球"的约束范围；它是**表级终止标志**，物理状态一变就必须降级。
             TableAtRest = false;
             ConsecutiveRestFrameCount = 0;
+        }
+
+        /// <summary>
+        /// 第 <paramref name="pocket"/> 个袋的**洞口中心**（物理平面，米；见 <see cref="_pocketHoleCenter"/>）。
+        /// **只服务表现层**：入袋动画把球**滑到这里再落下**（而不是原地垂直下沉）。**不参与任何判定**。
+        /// 越界索引 ⇒ `Vector2.zero`（调用方须自查索引）。
+        /// </summary>
+        public Vector2 PocketHoleCenter(int pocket)
+        {
+            return pocket >= 0 && pocket < _pocketHoleCenter.Length ? _pocketHoleCenter[pocket] : Vector2.zero;
         }
 
         /// <summary>
@@ -1643,7 +1669,8 @@ namespace Billiards.Physics
         /// **静止补判入袋**（见 <see cref="AtRestMouthDrops"/>）：把球心落在某袋
         /// <c>openingRadius</c> 内的静止球**补判**为入袋。
         ///
-        /// **判定口径**：`|C − tc| ≤ openingRadius`，**对 `s` 的符号不加限制**（不写成 `s ≤ 0`）。
+        /// **判定口径**：`|C − 喉心| ≤ openingRadius`，**对 `s` 的符号不加限制**（不写成 `s ≤ 0`）。
+        /// ⚠ 用**喉心**（不是 <see cref="_pocketHoleCenter"/>，后者只给表现层当落点）。
         /// 为什么不断言 `s`：本支只对**未冻结**球生效，而在 `CheckPocketProximity` 之下，
         /// 任何 `s > 0 ∧ ρ ≤ openingRadius` 的球**当子步就被判入袋并冻结** ⇒ 能走到这里的未冻结球
         /// 必然是 `s ≤ 0`（尚未越喉）⇒ 加 `s` 判据是**同义重复**（会给人"多一层保护"的错觉）。
@@ -1668,6 +1695,10 @@ namespace Billiards.Physics
 
                 for (int p = 0; p < _pocketThroatCenter.Length; p++)
                 {
+                    // ⚠ 判定用**喉心**（用户 §1.1 裁定的口径）：`|C − tc| ≤ openingRadius`。
+                    //   试过改用"洞口中心（夹到台面内的点）"—— **实测会引入假进球**：
+                    //   角袋洞口圆盘半径 61.3 mm 会覆盖"沿库边停在离袋口 5 cm 处"的球
+                    //   （该点离角点 57.6 mm ⇒ 被吞），而那明显是台面上的正常停球 ⇒ 已回退。
                     Vector2 tc = _pocketThroatCenter[p];
                     float dx = c.x - tc.x;
                     float dy = c.y - tc.y;

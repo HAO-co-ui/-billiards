@@ -481,8 +481,9 @@ namespace Billiards.Tests
         ///    **酒红**并显示 `Foul` / `Ball in hand` + 计进结算卡的 `FOULS` 列。
         ///    （手动自由球摆位未实现，登记 35-B；判据只锁"看得见 + 数得对"。）
         ///
-        /// ③ **杆不得穿模、也不得被截短**：`StickDirection` 让杆**从库边上方过**（真实球杆本就微抬 2–5°），
-        ///    且杆长恒为 `StickLength`、**与后拉量无关**（实机先反馈"穿模"、改夹取后又反馈"嵌入桌面 + 蓄力变短"）。
+        /// ③ **杆不得穿模、也不得被截短**：抬升角由**几何反解**（`StickElevationDegreesFor`：球离库越近角越大），
+        ///    且杆长恒为 `StickLength`、**与后拉量无关**（实机先反馈"穿模"、改夹取后又反馈"嵌入桌面 + 蓄力变短"；
+        ///    第三轮实机又反馈"**球在右边位置蓄力还是会穿模**" ⇒ 固定 4° 不足，见该函数注释的推导）。
         /// ④ **白球离台即隐藏**：`ShouldShowAimAssist` 的 `cueBallInPlay` 与 `CueStickController` 的
         ///    可见门都判"白球在场上"（实机反馈"落网没反馈 + 线从袋口射出来"）。
         ///
@@ -513,7 +514,10 @@ namespace Billiards.Tests
             Check("(a) 四条全否", AimAssistController.ShouldShowAimAssist(false, false, false, true), false);
 
             // (e) 杆身两条相反反馈的形式化：**从库边上方过**（不穿模）且**杆长不随蓄力变化**（不嵌入、不变短）
-            const float elevation = CueStickController.StickElevationDegrees;
+            //     ⚠ 姿态取"球在右端库附近、杆必须越库"—— 这正是用户截图里的情形。
+            Vector2 ballNearRail = new Vector2(PoolConstants.ClothHalfLength - 0.23f, 0f);
+            Vector2 aimLeft = new Vector2(-1f, 0f);            // 瞄向 −x ⇒ 杆身沿 +x 跨过右端库
+            float elevation = CueStickController.StickElevationDegreesFor(ballNearRail, aimLeft);
             Vector3 aim = new Vector3(1f, 0f, 0f);
             Vector3 tipRest = CueStickController.StickTipPosition(Vector3.zero, aim, 0f);
             Vector3 tipCharged = CueStickController.StickTipPosition(Vector3.zero, aim, CueStickController.MaxPullback);
@@ -536,20 +540,44 @@ namespace Billiards.Tests
                              + " ⇒ 会表现为「一蓄力杆就变短」。");
             }
 
-            // ③ 杆尾**上抬**到库边之上（需求抬升由数据给出，不是拍脑袋的数）
-            float requiredRise = (PoolGeometry.OuterBoundsMax.y - PoolConstants.BallRadius)
-                                 * PoolConstants.PlayfieldVisualScale;
-            if (offRest.y < requiredRise)
+            // ③ **跨库处**杆身下表面须高于台面最高点 —— 这才是"不穿模"的充要条件。
+            //    ⚠ 旧版只判"杆尾总抬升 ≥ 需求"（`1.4·sinθ`），而杆在库边处的抬升只有 `d·sinθ`：
+            //    `d = 0.23 m` 时仅 0.016 m，比需求 0.0324 m 小三倍 ⇒ 判据看着过、实机照样穿库。
+            float dRail = CueStickController.ExitDistanceToTableEdge(ballNearRail, -aimLeft);
+            float undersideAtRail = PoolConstants.BallRadius
+                                    + dRail * Mathf.Sin(elevation * Mathf.Deg2Rad)
+                                    - CueStickController.StickRadius;
+            if (undersideAtRail < PoolGeometry.OuterBoundsMax.y - 1e-4f)
             {
-                failures.Add($"(e) 杆尾上抬 {offRest.y:R} 不足需求 {requiredRise:R}"
-                             + " ⇒ 杆会穿过库边（穿模）。");
+                failures.Add($"(e) 跨库处（d={dRail:R} m）杆身下表面 {undersideAtRail:R} 低于台面最高点 "
+                             + $"{PoolGeometry.OuterBoundsMax.y:R}（θ={elevation:R}°）⇒ 杆穿过库边（穿模）。");
             }
 
-            // ④ 抬升不得把方向带歪：水平方向仍须基本朝后
-            Vector3 backFlat = new Vector3(offRest.x, 0f, offRest.z).normalized;
-            if (Vector3.Dot(backFlat, -aim.normalized) < 0.99f)
+            // ③b 抬升角须随"球越靠库"而增大；杆身不出台面时取最小角（观感与历史一致）
+            float nearElev = CueStickController.StickElevationDegreesFor(
+                new Vector2(PoolConstants.ClothHalfLength - 0.10f, 0f), aimLeft);
+            float farElev = CueStickController.StickElevationDegreesFor(
+                new Vector2(PoolConstants.ClothHalfLength - 0.50f, 0f), aimLeft);
+            if (!(nearElev > elevation) || !(elevation > farElev))
             {
-                failures.Add($"(e) 抬升后杆身水平方向偏了（dot = {Vector3.Dot(backFlat, -aim.normalized):R}）。");
+                failures.Add($"(e) 抬升角应随球离库边变近而增大，实际 近 {nearElev:R}° / 中 {elevation:R}° / 远 {farElev:R}°。");
+            }
+
+            float minElev = CueStickController.StickElevationDegreesFor(Vector2.zero, new Vector2(1f, 0f));
+            if (Mathf.Abs(minElev - CueStickController.MinStickElevationDegrees) > 1e-4f)
+            {
+                failures.Add($"(e) 杆身不出台面时应取最小角 {CueStickController.MinStickElevationDegrees:R}°，实际 {minElev:R}°。");
+            }
+
+            // ④ 抬升只允许**绕水平轴**抬起，不得把方向绕垂直轴拧歪：水平分量须仍与 −aim **共线**。
+            //    ⚠ 旧版判 `dot(水平分量, −aim) ≥ 0.99` —— 那其实把"抬起角"也算成了"拧歪"
+            //    （4° 时 cos4° = 0.9976 恰好过），角度一大就会误红 ⇒ 改为共线性判据。
+            Vector3 backFlat = new Vector3(offRest.x, 0f, offRest.z).normalized;
+            Vector3 backAimFlat = new Vector3(-aim.x, 0f, -aim.z).normalized;
+            float collinearity = Mathf.Abs(Vector3.Dot(backFlat, backAimFlat));
+            if (collinearity < 0.9999f)
+            {
+                failures.Add($"(e) 抬升把杆身方向绕垂直轴拧歪了（共线度 {collinearity:R}，应 ≈1）。");
             }
 
             // (b) 犯规窗口内状态条优先显示犯规（否则按流程相位）

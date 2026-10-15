@@ -562,6 +562,42 @@ namespace Billiards.Tests
                 rest.PocketProximityEvents + rest.AtRestMouthDrops, "T108：补判场景恒等式不成立。");
             report += $"[补判: {rest.PocketProximityEvents}+{rest.AtRestMouthDrops}=={rest.CapturedBallCount}+{rest.PocketJawCrossingCount}] ";
 
+            // (c) **静止补判的口径与边界**：判定用**喉心**圆盘 `|C − tc| ≤ openingRadius`（用户 §1.1 裁定），
+            //     且**边界必须真实生效**（边界内 1 mm 补判、边界外 1 mm 不补判）。
+            //     ⚠ 曾试过改用"洞口中心（夹到台面内的点）"作圆心 —— **实测会引入假进球**：
+            //     角袋洞口圆盘会吞掉"沿库边停在离袋口 5 cm 处"的球（离角点 57.6 mm < 61.3 mm）⇒ 已回退。
+            var nearBoundary = new PoolSimulator(Synthetic(pocket), Params());
+            nearBoundary.LoadBalls(new[] { Ball(0f, ProbeOpeningRadius - 1e-3f, 0f, 0f) });
+            Step(nearBoundary, PoolSimulator.RestStableFrames + 2);
+            Assert.AreEqual(1, nearBoundary.AtRestMouthDrops,
+                "T108(c)：球心在 `openingRadius` 内侧 1 mm 的静止球应被补判入袋（边界内）。");
+            Assert.AreEqual(0, nearBoundary.CapturedPocketIndex(0), "T108(c)：应入袋 0。");
+            Assert.AreEqual(1, nearBoundary.CapturedBallCount, "T108(c)：补判应恰计入 1 次捕获。");
+
+            var outsideBoundary = new PoolSimulator(Synthetic(pocket), Params());
+            outsideBoundary.LoadBalls(new[] { Ball(0f, ProbeOpeningRadius + 1e-3f, 0f, 0f) });
+            Step(outsideBoundary, PoolSimulator.RestStableFrames + 2);
+            Assert.AreEqual(0, outsideBoundary.AtRestMouthDrops,
+                "T108(c)：球心在 `openingRadius` 外侧 1 mm 的静止球**不得**被补判（边界外）。");
+            Assert.IsTrue(outsideBoundary.IsBallInPlay(0), "T108(c)：边界外的球必须仍在场。");
+
+            // (d) **表现层落点**（洞口中心）的口径：夹到台面矩形内 ⇒ 角袋 = 台面角点、中袋 = 袋口线中点。
+            //     它只被入袋动画消费（滑到洞口再落下），**不参与判定**。
+            TableConfig real = AssetDatabase.LoadAssetAtPath<TableConfig>(ConfigPath);
+            Assert.IsNotNull(real, "T108(d)：需要真实 TableConfig.asset。");
+            var realSim = new PoolSimulator(real, Params());
+            for (int p = 0; p < real.PocketCount; p++)
+            {
+                Pocket pk = real.pockets[p];
+                Vector2 hole = realSim.PocketHoleCenter(p);
+                Assert.AreEqual(Mathf.Clamp(pk.throatCenter.x, -PoolConstants.ClothHalfLength, PoolConstants.ClothHalfLength),
+                    hole.x, 1e-5f, $"T108(d)：袋 {p} 洞口中心 x 应为喉心夹到台面内。");
+                Assert.AreEqual(Mathf.Clamp(pk.throatCenter.y, -PoolConstants.ClothHalfWidth, PoolConstants.ClothHalfWidth),
+                    hole.y, 1e-5f, $"T108(d)：袋 {p} 洞口中心 y 应为喉心夹到台面内。");
+                Assert.LessOrEqual((hole - pk.throatCenter).magnitude, 0.07f,
+                    $"T108(d)：袋 {p} 洞口中心离喉心 {  (hole - pk.throatCenter).magnitude:R} 过大（不应是别的点）。");
+            }
+
             // (b) 负例：飞行中的球不得被补判。
             var flying = new PoolSimulator(Synthetic(pocket), Params());
             flying.LoadBalls(new[] { Ball(0f, 0.05f, 0.02f, 0f) });   // 移动中、仍属 s<0、仍在开口内

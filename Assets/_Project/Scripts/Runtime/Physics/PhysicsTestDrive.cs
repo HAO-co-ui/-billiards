@@ -162,6 +162,10 @@ namespace Billiards.Physics
         private float[] _pocketSinkStart;
         private Vector3[] _ballBaseScales;
 
+        /// <summary>入袋动画的**起点**（球可视物坐标系 = 规范局部坐标；启动那帧的球位）与**落点**（洞口中心）。</summary>
+        private Vector3[] _pocketSinkOrigin;
+        private Vector3[] _pocketSinkHole;
+
         /// <summary>是否已有可用的"上一帧位置"；<c>false</c> 时本帧只记录、不旋转。</summary>
         private bool _hasLastVisualPositions;
 
@@ -666,6 +670,8 @@ namespace Billiards.Physics
                 {
                     // 回场复位（含动画中途被打断的情形）。
                     _pocketSinkStart[index] = -1f;
+                    _pocketSinkOrigin[index] = Vector3.zero;
+                    _pocketSinkHole[index] = Vector3.zero;
                     visual.localScale = _ballBaseScales[index];
                     if (!visual.gameObject.activeSelf)
                     {
@@ -678,18 +684,57 @@ namespace Billiards.Physics
 
             if (_pocketSinkStart[index] < 0f)
             {
-                _pocketSinkStart[index] = Time.time;   // 首次观测到离台 ⇒ 启动下沉
+                _pocketSinkStart[index] = Time.time;              // 首次观测到离台 ⇒ 启动动画
+                _pocketSinkOrigin[index] = visual.localPosition;  // 起点 = 冻结/判入时的球位
+                _pocketSinkHole[index] = PocketHoleLocalPoint(index);
             }
 
             float p = (Time.time - _pocketSinkStart[index]) / PoolVfxView.SinkDurationSeconds;
-            PoolVfxView.PocketSinkPose(p, out float yOffset, out float scale);
+            PoolVfxView.PocketSinkPose(p, out _, out float scale);
             visual.localScale = _ballBaseScales[index] * scale;
-            visual.localPosition += new Vector3(0f, yOffset, 0f);
+
+            // ★ 不原地垂直下沉：**先滑到洞口再落下**（`PocketSinkLocalPosition`）。
+            //   原地下沉会把"球在离洞口几十毫米处被冻结"画成"贴着库边原地往下滑"（用户实测："像滑墙"）。
+            visual.localPosition = PoolVfxView.PocketSinkLocalPosition(
+                _pocketSinkOrigin[index], _pocketSinkHole[index], p);
 
             if (p >= 1f && visual.gameObject.activeSelf)
             {
                 visual.gameObject.SetActive(false);
             }
+        }
+
+        /// <summary>
+        /// 球 <paramref name="index"/> 的**入袋落点**（球可视物坐标系 = 规范局部坐标）：
+        ///  · 已判入袋 ⇒ 用**那个袋**的洞口中心；
+        ///  · 未判入袋但已离台（越界冻结）⇒ 取物理平面内**最近的**洞口中心 —— 否则原地落下会表现为"滑墙"。
+        /// 洞口中心一律走内核出口 <see cref="PoolSimulator.PocketHoleCenter"/>（单点实现，不在表现层重算）。
+        /// </summary>
+        private Vector3 PocketHoleLocalPoint(int index)
+        {
+            int pocket = _simulator.CapturedPocketIndex(index);
+            if (pocket < 0)
+            {
+                Vector2 ball = _simulator.Balls[index].position;
+                float bestSqr = float.PositiveInfinity;
+                for (int p = 0; p < tableConfig.PocketCount; p++)
+                {
+                    float d = (_simulator.PocketHoleCenter(p) - ball).sqrMagnitude;
+                    if (d < bestSqr)
+                    {
+                        bestSqr = d;
+                        pocket = p;
+                    }
+                }
+            }
+
+            if (pocket < 0)
+            {
+                return Vector3.zero;
+            }
+
+            Vector2 hole = _simulator.PocketHoleCenter(pocket);
+            return PoolGeometry.PhysicsToUnity(hole, PoolConstants.BallRadius);
         }
 
         private void EnsureSinkArrays(int index)
@@ -726,6 +771,27 @@ namespace Billiards.Physics
 
                 _ballBaseScales = grown;
             }
+
+            _pocketSinkOrigin = GrowVector3Array(_pocketSinkOrigin, index);
+            _pocketSinkHole = GrowVector3Array(_pocketSinkHole, index);
+        }
+
+        /// <summary>把（可空的）逐球 Vector3 数组扩到至少 <c>index + 1</c> 项，保留既有值、新槽为 0。</summary>
+        private static Vector3[] GrowVector3Array(Vector3[] array, int index)
+        {
+            if (array != null && index < array.Length)
+            {
+                return array;
+            }
+
+            int newLen = Mathf.Max(Mathf.Max(index + 1, (array?.Length ?? 0) * 2), 4);
+            var grown = new Vector3[newLen];
+            if (array != null)
+            {
+                System.Array.Copy(array, grown, array.Length);
+            }
+
+            return grown;
         }
 
         /// <summary>

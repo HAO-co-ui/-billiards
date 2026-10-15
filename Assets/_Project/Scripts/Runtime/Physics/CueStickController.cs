@@ -153,27 +153,82 @@ namespace Billiards.Physics
             }
 
             _stick.position = StickTipPosition(cueBallWorld, aimDir, pullback);
+
+            // 抬升角**按几何反解**（球位 + 瞄准方向）：球离库边越近 ⇒ 跨库处越低 ⇒ 需要的角度越大。
+            // ⚠ 只用球位与瞄准方向、**不含后拉量** ⇒ 与后拉无关（"蓄力不得让杆变短/变形"的不变量）。
+            Vector2 ballPhysics = drive.Simulator != null && drive.Simulator.Balls.Count > 0
+                ? drive.Simulator.Balls[0].position
+                : PoolGeometry.UnityToPhysics(cueBallWorld);
+            float aimRad = drive.aimDegrees * Mathf.Deg2Rad;
+            float elevation = StickElevationDegreesFor(
+                ballPhysics, new Vector2(Mathf.Cos(aimRad), Mathf.Sin(aimRad)));
+
             // 杆身 +Z 从杆尾指向杆尖 = **抬升后的方向**（杆从库边上方过；长度恒为 `StickLength`）。
-            _stick.rotation = Quaternion.LookRotation(StickDirection(aimDir, StickElevationDegrees), Vector3.up);
+            _stick.rotation = Quaternion.LookRotation(StickDirection(aimDir, elevation), Vector3.up);
+        }
+
+        /// <summary>杆身**最小**抬升角（度）：杆身不需要越库时用它（保持"杆贴着球"的观感）。</summary>
+        public const float MinStickElevationDegrees = 4f;
+
+        /// <summary>杆身**最大**抬升角（度）：球紧贴库边时需求角会趋向 90°，取上限以免看起来像扎杆。</summary>
+        public const float MaxStickElevationDegrees = 45f;
+
+        /// <summary>
+        /// **从某点沿某方向到台面外缘矩形边界的水平距离**（与输入**同一个 2D 单位系**；纯函数）。
+        /// 方向朝某轴正向 ⇒ 取该轴正向边界；某轴分量为 0 ⇒ 该轴不参与；点已在边界外 ⇒ 返回 0。
+        /// </summary>
+        public static float ExitDistanceToTableEdge(Vector2 point, Vector2 direction)
+        {
+            return ExitDistanceToRectEdge(point, direction,
+                new Vector2(PoolConstants.ClothHalfLength, PoolConstants.ClothHalfWidth));
+        }
+
+        /// <inheritdoc cref="ExitDistanceToTableEdge"/>
+        public static float ExitDistanceToRectEdge(Vector2 point, Vector2 direction, Vector2 halfExtents)
+        {
+            float best = float.PositiveInfinity;
+            if (Mathf.Abs(direction.x) > 1e-6f)
+            {
+                best = Mathf.Min(best, (Mathf.Sign(direction.x) * halfExtents.x - point.x) / direction.x);
+            }
+
+            if (Mathf.Abs(direction.y) > 1e-6f)
+            {
+                best = Mathf.Min(best, (Mathf.Sign(direction.y) * halfExtents.y - point.y) / direction.y);
+            }
+
+            return Mathf.Max(0f, best);
         }
 
         /// <summary>
-        /// **杆身抬升角（度）** —— 杆**不截短**，而是抬起来从**库边上方**过。
+        /// **杆身抬升角（度）** —— 纯函数，**只依赖球位与瞄准方向**（⇒ 与后拉量无关，杆长恒定）。
         ///
-        /// ── 为什么是"抬升"而不是"夹取"（实机反馈两次，方向相反的教训）──────────────
-        /// 用户先是反馈"**球杆穿模了**"（杆穿过木库边），我据此把杆尾**夹在桌面外框内**；
-        /// 随后用户立刻反馈"**像杆嵌入台球桌了**……**不要因为蓄力拉伸而变短**" ——
-        /// 因为夹取量跟杆尖位置走，一蓄力后拉，杆就跟着变短，尾端正好停在库边上。
-        /// **正确做法与真实一致**：真实打球时杆本来就是**微微抬高**的（2–5°），自然从库边上方通过，
-        /// 既不穿模也**不改变杆长**。
+        /// 需求（**可证**形式）：杆身沿 −瞄准方向自球心射出，在它跨过**台面外缘**处，其**下表面**
+        /// 须高于台面外轮廓最高点 ⇒ 杆不可能与球桌网格相交：
+        ///   `sinθ ≥ (OuterBoundsMax.y + StickRadius − BallRadius) / d`，
+        /// `d` = 球心沿杆身方向到台面外缘的水平距离（<see cref="ExitDistanceToTableEdge"/>）。
         ///
-        /// ── 角度由**数据**定，不是拍脑袋 ────────────────────────────────────────
-        /// 需要抬升的高度 = 库边顶面高出球心的部分 = `OuterBoundsMax.y − BallRadius`
-        /// （实测 `OuterBoundsMax.y = 0.061` m、`BallRadius = 0.028575` m ⇒ 0.0324 m，×1.2 显示 ≈ 0.039 m）。
-        /// 杆长 `StickLength = 1.4` m ⇒ 抬升 `1.4·sinθ`；取 **4°** ⇒ 抬升 **0.098 m**，
-        /// 约为需求的 **2.5 倍** —— 够越过库边，又保持"杆贴着球"的观感。
+        /// ── ⚠ 为什么原先固定 4° 不够（**实测**，用户截图：杆在木库边两侧都可见 = 整根穿过库边）──
+        /// 旧注释拿 `1.4·sin4° = 0.098 m`（**杆尾处**的总抬升）去比"库边高出球心 0.0324 m"、看到 2.5 倍余量 ——
+        /// 但**杆在库边处的抬升只有 `d·sinθ`**：`d = 0.23 m` 时仅 `0.016 m` < 0.0324 m ⇒ 必然穿库。
+        /// 现在按**跨库处的实际高度**反解 ⇒ 球离库越近角度越大（真实打球也正是这么抬杆的）。
+        ///
+        /// **盲带（如实）**：需求取的是**全桌最高点**（木库顶面），比袋口附近的实际遮挡（库边顶面更低）
+        /// 更保守；球心离库边外缘 < ~57 mm 时 45° 上限仍可能让杆擦过库边顶部 —— 该带登记、不做遮蔽近似。
         /// </summary>
-        public const float StickElevationDegrees = 4f;
+        public static float StickElevationDegreesFor(Vector2 ballPhysics, Vector2 aimPhysics)
+        {
+            Vector2 back = -aimPhysics.normalized;
+            float d = ExitDistanceToTableEdge(ballPhysics, back);
+            float clearance = (PoolGeometry.OuterBoundsMax.y + StickRadius) - PoolConstants.BallRadius;
+            if (d <= 1e-4f)
+            {
+                return MaxStickElevationDegrees;
+            }
+
+            return Mathf.Clamp(Mathf.Asin(Mathf.Clamp01(clearance / d)) * Mathf.Rad2Deg,
+                MinStickElevationDegrees, MaxStickElevationDegrees);
+        }
 
         /// <summary>
         /// **杆身方向**（纯函数）：`−aimDirection` 在**水平面内**再绕垂直轴抬升 `elevationDegrees`。
