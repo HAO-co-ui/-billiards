@@ -556,8 +556,27 @@ namespace Billiards.Tests
                 failures.Add("(b) 非犯规窗口应按相位显示（Moving）。");
             }
 
+            // (b') 出杆被拒：优先级**高于**犯规（"你正想做的事没做成"比"已经发生过的事"更该当场解释）
+            if (PracticeHudState.StatusLabel(ShotPhase.Aim, false, true) != PracticeHudState.StateBallsMoving)
+            {
+                failures.Add($"(b') 被拒窗口内应显示 \"{PracticeHudState.StateBallsMoving}\"，"
+                             + $"实际 \"{PracticeHudState.StatusLabel(ShotPhase.Aim, false, true)}\"。");
+            }
+
+            if (PracticeHudState.StatusLabel(ShotPhase.Aim, true, true) != PracticeHudState.StateBallsMoving)
+            {
+                failures.Add("(b') 被拒应**优先于**犯规显示。");
+            }
+
+            if (PracticeHudState.StatusDetail(false, true) != PracticeHudState.RefusedDetail
+                || PracticeHudState.StatusDetail(true, false) != PracticeHudState.FoulDetail
+                || PracticeHudState.StatusDetail(false, false) != PracticeHudState.CaptionIdle)
+            {
+                failures.Add("(b') 副标题应随「被拒 / 犯规 / 无」三态切换。");
+            }
+
             // (c) 文案常量：非空、互不相同（防止"改文案时把三个常量改成一样"导致状态无法区分）
-            var labels = new[] { PracticeHudState.StateFoul, PracticeHudState.FoulDetail, PracticeHudState.CaptionIdle };
+            var labels = new[] { PracticeHudState.StateFoul, PracticeHudState.FoulDetail, PracticeHudState.CaptionIdle, PracticeHudState.StateBallsMoving, PracticeHudState.RefusedDetail };
             foreach (string label in labels)
             {
                 if (string.IsNullOrEmpty(label))
@@ -584,6 +603,11 @@ namespace Billiards.Tests
                 if (!float.IsNegativeInfinity(probe.LastScratchTime))
                 {
                     failures.Add($"(d) 从未 scratch 时 LastScratchTime 应为负无穷，实际 {probe.LastScratchTime:R}。");
+                }
+
+                if (probe.RefusedLaunchCount != 0 || !float.IsNegativeInfinity(probe.LastRefusedLaunchTime))
+                {
+                    failures.Add($"(d) 新实例不应有「出杆被拒」记录（{probe.RefusedLaunchCount} / {probe.LastRefusedLaunchTime:R}）。");
                 }
             }
             finally

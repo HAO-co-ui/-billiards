@@ -35,8 +35,14 @@ namespace Billiards.UI
         /// <summary>犯规的处置说明 —— 本工程的实际处置是**白球放回开球点**（见下）。</summary>
         public const string FoulDetail = "Ball in hand";
 
-        /// <summary>状态条在无状态时显示的常驻说明（与犯规提示共用同一个文本位）。</summary>
+        /// <summary>状态条在无状态时显示的常驻说明（与犯规/被拒提示共用同一个文本位）。</summary>
         public const string CaptionIdle = "PRACTICE";
+
+        /// <summary>出杆被拒（整盘未静止）时的状态条文案 —— 把"按了没反应"变成"看得见的原因"。</summary>
+        public const string StateBallsMoving = "Balls moving";
+
+        /// <summary>出杆被拒时的处置说明。</summary>
+        public const string RefusedDetail = "Wait for the table";
 
         /// <summary>
         /// **状态条该显示什么**（纯函数，唯一判据点）：犯规窗口内**优先**显示犯规，否则按流程相位。
@@ -48,7 +54,33 @@ namespace Billiards.UI
         /// </summary>
         public static string StatusLabel(ShotPhase phase, bool foulWindow)
         {
+            return StatusLabel(phase, foulWindow, false);
+        }
+
+        /// <summary>
+        /// **状态条的完整优先级**：出杆被拒（未静止）> 犯规 > 流程相位。
+        /// 「被拒」排在犯规之前 —— 犯规是**已经发生的事**，被拒是**你正想做的事没做成**，
+        /// 后者更需要当场的解释。
+        /// </summary>
+        public static string StatusLabel(ShotPhase phase, bool foulWindow, bool refusedWindow)
+        {
+            if (refusedWindow)
+            {
+                return StateBallsMoving;
+            }
+
             return foulWindow ? StateFoul : StateLabel(phase);
+        }
+
+        /// <summary>与 <see cref="StatusLabel(ShotPhase, bool, bool)"/> 配套的副标题。</summary>
+        public static string StatusDetail(bool foulWindow, bool refusedWindow)
+        {
+            if (refusedWindow)
+            {
+                return RefusedDetail;
+            }
+
+            return foulWindow ? FoulDetail : CaptionIdle;
         }
 
         /// <summary>状态条文案。</summary>

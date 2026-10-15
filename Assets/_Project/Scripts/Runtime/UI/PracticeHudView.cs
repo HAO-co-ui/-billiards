@@ -44,6 +44,14 @@ namespace Billiards.UI
         public static readonly Color FoulColor = new Color32(0xB6, 0x63, 0x70, 0xFF);
 
         /// <summary>
+        /// 「出杆被拒」的提示色（**黄铜主色**）。刻意与三种已有语义分开：
+        /// 绿 = 可操作（Aim）、灰 = 球在动、酒红 = 犯规。
+        /// 「被拒」既不是犯规也不是"没事发生" —— 它是**你想做的事没做成**，用主色提示你注意，
+        /// 但**不占用**酒红（酒红只给犯规，设计说明 §9）。
+        /// </summary>
+        public static readonly Color RefusedColor = AccentColor;
+
+        /// <summary>
         /// 犯规提示的停留时长（秒）。参考设计说明给的是边线 **0.8 s 脉冲**（那是"看一眼就够"的动效）；
         /// 本处要让人**读完文字**再判断"刚才那杆犯没犯错"，故取 **1.6 s**（两倍）。
         /// </summary>
@@ -91,6 +99,8 @@ namespace Billiards.UI
         private TextMeshProUGUI _stateCaption;
         private int _lastScratchSeen;
         private float _foulUntil;
+        private int _lastRefusedSeen;
+        private float _refusedUntil;
         private Image _stateDot;
         private TextMeshProUGUI _powerPercent;
         private Image _powerFill;
@@ -268,13 +278,27 @@ namespace Billiards.UI
                 }
             }
 
+            // 出杆被拒：轮询 `RefusedLaunchCount` 的增量。`Launch()` 在未静止时**静默返回零向量**，
+            // 玩家实测"这个角度发球为什么就发射不了了呢"——按了完全没反应、也看不到原因。
+            if (drive != null)
+            {
+                if (drive.RefusedLaunchCount > _lastRefusedSeen)
+                {
+                    _lastRefusedSeen = drive.RefusedLaunchCount;
+                    _refusedUntil = Time.unscaledTime + FoulBannerSeconds;
+                }
+            }
+
             bool foulWindow = Time.unscaledTime < _foulUntil;
-            _stateText.text = PracticeHudState.StatusLabel(phase, foulWindow);
-            _stateText.color = foulWindow ? FoulColor : TextColor;
-            _stateCaption.text = foulWindow ? PracticeHudState.FoulDetail : PracticeHudState.CaptionIdle;
-            _stateDot.color = foulWindow
-                ? FoulColor
-                : phase == ShotPhase.Aim || phase == ShotPhase.Charging ? StateGreen : MutedColor;
+            bool refusedWindow = Time.unscaledTime < _refusedUntil;
+            _stateText.text = PracticeHudState.StatusLabel(phase, foulWindow, refusedWindow);
+            _stateText.color = refusedWindow ? RefusedColor : foulWindow ? FoulColor : TextColor;
+            _stateCaption.text = PracticeHudState.StatusDetail(foulWindow, refusedWindow);
+            _stateDot.color = refusedWindow
+                ? RefusedColor
+                : foulWindow
+                    ? FoulColor
+                    : phase == ShotPhase.Aim || phase == ShotPhase.Charging ? StateGreen : MutedColor;
 
             bool canShoot = PracticeHudState.ShootEnabled(phase);
             _shootFill.color = canShoot ? ShootFill : ShootFillDisabled;

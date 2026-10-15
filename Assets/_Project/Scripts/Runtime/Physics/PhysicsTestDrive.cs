@@ -190,6 +190,18 @@ namespace Billiards.Physics
         /// <summary>最近一次 scratch 发生的时刻（`Time.unscaledTime`）；从未发生 ⇒ 负无穷。</summary>
         public float LastScratchTime { get; private set; } = float.NegativeInfinity;
 
+        /// <summary>
+        /// **因整盘未静止而被拒绝的出杆次数**（单调，只读诊断量）。
+        ///
+        /// ⚠ 本项存在的理由：`Launch()` 在 `!TableAtRest` 时**静默返回零向量**（设计如此 —— 不改任何状态）。
+        /// 但玩家实测"这个角度发球为什么就发射不了了呢"时**完全看不到原因**：按了、什么都没发生。
+        /// 现在每次拒绝都计数 + 打时间戳，HUD 据此显示 `Balls moving`（把"没反应"变成"看得见的原因"）。
+        /// </summary>
+        public int RefusedLaunchCount { get; private set; }
+
+        /// <summary>最近一次"因未静止被拒"的时刻；从未发生 ⇒ 负无穷。</summary>
+        public float LastRefusedLaunchTime { get; private set; } = float.NegativeInfinity;
+
         /// <summary>**累计出杆次数**（只读出口；音频层轮询增量 ⇒ strike 事件。**不清零**）。</summary>
         public int LaunchCount { get; private set; }
 
@@ -505,9 +517,11 @@ namespace Billiards.Physics
                 return Vector2.zero;
             }
 
-            // ② 门控：整盘未静止 ⇒ 拒绝（不改任何状态）。
+            // ② 门控：整盘未静止 ⇒ 拒绝（不改任何状态）。**留痕**（否则玩家只看到"按了没反应"）。
             if (!_simulator.TableAtRest)
             {
+                RefusedLaunchCount++;
+                LastRefusedLaunchTime = Time.unscaledTime;
                 return Vector2.zero;
             }
 
