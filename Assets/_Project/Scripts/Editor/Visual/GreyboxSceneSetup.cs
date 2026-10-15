@@ -3,6 +3,8 @@ using System.IO;
 using Billiards.Core;
 using Billiards.Physics;
 using Billiards.Table;
+using Billiards.UI;
+using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -55,6 +57,9 @@ namespace Billiards.EditorTools
         public const string CueStickControllerObjectName = "CueStick";
         public const string PoolAudioObjectName = "PoolAudio";
         public const string PoolVfxObjectName = "PoolVfx";
+
+        /// <summary>最小 HUD 宿主对象名（与其它表现层同层：`PhysicsGreybox` 根下，**不进缩放根**）。</summary>
+        public const string PracticeHudObjectName = "PracticeHud";
 
         /// <summary>瞄准辅助宿主对象名（预测线控制器 + 视图；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string AimAssistObjectName = "AimAssist";
@@ -270,6 +275,18 @@ namespace Billiards.EditorTools
             vfxView.drive = drive;
             vfxView.tableConfig = config;
             vfxView.playfieldRoot = playfieldRoot.transform;
+
+            // 5f) **最小 HUD** —— 三块（计数组 / 状态条 / 力度 + Shoot）。
+            //     几何唯一来源 = `PracticeHudLayout.Resolve()`（落成 uGUI 锚点比例 ⇒ 与判据同源、无第二份数字）；
+            //     数据全部取自既有只读出口（`CueStickController.Flow` / `drive.power` / `drive.LaunchCount` / 内核球表）。
+            //     字体按分工指派：标题族 = Barlow Condensed SemiBold、正文族 = Inter Regular（`T97` 钉住这两个资产路径）。
+            var hudGo = new GameObject(PracticeHudObjectName);
+            hudGo.transform.SetParent(root.transform, false);
+            var hud = hudGo.AddComponent<PracticeHudView>();
+            hud.drive = drive;
+            hud.cueStick = cueStick;
+            hud.titleFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.TitleFontAssetPath);
+            hud.bodyFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.BodyFontAssetPath);
 
             // 6) **瞄准辅助**（预测线）：控制器（胶水：只读内核 + 读驱动器开关）+ 视图（绘制：过显示层单点）。
             //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。

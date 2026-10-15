@@ -9,6 +9,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 namespace Billiards.Tests
@@ -430,6 +431,148 @@ namespace Billiards.Tests
             Assert.IsEmpty(failures, "T97 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine($"T97: 5 TTF + 5 FontAsset ✓；文案 {copy.Length} 字符在 5 个源 TTF 的 cmap 中全覆盖 ✓；"
                                   + $"标题族 {titleSource?.name} / 正文族 {bodySource?.name} ✓");
+        }
+
+        // ════════════════ T98 HUD 接线与同源 ═══════════════════════════════════
+
+        /// <summary>
+        /// **HUD 接线 + 几何同源守**：
+        /// (a) 已提交场景里存在 `PracticeHud` 宿主，`drive` / `cueStick` / `playfieldRoot` 已接线；
+        /// (b) 宿主上的两个字体资产 == `T97` 钉死的两个路径所载资产，且**互不相同**（分工未退化成同一份）；
+        /// (c) 视图建出的三块**锚点比例**必须 == <see cref="PracticeHudLayout.Resolve"/> 的三块
+        ///     （防"视图里手写第二份数字"，铁律 16）；且三块都在 `PracticeHudCanvas` 下；
+        /// (d) 缩放器口径 == `CanvasScaler.ScaleWithScreenSize` + `(1920,1080)` + `match = 0.5`
+        ///     （`T95 (e)` 的可读下限就是按这个口径算的 ⇒ 口径漂了那条判据就失效）。
+        ///
+        /// **可被打死**：把场景里 hud 的 `drive` 摘掉 ⇒ (a) 红；把视图某块锚点改成手写常数 ⇒ (c) 红；
+        /// 把 `matchWidthOrHeight` 改 0 ⇒ (d) 红。
+        /// </summary>
+        [Test]
+        public void T98_SceneWiring_AndViewUsesLayoutSingleSource()
+        {
+            var failures = new List<string>();
+
+            // (a)(b) 场景侧
+            Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Additive);
+            try
+            {
+                PracticeHudView host = null;
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    foreach (PracticeHudView candidate in root.GetComponentsInChildren<PracticeHudView>(true))
+                    {
+                        host = candidate;
+                        break;
+                    }
+                }
+
+                Assert.IsNotNull(host, "T98：场景里找不到 " + GreyboxSceneSetup.PracticeHudObjectName + " 的 PracticeHudView。");
+
+                if (host.drive == null)
+                {
+                    failures.Add("(a) 场景 HUD 的 drive 未接线 ⇒ 计数与力度都不会刷新。");
+                }
+
+                if (host.cueStick == null)
+                {
+                    failures.Add("(a) 场景 HUD 的 cueStick 未接线 ⇒ 状态条恒为 Aim。");
+                }
+
+                // ⚠ **刻意不接 `playfieldRoot`**：HUD 的几何走**视口锚点**（`PracticeHudLayout.Resolve()`），
+                // 与球桌世界坐标无关（"不压主区"由 `T95` 在六档宽高比下静态守住）。挂一个用不到的引用
+                // 只会制造"接了但没人读"的假接线。
+
+                var titleAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.TitleFontAssetPath);
+                var bodyAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.BodyFontAssetPath);
+
+                if (host.titleFont == null || host.titleFont != titleAsset)
+                {
+                    failures.Add($"(b) 场景 HUD 的 titleFont 不是 {HudAssetBuilder.TitleFontAssetPath}"
+                                 + $"（实际 {(host.titleFont == null ? "null" : host.titleFont.name)}）。");
+                }
+
+                if (host.bodyFont == null || host.bodyFont != bodyAsset)
+                {
+                    failures.Add($"(b) 场景 HUD 的 bodyFont 不是 {HudAssetBuilder.BodyFontAssetPath}"
+                                 + $"（实际 {(host.bodyFont == null ? "null" : host.bodyFont.name)}）。");
+                }
+
+                if (host.titleFont != null && host.titleFont == host.bodyFont)
+                {
+                    failures.Add("(b) 标题族与正文族指向同一个字体资产 ⇒ 分工失效。");
+                }
+            }
+            finally
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+
+            // (c)(d) 视图侧（EditMode 下 AddComponent 不触发 Awake ⇒ 显式调 EnsureBuilt）
+            var probeGo = new GameObject("T98Probe");
+            try
+            {
+                var view = probeGo.AddComponent<PracticeHudView>();
+                view.EnsureBuilt();
+
+                Transform canvas = probeGo.transform.Find("PracticeHudCanvas");
+                Assert.IsNotNull(canvas, "T98：视图未建出 PracticeHudCanvas。");
+
+                PracticeHudRects zones = PracticeHudLayout.Resolve();
+                CheckZone(canvas, "Counters", zones.counters);
+                CheckZone(canvas, "Status", zones.status);
+                CheckZone(canvas, "Power", zones.power);
+
+                var scaler = canvas.GetComponent<CanvasScaler>();
+                if (scaler == null)
+                {
+                    failures.Add("(d) PracticeHudCanvas 上没有 CanvasScaler。");
+                }
+                else
+                {
+                    if (scaler.uiScaleMode != CanvasScaler.ScaleMode.ScaleWithScreenSize)
+                    {
+                        failures.Add($"(d) 缩放模式应 ScaleWithScreenSize，实际 {scaler.uiScaleMode}。");
+                    }
+
+                    if (Mathf.Abs(scaler.referenceResolution.x - PracticeHudLayout.ReferenceWidth) > 1e-3f
+                        || Mathf.Abs(scaler.referenceResolution.y - PracticeHudLayout.ReferenceHeight) > 1e-3f)
+                    {
+                        failures.Add($"(d) 参考分辨率应为 ({PracticeHudLayout.ReferenceWidth},{PracticeHudLayout.ReferenceHeight})，"
+                                     + $"实际 {scaler.referenceResolution}。");
+                    }
+
+                    if (Mathf.Abs(scaler.matchWidthOrHeight - PracticeHudLayout.MatchWidthOrHeight) > 1e-6f)
+                    {
+                        failures.Add($"(d) matchWidthOrHeight 应为 {PracticeHudLayout.MatchWidthOrHeight:R}，"
+                                     + $"实际 {scaler.matchWidthOrHeight:R} ⇒ T95 (e) 的字号口径失效。");
+                    }
+                }
+
+                void CheckZone(Transform canvasTransform, string name, Rect zone)
+                {
+                    Transform child = canvasTransform.Find(name);
+                    if (child == null)
+                    {
+                        failures.Add($"(c) 视图未建出分区 {name}。");
+                        return;
+                    }
+
+                    var rect = (RectTransform)child;
+                    if (Mathf.Abs(rect.anchorMin.x - zone.xMin) > 1e-6f || Mathf.Abs(rect.anchorMin.y - zone.yMin) > 1e-6f
+                        || Mathf.Abs(rect.anchorMax.x - zone.xMax) > 1e-6f || Mathf.Abs(rect.anchorMax.y - zone.yMax) > 1e-6f)
+                    {
+                        failures.Add($"(c) 分区 {name} 的锚点 {rect.anchorMin}~{rect.anchorMax} "
+                                     + $"≠ 布局单点 {zone.min}~{zone.max} ⇒ 视图里出现了第二份数字。");
+                    }
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(probeGo);
+            }
+
+            Assert.IsEmpty(failures, "T98 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine("T98: 场景 HUD 接线 ✓；三块锚点 == 布局单点 ✓；缩放器 (1920,1080)/match 0.5 ✓");
         }
 
         // ════════════════ 辅助 ═══════════════════════════════════════════════
