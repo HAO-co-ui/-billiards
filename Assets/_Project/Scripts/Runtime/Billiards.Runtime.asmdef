@@ -2,7 +2,8 @@
     "name": "Billiards.Runtime",
     "rootNamespace": "Billiards",
     "references": [
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

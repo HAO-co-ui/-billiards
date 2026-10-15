@@ -4,7 +4,9 @@
     "references": [
         "Billiards.Runtime",
         "Unity.InputSystem",
-        "Billiards.Diagnostics"
+        "Billiards.Diagnostics",
+        "Unity.TextMeshPro",
+        "Unity.TextMeshPro.Editor"
     ],
     "includePlatforms": [
         "Editor"

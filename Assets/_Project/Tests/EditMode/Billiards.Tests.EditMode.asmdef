@@ -6,7 +6,8 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "Billiards.Diagnostics",
-        "Billiards.Editor"
+        "Billiards.Editor",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [
         "Editor"
