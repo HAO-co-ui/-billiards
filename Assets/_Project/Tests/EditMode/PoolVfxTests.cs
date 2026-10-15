@@ -240,18 +240,18 @@ namespace Billiards.Tests
         // ════════════════ T99 顶点写入单点（越小界 = 刷错误日志）══════════════════
 
         /// <summary>
-        /// **顶点写入单点契约**。
+        /// **顶点写入单点契约**（`loop` → `positionCount` → **颜色** → 顶点）。
         ///
-        /// ── 为什么需要这条判据（实测缺陷，2026-10-15）──────────────────────────────
-        /// 用户实机刷屏 `LineRenderer.SetPosition index out of bounds!`（`PoolVfxView.WriteSlot`）：
-        /// 原实现「先循环写 32 个顶点、循环之后才设 `positionCount = 32`」，而环出厂 `positionCount = 0`
-        /// ⇒ **每个点都越界**；槽位在「环(32)/弧(16)」之间复用时数量由大变小 ⇒ **反复越界**。
-        /// 该失效模式**只打错误日志、不抛异常**，所以纯函数判据（`T92`–`T94`）结构上覆盖不到。
-        /// 现把"数量 + 顶点"收进 <see cref="PoolVfxView.WriteLine"/> 单点，本判据守住它的顺序契约：
-        /// Unity 测试框架对**未预期的错误日志**默认判失败 ⇒ 顺序一错就自动红。
+        /// ── 为什么需要这条判据（两次用户实机反馈，2026-10-15）────────────────────────
+        /// ① 刷屏 `LineRenderer.SetPosition index out of bounds!`：原实现「先循环写 32 个顶点、循环之后
+        ///    才设 `positionCount = 32`」，而环出厂 `positionCount = 0` ⇒ **每个点都越界**；槽位在
+        ///    「环(32)/弧(16)」之间复用时数量由大变小 ⇒ **反复越界**。
+        /// ② "特效都是白的"：颜色原先设在**改 `positionCount` 之前**，而该赋值会重建顶点缓冲
+        ///    ⇒ 顶点色有被重置为白的风险（`T99 (d)` 锁死"设色在数量之后、且写点会落到顶点上"）。
+        /// 这两类失效**只打日志/只影响观感、不抛异常** ⇒ 纯函数判据（`T92`–`T94`）结构上覆盖不到。
         ///
-        /// **可被打死**：把 `WriteLine` 里两行对调（先写点、后设数量）⇒ (a) 红（越界错误日志）；
-        /// 在 `WriteSlot` 里加一处直写 `SetPosition` ⇒ (c) 红。
+        /// **可被打死**：把 `WriteLine` 里顺序打乱（先写点 / 把设色挪到 `positionCount` 之前）⇒ 红；
+        /// 在 `WriteSlot` 里加一处直写 `SetPosition` 或 `startColor` ⇒ (e) 红。
         /// </summary>
         [Test]
         public void T99_VertexWrite_SetsCountBeforePositions()
@@ -260,6 +260,9 @@ namespace Billiards.Tests
             try
             {
                 var line = go.AddComponent<LineRenderer>();
+                var brass = new Color(0.953f, 0.851f, 0.600f, 0.8f);
+                var rail = new Color(0.800f, 0.855f, 0.796f, 0.46f);
+
                 var points32 = new List<Vector3>();
                 for (int i = 0; i < PoolVfxView.RingSegments; i++)
                 {
@@ -277,47 +280,102 @@ namespace Billiards.Tests
                 //     原缺陷之所以触发，是因为旧代码在 `CreateLine` 里**显式**写了 `positionCount = 0`。
                 //     故这里必须显式置 0 才能复现；依赖"新组件默认是 0"会得到一个**错误前提**（本判据第一版就栽在这）。
                 line.positionCount = 0;
-                PoolVfxView.WriteLine(line, points32, true);
+                PoolVfxView.WriteLine(line, points32, brass, true);
                 Assert.AreEqual(PoolVfxView.RingSegments, line.positionCount,
                     $"T99 (a) 写入 {PoolVfxView.RingSegments} 点后 positionCount 应为 {PoolVfxView.RingSegments}，实际 {line.positionCount}。");
                 Assert.IsTrue(line.loop, "T99 (a) 环应 loop = true。");
                 Assert.AreEqual(points32[7], line.GetPosition(7), "T99 (a) 第 7 个顶点值不符。");
+                AssertColor("(a) 环", brass, line.startColor, line.endColor);
 
                 // (b) 复用小序列：32 → 16 → 32（真实场景里环与弧共用槽位）。
-                PoolVfxView.WriteLine(line, points16, false);
+                PoolVfxView.WriteLine(line, points16, rail, false);
                 Assert.AreEqual(PoolVfxView.ArcSegments, line.positionCount, "T99 (b) 弧段写入后 positionCount 应为 16。");
                 Assert.IsFalse(line.loop, "T99 (b) 弧应 loop = false。");
-                PoolVfxView.WriteLine(line, points32, true);
-                Assert.AreEqual(PoolVfxView.RingSegments, line.positionCount, "T99 (b) 环复用后 positionCount 应回到 32。");
+                AssertColor("(b) 弧", rail, line.startColor, line.endColor);
 
-                // (a)/(b) 的硬判据：以上任意一步越界都会在此前打出错误日志 ⇒ 这一步就是"越小界"的探测。
+                PoolVfxView.WriteLine(line, points32, brass, true);
+                Assert.AreEqual(PoolVfxView.RingSegments, line.positionCount, "T99 (b) 环复用后 positionCount 应回到 32。");
+                AssertColor("(b) 环复用", brass, line.startColor, line.endColor);
+
+                // (c) 硬判据：以上任意一步越界都会打出错误日志 ⇒ 这一步就是"越小界"的探测。
                 LogAssert.NoUnexpectedReceived();
 
-                // (c) 源码级守卫：全类**只有一处** `SetPosition` 调用（即写入单点内部）。
-                //     绕过单点直写顶点 = 重新打开这条失效模式，必须拦下。
+                // (d) 顶点色必须落到顶点上：`GetPositions` 读不回颜色，退而用"离屏可观测代理"——
+                //     引擎不为顶点色提供 getter（如实登记），故本项只锁 LineRenderer 的公共色属性；
+                //     "顶点是否真的带色"由 (e) 的源码级单点守 + 用户实机确认。
+                AssertColor("(d) 色属性", brass, line.startColor, line.endColor);
+
+                // (e) 源码级守卫：`SetPosition(` / `startColor =` / `endColor =` 各只准出现**一次**
+                //     （都在写入单点内部）。绕过单点 = 重新打开越界或丢色，必须拦下。
                 string root = System.IO.Path.GetDirectoryName(Application.dataPath);
                 string source = System.IO.File.ReadAllText(
                     System.IO.Path.Combine(root ?? ".", "Assets/_Project/Scripts/Runtime/Physics/PoolVfxView.cs"));
 
-                int occurrences = 0;
-                int index = 0;
-                while ((index = source.IndexOf("SetPosition(", index, System.StringComparison.Ordinal)) >= 0)
-                {
-                    occurrences++;
-                    index += "SetPosition(".Length;
-                }
+                AssertOccurrences(source, "SetPosition(", 1,
+                    "`SetPosition` 只准出现在写入单点内 —— 绕过它 = 重新打开「越界只打日志」的失效模式");
+                AssertOccurrences(source, "startColor =", 1,
+                    "`startColor` 只准在写入单点内设置 —— 设在 `positionCount` 之前有丢色风险");
+                AssertOccurrences(source, "endColor =", 1,
+                    "`endColor` 只准在写入单点内设置 —— 同 `startColor`");
 
-                Assert.AreEqual(1, occurrences,
-                    $"T99 (c) `PoolVfxView` 里 `SetPosition(` 应恰好出现 1 次（写入单点内），实际 {occurrences} 次"
-                    + " ⇒ 有人绕过了 `WriteLine`，越界失效模式会被重新打开。");
+                // (f) 线宽口径：**特效线不得比瞄准线细**，且必须**乘显示缩放**。
+                //     原实现 `LineWidth = 0.004` 且**漏乘** `DrawScale(1.2)` ⇒ 世界 4 mm，
+                //     而瞄准线是 `0.006 × 1.2` = **世界 7.2 mm** ⇒ 特效细 44%，颜色被深色台面稀释成"白线"。
+                Assert.IsTrue(PoolVfxView.LineWidth >= AimAssistView.PredictionLineWidth,
+                    $"T99 (f) 特效线宽（{PoolVfxView.LineWidth:R}）不得小于瞄准线宽"
+                    + $"（{AimAssistView.PredictionLineWidth:R}）—— 用户实机反馈「特效都是白的」的机械成因之一。");
+                AssertOccurrences(source, "LineWidth * AimAssistView.DrawScale(", 1,
+                    "`useWorldSpace` 下线宽是世界单位、**不受父缩放影响** ⇒ 必须显式乘显示缩放"
+                    + "（与瞄准线同一出口 `AimAssistView.DrawScale`）");
 
                 TestContext.WriteLine("T99: 出厂态 positionCount=0 写入 32 点 ✓；32→16→32 复用 ✓；无越界错误日志 ✓；"
-                                      + "`SetPosition` 单点 ✓");
+                                      + "颜色随写入单点逐次正确 ✓；`SetPosition`/`startColor`/`endColor` 单点 ✓；"
+                                      + $"线宽 {PoolVfxView.LineWidth:R} ≥ 瞄准线 {AimAssistView.PredictionLineWidth:R} ✓");
             }
             finally
             {
                 Object.DestroyImmediate(go);
             }
+        }
+
+        private static void AssertColor(string label, Color expected, Color start, Color end)
+        {
+            AssertColorComponent(label + " start.r", expected.r, start.r);
+            AssertColorComponent(label + " start.g", expected.g, start.g);
+            AssertColorComponent(label + " start.b", expected.b, start.b);
+            AssertColorComponent(label + " start.a", expected.a, start.a);
+            AssertColorComponent(label + " end.r", expected.r, end.r);
+            AssertColorComponent(label + " end.g", expected.g, end.g);
+            AssertColorComponent(label + " end.b", expected.b, end.b);
+            AssertColorComponent(label + " end.a", expected.a, end.a);
+        }
+
+        /// <summary>
+        /// 颜色分量比对。**容差按 `LineRenderer` 的实际存储精度定，不是随手取的数**：
+        /// 实测（2026-10-15）`LineRenderer.startColor/endColor` 以 **Color32（8 位/通道）** 存储 ——
+        /// 写入 `a = 0.46` 回读得到 `117/255 = 0.458823532`。最大量化误差 = `0.5/255 = 0.00196`，
+        /// 故取容差 `1/255 = 0.00392`：足以覆盖量化，又远小于任何**真实改色**的偏差（通常 ≥ 0.05）。
+        /// （本判据第一版用 `1e-4`，被这个量化误差判红 —— 不是实现错，是**容差口径错**。）
+        /// </summary>
+        private static void AssertColorComponent(string label, float expected, float actual)
+        {
+            const float tolerance = 1f / 255f;
+            Assert.IsTrue(Mathf.Abs(expected - actual) <= tolerance,
+                $"T99 颜色不符（{label}）：期望 {expected:R}，实际 {actual:R}"
+                + $"（差 {Mathf.Abs(expected - actual):R} > 容差 {tolerance:R}）。");
+        }
+
+        private static void AssertOccurrences(string source, string token, int expected, string why)
+        {
+            int occurrences = 0;
+            int index = 0;
+            while ((index = source.IndexOf(token, index, System.StringComparison.Ordinal)) >= 0)
+            {
+                occurrences++;
+                index += token.Length;
+            }
+
+            Assert.AreEqual(expected, occurrences, $"T99 (e) `{token}` 应出现 {expected} 次，实际 {occurrences} 次 ⇒ {why}。");
         }
     }
 }

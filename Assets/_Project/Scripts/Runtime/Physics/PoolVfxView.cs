@@ -40,7 +40,16 @@ namespace Billiards.Physics
         public const float ContactMinSpeed = 0.1f;
         public const float HitDistanceTolerance = 0.007f;
         public const float RailDistanceTolerance = 0.01f;
-        public const float LineWidth = 0.004f;
+        /// <summary>
+        /// 线宽（**规范米**）。世界宽 = 本值 × <see cref="AimAssistView.DrawScale"/>。
+        ///
+        /// ⚠ **实测定值（2026-10-15，用户实机反馈"特效都是白的"）**：
+        /// 原实现写 `0.004` 且**没有乘显示缩放** ⇒ 世界宽 4 mm；而瞄准线是
+        /// `PredictionLineWidth(0.006) × DrawScale(1.2)` = **世界 7.2 mm** ⇒ 特效比瞄准线**细 44%**。
+        /// 线越细，同 alpha 下颜色被深色台面稀释得越厉害（实测观感就是"一根白线"）。
+        /// ⇒ 本值取 **6 mm**（与瞄准线同值）并**乘显示缩放**，两条线的口径从此一致。
+        /// </summary>
+        public const float LineWidth = 0.006f;
 
         /// <summary>入袋"下沉"动画时长（秒）——球可视物下沉 + 缩小至消失。</summary>
         public const float SinkDurationSeconds = 0.3f;
@@ -51,7 +60,18 @@ namespace Billiards.Physics
         private const float SparkStartFactor = 1.03f;
         private const float SparkTravelFactor = 0.65f;
 
-        private static readonly Color ChalkColor = new Color(0.973f, 0.961f, 0.906f, 1f);   // #f8f5e7
+        /// <summary>
+        /// 击杆 / 碰球的**粉笔色**。
+        ///
+        /// ⚠ **刻意偏离参考实现（用户实机反馈后裁定，2026-10-15）**：
+        /// 参考的 `COLORS.chalk = '#f8f5e7'`（近白的暖白），设计说明原文也写"击杆：白球后侧 0.12 秒**粉白**小冲击弧"。
+        /// 但用户实机看到的是"一撮白色火花"，**与瞄准线的纯白无法区分**，也读不出"粉笔"的语义
+        /// ⇒ 用户明确要求改成能辨认的粉笔色。本值 **`#cfe3ef`（粉笔青白）**：明度仍接近粉白，
+        /// 带明确**青蓝倾向**，与瞄准线的纯白（`AimAssistView.PathColor = (1,1,1,.95)`）一眼可分，
+        /// 且不破坏参考稿"清淡微特效"的整体观感。
+        /// **回退方式**：把本行换成 `new Color(0.973f, 0.961f, 0.906f, 1f)` 即回到参考原值（一行）。
+        /// </summary>
+        private static readonly Color ChalkColor = new Color(0.812f, 0.890f, 0.937f, 1f);   // #cfe3ef
         private static readonly Color BrassColor = new Color(0.953f, 0.851f, 0.600f, 1f);   // #f3d999
         private static readonly Color RailColor = new Color(0.800f, 0.855f, 0.796f, 1f);    // #ccdacb
 
@@ -543,8 +563,6 @@ namespace Billiards.Physics
             ring.gameObject.SetActive(true);
             Color color = slot.color;
             color.a = alpha;
-            ring.startColor = color;
-            ring.endColor = color;
 
             _ringBuffer.Clear();
             if (slot.isArc)
@@ -567,7 +585,7 @@ namespace Billiards.Physics
                 }
             }
 
-            WriteLine(ring, _ringBuffer, !slot.isArc);
+            WriteLine(ring, _ringBuffer, color, !slot.isArc);
 
             for (int s = 0; s < slot.sparks.Length; s++)
             {
@@ -588,34 +606,38 @@ namespace Billiards.Physics
                 float startRadius = scale * SparkStartFactor + scale * SparkTravelFactor * progress;
                 Color sparkColor = slot.color;
                 sparkColor.a = alpha;
-                spark.startColor = sparkColor;
-                spark.endColor = sparkColor;
 
                 Vector2 tip = slot.center + new Vector2(Mathf.Cos(sparkAngle), Mathf.Sin(sparkAngle)) * startRadius;
                 Vector2 tail = tip + new Vector2(Mathf.Cos(sparkAngle), Mathf.Sin(sparkAngle)) * slot.sparkLength;
                 _sparkBuffer.Clear();
                 _sparkBuffer.Add(AimAssistView.MarkerWorldPoint(playfieldRoot, tip));
                 _sparkBuffer.Add(AimAssistView.MarkerWorldPoint(playfieldRoot, tail));
-                WriteLine(spark, _sparkBuffer, false);
+                WriteLine(spark, _sparkBuffer, sparkColor, false);
             }
         }
 
         /// <summary>
-        /// **写顶点的单点**（全类唯一的 `SetPosition` 调用处）。
+        /// **写一条线的单点**（全类唯一的 `SetPosition` 调用处）。
         ///
-        /// ── 为什么必须先 `positionCount` 后 `SetPosition`（实测缺陷，2026-10-15）────────────
-        /// `LineRenderer.SetPosition` 在索引越界时**只打错误日志、不抛异常**（`LineRenderer.SetPosition index
-        /// out of bounds!`）。原实现是「先循环写 32 个点、循环之后才设 `positionCount = 32`」，
-        /// 而环出厂时 `positionCount = 0` ⇒ **每个点都越界**；且槽位在「环(32) / 弧(16)」之间复用时
-        /// 数量会由大变小 ⇒ **反复越界刷屏**，既淹掉真错误又极难定位（用户实机截图定位）。
-        /// 把"数量"与"顶点"收进同一个函数、顺序固定 ⇒ 该失效模式**在结构上不可能发生**。
+        /// ── 顺序是硬契约：`loop` → `positionCount` → **颜色** → 顶点 ──────────────────
+        /// 两条实测教训（都来自用户实机反馈，2026-10-15）：
+        /// ① **越界**：`LineRenderer.SetPosition` 索引越界时**只打错误日志、不抛异常**
+        ///    （`LineRenderer.SetPosition index out of bounds!`）。原实现「先写 32 个点、循环后才设
+        ///    `positionCount = 32`」，而环出厂 `positionCount = 0` ⇒ 每个点都越界；槽位在
+        ///    「环(32)/弧(16)」复用时数量**由大变小** ⇒ 反复越界刷屏。先设数量即消除。
+        /// ② **颜色丢失**：原实现把 `startColor/endColor` 设在**改 `positionCount` 之前**，
+        ///    而 `positionCount` 的赋值会重建顶点缓冲 ⇒ 顶点色有被重置为白的风险（用户实机反馈
+        ///    "特效都是白的"）。**把设色排在数量之后、顶点之前**，使顶点色在写入时必然被
+        ///    `SetPosition` 按 `startColor/endColor` 落到每个顶点上 —— 两种假设下都不会丢色。
         ///
-        /// 判据 `T99` 直接驱动本函数（含 `positionCount = 0` 的出厂态）。
+        /// 判据 `T99` 直接驱动本函数（含 `positionCount = 0` 的出厂态与颜色回读）。
         /// </summary>
-        public static void WriteLine(LineRenderer line, IReadOnlyList<Vector3> points, bool loop)
+        public static void WriteLine(LineRenderer line, IReadOnlyList<Vector3> points, Color color, bool loop)
         {
             line.loop = loop;
             line.positionCount = points.Count;
+            line.startColor = color;
+            line.endColor = color;
             for (int i = 0; i < points.Count; i++)
             {
                 line.SetPosition(i, points[i]);
@@ -687,8 +709,11 @@ namespace Billiards.Physics
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = true;
             lr.positionCount = positions;
-            lr.startWidth = LineWidth;
-            lr.endWidth = LineWidth;
+            // 线宽乘显示缩放：`useWorldSpace = true` 时 `startWidth` 是**世界单位**，不受父缩放影响
+            // ⇒ 必须显式乘（与瞄准线同口径，`AimAssistView.DrawScale` 是同一出口）。
+            float width = LineWidth * AimAssistView.DrawScale(playfieldRoot);
+            lr.startWidth = width;
+            lr.endWidth = width;
             lr.numCapVertices = 0;
             if (_lineMaterial != null)
             {
