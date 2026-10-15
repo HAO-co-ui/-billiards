@@ -131,7 +131,8 @@ namespace Billiards.Physics
 
             // 2) 拖拽瞄准 / 松开锁定（状态机决定"指针是否应改方向"）。
             bool lockHeld = Input.GetMouseButton(0);                                  // 输入资产 AimLock
-            bool cancelAim = Input.GetMouseButtonDown(1) || Input.GetKeyDown(KeyCode.Escape); // 输入资产 CancelAim
+            // 取消瞄准只保留 Esc：右键已移交「拉杆蓄力」（PointerPowerController，8 Ball Pool 式拖拽出杆）。
+            bool cancelAim = Input.GetKeyDown(KeyCode.Escape);                        // 输入资产 CancelAim
 
             if (!_state.Advance(lockHeld, cancelAim))
             {

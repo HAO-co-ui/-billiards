@@ -51,6 +51,7 @@ namespace Billiards.EditorTools
 
         /// <summary>指针瞄准控制器宿主对象名（交互胶水；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string PointerAimControllerObjectName = "PointerAimController";
+        public const string PointerPowerControllerObjectName = "PointerPowerController";
 
         /// <summary>瞄准辅助宿主对象名（预测线控制器 + 视图；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string AimAssistObjectName = "AimAssist";
@@ -214,6 +215,15 @@ namespace Billiards.EditorTools
             aimController.aimCamera = cam;
             aimController.playfieldRoot = playfieldRoot.transform;
             aimController.drive = drive;
+
+            // 5b) **拉杆力度控制器** —— 交互胶水：按住右键拖 = 蓄力（拖距与力度 1:1、无惯性）、松手 = 出杆。
+            //     与驱动器同层（根下、不进缩放根）；右键原"取消瞄准"职责已移交 Esc。
+            var powerGo = new GameObject(PointerPowerControllerObjectName);
+            powerGo.transform.SetParent(root.transform, false);
+            var powerController = powerGo.AddComponent<PointerPowerController>();
+            powerController.drive = drive;
+            powerController.aimCamera = cam;
+            powerController.playfieldRoot = playfieldRoot.transform;
 
             // 6) **瞄准辅助**（预测线）：控制器（胶水：只读内核 + 读驱动器开关）+ 视图（绘制：过显示层单点）。
             //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。

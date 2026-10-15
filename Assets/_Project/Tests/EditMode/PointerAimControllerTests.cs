@@ -243,5 +243,70 @@ namespace Billiards.Tests
                 EditorSceneManager.CloseScene(scene, true);
             }
         }
+
+        // ════════════ T86 拉杆力度映射（拖距 → 力度，1:1 无惯性）════════════
+
+        /// <summary>
+        /// **拖拽位移与力条值严格 1:1**（排期「力度控制」的硬要求）：
+        /// <see cref="PointerPowerController.PowerFromDrag"/> 是**无状态纯函数**，每帧直接写入
+        /// ⇒ 无延迟、无惯性、无平滑（"跟手"的可判定形式）。
+        ///
+        /// 语义族：
+        /// · (a) 沿瞄准反方向拖满拉程 ⇒ 1；(b) 拖半拉程 ⇒ **恰 0.5**（线性 1:1）；
+        /// · (c) 往前推（瞄准同向）⇒ 0（负投影截断）；(d) 正交移动 ⇒ 0（投影归零）；
+        /// · (e) 超过拉程 ⇒ 1（上限截断）；
+        /// · (f) 退化防御：拉程 ≤ 0 或零瞄准方向 ⇒ 0（不产生 NaN / 除零）。
+        /// **注入负对照**：去掉 `Clamp01` ⇒ (c)(e) 红；投影方向取反 ⇒ (a)(b) 红。
+        /// </summary>
+        [Test]
+        public void T86_PowerFromDrag_ProjectionSemantics()
+        {
+            var aimDir = new Vector2(1f, 0f);   // 瞄准 +x：往后拉 = −x 方向
+            const float maxDrag = 0.5f;
+
+            var failures = new List<string>();
+
+            float full = PointerPowerController.PowerFromDrag(new Vector2(-maxDrag, 0f), aimDir, maxDrag);
+            if (full != 1f)
+            {
+                failures.Add($"(a) 拖满拉程应得力度 1，实际 {full:R}。");
+            }
+
+            float half = PointerPowerController.PowerFromDrag(new Vector2(-0.25f, 0f), aimDir, maxDrag);
+            if (half != 0.5f)
+            {
+                failures.Add($"(b) 拖半拉程应恰得 0.5（线性 1:1、无惯性），实际 {half:R}。");
+            }
+
+            float push = PointerPowerController.PowerFromDrag(new Vector2(0.3f, 0f), aimDir, maxDrag);
+            if (push != 0f)
+            {
+                failures.Add($"(c) 往前推应为 0（负投影截断），实际 {push:R}。");
+            }
+
+            float ortho = PointerPowerController.PowerFromDrag(new Vector2(0f, 0.4f), aimDir, maxDrag);
+            if (ortho != 0f)
+            {
+                failures.Add($"(d) 正交移动应为 0（投影归零），实际 {ortho:R}。");
+            }
+
+            float over = PointerPowerController.PowerFromDrag(new Vector2(-1f, 0f), aimDir, maxDrag);
+            if (over != 1f)
+            {
+                failures.Add($"(e) 超过拉程应截断为 1，实际 {over:R}。");
+            }
+
+            float degenerateZeroDrag = PointerPowerController.PowerFromDrag(new Vector2(-0.5f, 0f), aimDir, 0f);
+            float degenerateZeroDir = PointerPowerController.PowerFromDrag(new Vector2(-0.5f, 0f), Vector2.zero, maxDrag);
+            if (degenerateZeroDrag != 0f || degenerateZeroDir != 0f)
+            {
+                failures.Add($"(f) 退化输入应为 0（拉程≤0 得 {degenerateZeroDrag:R}；零方向得 {degenerateZeroDir:R}）。");
+            }
+
+            Assert.IsEmpty(failures, "T86 失败判据：\n" + string.Join("\n", failures));
+            TestContext.WriteLine(
+                $"T86: 满拉={full:R}、半拉={half:R}（1:1）、前推={push:R}、正交={ortho:R}、"
+                + $"超限={over:R}、退化(拉程0/方向0)={degenerateZeroDrag:R}/{degenerateZeroDir:R} ✓");
+        }
     }
 }
