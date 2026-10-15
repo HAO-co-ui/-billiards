@@ -45,6 +45,11 @@ sysinfo.txt
 *.log
 crashlytics-build.properties
 
+# ---- 批处理测试的结果文件（Unity Test Framework 默认落在工程根）----
+# 跑 `-runTests` 时若不显式带 `-testResults`，UTF 会在工程根再写一份 `TestResults-<id>.xml`。
+# 入库证据一律落到仓库外（`-testResults` / `-outputDir` 指绝对路径）⇒ 仓库内这份永远是副产物。
+TestResults-*.xml
+
 # ---- 构建产物 ----
 *.apk
 *.aab

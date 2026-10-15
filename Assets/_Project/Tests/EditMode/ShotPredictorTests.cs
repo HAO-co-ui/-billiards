@@ -463,11 +463,19 @@ namespace Billiards.Tests
 
         /// <summary>
         /// **幽灵球与目标球心距恰为 `2r`**（几何恒等式，**绝对判别**），且路径终点与它逐位一致、时间在合理区间。
+        /// 本判据含**两段场景**：直球（正碰）与**擦碰**（白球以碰撞参数 `b = 2r − 1.6 mm` 掠过目标球）。
         ///
-        /// 期望值来源：**甲**（(a) 的 `2r` 几何恒等式，与被测对象无关）＋ **乙**（(b)(c) 的内部一致性）。
-        /// **判别力**：`2r` 容差取 1e-6 m（float 级联残差 ~1e-7，留 10× 余量）；
-        /// 错误定义的偏差是它的几万倍：漏 `2r` = 57.15 mm（5.7e4×）、"`Step()` 末端采样" ≈ 37.5 mm（3.75e4×）。
-        /// **盲带**：只覆盖"白球 + 单目标球、无库接触"；(b)(c) 是**内部一致性**（**不**能检出内核缺陷）。
+        /// 期望值来源：**甲**（(a)/(e) 的 `2r` 几何恒等式，与被测对象无关）＋ **乙**（(b)(c)(f) 的内部一致性）。
+        ///
+        /// **判别力（余量口径）**：「幽灵球取 `Step()` 末端位置」这类错误造成的偏差恰为
+        /// **撞后白球速度 × 接触后该 `Step` 内的剩余时间** ⇒ (d)/(h) 把该剩余时间钉为 ≥ 2e-3 s，
+        /// 余量随场景的撞后白球速度放大：
+        /// · 直球段（正碰）：`v_after ≈ 0.025·v0` ⇒ 余量 ≈ 3.5e-4 m ≈ **348× 容差**；
+        /// · 擦碰段：`v_after ≈ 0.97·v0`（碰撞参数是"到入射射线的垂距"，接触瞬间连心线角 θ_c ≈ 76°，
+        ///   白球几乎全速掠过、偏转仅 ~13.7°）⇒ 余量 ≈ **1e-2 m 量级（≈1e4× 容差）**，
+        ///   摆脱"接触恰落 `Step` 边界 ⇒ 余量趋零"的最坏情形。
+        ///
+        /// **盲带**：只覆盖"白球 + 单目标球、无库接触"；(b)(c)(f) 是**内部一致性**（**不**能检出内核缺陷）。
         /// **注入负对照（实测）**：幽灵球改取 `Step()` 末端白球位置 ⇒ **(a) FAIL**；改取"起点 + 方向 × 球心距"（漏 `2r`）⇒ **(a) FAIL**。
         /// </summary>
         [Test]
@@ -522,9 +530,85 @@ namespace Billiards.Tests
                 failures.Add($"(c) 到首接触时间 {p.TimeToFirstContactSeconds:R} 不在区间 (0, {upper:R}] 内。");
             }
 
+            // (d) 采样余量自检：接触后该 Step 内的剩余时间（余量 = 撞后白球速度 × 该剩余时间）。
+            float tailSlack = upper - p.TimeToFirstContactSeconds;
+            if (!(tailSlack >= 2e-3f))
+            {
+                failures.Add($"(d) 直球段采样余量自检：接触后 Step 内剩余 {tailSlack:E3} s < 2e-3 s ⇒"
+                             + " 本用例对「Step 末端采样」类错误的判别余量不足。");
+            }
+
+            // ══════════════════ 段 2：擦碰（掠过目标球）══════════════════════════
+            // 构造：碰撞参数 b = 2r − 1.6 mm（离"完全擦过"留余量），两球间距 0.08 m。
+            // 与直球段正交的性质：撞后白球保留大部分速度（v_after ≈ 0.70·v0）⇒ 采样余量放大 ~28×。
+            var cue2 = Ball(0.12f, 0f, 0f, 0f);
+            var target2 = Ball(0.20f, 0f, 0f, 0f);
+            Vector2 n2 = (target2.position - cue2.position).normalized;
+            float d2 = (target2.position - cue2.position).magnitude;
+            float b2 = 2f * PoolConstants.BallRadius - 0.0016f;
+            Vector2 perp2 = new Vector2(-n2.y, n2.x);
+            float sinTheta2 = b2 / d2;
+            float cosTheta2 = Mathf.Sqrt(1f - sinTheta2 * sinTheta2);
+            Vector2 u2 = (n2 * cosTheta2 + perp2 * sinTheta2).normalized;
+
+            ShotPrediction p2 = ShotPredictor.Predict(table, SimOf(FactoryParams(), cue2, target2), 4.5f * u2, maxSteps);
+            if (!p2.HasFirstContact)
+            {
+                failures.Add("前提（擦碰段）：应发生首次球-球接触（碰撞参数 b < 2r）。");
+            }
+            else
+            {
+                // (e) 几何恒等式（擦碰下同样成立：接触瞬间两球相切）
+                float twoR2 = 2f * PoolConstants.BallRadius;
+                float gap2 = (p2.GhostBall - p2.TargetBallCenter).magnitude;
+                if (!(Mathf.Abs(gap2 - twoR2) <= 1e-6f))
+                {
+                    failures.Add($"(e) 擦碰段 |幽灵球 − 目标球心| = {gap2:F9} m ≠ 2r = {twoR2:F9} m"
+                                 + $"（差 {gap2 - twoR2:E3} m，容差 1e-6）。");
+                }
+
+                // (f) 路径终点 == 幽灵球（逐位；内部一致性）
+                if (p2.CueWorldPath == null || p2.CueWorldPath.Count == 0)
+                {
+                    failures.Add("(f) 擦碰段 `CueWorldPath` 为空。");
+                }
+                else if (RVec(p2.CueWorldPath[p2.CueWorldPath.Count - 1]) != RVec(p2.GhostBall))
+                {
+                    failures.Add($"(f) 擦碰段路径末点 {RVec(p2.CueWorldPath[p2.CueWorldPath.Count - 1])}"
+                                 + $" ≠ 幽灵球 {RVec(p2.GhostBall)}（逐位要求）。");
+                }
+
+                // (g) 擦碰语义自检：目标球沿「接触瞬间的连心线」出射 —— 擦碰（浅擦，θ_c 大）下
+                // 该方向与入射方向的夹角大（dot = cos θ_c 小）；正碰（θ_c → 0）下与入射同向（dot → 1）。
+                // ⚠ 不能用白球出射方向判：正碰下白球几乎停下但方向不变、擦碰下白球几乎全速且偏转小
+                //   —— 两者 dot 都接近 1（实测擦碰 dot = 0.9734），无判别力。
+                float targetDeflection2 = Vector2.Dot(p2.TargetOutgoingDirection, u2);
+                if (!(targetDeflection2 < 0.5f))
+                {
+                    failures.Add($"(g) 擦碰语义自检：目标球出射方向与入射方向夹角过小（dot = {targetDeflection2:F4} ≥ 0.5）"
+                                 + " ⇒ 场景未构成擦碰（几何退化为正碰）。");
+                }
+
+                // (h) 擦碰段采样余量自检（同 (d) 口径）。
+                float tailSlack2 = p2.StepsSimulated * PoolSimulator.FixedDeltaTime - p2.TimeToFirstContactSeconds;
+                if (!(tailSlack2 >= 2e-3f))
+                {
+                    failures.Add($"(h) 擦碰段采样余量自检：接触后 Step 内剩余 {tailSlack2:E3} s < 2e-3 s"
+                                 + " ⇒ 余量不足以稳定检出「Step 末端采样」类错误。");
+                }
+            }
+
             Assert.IsEmpty(failures, "T75 失败：\n" + string.Join("\n", failures));
-            TestContext.WriteLine($"T75: |幽灵球−目标球心| = {gap:R}（2r = {twoR:R}，残差 {gap - twoR:E3}）；"
-                                  + $"路径点数 {p.CueWorldPath.Count}；t = {p.TimeToFirstContactSeconds:R} ∈ (0, {upper:R}] ✓");
+            TestContext.WriteLine($"T75: [直球] |幽灵球−目标球心| = {gap:R}（2r = {twoR:R}，残差 {gap - twoR:E3}）；"
+                                  + $"路径 {p.CueWorldPath.Count} 点；t = {p.TimeToFirstContactSeconds:R} ∈ (0, {upper:R}]；"
+                                  + $"采样余量 {tailSlack:E3} s。[擦碰] "
+                                  + (p2.HasFirstContact
+                                      ? $"|幽灵球−目标球心| = {(p2.GhostBall - p2.TargetBallCenter).magnitude:R}；"
+                                        + $"t = {p2.TimeToFirstContactSeconds:R}；steps = {p2.StepsSimulated}；"
+                                        + $"采样余量 {(p2.StepsSimulated * PoolSimulator.FixedDeltaTime - p2.TimeToFirstContactSeconds):E3} s；"
+                                        + $"白球出射 dot = {Vector2.Dot(p2.CueOutgoingDirection, u2):F4}；目标球出射 dot = {Vector2.Dot(p2.TargetOutgoingDirection, u2):F4}"
+                                      : "未发生接触（前提失败）")
+                                  + " ✓");
         }
 
         // ══════════════════ T76 直球（无库）闭式一致 ═══════════════════════════
