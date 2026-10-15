@@ -240,31 +240,11 @@ namespace Billiards.EditorTools
             playfield.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             playfield.transform.localScale = Vector3.one;
 
-            GameObject tableInstance = InstantiateModel(TableModelPath, "PoolTable");
-            tableInstance.transform.SetParent(playfield.transform, false);
-            SetLayerRecursive(tableInstance, BilliardsLayers.Table);
-            AssignTableMaterials(tableInstance);
+            // 球桌可视物走**唯一实现点**（与物理灰盒共用；各写一份必然分叉，见 `TableVisualBuilder` 的类注释）。
+            TableVisualBuilder.AttachTable(playfield.transform);
 
-            // 2) 最小布景：地面（与桌腿底对齐）
-            var room = new GameObject("Room");
-            GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            floor.name = "Floor";
-            Collider floorCollider = floor.GetComponent<Collider>();
-            if (floorCollider != null)
-            {
-                UnityEngine.Object.DestroyImmediate(floorCollider);   // 自研物理：场景不放碰撞体
-            }
-
-            floor.transform.SetParent(room.transform, false);
-            floor.transform.position = new Vector3(0f, PoolConstants.TableLegBottomY, 0f);
-            floor.transform.localScale = new Vector3(3f, 1f, 3f);      // 默认平面 10×10 → 30×30 m
-            SetLayerRecursive(floor, BilliardsLayers.Environment);
-            var floorRenderer = floor.GetComponent<MeshRenderer>();
-            if (floorRenderer != null)
-            {
-                floorRenderer.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(FloorMaterialPath);
-                floorRenderer.shadowCastingMode = ShadowCastingMode.Off;
-            }
+            // 2) 最小布景：地面（与桌腿底对齐）—— 同样走唯一实现点。
+            TableVisualBuilder.AttachRoom(playfield.transform.parent);
 
             // 3) 灯光
             var sunGo = new GameObject("Directional Light");
@@ -302,25 +282,6 @@ namespace Billiards.EditorTools
         }
 
         /// <summary>给球桌网格按子网格分配材质：0 = 桌体（不透明），1 = 袋网（Alpha Clipping）。</summary>
-        private static void AssignTableMaterials(GameObject root)
-        {
-            Material body = AssetDatabase.LoadAssetAtPath<Material>(BodyMaterialPath);
-            Material nets = AssetDatabase.LoadAssetAtPath<Material>(NetsMaterialPath);
-
-            foreach (MeshRenderer mr in root.GetComponentsInChildren<MeshRenderer>(true))
-            {
-                MeshFilter mf = mr.GetComponent<MeshFilter>();
-                int subMeshes = (mf != null && mf.sharedMesh != null) ? Mathf.Max(1, mf.sharedMesh.subMeshCount) : 1;
-                var mats = new Material[subMeshes];
-                for (int i = 0; i < subMeshes; i++)
-                {
-                    mats[i] = (i == 1) ? nets : body;
-                }
-
-                mr.sharedMaterials = mats;
-            }
-        }
-
         // ── Prefab ─────────────────────────────────────────────────────────
 
         private static void BuildPrefabs()
@@ -352,13 +313,13 @@ namespace Billiards.EditorTools
         private static void CreateModelPrefab(string modelPath, string materialPath, string rootName, string prefabPath,
             int layer, Material explicitMaterial = null)
         {
-            GameObject model = InstantiateModel(modelPath, rootName + "_Model");
+            GameObject model = TableVisualBuilder.InstantiateModel(modelPath, rootName + "_Model");
             var root = new GameObject(rootName);
             model.transform.SetParent(root.transform, false);
             model.transform.localPosition = Vector3.zero;
             model.transform.localRotation = Quaternion.identity;
             model.transform.localScale = Vector3.one;
-            SetLayerRecursive(root, layer);
+            TableVisualBuilder.SetLayerRecursive(root, layer);
 
             Material mat = explicitMaterial;
             if (mat == null && !string.IsNullOrEmpty(materialPath))
@@ -389,28 +350,6 @@ namespace Billiards.EditorTools
         public static string BallName(int i)
         {
             return "Ball_" + i.ToString("00");
-        }
-
-        private static GameObject InstantiateModel(string modelPath, string name)
-        {
-            GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
-            if (asset == null)
-            {
-                throw new InvalidOperationException("无法加载模型：" + modelPath);
-            }
-
-            var instance = (GameObject)PrefabUtility.InstantiatePrefab(asset);
-            instance.name = name;
-            return instance;
-        }
-
-        private static void SetLayerRecursive(GameObject go, int layer)
-        {
-            go.layer = layer;
-            foreach (Transform child in go.transform)
-            {
-                SetLayerRecursive(child.gameObject, layer);
-            }
         }
 
         private static Material LoadOrCreate(string path)

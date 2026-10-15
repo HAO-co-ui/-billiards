@@ -40,6 +40,15 @@ namespace Billiards.UI
         public static readonly Color ShootFillDisabled = new Color32(0xD4, 0xB4, 0x6C, 0x61);
         public static readonly Color ShootText = new Color32(0x10, 0x20, 0x25, 0xFF);
 
+        /// <summary>犯规色（**酒红**，取参考 UI 的 `.status-bar[data-state='foul']` 边线色 `#b66370`）。</summary>
+        public static readonly Color FoulColor = new Color32(0xB6, 0x63, 0x70, 0xFF);
+
+        /// <summary>
+        /// 犯规提示的停留时长（秒）。参考设计说明给的是边线 **0.8 s 脉冲**（那是"看一眼就够"的动效）；
+        /// 本处要让人**读完文字**再判断"刚才那杆犯没犯错"，故取 **1.6 s**（两倍）。
+        /// </summary>
+        public const float FoulBannerSeconds = 1.6f;
+
         /// <summary>控件圆角（设计说明 §一：1–3 px，不做现代 SaaS 式圆角）。</summary>
         public const float CornerRadius = 2f;
 
@@ -79,6 +88,9 @@ namespace Billiards.UI
         private RectTransform _power;
         private TextMeshProUGUI[] _counterValues;
         private TextMeshProUGUI _stateText;
+        private TextMeshProUGUI _stateCaption;
+        private int _lastScratchSeen;
+        private float _foulUntil;
         private Image _stateDot;
         private TextMeshProUGUI _powerPercent;
         private Image _powerFill;
@@ -192,9 +204,9 @@ namespace Billiards.UI
             _stateText = CreateText(zone, "State", bodyFont, PracticeHudLayout.LabelFontSize, TextColor,
                 TextAlignmentOptions.Left, new Vector2(0.12f, 0.10f), new Vector2(0.98f, 0.90f));
 
-            var hint = CreateText(zone, "ZoneCaption", bodyFont, PracticeHudLayout.LabelFontSize * 0.72f, MutedColor,
+            _stateCaption = CreateText(zone, "ZoneCaption", bodyFont, PracticeHudLayout.LabelFontSize * 0.72f, MutedColor,
                 TextAlignmentOptions.Right, new Vector2(0.60f, 0.10f), new Vector2(0.98f, 0.34f));
-            hint.text = "PRACTICE";
+            _stateCaption.text = PracticeHudState.CaptionIdle;
         }
 
         private void BuildPower(RectTransform zone)
@@ -243,8 +255,26 @@ namespace Billiards.UI
             }
 
             ShotPhase phase = cueStick != null && cueStick.Flow != null ? cueStick.Flow.Phase : ShotPhase.Aim;
-            _stateText.text = PracticeHudState.StateLabel(phase);
-            _stateDot.color = phase == ShotPhase.Aim || phase == ShotPhase.Charging ? StateGreen : MutedColor;
+
+            // 犯规提示：轮询 `ScratchCount` 的**增量**（与 `PoolAudio` / `PoolVfxView` 同一口径：
+            // 计数只认上升，下降静默更新基准）。窗口内状态条整条转**酒红**并改文案 ——
+            // 设计说明 §9 要求"不以颜色作为唯一识别手段"，故**颜色与文字同时给**。
+            if (drive != null)
+            {
+                if (drive.ScratchCount > _lastScratchSeen)
+                {
+                    _lastScratchSeen = drive.ScratchCount;
+                    _foulUntil = Time.unscaledTime + FoulBannerSeconds;
+                }
+            }
+
+            bool foulWindow = Time.unscaledTime < _foulUntil;
+            _stateText.text = PracticeHudState.StatusLabel(phase, foulWindow);
+            _stateText.color = foulWindow ? FoulColor : TextColor;
+            _stateCaption.text = foulWindow ? PracticeHudState.FoulDetail : PracticeHudState.CaptionIdle;
+            _stateDot.color = foulWindow
+                ? FoulColor
+                : phase == ShotPhase.Aim || phase == ShotPhase.Charging ? StateGreen : MutedColor;
 
             bool canShoot = PracticeHudState.ShootEnabled(phase);
             _shootFill.color = canShoot ? ShootFill : ShootFillDisabled;

@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using System.IO;
+using Billiards.Core;
+using Billiards.EditorTools;
 using Billiards.Physics;
 using NUnit.Framework;
 using UnityEditor;
@@ -476,6 +479,145 @@ namespace Billiards.Tests
                 Object.DestroyImmediate(drive2Go);
                 Object.DestroyImmediate(visual2Go);
             }
+        }
+
+        // ══════════════════ T103 球桌可视物在场 ════════════════════════════════
+
+        /// <summary>
+        /// **灰盒场景必须有「看得见的球桌」**（用户实机反馈"场景全黑、看不到球袋在哪"后补的守卫）。
+        ///
+        /// 背景（本判据存在的理由）：`PhysicsGreybox` **此前从未建过桌模型** —— 库边全靠
+        /// `CushionGizmo` 的 `Gizmos.DrawLine` 画，而 **`Gizmos` 只在编辑器 Scene 视图可见**，
+        /// Game 视图里就是黑底加几颗球。这类"组件在、但游戏里根本看不见"的缺陷，
+        /// 编译与纯逻辑判据都抓不到 ⇒ 必须由**场景结构判据**兜。
+        ///
+        /// **可被打死**：把桌实例从场景删掉 ⇒ 红；把地面挪出可视根（桌会浮空）⇒ (c) 红；
+        /// 把袋网材质从 submesh 1 摘掉 ⇒ (b) 红。
+        /// </summary>
+        [Test]
+        public void T103_GreyboxScene_HasVisibleTable()
+        {
+            var failures = new List<string>();
+
+            Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Additive);
+            try
+            {
+                Transform table = null;
+                Transform floor = null;
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (child.name == TableVisualBuilder.TableObjectName)
+                        {
+                            table = child;
+                        }
+                        else if (child.name == TableVisualBuilder.FloorObjectName)
+                        {
+                            floor = child;
+                        }
+                    }
+                }
+
+                var bodyMaterial = AssetDatabase.LoadAssetAtPath<Material>(MaterialVisualSetup.BodyMaterialPath);
+                var netsMaterial = AssetDatabase.LoadAssetAtPath<Material>(MaterialVisualSetup.NetsMaterialPath);
+                var floorMaterial = AssetDatabase.LoadAssetAtPath<Material>(MaterialVisualSetup.FloorMaterialPath);
+
+                // (a) 桌在场，且有可渲染网格
+                if (table == null)
+                {
+                    failures.Add($"(a) 场景里找不到球桌实例「{TableVisualBuilder.TableObjectName}」⇒ Game 视图会是一片黑底。");
+                }
+                else
+                {
+                    MeshRenderer[] renderers = table.GetComponentsInChildren<MeshRenderer>(true);
+                    if (renderers.Length == 0)
+                    {
+                        failures.Add("(a) 球桌实例下没有任何 MeshRenderer ⇒ 建了但看不见。");
+                    }
+
+                    // (b) 袋网材质必须在 submesh 1 上（模型的子网格约定：0 = 桌体、1 = 袋网）
+                    bool sawNetSubmesh = false;
+                    foreach (MeshRenderer renderer in renderers)
+                    {
+                        Material[] materials = renderer.sharedMaterials;
+                        if (materials == null || materials.Length == 0)
+                        {
+                            failures.Add($"(b) 「{renderer.name}」没有指派材质。");
+                            continue;
+                        }
+
+                        for (int i = 0; i < materials.Length; i++)
+                        {
+                            if (materials[i] == null)
+                            {
+                                failures.Add($"(b) 「{renderer.name}」子网格 {i} 的材质为空 ⇒ 该面会显示成品红/默认材质。");
+                                continue;
+                            }
+
+                            if (i == 1)
+                            {
+                                sawNetSubmesh = true;
+                                if (materials[i] != netsMaterial)
+                                {
+                                    failures.Add($"(b) 「{renderer.name}」子网格 1（袋网）应用 "
+                                                 + $"{MaterialVisualSetup.NetsMaterialPath}，实际 {materials[i].name}。");
+                                }
+                            }
+                            else if (materials[i] != bodyMaterial)
+                            {
+                                failures.Add($"(b) 「{renderer.name}」子网格 {i}（桌体）应用 "
+                                             + $"{MaterialVisualSetup.BodyMaterialPath}，实际 {materials[i].name}。");
+                            }
+                        }
+                    }
+
+                    if (!sawNetSubmesh)
+                    {
+                        failures.Add("(b) 没有任何网格带 submesh 1 ⇒ 袋网材质没落上（袋口会与桌体同色，看不出袋在哪）。");
+                    }
+
+                    // (c) 地面在场、材质正确、且**与桌同一缩放口径**（否则桌会浮空）。
+                    //     ⚠ 判据形式是被实测修正过的：最初断言"地面与桌的父级相同"——**那是错的**，
+                    //     地面挂在 `Room` 下、桌挂在 `PlayfieldRoot` 下，层级形状不同但缩放口径一致。
+                    //     真正的不变量是**世界坐标层面**的：桌腿底与地面齐平，且两者被同一倍数缩放。
+                    if (floor == null)
+                    {
+                        failures.Add("(c) 场景里找不到地面（Floor）。");
+                    }
+                    else
+                    {
+                        var floorRenderer = floor.GetComponent<MeshRenderer>();
+                        if (floorRenderer == null || floorRenderer.sharedMaterial != floorMaterial)
+                        {
+                            failures.Add($"(c) 地面材质应为 {MaterialVisualSetup.FloorMaterialPath}，"
+                                         + $"实际 {(floorRenderer == null || floorRenderer.sharedMaterial == null ? "null" : floorRenderer.sharedMaterial.name)}。");
+                        }
+
+                        float floorWorldY = floor.position.y;
+                        float legBottomWorldY = PoolConstants.TableLegBottomY * table.lossyScale.y;
+                        if (Mathf.Abs(floorWorldY - legBottomWorldY) > 1e-4f)
+                        {
+                            failures.Add($"(c) 地面世界高度 {floorWorldY:R} ≠ 桌腿底世界高度 {legBottomWorldY:R}"
+                                         + $"（= {PoolConstants.TableLegBottomY:R} × 桌缩放 {table.lossyScale.y:R}）"
+                                         + " ⇒ 桌子会浮在地面上方（或陷进地面）。");
+                        }
+
+                        if (Mathf.Abs(floor.lossyScale.y - table.lossyScale.y) > 1e-6f)
+                        {
+                            failures.Add($"(c) 地面缩放 {floor.lossyScale.y:R} ≠ 桌缩放 {table.lossyScale.y:R}"
+                                         + " ⇒ 两者不在同一显示口径下，迟早错位。");
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+
+            Assert.IsEmpty(failures, "T103 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine("T103: 球桌实例在场、子网格材质正确（桌体 / 袋网）、地面同父且材质正确 ✓");
         }
     }
 }

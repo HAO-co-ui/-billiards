@@ -175,6 +175,18 @@ namespace Billiards.Physics
         /// </summary>
         public bool LastLaunchRespawnedCueBall { get; private set; }
 
+        /// <summary>
+        /// **白球落袋（scratch）累计次数**（只读诊断量，**跨杆单调、不因重摆归零**）。
+        ///
+        /// 口径：出杆那一刻白球不在场上（已入袋 / 擦袋角离台）⇒ 计一次。
+        /// 这是本工程**唯一**可观测的犯规类型（完整犯规分类需规则引擎，属 35-B）。
+        /// `PoolAudio` 与 HUD 的犯规提示都轮询它的**增量**（同 `LaunchCount` 的口径）。
+        /// </summary>
+        public int ScratchCount { get; private set; }
+
+        /// <summary>最近一次 scratch 发生的时刻（`Time.unscaledTime`）；从未发生 ⇒ 负无穷。</summary>
+        public float LastScratchTime { get; private set; } = float.NegativeInfinity;
+
         /// <summary>**累计出杆次数**（只读出口；音频层轮询增量 ⇒ strike 事件。**不清零**）。</summary>
         public int LaunchCount { get; private set; }
 
@@ -492,6 +504,10 @@ namespace Billiards.Physics
 
             if (cueOffTable)
             {
+                // scratch：白球离台 ⇒ 计一次犯规（本工程唯一可观测的犯规类型）。
+                ScratchCount++;
+                LastScratchTime = Time.unscaledTime;
+
                 // 白球从袋口**瞬移**回开球点 ⇒ 必须重置自转跟踪，否则这一瞬移会被当成真实位移、球凭空猛转一下。
                 ResetVisualRotationTracking();
                 Debug.Log($"PhysicsTestDrive：白球已离台（入袋/擦袋角）⇒ 放回开球点 {tableConfig.footSpot} 后出杆。", this);

@@ -59,6 +59,35 @@ namespace Billiards.Physics
         /// <summary>当前预测结果（只读出口）。关闭或未静止时为上一次结果或 <c>default</c>。</summary>
         public ShotPrediction Prediction => _prediction;
 
+        /// <summary>
+        /// **是否应当绘制瞄准辅助**（**纯函数**，唯一判据点；`ShouldShow` 与判据 `T104` 共用）。
+        ///
+        /// 三条同时成立才画：
+        ///  · `predictionEnabled` —— 设置开关；
+        ///  · `tableAtRest` —— **球运动期间不画**。预测的语义是"未出杆时的一次前向模拟"，
+        ///    球在滚时它是**上一杆的旧结果**；继续画就会表现为"瞄准线停在原地不动"
+        ///    （**用户实测反馈**）。隐藏到球停住再恢复，与本类文档里"与 `AimIndicator` 隐藏口径一致"的
+        ///    说法终于对齐 —— 此前那句话只是注释、**实现里从未落地**。
+        ///  · `resultCardOpen == false` —— 结算卡是模态，打开期间整体让位。
+        /// </summary>
+        public static bool ShouldShowAimAssist(bool predictionEnabled, bool tableAtRest, bool resultCardOpen)
+        {
+            return predictionEnabled && tableAtRest && !resultCardOpen;
+        }
+
+        /// <summary>本组件当前是否应当绘制（把实时状态喂给 <see cref="ShouldShowAimAssist"/>）。</summary>
+        public bool ShouldShow
+        {
+            get
+            {
+                PoolSimulator sim = drive != null ? drive.Simulator : null;
+                return ShouldShowAimAssist(
+                    drive != null && drive.PredictionEnabled,
+                    sim != null && sim.TableAtRest,
+                    Billiards.UI.PracticeResultView.IsOpen);
+            }
+        }
+
         /// <summary>累计**重算**次数（只读诊断量）。关闭期间**逐位不变**（`T82a`）。</summary>
         public int PredictionComputeCount { get; private set; }
 

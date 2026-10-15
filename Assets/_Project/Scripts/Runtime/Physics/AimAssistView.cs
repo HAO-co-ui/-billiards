@@ -214,6 +214,16 @@ namespace Billiards.Physics
                 return;
             }
 
+            if (!controller.ShouldShow)
+            {
+                // 球在滚 / 开关关闭 / 结算卡打开 ⇒ **清空所有线**。
+                // ⚠ 必须清空而不是"什么都不做"：`controller.Prediction` 在球运动期间**不重算**，
+                // 里存的是**上一杆的旧结果**；不复位就会看到"瞄准线停在原地不动"（用户实测反馈）。
+                SyncRenderers(System.Array.Empty<(Vector2 a, Vector2 b)>());
+                SyncContactMarkers(default);
+                return;
+            }
+
             ShotPrediction prediction = controller.Prediction;
             IReadOnlyList<Vector2> path = prediction.CueWorldPath;
 

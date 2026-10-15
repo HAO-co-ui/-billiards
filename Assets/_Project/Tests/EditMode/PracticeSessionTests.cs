@@ -469,6 +469,96 @@ namespace Billiards.Tests
                                   + "场景 EventSystem / 输入模块 各 1、无序列化射线器 ✓；运行期射线器 1 且卡挂同画布 ✓；宿主接线 ✓");
         }
 
+        // ════════════════ T104 瞄准辅助显示门 + 犯规反馈 ═══════════════════════
+
+        /// <summary>
+        /// **两条用户实机反馈的守卫**：
+        ///
+        /// ① **瞄准线不得停在原地**：预测的语义是"未出杆时的一次前向模拟"；球在滚时它是**上一杆的旧结果**，
+        ///    继续画就表现为"线停在原地不动"。显示门 `ShouldShowAimAssist` 把三条条件收成一个纯函数。
+        /// ② **白球落袋要有判罚**：本工程可观测的犯规只有 scratch，处置 = 白球放回开球点 + 状态条转
+        ///    **酒红**并显示 `Foul` / `Ball in hand` + 计进结算卡的 `FOULS` 列。
+        ///    （手动自由球摆位未实现，登记 35-B；判据只锁"看得见 + 数得对"。）
+        ///
+        /// **可被打死**：把 `ShouldShowAimAssist` 的 `tableAtRest` 项去掉 ⇒ (a) 红；
+        /// 把 `StatusLabel` 的犯规优先去掉 ⇒ (b) 红。
+        /// </summary>
+        [Test]
+        public void T104_AimAssistVisibility_AndFoulFeedback()
+        {
+            var failures = new List<string>();
+
+            // (a) 显示门真值表：三条全真才画
+            void Check(string label, bool actual, bool expected)
+            {
+                if (actual != expected)
+                {
+                    failures.Add($"{label}：应 {expected}，实际 {actual}。");
+                }
+            }
+
+            Check("(a) 三条全真", AimAssistController.ShouldShowAimAssist(true, true, false), true);
+            Check("(a) 预测开关关闭", AimAssistController.ShouldShowAimAssist(false, true, false), false);
+            Check("(a) **球在运动**（线不得停在原地）", AimAssistController.ShouldShowAimAssist(true, false, false), false);
+            Check("(a) 结算卡打开（模态让位）", AimAssistController.ShouldShowAimAssist(true, true, true), false);
+            Check("(a) 三者全否", AimAssistController.ShouldShowAimAssist(false, false, true), false);
+
+            // (b) 犯规窗口内状态条优先显示犯规（否则按流程相位）
+            if (PracticeHudState.StatusLabel(ShotPhase.Aim, true) != PracticeHudState.StateFoul)
+            {
+                failures.Add($"(b) 犯规窗口内应显示 \"{PracticeHudState.StateFoul}\"，"
+                             + $"实际 \"{PracticeHudState.StatusLabel(ShotPhase.Aim, true)}\"。");
+            }
+
+            if (PracticeHudState.StatusLabel(ShotPhase.Aim, false) != PracticeHudState.StateAim)
+            {
+                failures.Add("(b) 非犯规窗口应按相位显示（Aim）。");
+            }
+
+            if (PracticeHudState.StatusLabel(ShotPhase.Moving, false) != PracticeHudState.StateMoving)
+            {
+                failures.Add("(b) 非犯规窗口应按相位显示（Moving）。");
+            }
+
+            // (c) 文案常量：非空、互不相同（防止"改文案时把三个常量改成一样"导致状态无法区分）
+            var labels = new[] { PracticeHudState.StateFoul, PracticeHudState.FoulDetail, PracticeHudState.CaptionIdle };
+            foreach (string label in labels)
+            {
+                if (string.IsNullOrEmpty(label))
+                {
+                    failures.Add("(c) 犯规/常驻文案常量不得为空。");
+                }
+            }
+
+            if (PracticeHudState.StateFoul == PracticeHudState.CaptionIdle || PracticeHudState.FoulDetail == PracticeHudState.CaptionIdle)
+            {
+                failures.Add("(c) 犯规文案与常驻文案不得相同（否则状态切换看不出来）。");
+            }
+
+            // (d) scratch 计数的出厂态：0 次、从未发生
+            var probeGo = new GameObject("T104Probe");
+            try
+            {
+                var probe = probeGo.AddComponent<PhysicsTestDrive>();
+                if (probe.ScratchCount != 0)
+                {
+                    failures.Add($"(d) 新实例的 ScratchCount 应为 0，实际 {probe.ScratchCount}。");
+                }
+
+                if (!float.IsNegativeInfinity(probe.LastScratchTime))
+                {
+                    failures.Add($"(d) 从未 scratch 时 LastScratchTime 应为负无穷，实际 {probe.LastScratchTime:R}。");
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(probeGo);
+            }
+
+            Assert.IsEmpty(failures, "T104 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine("T104: 显示门真值表 5 例 ✓；犯规优先显示 ✓；文案常量可区分 ✓；scratch 出厂态 ✓");
+        }
+
         private static string Trim(string value)
         {
             if (string.IsNullOrEmpty(value))

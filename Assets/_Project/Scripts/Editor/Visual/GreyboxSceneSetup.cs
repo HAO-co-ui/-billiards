@@ -200,6 +200,15 @@ namespace Billiards.EditorTools
             playfieldRoot.transform.localRotation = Quaternion.identity;
             playfieldRoot.transform.localScale = Vector3.one * PoolConstants.PlayfieldVisualScale;
 
+            // 0b) **球桌可视物 + 最小布景**（用户实机反馈"场景全黑、看不到球袋在哪"后补）。
+            //     ⚠ 此前灰盒**从未建过桌模型** —— 库边全靠 `CushionGizmo` 的 `Gizmos.DrawLine`，
+            //     而 **`Gizmos` 只在编辑器 Scene 视图可见**，Game 视图里就是黑底加几颗球。
+            //     现在走与 `Main` 场景**同一个** `TableVisualBuilder`（唯一实现点，铁律 16）。
+            //     桌与地面**都挂可视根**（×1.2）：桌腿底与地面才能同时被缩放、保持齐平；
+            //     若把地面留在未缩放的根下，桌子会**浮在地面上方** 0.2× 桌腿高。
+            TableVisualBuilder.AttachTable(playfieldRoot.transform);
+            TableVisualBuilder.AttachRoom(playfieldRoot.transform);
+
             // 1) 白球（物理平面 footSpot → **规范世界**，唯一转换点 PoolGeometry）
             //    ⚠ 挂到**缩放根**下：写入的是**局部坐标**（= 规范世界坐标），世界坐标会自动 ×1.2。
             GameObject cueBall = BuildCueBall();

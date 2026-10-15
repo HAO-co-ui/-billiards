@@ -29,6 +29,28 @@ namespace Billiards.UI
         public const string LabelPower = "POWER";
         public const string ButtonShoot = "Shoot";
 
+        /// <summary>犯规态文案（设计说明 §9：犯规用**酒红**、克制、不以颜色作唯一识别手段 ⇒ 同时给文字）。</summary>
+        public const string StateFoul = "Foul";
+
+        /// <summary>犯规的处置说明 —— 本工程的实际处置是**白球放回开球点**（见下）。</summary>
+        public const string FoulDetail = "Ball in hand";
+
+        /// <summary>状态条在无状态时显示的常驻说明（与犯规提示共用同一个文本位）。</summary>
+        public const string CaptionIdle = "PRACTICE";
+
+        /// <summary>
+        /// **状态条该显示什么**（纯函数，唯一判据点）：犯规窗口内**优先**显示犯规，否则按流程相位。
+        ///
+        /// ⚠ 犯规的处置口径（如实登记）：本工程**没有规则引擎**（35-B），可观测的犯规只有
+        /// **白球落袋（scratch）** 一种；处置是 `PhysicsTestDrive` 把白球**放回开球点**、
+        /// 并把该次计进 `FOULS` 列。**手动自由球摆位未实现**（登记 35-B）⇒ 文案用
+        /// `Ball in hand` 描述"球权交回你手上"，**不**声称可以任意摆位。
+        /// </summary>
+        public static string StatusLabel(ShotPhase phase, bool foulWindow)
+        {
+            return foulWindow ? StateFoul : StateLabel(phase);
+        }
+
         /// <summary>状态条文案。</summary>
         public static string StateLabel(ShotPhase phase)
         {
