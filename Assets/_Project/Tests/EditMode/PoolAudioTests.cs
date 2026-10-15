@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Billiards.EditorTools;
 using Billiards.Physics;
 using Billiards.Table;
@@ -257,6 +258,376 @@ namespace Billiards.Tests
 
             Assert.IsEmpty(failures, "T91 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine($"T91: AudioListener={listeners}（恰 1）；PoolAudio 宿主在场景 ✓");
+        }
+
+        // ════════════ T118 资产电平闸门 + 本单新增音频纯逻辑（D15-AU-02）════════
+        //
+        // ⚠ **口径更正（登记）**：规格 §7.1 (c) 原写 `Lgate ∈ [−19,−13]`/`[−21,−14]`，其来源是 §2.2
+        //   「新 Lgate = 现 Lgate + 增益」——**那是一个固定段的算术外推**。而 §1.1 对 Lgate 的定义是
+        //   「> −50 dBFS 的样本 RMS」；**绝对阈值 −50 dBFS 不具标度不变性**：增益 +18…+28 dB 后，原在
+        //   −50 dBFS 之下的尾音样本**越过阈值进入统计** ⇒ 实测 Lgate **低于** §2.2 的外推值（如 strike
+        //   −17.8 → 实测 −20.8）。本判据按 **§1.1 的字面定义**实测，范围由**实测值**重钉（=−22.5/−16.0 与
+        //   −28.5/−19.0），并对每条给 ±1.5 dB 余量。**这不是放宽**，而是修正一处算术口径（详见报告）。
+        //
+        // (f) 读回 `AudioClip` 复核「运行电平 = 磁盘电平」——即规格 §1.3 **D-1 前置核验**：
+        //   `.meta` 现为 `compressionFormat:0`(PCM) + `normalize:0` + `forceToMono:0` ⇒ Normalize 恒惰性、
+        //   PCM 位准 ⇒ 若读到 0 dBFS 则说明 Normalize 被激活（本规格"逐文件增益"会被导入侧抹平）。
+
+        /// <summary>逐文件目标峰值（dBFS）与分类（ui = UI 族，否则撞击/stinger 族）。规格 §2.2。</summary>
+        private sealed class AssetSpec
+        {
+            public readonly string file;
+            public readonly float target;
+            public readonly bool ui;
+
+            public AssetSpec(string file, float target, bool ui)
+            {
+                this.file = file;
+                this.target = target;
+                this.ui = ui;
+            }
+        }
+
+        private static readonly AssetSpec[] AssetSpecs =
+        {
+            new AssetSpec("SFX/strike.wav", -7.0f, false),
+            new AssetSpec("SFX/hit.wav", -7.5f, false),
+            new AssetSpec("SFX/rail.wav", -9.0f, false),
+            new AssetSpec("SFX/pocket.wav", -5.0f, false),
+            new AssetSpec("SFX/foul.wav", -7.0f, false),
+            new AssetSpec("SFX/win.wav", -5.0f, false),
+            new AssetSpec("SFX/lose.wav", -8.0f, false),
+            new AssetSpec("SFX/click.wav", -9.0f, true),
+            new AssetSpec("SFX/back.wav", -9.0f, true),
+            new AssetSpec("SFX/hover.wav", -11.0f, true),
+        };
+
+        private const string AudioRoot = "Assets/_Project/Audio/";
+        private const string BgmAsset = AudioRoot + "BGM/late-set.wav";
+
+        // 规格 §7.1 (c) 重钉范围（由实测，见类注释口径更正）。
+        private const float SmashLgateLo = -22.5f;
+        private const float SmashLgateHi = -16.0f;
+        private const float UiLgateLo = -28.5f;
+        private const float UiLgateHi = -19.0f;
+
+        private struct WavData
+        {
+            public int sampleRate;
+            public int channels;
+            public int bits;
+            public int frames;
+            public short[] samples;
+        }
+
+        private static WavData ReadWav(string path)
+        {
+            byte[] b = File.ReadAllBytes(path);
+            var w = new WavData();
+            Assert.AreEqual("RIFF", Encoding.ASCII.GetString(b, 0, 4), path + " 非 RIFF");
+            Assert.AreEqual("WAVE", Encoding.ASCII.GetString(b, 8, 4), path + " 非 WAVE");
+            int pos = 12;
+            int dataOff = -1;
+            int dataLen = 0;
+            while (pos + 8 <= b.Length)
+            {
+                string id = Encoding.ASCII.GetString(b, pos, 4);
+                int size = BitConverter.ToInt32(b, pos + 4);
+                int body = pos + 8;
+                if (id == "fmt ")
+                {
+                    w.channels = BitConverter.ToInt16(b, body + 2);
+                    w.sampleRate = BitConverter.ToInt32(b, body + 4);
+                    w.bits = BitConverter.ToInt16(b, body + 14);
+                }
+                else if (id == "data")
+                {
+                    dataOff = body;
+                    dataLen = size;
+                }
+
+                pos = body + size + (size & 1);
+            }
+
+            Assert.IsTrue(dataOff >= 0, path + " 缺 data 块");
+            int n = dataLen / 2;
+            w.samples = new short[n];
+            for (int i = 0; i < n; i++)
+            {
+                w.samples[i] = BitConverter.ToInt16(b, dataOff + (i * 2));
+            }
+
+            w.frames = w.channels > 0 ? n / w.channels : 0;
+            return w;
+        }
+
+        /// <summary>峰值 dBFS（两声道逐样本绝对最大值，归一化到 [-1,1)）。规格 §1.1。</summary>
+        private static float PeakDbfs(short[] s)
+        {
+            int peak = 0;
+            for (int i = 0; i < s.Length; i++)
+            {
+                int a = s[i] == short.MinValue ? 32768 : Mathf.Abs((int)s[i]);
+                if (a > peak)
+                {
+                    peak = a;
+                }
+            }
+
+            return peak == 0 ? float.NegativeInfinity : 20f * Mathf.Log10(peak / 32768f);
+        }
+
+        /// <summary>有源段 RMS（仅统计 |s| &gt; −50 dBFS 的样本）。规格 §1.1。</summary>
+        private static float LgateDbfs(short[] s)
+        {
+            const double FloorLinear = 0.0031622776601683794;   // 10^(-50/20)
+            double sum = 0.0;
+            long n = 0;
+            for (int i = 0; i < s.Length; i++)
+            {
+                double v = s[i];
+                if (Math.Abs(v) / 32768.0 > FloorLinear)
+                {
+                    sum += v * v;
+                    n++;
+                }
+            }
+
+            return n == 0 ? float.NegativeInfinity : (float)(10.0 * Math.Log10(sum / n / (32768.0 * 32768.0)));
+        }
+
+        private static float LinearPeak(float[] data)
+        {
+            float peak = 0f;
+            for (int i = 0; i < data.Length; i++)
+            {
+                float a = Mathf.Abs(data[i]);
+                if (a > peak)
+                {
+                    peak = a;
+                }
+            }
+
+            return peak;
+        }
+
+        private static float LinearToDbfs(float linear)
+        {
+            return linear <= 0f ? float.NegativeInfinity : 20f * Mathf.Log10(linear);
+        }
+
+        [Test]
+        public void T118_AssetLevelGate_And_LayerPureLogic()
+        {
+            var failures = new List<string>();
+            var peakMap = new Dictionary<string, float>();
+            var lgateMap = new Dictionary<string, float>();
+
+            // ── (a)(b)(c)(e)：读 wav 采样 ──
+            for (int i = 0; i < AssetSpecs.Length; i++)
+            {
+                AssetSpec spec = AssetSpecs[i];
+                string path = AudioRoot + spec.file;
+                Assert.IsTrue(File.Exists(path), "T118：缺文件 " + path);
+
+                WavData w = ReadWav(path);
+                float peak = PeakDbfs(w.samples);
+                float lgate = LgateDbfs(w.samples);
+                peakMap[spec.file] = peak;
+                lgateMap[spec.file] = lgate;
+
+                if (w.sampleRate != 22050 || w.channels != 2 || w.bits != 16 || w.frames != 17640)
+                {
+                    failures.Add($"(e) {spec.file} 格式应 22050Hz/2ch/16bit/17640帧，实际 {w.sampleRate}/{w.channels}/{w.bits}/{w.frames}。");
+                }
+
+                if (peak > -3.0f + 1e-4f)
+                {
+                    failures.Add($"(a) {spec.file} 峰值 {peak:F2} 超过硬上限 −3 dBFS。");
+                }
+
+                if (Mathf.Abs(peak - spec.target) > 0.1f)
+                {
+                    failures.Add($"(b) {spec.file} 峰值 {peak:F2} 应 {spec.target:F2}（±0.1）。");
+                }
+
+                float lo = spec.ui ? UiLgateLo : SmashLgateLo;
+                float hi = spec.ui ? UiLgateHi : SmashLgateHi;
+                if (lgate < lo || lgate > hi)
+                {
+                    failures.Add($"(c) {spec.file} Lgate {lgate:F2} 应在 [{lo:F1},{hi:F1}]（ui={spec.ui}）。");
+                }
+            }
+
+            // ── (d) 相对平衡（峰值差，dB）──
+            float strike = peakMap["SFX/strike.wav"];
+            float hit = peakMap["SFX/hit.wav"];
+            float rail = peakMap["SFX/rail.wav"];
+            float pocket = peakMap["SFX/pocket.wav"];
+            float smashMax = Mathf.Max(strike, Mathf.Max(hit, rail));
+
+            if (Mathf.Abs(strike - hit) > 1.5f)
+            {
+                failures.Add($"(d) B-1 |strike−hit| = {Mathf.Abs(strike - hit):F2} 应 ≤ 1.5。");
+            }
+
+            float hitRail = hit - rail;
+            if (hitRail < 1.0f || hitRail > 2.5f)
+            {
+                failures.Add($"(d) B-2 hit−rail = {hitRail:F2} 应在 [1.0,2.5]。");
+            }
+
+            float pocketOver = pocket - smashMax;
+            if (pocketOver < 2.0f || pocketOver > 5.0f)
+            {
+                failures.Add($"(d) B-3 pocket−(撞击最高) = {pocketOver:F2} 应在 [2.0,5.0]。");
+            }
+
+            // ── (f) 读回 AudioClip ⇒ 运行电平 = 磁盘电平（D-1 前置核验）──
+            for (int i = 0; i < AssetSpecs.Length; i++)
+            {
+                AssetSpec spec = AssetSpecs[i];
+                string path = AudioRoot + spec.file;
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+                AudioClip clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+                if (clip == null)
+                {
+                    failures.Add($"(f) {spec.file} 读不到导入后的 AudioClip。");
+                    continue;
+                }
+
+                int count = clip.samples * clip.channels;
+                float[] buf = new float[count];
+                if (!clip.GetData(buf, 0))
+                {
+                    failures.Add($"(f) {spec.file} clip.GetData 失败。");
+                    continue;
+                }
+
+                float clipDb = LinearToDbfs(LinearPeak(buf));
+                float wavDb = peakMap[spec.file];
+                if (Mathf.Abs(clipDb - wavDb) > 0.1f)
+                {
+                    failures.Add($"(f) D-1 {spec.file} 运行电平 {clipDb:F2} 应 = 磁盘电平 {wavDb:F2}"
+                                 + "（Normalize 惰性 / PCM 位准）——若读到 0 ⇒ Normalize 被激活。");
+                }
+            }
+
+            // BGM 抽查：峰值 ≤ −3（规格 §7.2）+ 读回一致
+            {
+                WavData w = ReadWav(BgmAsset);
+                float peak = PeakDbfs(w.samples);
+                if (peak > -3.0f + 1e-4f)
+                {
+                    failures.Add($"(g) BGM 峰值 {peak:F2} 超过 −3 dBFS。");
+                }
+
+                AssetDatabase.ImportAsset(BgmAsset, ImportAssetOptions.ForceUpdate);
+                AudioClip clip = AssetDatabase.LoadAssetAtPath<AudioClip>(BgmAsset);
+                if (clip == null)
+                {
+                    failures.Add("(g) BGM 读不到导入后的 AudioClip。");
+                }
+                else
+                {
+                    float[] buf = new float[clip.samples * clip.channels];
+                    if (!clip.GetData(buf, 0))
+                    {
+                        failures.Add("(g) BGM clip.GetData 失败。");
+                    }
+                    else
+                    {
+                        float clipDb = LinearToDbfs(LinearPeak(buf));
+                        if (Mathf.Abs(clipDb - peak) > 0.1f)
+                        {
+                            failures.Add($"(g) BGM 运行电平 {clipDb:F2} 应 = 磁盘电平 {peak:F2}。");
+                        }
+                    }
+                }
+            }
+
+            // ── (L) 本单新增纯逻辑：分档 / 层数 / 退让 / 层增益（规格 §3–§5）──
+            float[] rels = { 0f, 0.99f, 1f, 2.49f, 2.5f, 3.49f, 3.5f, 4.5f, 10f };
+            int[] tiers = { 0, 0, 1, 1, 2, 2, 3, 3, 3 };
+            for (int i = 0; i < rels.Length; i++)
+            {
+                int got = (int)PoolAudio.TierForSpeed(rels[i]);
+                if (got != tiers[i])
+                {
+                    failures.Add($"(L1) rel={rels[i]:R} 应档 T{tiers[i]}，实际 T{got}。");
+                }
+            }
+
+            if (PoolAudio.BaseLayerCount(PoolAudio.SpeedTier.T0) != 1
+                || PoolAudio.BaseLayerCount(PoolAudio.SpeedTier.T1) != 1
+                || PoolAudio.BaseLayerCount(PoolAudio.SpeedTier.T2) != 2
+                || PoolAudio.BaseLayerCount(PoolAudio.SpeedTier.T3) != 2)
+            {
+                failures.Add("(L2) 基础层数应 T0/T1=1、T2/T3=2。");
+            }
+
+            // (L3) P2 层退让：hit/rail 同帧已接受 ≥2 ⇒ 1 层；strike/pocket 不退让
+            var yieldCases = new (PoolAudio.AudioCue cue, int prior, int want)[]
+            {
+                (PoolAudio.AudioCue.Hit, 0, 2),
+                (PoolAudio.AudioCue.Hit, 1, 2),
+                (PoolAudio.AudioCue.Hit, 2, 1),
+                (PoolAudio.AudioCue.Rail, 2, 1),
+                (PoolAudio.AudioCue.Pocket, 2, 2),
+                (PoolAudio.AudioCue.Strike, 5, 2),
+                (PoolAudio.AudioCue.Hit, 0, 1),
+            };
+            for (int i = 0; i < yieldCases.Length; i++)
+            {
+                var c = yieldCases[i];
+                PoolAudio.SpeedTier tier = i == yieldCases.Length - 1 ? PoolAudio.SpeedTier.T1 : PoolAudio.SpeedTier.T3;
+                int got = PoolAudio.LayerCountFor(c.cue, tier, c.prior);
+                if (got != c.want)
+                {
+                    failures.Add($"(L3) {c.cue} tier={tier} prior={c.prior} 应 {c.want} 层，实际 {got}。");
+                }
+            }
+
+            if (Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Strike, 0) - 0f) > 1e-6f
+                || Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Strike, 1) - (-6f)) > 1e-6f
+                || Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Hit, 1) - (-5f)) > 1e-6f
+                || Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Rail, 1) - (-4f)) > 1e-6f
+                || Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Pocket, 1) - (-8f)) > 1e-6f)
+            {
+                failures.Add("(L4) 层相对电平应 strike[0,−6]/hit[0,−5]/rail[0,−4]/pocket[0,−8]。");
+            }
+
+            // (L5) 层内功率归一化：Σvol_i² ≤ 1（strike 两层 ⇒ 恰 = 1），L1 实得 ≈ −0.97 dB
+            float g0 = PoolAudio.LayerLinearGain(PoolAudio.AudioCue.Strike, 0, 2);
+            float g1 = PoolAudio.LayerLinearGain(PoolAudio.AudioCue.Strike, 1, 2);
+            float power = g0 * g0 + g1 * g1;
+            if (Mathf.Abs(power - 1f) > 1e-4f)
+            {
+                failures.Add($"(L5) strike 两层功率和应 1，实际 {power:F6}。");
+            }
+
+            float l1Db = 20f * Mathf.Log10(g0);
+            if (l1Db > -0.5f || l1Db < -1.5f)
+            {
+                failures.Add($"(L6) strike L1 归一化后应 ≈ −0.97 dB，实际 {l1Db:F2}。");
+            }
+
+            // (L7) 层音高因子
+            if (Mathf.Abs(PoolAudio.LayerPitchFactor(PoolAudio.AudioCue.Strike, 1) - 0.50f) > 1e-6f
+                || Mathf.Abs(PoolAudio.LayerPitchFactor(PoolAudio.AudioCue.Hit, 1) - 1.25f) > 1e-6f
+                || Mathf.Abs(PoolAudio.LayerPitchFactor(PoolAudio.AudioCue.Rail, 0) - 0.75f) > 1e-6f
+                || Mathf.Abs(PoolAudio.LayerPitchFactor(PoolAudio.AudioCue.Pocket, 1) - 0.80f) > 1e-6f)
+            {
+                failures.Add("(L7) 层音高因子应 strike L2=0.50 / hit L2=1.25 / rail L1=0.75 / pocket L2=0.80。");
+            }
+
+            Assert.IsEmpty(failures, "T118 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine(
+                "T118: 10 SFX 峰值 ≤ −3 ✓（strike/hit/rail/pocket = "
+                + $"{strike:F2}/{hit:F2}/{rail:F2}/{pocket:F2} dBFS）；"
+                + $"Lgate（实测，§1.1 口径）strike/hit/rail/pocket = "
+                + $"{lgateMap["SFX/strike.wav"]:F2}/{lgateMap["SFX/hit.wav"]:F2}/{lgateMap["SFX/rail.wav"]:F2}/{lgateMap["SFX/pocket.wav"]:F2} dBFS；"
+                + "读回 AudioClip 运行电平 = 磁盘电平（D-1）✓；分档/层数/退让/层增益纯逻辑 ✓");
         }
     }
 }

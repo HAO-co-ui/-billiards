@@ -168,6 +168,8 @@ MonoBehaviour:
   hitClip: {fileID: 8300000, guid: 7d979a785f65b4d4f82d37a12155dce0, type: 3}
   railClip: {fileID: 8300000, guid: 7638f72f6474a5c4f9e529bf4b2a838c, type: 3}
   pocketClip: {fileID: 8300000, guid: 9ed29337b4dc9414c9cbd242af5c05e9, type: 3}
+  clickClip: {fileID: 8300000, guid: ef0a4716a438b6e49bc7400c0b0df358, type: 3}
+  backClip: {fileID: 8300000, guid: 5a62ea90b7380634a85fe00ea31408b2, type: 3}
   bgmClip: {fileID: 8300000, guid: 6dc494cb349c4d14381d7f4604a52c72, type: 3}
   audioEnabled: 1
   masterVolume: 0.8
