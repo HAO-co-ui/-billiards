@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using Billiards.Core;
 using Billiards.EditorTools;
 using Billiards.Physics;
 using Billiards.Table;
@@ -480,12 +481,14 @@ namespace Billiards.Tests
         ///    **酒红**并显示 `Foul` / `Ball in hand` + 计进结算卡的 `FOULS` 列。
         ///    （手动自由球摆位未实现，登记 35-B；判据只锁"看得见 + 数得对"。）
         ///
-        /// ③ **杆不得穿模**：`VisibleStickLength` 把杆尾夹在桌面外框内（实机反馈"球杆穿模了"）。
+        /// ③ **杆不得穿模、也不得被截短**：`StickDirection` 让杆**从库边上方过**（真实球杆本就微抬 2–5°），
+        ///    且杆长恒为 `StickLength`、**与后拉量无关**（实机先反馈"穿模"、改夹取后又反馈"嵌入桌面 + 蓄力变短"）。
         /// ④ **白球离台即隐藏**：`ShouldShowAimAssist` 的 `cueBallInPlay` 与 `CueStickController` 的
         ///    可见门都判"白球在场上"（实机反馈"落网没反馈 + 线从袋口射出来"）。
         ///
         /// **可被打死**：把 `ShouldShowAimAssist` 的任一条去掉 ⇒ (a) 红；
-        /// 把 `StatusLabel` 的犯规优先去掉 ⇒ (b) 红；把 `VisibleStickLength` 改成恒返回满长 ⇒ (e) 红。
+        /// 把 `StatusLabel` 的犯规优先去掉 ⇒ (b) 红；把杆的方向改回 `LookRotation(-aimDir)`（不抬升）⇒ (e) ③ 红；
+        /// 把杆身偏移改成跟随后拉量（旧夹取）⇒ (e) ①② 红。
         /// </summary>
         [Test]
         public void T104_AimAssistVisibility_AndFoulFeedback()
@@ -509,34 +512,44 @@ namespace Billiards.Tests
             Check("(a) 结算卡打开（模态让位）", AimAssistController.ShouldShowAimAssist(true, true, true, true), false);
             Check("(a) 四条全否", AimAssistController.ShouldShowAimAssist(false, false, false, true), false);
 
-            // (e) 杆长夹取：杆尾不得越过桌面外框（实机表现为杆穿过木库边）
-            const float full = CueStickController.StickLength;
-            float towardMinusX = CueStickController.VisibleStickLength(
-                Vector3.zero, new Vector3(1f, 0f, 0f), full, -1f, 1f, -1f, 1f);
-            if (Mathf.Abs(towardMinusX - 1f) > 1e-4f)
+            // (e) 杆身两条相反反馈的形式化：**从库边上方过**（不穿模）且**杆长不随蓄力变化**（不嵌入、不变短）
+            const float elevation = CueStickController.StickElevationDegrees;
+            Vector3 aim = new Vector3(1f, 0f, 0f);
+            Vector3 tipRest = CueStickController.StickTipPosition(Vector3.zero, aim, 0f);
+            Vector3 tipCharged = CueStickController.StickTipPosition(Vector3.zero, aim, CueStickController.MaxPullback);
+
+            Vector3 offRest = CueStickController.StickTailPosition(tipRest, aim, elevation) - tipRest;
+            Vector3 offCharged = CueStickController.StickTailPosition(tipCharged, aim, elevation) - tipCharged;
+
+            // ① 杆长恒为 `StickLength` —— **蓄力后拉不得让杆变短**
+            if (Mathf.Abs(offRest.magnitude - CueStickController.StickLength) > 1e-4f
+                || Mathf.Abs(offCharged.magnitude - CueStickController.StickLength) > 1e-4f)
             {
-                failures.Add($"(e) 朝 +X 瞄准时杆尾应刚好贴 x=−1（可见长 1.0），实际 {towardMinusX:R}。");
+                failures.Add($"(e) 杆长应恒为 {CueStickController.StickLength:R}，"
+                             + $"实际 静止 {offRest.magnitude:R} / 蓄力 {offCharged.magnitude:R}。");
             }
 
-            float towardMinusZ = CueStickController.VisibleStickLength(
-                new Vector3(0.6f, 0f, 0f), new Vector3(0f, 0f, 1f), full, -1f, 1f, -1f, 1f);
-            if (Mathf.Abs(towardMinusZ - 1f) > 1e-4f)
+            // ② 与后拉量**无关**（两次不同后拉给出同一个偏移向量）—— 旧"夹取"实现正是栽在这里
+            if ((offRest - offCharged).magnitude > 1e-5f)
             {
-                failures.Add($"(e) 朝 +Z 瞄准时杆尾应刚好贴 z=−1（可见长 1.0），实际 {towardMinusZ:R}。");
+                failures.Add($"(e) 杆身偏移不得随后拉量变化（静止 {offRest} vs 蓄力 {offCharged}）"
+                             + " ⇒ 会表现为「一蓄力杆就变短」。");
             }
 
-            float insideBox = CueStickController.VisibleStickLength(
-                Vector3.zero, new Vector3(0f, 0f, 1f), 0.5f, -1f, 1f, -1f, 1f);
-            if (Mathf.Abs(insideBox - 0.5f) > 1e-4f)
+            // ③ 杆尾**上抬**到库边之上（需求抬升由数据给出，不是拍脑袋的数）
+            float requiredRise = (PoolGeometry.OuterBoundsMax.y - PoolConstants.BallRadius)
+                                 * PoolConstants.PlayfieldVisualScale;
+            if (offRest.y < requiredRise)
             {
-                failures.Add($"(e) 框内应给满长 0.5，实际 {insideBox:R}。");
+                failures.Add($"(e) 杆尾上抬 {offRest.y:R} 不足需求 {requiredRise:R}"
+                             + " ⇒ 杆会穿过库边（穿模）。");
             }
 
-            float degenerate = CueStickController.VisibleStickLength(
-                Vector3.zero, Vector3.zero, full, -1f, 1f, -1f, 1f);
-            if (Mathf.Abs(degenerate - full) > 1e-4f)
+            // ④ 抬升不得把方向带歪：水平方向仍须基本朝后
+            Vector3 backFlat = new Vector3(offRest.x, 0f, offRest.z).normalized;
+            if (Vector3.Dot(backFlat, -aim.normalized) < 0.99f)
             {
-                failures.Add($"(e) 退化方向应给满长 {full:R}，实际 {degenerate:R}。");
+                failures.Add($"(e) 抬升后杆身水平方向偏了（dot = {Vector3.Dot(backFlat, -aim.normalized):R}）。");
             }
 
             // (b) 犯规窗口内状态条优先显示犯规（否则按流程相位）
@@ -616,7 +629,7 @@ namespace Billiards.Tests
             }
 
             Assert.IsEmpty(failures, "T104 失败：\n" + string.Join("\n", failures));
-            TestContext.WriteLine("T104: 显示门真值表 6 例 ✓；杆长夹取 4 例 ✓；犯规优先显示 ✓；文案常量可区分 ✓；scratch 出厂态 ✓");
+            TestContext.WriteLine("T104: 显示门真值表 6 例 ✓；杆身抬升 4 例（长度恒定 / 与后拉无关 / 越过库边 / 不歪）✓；犯规优先显示 ✓；文案常量可区分 ✓；scratch 出厂态 ✓");
         }
 
         private static string Trim(string value)

@@ -47,13 +47,8 @@ namespace Billiards.Physics
         [Tooltip("拉杆侧 PointerPowerController。为空 ⇒ 本组件不生效。")]
         public PointerPowerController pull;
 
-        /// <summary>可视野缩放根（**只用来把杆长夹在桌面外框内**；判据 `T104 (e)` 驱动纯函数）。</summary>
-        [Tooltip("可视野缩放根（PlayfieldRoot）。为空 ⇒ 按缩放 1 计算外框。")]
-        public Transform playfieldRoot;
-
         private readonly ShotFlowState _flow = new ShotFlowState();
         private Transform _stick;
-        private Transform _stickMesh;
         private MeshRenderer _stickRenderer;
         private float _pullbackAtRelease;
         private int _strikeCountdown = -1;   // < 0 = 未在前推
@@ -158,69 +153,51 @@ namespace Billiards.Physics
             }
 
             _stick.position = StickTipPosition(cueBallWorld, aimDir, pullback);
-            _stick.rotation = Quaternion.LookRotation(-aimDir, Vector3.up);   // 杆身 +Z 从杆尾指向杆尖
-
-            // 杆长夹取：尾部不得越过桌面**外框**（实机表现为杆穿过木库边）。
-            StickBounds(out float minX, out float maxX, out float minZ, out float maxZ);
-            ApplyStickLength(VisibleStickLength(_stick.position, aimDir, StickLength, minX, maxX, minZ, maxZ));
+            // 杆身 +Z 从杆尾指向杆尖 = **抬升后的方向**（杆从库边上方过；长度恒为 `StickLength`）。
+            _stick.rotation = Quaternion.LookRotation(StickDirection(aimDir, StickElevationDegrees), Vector3.up);
         }
 
         /// <summary>
-        /// **可见杆长**（纯函数）：杆身沿 `−aimDirection` 从**杆尖**向后延伸，
-        /// 若按满长会越过桌面外框（实机表现为**杆穿过木库边**），则夹到刚好贴外框为止。
-        /// 逐轴求最大允许比例再取最小 —— 尾部在 XZ 上是 `tip + (−aimDir × requestedLength) × t` 的线性插值。
-        /// 轴位移为 0（或退化方向）⇒ 该轴不约束。
+        /// **杆身抬升角（度）** —— 杆**不截短**，而是抬起来从**库边上方**过。
+        ///
+        /// ── 为什么是"抬升"而不是"夹取"（实机反馈两次，方向相反的教训）──────────────
+        /// 用户先是反馈"**球杆穿模了**"（杆穿过木库边），我据此把杆尾**夹在桌面外框内**；
+        /// 随后用户立刻反馈"**像杆嵌入台球桌了**……**不要因为蓄力拉伸而变短**" ——
+        /// 因为夹取量跟杆尖位置走，一蓄力后拉，杆就跟着变短，尾端正好停在库边上。
+        /// **正确做法与真实一致**：真实打球时杆本来就是**微微抬高**的（2–5°），自然从库边上方通过，
+        /// 既不穿模也**不改变杆长**。
+        ///
+        /// ── 角度由**数据**定，不是拍脑袋 ────────────────────────────────────────
+        /// 需要抬升的高度 = 库边顶面高出球心的部分 = `OuterBoundsMax.y − BallRadius`
+        /// （实测 `OuterBoundsMax.y = 0.061` m、`BallRadius = 0.028575` m ⇒ 0.0324 m，×1.2 显示 ≈ 0.039 m）。
+        /// 杆长 `StickLength = 1.4` m ⇒ 抬升 `1.4·sinθ`；取 **4°** ⇒ 抬升 **0.098 m**，
+        /// 约为需求的 **2.5 倍** —— 够越过库边，又保持"杆贴着球"的观感。
         /// </summary>
-        public static float VisibleStickLength(Vector3 tipWorld, Vector3 aimDirectionWorld, float requestedLength,
-                                               float minX, float maxX, float minZ, float maxZ)
+        public const float StickElevationDegrees = 4f;
+
+        /// <summary>
+        /// **杆身方向**（纯函数）：`−aimDirection` 在**水平面内**再绕垂直轴抬升 `elevationDegrees`。
+        /// **只依赖瞄准方向** —— 与后拉量无关 ⇒ 杆长恒定（这正是"蓄力不得让杆变短"的形式化）。
+        /// </summary>
+        public static Vector3 StickDirection(Vector3 aimDirectionWorld, float elevationDegrees)
         {
-            if (!(requestedLength > 0f) || aimDirectionWorld.sqrMagnitude <= 0f)
+            if (aimDirectionWorld.sqrMagnitude <= 0f)
             {
-                return requestedLength;
+                return Vector3.forward;
             }
 
-            Vector3 back = -aimDirectionWorld.normalized * requestedLength;
-            float t = Mathf.Min(AxisLimit(tipWorld.x, back.x, minX, maxX),
-                                AxisLimit(tipWorld.z, back.z, minZ, maxZ));
-            return requestedLength * Mathf.Clamp01(t);
+            Vector3 back = -aimDirectionWorld.normalized;
+            Vector3 right = Vector3.Cross(Vector3.up, back).normalized;
+            return Quaternion.AngleAxis(-elevationDegrees, right) * back;   // 负号 ⇒ 杆尾**上抬**
         }
 
-        private static float AxisLimit(float origin, float displacement, float min, float max)
+        /// <summary>
+        /// **杆尾世界位置** = 杆尖 + 方向 × <see cref="StickLength"/>。
+        /// 长度恒为 `StickLength`（**不随蓄力变化、不做任何夹取**）。
+        /// </summary>
+        public static Vector3 StickTailPosition(Vector3 tipWorld, Vector3 aimDirectionWorld, float elevationDegrees)
         {
-            if (Mathf.Abs(displacement) < 1e-6f)
-            {
-                return 1f;   // 该轴不动 ⇒ 不约束
-            }
-
-            float limit = displacement > 0f ? (max - origin) / displacement : (min - origin) / displacement;
-            return Mathf.Clamp01(limit);
-        }
-
-        /// <summary>桌面**外框**的世界 XZ 边界（供杆长夹取）。</summary>
-        public void StickBounds(out float minX, out float maxX, out float minZ, out float maxZ)
-        {
-            float scale = playfieldRoot != null ? AimAssistView.DrawScale(playfieldRoot) : 1f;
-            minX = PoolGeometry.OuterBoundsMin.x * scale;
-            maxX = PoolGeometry.OuterBoundsMax.x * scale;
-            minZ = PoolGeometry.OuterBoundsMin.z * scale;
-            maxZ = PoolGeometry.OuterBoundsMax.z * scale;
-        }
-
-        private void ApplyStickLength(float length)
-        {
-            if (_stickMesh == null)
-            {
-                return;
-            }
-
-            float half = length * 0.5f;
-            if (Mathf.Approximately(_stickMesh.localScale.y, half))
-            {
-                return;
-            }
-
-            _stickMesh.localScale = new Vector3(StickRadius * 2f, half, StickRadius * 2f);
-            _stickMesh.localPosition = new Vector3(0f, 0f, half);
+            return tipWorld + StickDirection(aimDirectionWorld, elevationDegrees) * StickLength;
         }
 
         /// <summary>
@@ -255,7 +232,6 @@ namespace Billiards.Physics
             meshGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             meshGo.transform.localPosition = new Vector3(0f, 0f, StickLength * 0.5f);
             meshGo.transform.localScale = new Vector3(StickRadius * 2f, StickLength * 0.5f, StickRadius * 2f);
-            _stickMesh = meshGo.transform;
 
             MeshRenderer renderer = meshGo.GetComponent<MeshRenderer>();
             if (renderer != null)

@@ -271,7 +271,6 @@ namespace Billiards.EditorTools
             var cueStick = cueStickGo.AddComponent<CueStickController>();
             cueStick.drive = drive;
             cueStick.pull = powerController;
-            cueStick.playfieldRoot = playfieldRoot.transform;   // 杆长夹取要按显示缩放算桌面外框
             powerController.cueStick = cueStick;
 
             // 5d) **音频层** —— 内核接触事件流 → 撞声；strike 轮询出杆计数；纯函数调制 + 限流。
