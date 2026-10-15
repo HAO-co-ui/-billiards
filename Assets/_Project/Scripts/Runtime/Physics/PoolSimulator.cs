@@ -1198,14 +1198,30 @@ namespace Billiards.Physics
         /// 解算一个"球-段"接触。法向由**接触点现场**求得 <c>n̂ = normalize(C − Q)</c>
         /// （Q = 段上距球心最近点），因此**不需要逐段朝向数据**：球从内侧撞上来时它恒为内法向。
         /// 法向与切向**各自独立赋值**（先 <c>v −= (1+e)·v_n·n̂</c>，再 <c>v −= (1−μ)·v_t</c>）。
+        ///
+        /// ── ★ 接近判据（<c>v_n &gt; 0</c> ⇒ 不施加任何冲量）────────────────────────
+        /// 与 <see cref="ResolveBallBallContact"/> 的 <c>v_n &gt;= 0</c> 早退**是同一条不变量**
+        /// （"只对**正在接近**的接触施加冲量"），本函数此前**漏了它** —— 后果（实测，见
+        /// `Docs/35-A_球杆后拉沿轴与袋角冲量_spec.md` §3）：TOI 把**同刻**接触并为**一组**统一解算，
+        /// 而袋角侧壁是**一串共享端点的短段**（4–25 mm，球半径 28.6 mm）⇒ 球撞在**两段的公共端点**上时，
+        /// 两段会**各收一条**同刻条目（`SolveToi` 对两段都调用同一个端点圆的 `RayCircleToi`）：
+        /// 第一条把球正常弹出（`v_n` 由负变 +e·|v_n|），**第二条拿到的 `v_n` 已经是正值**，
+        /// 却被无条件反射 ⇒ **把刚弹出的球又翻回库内**（出射法向速度 −e²·|v_n|）。
+        /// 实测：球沿长库滚向中袋袋角时出射法向速度 **−0.1135**（正确应为 **+0.0669**）——
+        /// 球带着"朝库内"的速度进入深层重叠，下一子步被位置修正推回、再被翻回，
+        /// 每轮法向 ×e²、切向还各吃一次摩擦 ⇒ 表现就是用户报的
+        /// **"碰到袋角像没有一点弹力、吸在两边"**。
+        /// 随机扫描（本机，权威几何）：中袋袋角附近 **12.5% / 12.8%** 的首次接触会被翻回库内、
+        /// 角袋袋角 **7.3% / 8.2%**、全台面随机 3.5% ⇒ 与"只在袋角感觉得到"的用户报告一致。
+        ///
+        /// **计数口径**：沿球-球路径的口径 —— 只有**真的施加了冲量**才算一次接触解算
+        /// （`TotalContactCount` / 接触事件）。已分离的条目不是"撞击"，不该被计（也不该出声）。
+        /// ⚠ 位置修正**不在此处**：深层重叠由调用方 <see cref="ResolveDeepOverlaps"/> 先修正位置，
+        /// 位置修正与本判据**互相独立**（跳过冲量不影响"球不得静默钻入库边"）。
         /// </summary>
         private void ResolveSegmentContact(int index, int seg)
         {
             BallState ball = _balls[index];
-            float speedIn = Length(ball.velocity);
-
-            // 只读诊断：接触事件（音频层消费；不改任何解算量）。
-            RecordContactEvent(ContactKind.Cushion, speedIn, ball.position);
 
             Vector2 q = ClosestPointOnSegment(ball.position, _segA[seg], _segB[seg]);
             Vector2 diff = ball.position - q;
@@ -1228,6 +1244,18 @@ namespace Billiards.Physics
 
             Vector2 v = ball.velocity;
             float vn = Dot(v, n);
+
+            // ★ 接近判据：已在分离 ⇒ 不施加冲量、不计接触（与球-球路径同一不变量）。
+            if (vn >= 0f)
+            {
+                return;
+            }
+
+            float speedIn = Length(ball.velocity);
+
+            // 只读诊断：接触事件（音频层消费；不改任何解算量）。
+            RecordContactEvent(ContactKind.Cushion, speedIn, ball.position);
+
             Vector2 vt = v - vn * n;
 
             // 法向：独立赋值（恢复系数 e）。

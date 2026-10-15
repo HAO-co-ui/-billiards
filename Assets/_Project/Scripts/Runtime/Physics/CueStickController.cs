@@ -57,13 +57,25 @@ namespace Billiards.Physics
         public ShotFlowState Flow => _flow;
 
         /// <summary>
-        /// **杆尖位置**（纯函数，判据 `T88` 锁 1:1）：
-        /// 杆尖 = 白球中心 − 瞄准方向 ×（静止间隙 + 后拉量）。
-        /// 后拉量随力度 1:1（蓄力跟手）；前推期随帧数线性回收到 0（命中帧贴球）。
+        /// **杆尖位置**（纯函数，判据 `T88`/`T104`）：杆尖 = 白球中心 **沿杆身轴线**后移
+        /// （静止间隙 + 后拉量）。后拉量随力度 1:1（蓄力跟手）；前推期随帧数线性回收到 0（命中帧贴球）。
+        ///
+        /// ── ⚠ 后拉方向是**抬升后的杆身轴线**，不是水平方向（第三轮实机反馈逼出来的）────────
+        /// 症状：**球在右边库附近蓄力时，杆整根穿过木库边**（截图里杆在库边两侧都可见）。
+        /// 根因：抬升角 `θ` 按**球位**反解（`StickElevationDegreesFor`：要求杆身在跨过台面外缘处
+        /// 下表面高于库顶），该反解的前提是**杆身落在过球心那条直线上**；而旧实现把后拉量沿
+        /// **水平方向**加 ⇒ 杆身整体向库边平移 `(TipGap+pullback)`，却一点额外高度都不带
+        /// ⇒ 跨库处实际高度比设计值低 `(TipGap+pullback)·tanθ`。
+        /// 实测（用户截图姿态）：球离库 0.62 m、后拉 0.45 m、θ 取最小的 4° ⇒ 杆身在跨库处
+        /// 只抬 0.016 m，而需求 0.0324 m ⇒ 必然整根穿库。
+        /// **沿轴线后拉**则杆身**恒在过球心的直线上** ⇒ 抬升角的保证对**任意后拉量**都成立。
+        ///
+        /// `elevationDegrees = 0`（默认）⇒ 退化为"水平后拉"，与历史逐位一致（`T88` 锁这条 1:1）。
         /// </summary>
-        public static Vector3 StickTipPosition(Vector3 cueBallWorld, Vector3 aimDirectionWorld, float pullback)
+        public static Vector3 StickTipPosition(Vector3 cueBallWorld, Vector3 aimDirectionWorld, float pullback,
+            float elevationDegrees = 0f)
         {
-            return cueBallWorld - aimDirectionWorld * (TipGap + pullback);
+            return cueBallWorld + StickDirection(aimDirectionWorld, elevationDegrees) * (TipGap + pullback);
         }
 
         private void Update()
@@ -152,8 +164,6 @@ namespace Billiards.Physics
                 pullback = 0f;   // Aim / Settle：贴球
             }
 
-            _stick.position = StickTipPosition(cueBallWorld, aimDir, pullback);
-
             // 抬升角**按几何反解**（球位 + 瞄准方向）：球离库边越近 ⇒ 跨库处越低 ⇒ 需要的角度越大。
             // ⚠ 只用球位与瞄准方向、**不含后拉量** ⇒ 与后拉无关（"蓄力不得让杆变短/变形"的不变量）。
             Vector2 ballPhysics = drive.Simulator != null && drive.Simulator.Balls.Count > 0
@@ -162,6 +172,10 @@ namespace Billiards.Physics
             float aimRad = drive.aimDegrees * Mathf.Deg2Rad;
             float elevation = StickElevationDegreesFor(
                 ballPhysics, new Vector2(Mathf.Cos(aimRad), Mathf.Sin(aimRad)));
+
+            // ★ 杆尖**沿杆身轴线**后拉（`elevation` 必须先进来）—— 否则杆身整体向库边平移却不抬高，
+            //   抬升角的保证失效 ⇒ 蓄力时整根穿库（见 `StickTipPosition` 的推导）。
+            _stick.position = StickTipPosition(cueBallWorld, aimDir, pullback, elevation);
 
             // 杆身 +Z 从杆尾指向杆尖 = **抬升后的方向**（杆从库边上方过；长度恒为 `StickLength`）。
             _stick.rotation = Quaternion.LookRotation(StickDirection(aimDir, elevation), Vector3.up);
@@ -212,6 +226,14 @@ namespace Billiards.Physics
         /// 旧注释拿 `1.4·sin4° = 0.098 m`（**杆尾处**的总抬升）去比"库边高出球心 0.0324 m"、看到 2.5 倍余量 ——
         /// 但**杆在库边处的抬升只有 `d·sinθ`**：`d = 0.23 m` 时仅 `0.016 m` < 0.0324 m ⇒ 必然穿库。
         /// 现在按**跨库处的实际高度**反解 ⇒ 球离库越近角度越大（真实打球也正是这么抬杆的）。
+        ///
+        /// **为什么这条反解只需看球位**（本函数成立的前提）：杆尖沿**杆身轴线**后拉
+        /// （<see cref="StickTipPosition"/>）⇒ 杆身**恒在过球心那条直线上**，杆上位点的高度只由
+        /// 它到球心的**水平距离** `ξ` 决定：`h(ξ) = 球心高 + ξ·tanθ`，与后拉量无关。
+        /// 而 `ξ` 越大杆越高 ⇒ 约束的**最紧点**就是杆身第一次跨出台面外缘处（`ξ = d`）
+        /// ⇒ 只要 `ballRadius + d·tanθ − StickRadius ≥ OuterBoundsMax.y` 即处处成立。
+        /// **反过来说：任何"把杆尖沿水平方向平移"的实现都会破坏这个前提**（杆身不再过球心，
+        /// 杆在跨库处的高度低于上式的预测）—— 那正是第三轮实机"蓄力还是穿模"的根因。
         ///
         /// **盲带（如实）**：需求取的是**全桌最高点**（木库顶面），比袋口附近的实际遮挡（库边顶面更低）
         /// 更保守；球心离库边外缘 < ~57 mm 时 45° 上限仍可能让杆擦过库边顶部 —— 该带登记、不做遮蔽近似。

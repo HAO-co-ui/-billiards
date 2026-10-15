@@ -253,9 +253,10 @@ namespace Billiards.Tests
         /// `TotalContactCount ∈ [1, 3000]`、双跑逐位一致。
         /// **选点（`D3`）**：擦角球起点 = `tc − 0.12·tn + 0.045·td`（袋 0）、`v = 2·tn`。
         ///
-        /// **⚠ 上界 3000 为"量级界"**：擦角球会嵌入袋角并**反复解算**（R12 族"贴库/贴角静止球"的已知行为，
-        /// 实测本场景 `TotalContactCount ≈ 798`）⇒ 接触数随步数增长。**严格等值由 `T32a`（合成单段，==1）承担**；
-        /// 本档上界只拦"量级失控"。（该"袋角内反复解算"已作为实现期发现上报。）
+        /// **⚠ 上界 3000 为"量级界"**（原注：擦角球会嵌入袋角并**反复解算**，实测本场景
+        /// `TotalContactCount ≈ 798`）。**该「袋角内反复解算」已在第四轮修掉**（`ResolveSegmentContact`
+        /// 补接近判据 ⇒ 已在分离的接触不再施加冲量、不再计数）：修复后本场景接触数降到**个位数**
+        /// ⇒ 上界 3000 现在是远高于实际的护栏（保留，用于拦量级失控）。
         /// </summary>
         [Test]
         public void T32b_Determinism_RealTable_CaptureAndJawPath()
@@ -266,7 +267,10 @@ namespace Billiards.Tests
             Vector2 sideStart = side.throatCenter - 0.35f * side.throatNormal;
             Vector2 cornerTn = corner.throatNormal;
             Vector2 cornerTd = new Vector2(-cornerTn.y, cornerTn.x);
-            Vector2 cornerStart = corner.throatCenter - 0.12f * cornerTn + 0.045f * cornerTd;
+            // ⚠ ρ0 = 0.060（原 0.045）：0.045 只比「球能否从嘴口挤过去」的临界值
+            //   （嘴半宽 0.0727 − 球半径 0.0286 = 0.0441）大 0.9 mm ⇒ 擦切退化；修复前是靠球被袋角
+            //   **钉住**才「不越喉」，而钉住本身是缺陷（见 35-A 规格 §3）。
+            Vector2 cornerStart = corner.throatCenter - 0.12f * cornerTn + 0.060f * cornerTd;
 
             BallState[] initial =
             {

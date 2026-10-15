@@ -193,8 +193,16 @@ namespace Billiards.Tests
         }
 
         /// <summary>
-        /// 真实表：球沿喉法向平行、横向偏移 `ρ0 = 0.045 m` 射向角袋 —— **先撞袋角被封堵**、
+        /// 真实表：球沿喉法向平行、横向偏移 `ρ0 = 0.060 m` 射向角袋 —— **先撞袋角被封堵**、
         /// 弹回台面、**永不越喉平面**（若无袋角几何，该球会穿过袋喉越界 ⇒ `ProximityEvents &gt; 0` ⇒ 失败）。
+        ///
+        /// ⚠ **ρ0 由 0.045 改成 0.060**（第四轮"袋角冲量"修复的连带口径修正）：角袋嘴半宽 ≈ 0.0727 m、
+        /// 球半径 0.0286 m ⇒ 判定"球能否从嘴口挤过去"的临界偏移 = `0.0727 − 0.0286 = 0.0441 m`。
+        /// 原 `ρ0 = 0.045` **只比临界值大 0.9 mm**（擦切退化）：修复前是靠球被袋角**钉住**才"看起来被封堵"，
+        /// 而钉住本身是缺陷（见规格 §3）；修复后球沿嘴口挤进袋内（`ρ0 = 0.045 ≤ openingRadius = 0.0613`
+        /// ⇒ 球心越喉即入袋，这与裁定 A 的捕获口径一致）。
+        /// `ρ0 = 0.060` 让球与袋角**啮合 16 mm**（真正的"撞袋角"），断言回到它声称的语义：
+        /// **袋角必须把球封堵在台面上**。
         /// </summary>
         [Test]
         public void T28b_ShotAtCornerJaw_IsBlockedAndStaysOnTable()
@@ -202,7 +210,7 @@ namespace Billiards.Tests
             Pocket pocket = _config.GetPocket(0);
             Vector2 tn = pocket.throatNormal;
             Vector2 td = new Vector2(-tn.y, tn.x);
-            Vector2 start = pocket.throatCenter - 0.12f * tn + 0.045f * td;
+            Vector2 start = pocket.throatCenter - 0.12f * tn + 0.060f * td;
 
             var sim = new PoolSimulator(_config, Params(0.9f, 0.8f));
             sim.LoadBalls(new[] { new BallState { position = start, velocity = 2f * tn } });
@@ -608,6 +616,102 @@ namespace Billiards.Tests
             Assert.IsTrue(flying.IsBallInPlay(0), "T108：未静止的球必须仍在场。");
 
             TestContext.WriteLine("T108: 恒等式四场景成立 ✓ " + report);
+        }
+
+        // ══════════════════ T109 袋角撞击不得"吸住"（接触只施加一次冲量）══════
+
+        /// <summary>
+        /// **T109：球撞袋角必须弹开，不得被"吸住"** —— 用户第三轮实机反馈
+        /// "球每次碰到袋角两边，像没有一点弹力一样，吸在两边"。
+        ///
+        /// ── 机制（离线复现见 `Docs/35-A_球杆后拉沿轴与袋角冲量_spec.md` §3，本工程袋口权威几何）──
+        /// 袋角侧壁是**一串共享端点的短段**（4–25 mm，球半径 28.6 mm）；TOI 把**同刻**接触并为**一组**
+        /// 统一解算（`ResolveContactGroup`），而球撞在两段的**公共端点**上时，两段会各收一条同刻条目
+        /// （`SolveToi` 对两段都调用同一个端点圆的 `RayCircleToi`）。第一条把球正常弹出，**第二条拿到的
+        /// 法向速度已经是正值**（球已在分离），却在修复前被**无条件反射** ⇒ 把刚弹出的球又翻回库内，
+        /// 并进入"深层重叠 → 位置修正 → 再翻回"的每子步循环 ⇒ 速度被逐步吃光 ⇒ 球**停在袋角不动**。
+        /// 修复 = 与球-球路径**同一条接近判据**（`v_n &gt; 0` 不施加冲量），见 `PoolSimulator.ResolveSegmentContact`。
+        ///
+        /// ── 两条路径各一个代表姿态（离线用同一套公式全步进挑出并验过前后差异）──
+        /// · **(a) TOI 路径**：球斜入 −y 中袋袋角，接触点恰为**段 19/20 的公共端点**（轨迹正穿该端点圆，
+        ///   侵入深度 28.6 mm ⇒ 非擦切退化）。修复前：球在袋角**停死**（|v| → 0，实测深层重叠修正 1122 次）；
+        ///   修复后：以 `(−0.79, +2.25)` m/s **弹回台内**（入射 `(0.99, −2.81)`，出射法向分量恰为 e·入射）。
+        /// · **(b) 深层重叠路径**：球卡在袋角凹角里（与 3 段重叠 ~16 mm）。修复前：|v| 逐帧塌陷
+        ///   （0.107 → 0.017 → 0.0026 → 0.0004）**死在原地**；修复后：离开袋角（随后被该袋正常捕获）。
+        ///
+        /// **能测出**：`ResolveSegmentContact` 缺接近判据（两条路径都立刻红）、把判据写反
+        /// （`v_n &lt;= 0` 才施加 ⇒ 正常入射不再反射，全量判据大面积红）。
+        /// **盲带（如实）**：只覆盖两个代表姿态；"同一接触点被两段各收一次"这一**结构性**现象仍在
+        /// （接近判据只是让它不再产生错误冲量），凹角里多约束互相顶的残余（离线统计 ~0.1%）未消除。
+        /// </summary>
+        [Test]
+        public void T109_JawImpact_MustNotStickAtJaw()
+        {
+            var failures = new List<string>();
+            var report = new List<string>();
+
+            // (a) TOI 路径：斜入 −y 中袋袋角（组 = 段 19/20，公共端点接触）
+            var toi = new PoolSimulator(_config, Params());
+            toi.LoadBalls(new[] { Ball(-0.009509f, -0.304816f, 0.992530f, -2.812731f) });
+            Step(toi, 40);
+
+            Vector2 pToi = toi.Balls[0].position;
+            Vector2 vToi = toi.Balls[0].velocity;
+            if (Mag(vToi) <= 0.1f)
+            {
+                failures.Add($"(a) 撞袋角后球被\"吸住\"（|v| = {Mag(vToi):R}，停在 ({pToi.x:R}, {pToi.y:R})）。");
+            }
+
+            if (pToi.y <= -0.55f)
+            {
+                failures.Add($"(a) 撞袋角后球未弹回台内（y = {pToi.y:R}，应 > −0.55）。");
+            }
+
+            report.Add($"(a) 40 步后 p=({pToi.x:R},{pToi.y:R}) v=({vToi.x:R},{vToi.y:R})");
+
+            // (a2) 同一姿态换**出手手感实参**（`cushionRestitution = 0.8` / `cushionTangentialFriction = 0.9`）——
+            //      族内默认参数是无耗散（e=1/μ=1），会给出纯镜面反弹；而用户是在**出手参数**下踩到这个缺陷的，
+            //      故两种参数都要过（期望不同：后者出射速度更小，但"必须弹开"这条与参数无关）。
+            var shipped = new PoolSimulator(_config, Params(0.8f, 0.9f));
+            shipped.LoadBalls(new[] { Ball(-0.009509f, -0.304816f, 0.992530f, -2.812731f) });
+            Step(shipped, 40);
+
+            Vector2 pShip = shipped.Balls[0].position;
+            Vector2 vShip = shipped.Balls[0].velocity;
+            if (Mag(vShip) <= 0.1f)
+            {
+                failures.Add($"(a2) 出手参数下撞袋角后球被\"吸住\"（|v| = {Mag(vShip):R}，停在 ({pShip.x:R}, {pShip.y:R})）。");
+            }
+
+            if (pShip.y <= -0.55f)
+            {
+                failures.Add($"(a2) 出手参数下撞袋角后球未弹回台内（y = {pShip.y:R}）。");
+            }
+
+            report.Add($"(a2) e=0.8/μ=0.9：40 步后 p=({pShip.x:R},{pShip.y:R}) v=({vShip.x:R},{vShip.y:R})");
+
+            // (b) 深层重叠路径：球卡在袋角凹角（初始与 3 段重叠 ~16 mm）
+            var deep = new PoolSimulator(_config, Params());
+            var start = new Vector2(-0.096211f, -0.629963f);
+            deep.LoadBalls(new[] { Ball(start.x, start.y, 1.021980f, -1.103941f) });
+            Step(deep, 10);
+
+            Vector2 pDeep = deep.Balls[0].position;
+            float moved = Mag(pDeep - start);
+            if (deep.IsBallInPlay(0) && moved <= 0.06f)
+            {
+                failures.Add($"(b) 卡在袋角凹角的球被\"吸住\"：10 步内只移动 {moved:R} m（应已离袋角或被该袋捕获）。");
+            }
+
+            report.Add($"(b) 10 步后 p=({pDeep.x:R},{pDeep.y:R}) 位移={moved:R} 在场上={deep.IsBallInPlay(0)}");
+
+            if (toi.EnergyGainViolations != 0 || deep.EnergyGainViolations != 0)
+            {
+                failures.Add($"(c) 触碰不得升能（实测 {toi.EnergyGainViolations} / {deep.EnergyGainViolations}）。");
+            }
+
+            Assert.IsEmpty(failures, "T109 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine("T109: 袋角撞击不吸住 ✓ " + string.Join(" | ", report));
         }
     }
 }

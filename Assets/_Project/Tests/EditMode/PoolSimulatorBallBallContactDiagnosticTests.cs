@@ -24,8 +24,11 @@ namespace Billiards.Tests
     /// · **(a) K-1 单点**：`BallBallContactCount++` 恰 **2 处**、且**两处都在** `ResolveBallBallContact` 内；
     ///   首接触**记录语句恰一处**、也在该函数内；`EarliestBallBallToi(` 仍恰 2 处（定义 + 唯一调用）
     ///   ⇒ **没有第二个球-球检测/扫描点**。
-    /// · **(b) K-2 惰性（逐位）**：按既有场景重跑，`T32b` / `T37` 的**接触数与逐球终态**与
-    ///   **改动前实测基线逐位相同** —— 这是"**只读**"这个说法的**唯一证据**（把声明变成实测）。
+    /// · **(b) K-2 惰性（逐位）**：按既有场景重跑，`T32b` / `T37` 的**接触数与逐球终态**与**实测基线逐位相同**
+    ///   —— 这是"**只读**"这个说法的**唯一证据**（把声明变成实测）。
+    ///   ⚠ 基线在第四轮随「袋角冲量」修复**重钉过**（`T32b 74→2`、`T37 6746→49`、T37 10 颗球的终态），
+    ///   依据（因果对照 + 机制量测 + 终态位移）写在常量上方的注释里 —— 那是**物理行为真变了**，
+    ///   而**不是**本条诊断量造成的。
     /// · **(c) K-3 清零语义**：`ResetDiagnostics()` 后 `HasBallBallContact == false`（与既有计数同处归零）。
     /// · **(d) K-4 `T55` 回归**：**由 `T55` 本身承担**（同一份源码、同一次运行）——
     ///   本判据**不重复**其断言（铁律 16：同一不变量不写两遍）。理由：`T55` 已逐字断言
@@ -42,37 +45,47 @@ namespace Billiards.Tests
         private const string TuningPath = "Assets/_Project/Data/PhysicsTuning.asset";
         private const string TablePath = "Assets/_Project/Data/TableConfig.asset";
 
-        // ── 修订前实测基线（在 `HEAD` 干净态跑出，与本判据是**不同**对象；见 (b) 的说明） ──
-        // 口径：`Tests/EditMode/PoolSimulatorTerminationAndBreakTests.cs` 的 T32b / T37 场景与串行化口径。
-        private const int T32bBaselineTotalContactCount = 74;
+        // ── 实测基线（口径：`Tests/EditMode/PoolSimulatorTerminationAndBreakTests.cs` 的 T32b / T37 场景与串行化口径）──
+        //
+        // ⚠ **第四轮重钉（「袋角冲量」修复：`ResolveSegmentContact` 补接近判据）** —— 三条依据：
+        //   ① **因果对照**：把该判据去掉（注入）⇒ 本判据的**全部旧基线逐位复原**
+        //      （`T32b total=74`、`T37 total=6746`、16 球终态逐位相同，实测）⇒ 这些变化**只**由那一条判据引起。
+        //   ② **机制（实测）**：旧计数里 **6668/6746 = 98.8%** 是**已在分离**的接触（球嵌进库段后每子步被重复解算），
+        //      并伴随 **6656 次深层重叠位置修正**；补上接近判据后变为 `total=49 / 跳过=1 / 深层重叠=0`
+        //      ⇒ 旧基线量的是「球被按在库边反复解算」这一**缺陷**（用户实机「撞库角像没弹力、吸在两边」）。
+        //   ③ **终态位移**：变化最大的球 1 由 `(-0.0757,-0.6240)`（贴在 −y 长库上）变为 `(0.0482,+0.6526)`
+        //      （弹到台面另一侧）—— 与「不再被库边吸住」一致。
+        private const int T32bBaselineTotalContactCount = 2;
         private const int T32bBaselineCapturedBallCount = 1;
         private const int T37BaselineBallBallContactCount = 37;
         private const int T37BaselineCapturedBallCount = 2;   // 袋角归属裁定 A：越喉且在喉口内 ⇒ 入袋（原 0）
-        private const int T37BaselineTotalContactCount = 6746;
+        private const int T37BaselineTotalContactCount = 49;   // 第四轮重钉：原 6746 中 98.8% 是「已在分离」的伪接触（见上方注释）
         private const int T37BaselinePocketProximityEvents = 2;
         private const int T37BaselinePocketJawCrossingCount = 0;   // 同上：边界移到 openingRadius 后该场景无越界（原 2）
         private const int T37BaselineGuardTrips = 0;
         private const int T37BaselineEnergyGain = 0;
         private const int T37BaselineBallBallMaxIterationsObserved = 6;
 
-        /// <summary>T37 的 16 颗球终态（`x;y`，逐位串；改动前实测基线）。</summary>
+        /// <summary>T37 的 16 颗球终态（`x;y`，逐位串；**第四轮重钉**后的实测基线，依据见上方注释）。
+        /// 其中 10 颗变化（0/1/3/6/7/8/10/12/13/14），6 颗逐位不变；变化最大的球 1 由「贴在 −y 长库上」
+        /// 变为「弹到台面另一侧」。</summary>
         private static readonly string[] T37BaselineFinalPositions =
         {
-            "1.19975209;0.0101174293",
-            "-0.07573807;-0.6240318",
+            "1.21900022;0.0102524208",
+            "0.04816721;0.6526122",
             "-0.3474119;0.0283389147",
-            "-0.278973967;-0.215722248",
+            "-0.277584672;-0.219319478",
             "-0.399346828;0.0574025027",
             "-0.399149865;0.0001637311",
-            "0.591817856;0.0529156439",
-            "-0.102821879;0.501990855",
-            "-0.6582776;0.08532333",
+            "0.6000458;0.0312398374",
+            "-0.09315988;0.5284948",
+            "-0.662210941;0.08714859",
             "-0.449126482;-0.0282310452",
-            "-0.5778741;-0.303581178",
+            "-0.5803914;-0.3078415",
             "-1.256161;0.6710566",
-            "-0.7839505;0.40625295",
-            "-0.307743281;0.339601368",
-            "-0.188735664;-0.4784833",
+            "-0.7874716;0.396159828",
+            "-0.301134646;0.3414967",
+            "-0.1881547;-0.487112969",
             "-1.255292;-0.6730765",
         };
 
@@ -255,7 +268,8 @@ namespace Billiards.Tests
             Vector2 sideStart = side.throatCenter - 0.35f * side.throatNormal;
             Vector2 cornerTn = corner.throatNormal;
             Vector2 cornerTd = new Vector2(-cornerTn.y, cornerTn.x);
-            Vector2 cornerStart = corner.throatCenter - 0.12f * cornerTn + 0.045f * cornerTd;
+            // 与 T32b 同步（ρ0 0.045 → 0.060，理由见 T28b 的 doc）。
+            Vector2 cornerStart = corner.throatCenter - 0.12f * cornerTn + 0.060f * cornerTd;
 
             BallState[] t32bInitial =
             {
@@ -271,7 +285,8 @@ namespace Billiards.Tests
             if (t32b.TotalContactCount != T32bBaselineTotalContactCount)
             {
                 failures.Add($"(b) T32b `TotalContactCount` 基线 {T32bBaselineTotalContactCount} → 实测 {t32b.TotalContactCount}"
-                             + "（**只读诊断改变了既有证据** ＝ 重大发现）。");
+                             + "（基线不符：先按类注释的三条依据复核是不是有意的物理改动，"
+                             + "确认后重钉并写明原因；**不得**为了本判据变绿而放宽断言）。");
             }
 
             if (t32b.CapturedBallCount != T32bBaselineCapturedBallCount)

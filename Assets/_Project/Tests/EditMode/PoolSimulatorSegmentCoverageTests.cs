@@ -22,10 +22,23 @@ namespace Billiards.Tests
     /// · 种子：台心 + 4 个象限内点，共 **5 个**（均经合法性断言：到全部 82 段距离 &gt; 球半径）。
     /// · 瞄准点：每段 **中点 + 两个端点**，共 82×3 = 246 点/种子 ⇒ **1230 次发射**。
     /// · 发射：自种子沿 `normalize(target − seed)` 以 5 m/s 发射，最多推进 72 步（0.6 s，3 m 射程）。
-    /// · **命中判据**：以**扫掠弦**判接触 —— 每个 Step 取「球心步前位置→步后位置」的线段，
-    ///   计算它与该段的最短距离；≤ `r + tol` 即判该步接触（**不能只用步末位置采样**：
-    ///   高速球在一个 Step 内即可完成"接触→反弹→离开"，步末距离已 &gt; r，会漏检）。
-    ///   同一次连续接触只按**上升沿**计一次。
+    /// · **命中判据（两条一起用，缺一不可）**：
+    ///   ① **扫掠弦**：每个 Step 取「球心步前位置→步后位置」的线段，算它与该段的最短距离；
+    ///      ≤ `r + tol` 即判该步接触（**不能只用步末位置采样**：高速球在一个 Step 内即可完成
+    ///      "接近→反弹→离开"，步末距离已 &gt; r，会漏检）。同一次连续接触只按**上升沿**计一次。
+    ///   ② **折返反射**：速度方向发生折返 ⇒ 由 `v_out − v_in` 反解碰撞法向、归给"一个步长内可达且法向最一致"的段。
+    ///
+    ///   ⚠ **为什么必须有 ②（本测试此前的盲带，实测暴露）**：① 对**平面段结构性不可见**。
+    ///   内核把球**推进到接触时刻**再解算（TOI），接触点处球心到平面恰为 `r`，随后球就离开；
+    ///   而"到半平面的距离"是**凸函数** ⇒ 弦上最小距离 ≥ 两端点最小距离 ≥ `r`
+    ///   ⇒ 除非接触恰好落在采样边界 ~1.4e-5 s 内，弦**永远够不到**平面段。
+    ///   实测：直库段（6/20/33/47/61/74）在弦判据下命中 **0** 次，而同一批发射在内核侧
+    ///   `TotalContactCount` 明明记录了撞库 —— 即旧实现里这 6 条**只能靠"球真的嵌进库段里"
+    ///   （球心进到 r 以内）被弦看见**，而"嵌进去"正是后来被修掉的缺陷（球被按在库边反复解算）。
+    ///   ⇒ ① 覆盖**角点类**接触（弦会横切过凸障碍），② 覆盖**平面类**接触（用可观测量"反射"作证据）。
+    ///
+    ///   **判别力**：把浮点球推进改回"嵌进库段再弹出"⇒ ① 会重新看见直库（旧行为），但 ② 会照常命中
+    ///   ⇒ 本硬门**不再依赖穿透**；把反射解算去掉 ⇒ ② 立刻不命中、直库门重新红。
     ///
     /// ## 判据
     ///
@@ -245,10 +258,62 @@ namespace Billiards.Tests
 
             for (int step = 0; step < MaxSteps; step++)
             {
+                Vector2 velocityBefore = sim.Balls[0].velocity;
                 sim.Step();
                 Vector2 cur = sim.Balls[0].position;
                 Vector2 pathA = prev;
                 Vector2 pathB = cur;
+
+                // ── 命中判定之二：**折返反射**（补弦几何的盲带，见类型注释的"为什么必须两条一起用"）──
+                // 内核把球**推进到接触时刻**再解算 ⇒ 一次 45° 撞库可以在**一个 Step 内部**完成"接近 → 反射 → 离开"，
+                // 而本测试的扫掠弦只取两个**边界采样点**连线 ⇒ 对**平面段结构性不可见**：
+                // 球心恒在平面外侧，而"到半平面的距离"是**凸函数** ⇒ 弦上最小距离 ≥ 两端点最小距离 ≥ r
+                // （只有接触恰好落在采样边界 1.4e-5 s 内才会被弦看见）。
+                // ⇒ 补一条**与内核计数无关**的判据：速度方向发生折返 ⇒ 由 `v_out − v_in` **反解碰撞法向**
+                //   （反射满足 `v_out − v_in = (1+e)|v_n|·n̂`，故它恒与接触法向同向），
+                //   在"球心一个步长内可达"的段里取**法向最一致**的那一段作为命中段。
+                Vector2 velocityAfter = sim.Balls[0].velocity;
+                if (velocityBefore.sqrMagnitude > 0f && velocityAfter.sqrMagnitude > 0f)
+                {
+                    Vector2 dirBefore = velocityBefore.normalized;
+                    Vector2 dirAfter = velocityAfter.normalized;
+                    if (Vector2.Dot(dirBefore, dirAfter) < 0.9998f)   // 方向改变 > 约 1.1°
+                    {
+                        Vector2 impliedNormal = (velocityAfter - velocityBefore).normalized;
+                        Vector2 mid = (pathA + pathB) * 0.5f;
+                        float reach = r + LaunchSpeed / 120f;        // 一个 Step 的最大位移 + 球半径
+                        int matched = -1;
+                        float bestAlign = 0.5f;                       // 至少要与反解法向成 60° 以内
+                        for (int j = 0; j < _config.SegmentCount; j++)
+                        {
+                            CushionSegment cs = _config.segments[j];
+                            Vector2 q = ClosestPointOnSegment(mid, cs.a, cs.b);
+                            Vector2 diff = mid - q;
+                            float dist = diff.magnitude;
+                            if (dist <= 1e-9f || dist > reach)
+                            {
+                                continue;
+                            }
+
+                            float align = Vector2.Dot(diff / dist, impliedNormal);
+                            if (align > bestAlign)
+                            {
+                                bestAlign = align;
+                                matched = j;
+                            }
+                        }
+
+                        if (matched >= 0 && !rec.HitSegments.Contains(matched))
+                        {
+                            rec.HitSegments.Add(matched);
+                            if (rec.FirstHitSegment < 0)
+                            {
+                                rec.FirstHitSegment = matched;
+                                rec.FirstHitStep = step;
+                            }
+                        }
+                    }
+                }
 
                 for (int j = 0; j < _config.SegmentCount; j++)
                 {
@@ -737,6 +802,19 @@ namespace Billiards.Tests
                 cushionTangentialFriction = 0.8f,
                 rollingDecelerationSlide = 0f, rollingDecelerationRoll = 0f
             };
+        }
+
+        /// <summary>段上距 <paramref name="p"/> 最近的点（本文件**独立实现**，不复用被测内核的几何函数）。</summary>
+        private static Vector2 ClosestPointOnSegment(Vector2 p, Vector2 a, Vector2 b)
+        {
+            Vector2 ab = b - a;
+            float len2 = ab.x * ab.x + ab.y * ab.y;
+            if (len2 <= 1e-12f)
+            {
+                return a;
+            }
+
+            return a + Mathf.Clamp01(Vector2.Dot(p - a, ab) / len2) * ab;
         }
 
         private static float DistancePointToSegment(Vector2 p, Vector2 a, Vector2 b)

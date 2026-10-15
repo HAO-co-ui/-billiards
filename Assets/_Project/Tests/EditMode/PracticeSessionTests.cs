@@ -487,9 +487,14 @@ namespace Billiards.Tests
         /// ④ **白球离台即隐藏**：`ShouldShowAimAssist` 的 `cueBallInPlay` 与 `CueStickController` 的
         ///    可见门都判"白球在场上"（实机反馈"落网没反馈 + 线从袋口射出来"）。
         ///
+        /// ⑤ **杆尖恒在杆身轴线上**：后拉必须沿**抬升后的杆身轴线**（不是水平方向）。第四轮实机反馈
+        ///    "球在右边蓄力拉杆还是会穿模"的根因就在这 —— 抬升角的反解以"杆身落在过球心那条直线"为前提，
+        ///    水平后拉把这个前提破坏掉（杆整体向库边平移却不带高度）⇒ ③ 的判据看着过、实机整根穿库。
+        ///
         /// **可被打死**：把 `ShouldShowAimAssist` 的任一条去掉 ⇒ (a) 红；
         /// 把 `StatusLabel` 的犯规优先去掉 ⇒ (b) 红；把杆的方向改回 `LookRotation(-aimDir)`（不抬升）⇒ (e) ③ 红；
-        /// 把杆身偏移改成跟随后拉量（旧夹取）⇒ (e) ①② 红。
+        /// 把杆身偏移改成跟随后拉量（旧夹取）⇒ (e) ①② 红；
+        /// 把后拉改回**水平方向**（旧 `−aimDir × (TipGap + pullback)`）⇒ (e) ③c 与 ⑤ 红。
         /// </summary>
         [Test]
         public void T104_AimAssistVisibility_AndFoulFeedback()
@@ -567,6 +572,61 @@ namespace Billiards.Tests
             if (Mathf.Abs(minElev - CueStickController.MinStickElevationDegrees) > 1e-4f)
             {
                 failures.Add($"(e) 杆身不出台面时应取最小角 {CueStickController.MinStickElevationDegrees:R}°，实际 {minElev:R}°。");
+            }
+
+            // ③c **实现驱动的不穿模判据**：直接拿**实际杆身**（杆尖 → 杆尾）采样，凡是水平位置
+            //     已越过台面外缘的采样点，其**下表面**都必须高于台面最高点；且**对全部后拉量**成立。
+            //     ⚠ 它与 ③ 的差别是"判据不再自己假设杆身过球心"，而是**量杆身实际在哪** ——
+            //     第三轮实机"球在右边蓄力还是穿模"正是靠这个差别才被抓住：
+            //     球离库 0.23 m、后拉 0.45 m 时杆尖被**平移**到库外，高度却仍等于球心高 ⇒ 整根穿库。
+            Vector3 ballWorld = PoolGeometry.PhysicsBallToUnity(ballNearRail)
+                                * PoolConstants.PlayfieldVisualScale;
+            Vector3 aimWorld = PoolGeometry.PhysicsDirectionToUnity(aimLeft);
+
+            //     桌体在**可视缩放根**下（×1.2），杆挂**根下**（不缩放）⇒ 台面高度必须同乘。
+            float railTopWorld = PoolGeometry.OuterBoundsMax.y * PoolConstants.PlayfieldVisualScale;
+            float clothXWorld = PoolConstants.ClothHalfLength * PoolConstants.PlayfieldVisualScale;
+            float clothZWorld = PoolConstants.ClothHalfWidth * PoolConstants.PlayfieldVisualScale;
+
+            for (int pullIndex = 0; pullIndex <= 3; pullIndex++)
+            {
+                float pull = CueStickController.MaxPullback * pullIndex / 3f;
+                Vector3 tipW = CueStickController.StickTipPosition(ballWorld, aimWorld, pull, elevation);
+                Vector3 tailW = CueStickController.StickTailPosition(tipW, aimWorld, elevation);
+
+                for (int s = 0; s <= 128; s++)
+                {
+                    Vector3 pt = Vector3.Lerp(tipW, tailW, s / 128f);
+                    bool outsideTable = Mathf.Abs(pt.x) > clothXWorld + 1e-6f
+                                        || Mathf.Abs(pt.z) > clothZWorld + 1e-6f;
+                    if (!outsideTable)
+                    {
+                        continue;
+                    }
+
+                    float underside = pt.y - CueStickController.StickRadius;
+                    if (underside < railTopWorld - 1e-3f)
+                    {
+                        failures.Add($"(e) ③c 后拉 {pull:R} m 时杆身在 ({pt.x:R}, {pt.y:R}, {pt.z:R}) "
+                                     + $"越过台面外缘，下表面 {underside:R} 低于台面最高点 {railTopWorld:R} ⇒ 穿模。");
+                        break;
+                    }
+                }
+            }
+
+            // ⑤ **杆尖恒在杆身轴线（过球心那条直线）上** —— 这是 ③ 那条闭式保证成立的前提。
+            //    旧实现把后拉量沿**水平方向**加 ⇒ 杆身被整体平移出台面，而 ③ 仍按"过球心"算 ⇒ 判据与实现脱节
+            //    （判据看着过、实机照样穿库）。
+            Vector3 axisTip = CueStickController.StickTipPosition(
+                ballWorld, aimWorld, CueStickController.MaxPullback, elevation);
+            Vector3 axisTail = CueStickController.StickTailPosition(axisTip, aimWorld, elevation);
+            Vector3 axis = (axisTail - axisTip).normalized;
+            Vector3 ballToTip = axisTip - ballWorld;
+            float lateralOffset = (ballToTip - Vector3.Dot(ballToTip, axis) * axis).magnitude;
+            if (lateralOffset > 1e-5f)
+            {
+                failures.Add($"(e) ⑤ 杆尖偏离杆身轴线 {lateralOffset:R} m（球心、杆尖、杆尾必须共线；"
+                             + "否则球心处的抬升量推导对杆身不再成立）。");
             }
 
             // ④ 抬升只允许**绕水平轴**抬起，不得把方向绕垂直轴拧歪：水平分量须仍与 −aim **共线**。

@@ -130,6 +130,14 @@ namespace Billiards.Tests
 
         // ════════════ T88 杆尖位置（贴球间隙 + 后拉 1:1 线性）═════════════
 
+        /// <summary>
+        /// 杆尖沿**瞄准反方向**后拉 `TipGap + pullback`，1:1 线性。
+        ///
+        /// **口径**：本判据用**抬升角 = 0**（`StickTipPosition` 的默认实参）⇒ 退化为"水平后拉"，
+        /// 是生产路径在"杆身不出台面、抬升角取最小值"时的极限形态；**生产路径的实际后拉方向是
+        /// 抬升后的杆身轴线**（`SyncStick` 传入 `elevation`）——"杆尖必须落在过球心的轴线上"这条
+        /// 由 `T104 (e) ⑤` 钉住（它才是"蓄力不得穿模"的结构性前提）。
+        /// </summary>
         [Test]
         public void T88_StickTipPosition_PullbackOneToOne()
         {
