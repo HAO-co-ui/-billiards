@@ -126,6 +126,18 @@ namespace Billiards.Physics
             return CushionGizmo.DisplayPoint(playfieldRoot, canonicalWorldPoint);
         }
 
+        /// <summary>
+        /// **Game 视图标记线顶点（唯一口径）**：规范物理点 → 世界坐标 =
+        /// <see cref="PoolGeometry.PhysicsToUnity"/>（**X/Z 双取反** `(−px, h, −py)`）→ <see cref="DrawPoint"/>（显示层缩放）。
+        /// 与 Scene Gizmos 的画线**逐字同口径**。
+        /// ⚠ 规范 y_physics 与世界 Z **符号相反**——直写 `(px, h, +py)` 会把线画到绕桌面中心旋转 180° 的
+        /// 镜像位置上（用户实测截图定位；`T85` 锁死：手写双取反 + 根变换做独立期望比对）。
+        /// </summary>
+        public static Vector3 MarkerWorldPoint(Transform playfieldRoot, Vector2 physicsPoint)
+        {
+            return DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(physicsPoint));
+        }
+
         /// <summary>**显示层尺度因子**：委托 <see cref="CushionGizmo.DisplayScale"/>（由显示映射导出，**不硬编码**）。</summary>
         public static float DrawScale(Transform playfieldRoot)
         {
@@ -218,8 +230,11 @@ namespace Billiards.Physics
         }
 
         /// <summary>
-        /// 把虚线渲染为 `LineRenderer` 池：挂在 <paramref name="playfieldRoot"/> 下、`useWorldSpace = false`
-        /// ⇒ 顶点用**局部坐标 = 规范坐标**，天然继承根的显示缩放（等价于过 `DisplayFromCanonical`）。
+        /// 把虚线渲染为 `LineRenderer` 池：**世界空间顶点 = <see cref="MarkerWorldPoint"/>**，
+        /// 与 Scene Gizmos 的画线（`DrawPoint(root, PoolGeometry.PhysicsToUnity(p))`）**逐字同口径**。
+        /// ⚠ 历史缺陷（已修，勿回改）：曾用 `useWorldSpace = false` + 局部坐标直写 `(px, h, +py)`，
+        /// 漏掉 `PoolGeometry` 的 **X/Z 双取反** ⇒ Game 视图的线画在真实路径绕桌面中心
+        /// 旋转 180° 的镜像位置上（用户实测截图定位）。`T85` 锁死本口径。
         /// </summary>
         private void SyncRenderers(IReadOnlyList<(Vector2 a, Vector2 b)> segments)
         {
@@ -237,15 +252,17 @@ namespace Billiards.Physics
                 }
             }
 
+            float width = PredictionLineWidth * DrawScale(playfieldRoot);
+
             while (_dashPool.Count < segments.Count)
             {
                 var go = new GameObject("AimAssistDash_" + _dashPool.Count);
                 go.transform.SetParent(playfieldRoot, false);
                 var lr = go.AddComponent<LineRenderer>();
-                lr.useWorldSpace = false;
+                lr.useWorldSpace = true;
                 lr.positionCount = 2;
-                lr.startWidth = PredictionLineWidth;
-                lr.endWidth = PredictionLineWidth;
+                lr.startWidth = width;
+                lr.endWidth = width;
                 lr.numCapVertices = 0;
                 lr.startColor = PathColor;
                 lr.endColor = PathColor;
@@ -271,15 +288,14 @@ namespace Billiards.Physics
                     continue;
                 }
 
-                lr.SetPosition(0, new Vector3(segments[i].a.x, PoolConstants.ClothHeightY, segments[i].a.y));
-                lr.SetPosition(1, new Vector3(segments[i].b.x, PoolConstants.ClothHeightY, segments[i].b.y));
+                lr.SetPosition(0, MarkerWorldPoint(playfieldRoot, segments[i].a));
+                lr.SetPosition(1, MarkerWorldPoint(playfieldRoot, segments[i].b));
             }
         }
 
         /// <summary>
         /// 首接触标记（Game 视图）：幽灵球空心圆 + 目标球出射线 + 白球偏转线。
-        /// 坐标口径与虚线一致：`useWorldSpace = false` ⇒ 局部坐标 = 规范坐标，天然继承显示缩放；
-        /// 方向一律走 <see cref="WorldDirection"/>（父缩放不改方向 ⇒ 渲染方向与 Scene Gizmos 一致）。
+        /// 顶点一律走 <see cref="MarkerWorldPoint"/> / <see cref="WorldDirection"/>（与 Scene Gizmos 同口径）。
         /// 无首接触（打空）⇒ 三者全部隐藏，只留路径线。
         /// </summary>
         private void SyncContactMarkers(in ShotPrediction prediction)
@@ -290,8 +306,8 @@ namespace Billiards.Physics
             }
 
             bool hasContact = prediction.HasFirstContact;
-            Vector2 ghost = prediction.GhostBall;
-            Vector3 ghostLocal = new Vector3(ghost.x, PoolConstants.ClothHeightY, ghost.y);
+            float scale = DrawScale(playfieldRoot);
+            Vector3 ghostWorld = DrawPoint(playfieldRoot, PoolGeometry.PhysicsBallToUnity(prediction.GhostBall));
 
             if (_ghostCircle == null)
             {
@@ -307,11 +323,11 @@ namespace Billiards.Physics
             _ghostCircle.gameObject.SetActive(hasContact);
             if (hasContact)
             {
-                float radius = PoolConstants.BallRadius;
+                float radius = PoolConstants.BallRadius * scale;
                 for (int i = 0; i < GhostCircleSegments; i++)
                 {
                     float angle = i * Mathf.PI * 2f / GhostCircleSegments;
-                    _ghostCircle.SetPosition(i, ghostLocal + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius));
+                    _ghostCircle.SetPosition(i, ghostWorld + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius));
                 }
             }
 
@@ -324,8 +340,8 @@ namespace Billiards.Physics
             _targetLine.gameObject.SetActive(hasTarget);
             if (hasTarget)
             {
-                _targetLine.SetPosition(0, ghostLocal);
-                _targetLine.SetPosition(1, ghostLocal + WorldDirection(prediction.TargetOutgoingDirection) * TargetLineLength);
+                _targetLine.SetPosition(0, ghostWorld);
+                _targetLine.SetPosition(1, ghostWorld + WorldDirection(prediction.TargetOutgoingDirection) * (TargetLineLength * scale));
             }
 
             bool hasCue = hasContact && prediction.CueOutgoingDirection != Vector2.zero;
@@ -337,8 +353,8 @@ namespace Billiards.Physics
             _cueDeflectLine.gameObject.SetActive(hasCue);
             if (hasCue)
             {
-                _cueDeflectLine.SetPosition(0, ghostLocal);
-                _cueDeflectLine.SetPosition(1, ghostLocal + WorldDirection(prediction.CueOutgoingDirection) * CueDeflectLineLength);
+                _cueDeflectLine.SetPosition(0, ghostWorld);
+                _cueDeflectLine.SetPosition(1, ghostWorld + WorldDirection(prediction.CueOutgoingDirection) * (CueDeflectLineLength * scale));
             }
         }
 
@@ -357,10 +373,11 @@ namespace Billiards.Physics
             var go = new GameObject(markerName);
             go.transform.SetParent(playfieldRoot, false);
             var lr = go.AddComponent<LineRenderer>();
-            lr.useWorldSpace = false;
+            lr.useWorldSpace = true;
             lr.positionCount = positions;
-            lr.startWidth = PredictionLineWidth;
-            lr.endWidth = PredictionLineWidth;
+            float width = PredictionLineWidth * DrawScale(playfieldRoot);
+            lr.startWidth = width;
+            lr.endWidth = width;
             lr.numCapVertices = 0;
             lr.startColor = color;
             lr.endColor = color;

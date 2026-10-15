@@ -528,5 +528,65 @@ namespace Billiards.Tests
                  + p.BallBallContactCount.ToString(CultureInfo.InvariantCulture) + "|"
                  + p.TotalContactCount.ToString(CultureInfo.InvariantCulture);
         }
+
+        // ════════════ T85 Game 视图标记线顶点过显示层（X/Z 双取反锁死）════════════
+
+        /// <summary>
+        /// **Game 视图标记线顶点必须过 `PoolGeometry` 的 X/Z 双取反**：`MarkerWorldPoint(root, p)` 应等于
+        /// `root.TransformPoint((−px, h, −py))`（**手写双取反 + 引擎根变换**做独立期望，不复用被测链的任何函数）；
+        /// 并与"直写 `(px, h, +py)`"的镜像版**必须不同**（判别力锚）。
+        /// **历史缺陷**：Game 视图虚线曾直写 `(px, h, +py)`（漏双取反）⇒ 线画在真实路径绕桌面中心
+        /// 旋转 180° 的镜像位置（用户实测截图定位）。本判据的独立期望让"退回直写"必然红。
+        /// 注：`PhysicsToUnity` 经四元数合成，与手写式的浮点噪声 ~1e-7 ⇒ 比对用 1e-4 容差
+        /// （缺陷偏差是镜像级 ≈ 2×|坐标|，判别裕度 4 个数量级）。
+        /// </summary>
+        [Test]
+        public void T85_GameViewMarkerPoints_FollowDisplayPipeline()
+        {
+            var rootGo = new GameObject("T85_PlayfieldRoot");
+            rootGo.transform.localScale = new Vector3(1.2f, 1.2f, 1.2f);
+
+            try
+            {
+                Transform root = rootGo.transform;
+                var p = new Vector2(0.4f, 0.3f);   // 非对称点：x、y 皆非零 ⇒ 直写版与正确版必然不同
+
+                Vector3 actual = AimAssistView.MarkerWorldPoint(root, p);
+
+                // 独立期望（手写双取反 + 引擎根变换；不复用被测链的任何函数）
+                Vector3 expected = root.TransformPoint(new Vector3(-p.x, Billiards.Core.PoolConstants.ClothHeightY, -p.y));
+
+                // 直写镜像版（历史缺陷形态）
+                Vector3 mirrored = root.TransformPoint(new Vector3(p.x, Billiards.Core.PoolConstants.ClothHeightY, p.y));
+
+                var failures = new List<string>();
+                if (!(Mathf.Abs(actual.x - expected.x) <= 1e-4f
+                      && Mathf.Abs(actual.y - expected.y) <= 1e-4f
+                      && Mathf.Abs(actual.z - expected.z) <= 1e-4f))
+                {
+                    failures.Add($"(a) MarkerWorldPoint({p.x:R},{p.y:R}) = {V(actual)} 不等于双取反口径 {V(expected)}"
+                                 + " ⇒ Game 视图顶点未过 `PoolGeometry`（X/Z 双取反）。");
+                }
+
+                if (V(actual) == V(mirrored))
+                {
+                    failures.Add($"(b) 判别力锚失效：actual == 直写镜像版 {V(mirrored)} ⇒ 本判据打不死\"漏双取反\"。");
+                }
+
+                Assert.IsEmpty(failures, "T85 失败：\n" + string.Join("\n", failures));
+                TestContext.WriteLine($"T85: MarkerWorldPoint = {V(actual)}；与手写双取反+根变换一致（≤1e-4）；与直写镜像版不同 ✓");
+            }
+            finally
+            {
+                Object.DestroyImmediate(rootGo);
+            }
+        }
+
+        private static string V(Vector3 v)
+        {
+            return "(" + v.x.ToString("R", CultureInfo.InvariantCulture) + ", "
+                 + v.y.ToString("R", CultureInfo.InvariantCulture) + ", "
+                 + v.z.ToString("R", CultureInfo.InvariantCulture) + ")";
+        }
     }
 }
