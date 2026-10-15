@@ -3,6 +3,7 @@ using Billiards.Physics;
 using Billiards.Table;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Billiards.Tests
 {
@@ -234,6 +235,89 @@ namespace Billiards.Tests
 
             Assert.IsEmpty(failures, "T94 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine("T94: 首过 / 间隔内拒 / 超间隔过 / Reset 后过 ✓");
+        }
+
+        // ════════════════ T99 顶点写入单点（越小界 = 刷错误日志）══════════════════
+
+        /// <summary>
+        /// **顶点写入单点契约**。
+        ///
+        /// ── 为什么需要这条判据（实测缺陷，2026-10-15）──────────────────────────────
+        /// 用户实机刷屏 `LineRenderer.SetPosition index out of bounds!`（`PoolVfxView.WriteSlot`）：
+        /// 原实现「先循环写 32 个顶点、循环之后才设 `positionCount = 32`」，而环出厂 `positionCount = 0`
+        /// ⇒ **每个点都越界**；槽位在「环(32)/弧(16)」之间复用时数量由大变小 ⇒ **反复越界**。
+        /// 该失效模式**只打错误日志、不抛异常**，所以纯函数判据（`T92`–`T94`）结构上覆盖不到。
+        /// 现把"数量 + 顶点"收进 <see cref="PoolVfxView.WriteLine"/> 单点，本判据守住它的顺序契约：
+        /// Unity 测试框架对**未预期的错误日志**默认判失败 ⇒ 顺序一错就自动红。
+        ///
+        /// **可被打死**：把 `WriteLine` 里两行对调（先写点、后设数量）⇒ (a) 红（越界错误日志）；
+        /// 在 `WriteSlot` 里加一处直写 `SetPosition` ⇒ (c) 红。
+        /// </summary>
+        [Test]
+        public void T99_VertexWrite_SetsCountBeforePositions()
+        {
+            var go = new GameObject("T99Line");
+            try
+            {
+                var line = go.AddComponent<LineRenderer>();
+                var points32 = new List<Vector3>();
+                for (int i = 0; i < PoolVfxView.RingSegments; i++)
+                {
+                    points32.Add(new Vector3(i * 0.001f, 0f, i * 0.002f));
+                }
+
+                var points16 = new List<Vector3>();
+                for (int i = 0; i < PoolVfxView.ArcSegments; i++)
+                {
+                    points16.Add(new Vector3(i * 0.003f, 0.01f, 0f));
+                }
+
+                // (a) 复现**旧 `CreateLine` 的出厂态**：`positionCount = 0`。
+                //     ⚠ 实测记录：`AddComponent<LineRenderer>()` 的 Unity **默认值是 2（不是 0）** ——
+                //     原缺陷之所以触发，是因为旧代码在 `CreateLine` 里**显式**写了 `positionCount = 0`。
+                //     故这里必须显式置 0 才能复现；依赖"新组件默认是 0"会得到一个**错误前提**（本判据第一版就栽在这）。
+                line.positionCount = 0;
+                PoolVfxView.WriteLine(line, points32, true);
+                Assert.AreEqual(PoolVfxView.RingSegments, line.positionCount,
+                    $"T99 (a) 写入 {PoolVfxView.RingSegments} 点后 positionCount 应为 {PoolVfxView.RingSegments}，实际 {line.positionCount}。");
+                Assert.IsTrue(line.loop, "T99 (a) 环应 loop = true。");
+                Assert.AreEqual(points32[7], line.GetPosition(7), "T99 (a) 第 7 个顶点值不符。");
+
+                // (b) 复用小序列：32 → 16 → 32（真实场景里环与弧共用槽位）。
+                PoolVfxView.WriteLine(line, points16, false);
+                Assert.AreEqual(PoolVfxView.ArcSegments, line.positionCount, "T99 (b) 弧段写入后 positionCount 应为 16。");
+                Assert.IsFalse(line.loop, "T99 (b) 弧应 loop = false。");
+                PoolVfxView.WriteLine(line, points32, true);
+                Assert.AreEqual(PoolVfxView.RingSegments, line.positionCount, "T99 (b) 环复用后 positionCount 应回到 32。");
+
+                // (a)/(b) 的硬判据：以上任意一步越界都会在此前打出错误日志 ⇒ 这一步就是"越小界"的探测。
+                LogAssert.NoUnexpectedReceived();
+
+                // (c) 源码级守卫：全类**只有一处** `SetPosition` 调用（即写入单点内部）。
+                //     绕过单点直写顶点 = 重新打开这条失效模式，必须拦下。
+                string root = System.IO.Path.GetDirectoryName(Application.dataPath);
+                string source = System.IO.File.ReadAllText(
+                    System.IO.Path.Combine(root ?? ".", "Assets/_Project/Scripts/Runtime/Physics/PoolVfxView.cs"));
+
+                int occurrences = 0;
+                int index = 0;
+                while ((index = source.IndexOf("SetPosition(", index, System.StringComparison.Ordinal)) >= 0)
+                {
+                    occurrences++;
+                    index += "SetPosition(".Length;
+                }
+
+                Assert.AreEqual(1, occurrences,
+                    $"T99 (c) `PoolVfxView` 里 `SetPosition(` 应恰好出现 1 次（写入单点内），实际 {occurrences} 次"
+                    + " ⇒ 有人绕过了 `WriteLine`，越界失效模式会被重新打开。");
+
+                TestContext.WriteLine("T99: 出厂态 positionCount=0 写入 32 点 ✓；32→16→32 复用 ✓；无越界错误日志 ✓；"
+                                      + "`SetPosition` 单点 ✓");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
         }
     }
 }

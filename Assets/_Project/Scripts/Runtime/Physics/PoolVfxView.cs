@@ -24,6 +24,9 @@ namespace Billiards.Physics
     /// ── 盲带（如实）────────────────────────────────────────────────────
     /// · 特效**观感**非判据可测（批处理 `-nographics` 无渲染）——判据只驱动纯逻辑
     ///   （动作曲线 / 接触推导 / 限频门）；LineRenderer 顶点沿用 AimAssistView 的既有盲带口径。
+    /// · **顶点写入路径已由 `T99` 覆盖**（`WriteLine` 的"先数量后顶点"契约 + 源码级"`SetPosition`
+    ///   只准出现在 `WriteLine` 内"）。该路径原先是纯盲带，直到实机刷出
+    ///   `LineRenderer.SetPosition index out of bounds!` 才暴露 ⇒ 现已收成单点并加判据。
     /// </summary>
     [AddComponentMenu("Billiards/Pool Vfx View")]
     public sealed class PoolVfxView : MonoBehaviour
@@ -88,6 +91,11 @@ namespace Billiards.Physics
         private readonly List<VfxSlot> _slots = new List<VfxSlot>();
         private readonly List<Vector2> _posBuffer = new List<Vector2>();
         private readonly List<Vector2> _velBuffer = new List<Vector2>();
+
+        // 顶点暂存（复用，避免每帧分配）。**必须先攒点、再交给 `WriteLine`** ——
+        // 那条路径是唯一会碰 `positionCount` 的地方（见 `WriteLine` 的注释：越界只打日志不抛异常）。
+        private readonly List<Vector3> _ringBuffer = new List<Vector3>(32);
+        private readonly List<Vector3> _sparkBuffer = new List<Vector3>(2);
         private readonly IntervalGate _hitGate = new IntervalGate(HitIntervalSeconds);
         private readonly IntervalGate _railGate = new IntervalGate(RailIntervalSeconds);
         private Material _lineMaterial;
@@ -538,6 +546,7 @@ namespace Billiards.Physics
             ring.startColor = color;
             ring.endColor = color;
 
+            _ringBuffer.Clear();
             if (slot.isArc)
             {
                 // 弧：以 directionDeg 为中心 ±60°（16 段），贴接触法向。
@@ -546,23 +555,19 @@ namespace Billiards.Physics
                 {
                     float t = i / (float)(ArcSegments - 1);
                     float angle = centerRad + Mathf.Lerp(-Mathf.PI / 3f, Mathf.PI / 3f, t);
-                    ring.SetPosition(i, PointOnRing(slot.center, scale, angle));
+                    _ringBuffer.Add(PointOnRing(slot.center, scale, angle));
                 }
-
-                ring.loop = false;
-                ring.positionCount = ArcSegments;
             }
             else
             {
                 for (int i = 0; i < RingSegments; i++)
                 {
                     float angle = i * Mathf.PI * 2f / RingSegments;
-                    ring.SetPosition(i, PointOnRing(slot.center, scale, angle));
+                    _ringBuffer.Add(PointOnRing(slot.center, scale, angle));
                 }
-
-                ring.loop = true;
-                ring.positionCount = RingSegments;
             }
+
+            WriteLine(ring, _ringBuffer, !slot.isArc);
 
             for (int s = 0; s < slot.sparks.Length; s++)
             {
@@ -588,8 +593,32 @@ namespace Billiards.Physics
 
                 Vector2 tip = slot.center + new Vector2(Mathf.Cos(sparkAngle), Mathf.Sin(sparkAngle)) * startRadius;
                 Vector2 tail = tip + new Vector2(Mathf.Cos(sparkAngle), Mathf.Sin(sparkAngle)) * slot.sparkLength;
-                spark.SetPosition(0, AimAssistView.MarkerWorldPoint(playfieldRoot, tip));
-                spark.SetPosition(1, AimAssistView.MarkerWorldPoint(playfieldRoot, tail));
+                _sparkBuffer.Clear();
+                _sparkBuffer.Add(AimAssistView.MarkerWorldPoint(playfieldRoot, tip));
+                _sparkBuffer.Add(AimAssistView.MarkerWorldPoint(playfieldRoot, tail));
+                WriteLine(spark, _sparkBuffer, false);
+            }
+        }
+
+        /// <summary>
+        /// **写顶点的单点**（全类唯一的 `SetPosition` 调用处）。
+        ///
+        /// ── 为什么必须先 `positionCount` 后 `SetPosition`（实测缺陷，2026-10-15）────────────
+        /// `LineRenderer.SetPosition` 在索引越界时**只打错误日志、不抛异常**（`LineRenderer.SetPosition index
+        /// out of bounds!`）。原实现是「先循环写 32 个点、循环之后才设 `positionCount = 32`」，
+        /// 而环出厂时 `positionCount = 0` ⇒ **每个点都越界**；且槽位在「环(32) / 弧(16)」之间复用时
+        /// 数量会由大变小 ⇒ **反复越界刷屏**，既淹掉真错误又极难定位（用户实机截图定位）。
+        /// 把"数量"与"顶点"收进同一个函数、顺序固定 ⇒ 该失效模式**在结构上不可能发生**。
+        ///
+        /// 判据 `T99` 直接驱动本函数（含 `positionCount = 0` 的出厂态）。
+        /// </summary>
+        public static void WriteLine(LineRenderer line, IReadOnlyList<Vector3> points, bool loop)
+        {
+            line.loop = loop;
+            line.positionCount = points.Count;
+            for (int i = 0; i < points.Count; i++)
+            {
+                line.SetPosition(i, points[i]);
             }
         }
 
@@ -634,7 +663,9 @@ namespace Billiards.Physics
             {
                 var slot = new VfxSlot
                 {
-                    ring = CreateLine("PoolVfxRing_" + i, 0),
+                    // 环按**最大段数**预置（弧只有 16 段）：即使将来有人绕过 `WriteLine` 直写顶点，
+                    // 出厂态也不会是"容量 0 却写 32 个点"。
+                    ring = CreateLine("PoolVfxRing_" + i, RingSegments),
                     sparks = new LineRenderer[SparkCount],
                 };
 
