@@ -29,21 +29,29 @@ namespace Billiards.Physics
     public sealed class AimAssistView : MonoBehaviour
     {
         /// <summary>
-        /// 虚线段长（**规范米**，乙-系数选定）。世界段长 = 本值 × <see cref="DrawScale"/>（1.2 根 ⇒ 0.072 m）。
+        /// 虚线段长（**规范米**）。世界段长 = 本值 × <see cref="DrawScale"/>。
+        /// 观感对齐：段长加大、间隙缩小 ⇒ Game 视图接近《8 Ball Pool》的连续瞄准线，
+        /// 同时保持 <c>gap &gt; 0</c>（`T80a`）与 <c>gap × scale ≥ MinGapWorld</c>（`T80d`）仍可判定。
         /// </summary>
-        public const float PredictionDashLength = 0.06f;
+        public const float PredictionDashLength = 0.25f;
 
         /// <summary>
-        /// 虚线间隙（**规范米**，乙-系数选定）。必须 `> 0`（`T80a`：间隙为 0 即实线 = "糊"的可判定反面）。
-        /// 世界间隙 = 本值 × <see cref="DrawScale"/>（1.2 根 ⇒ 0.030 m）≫ <see cref="MinGapWorld"/>。
+        /// 虚线间隙（**规范米**）。必须 `> 0`（`T80a`：间隙为 0 即实线 = "糊"的可判定反面）。
+        /// 世界间隙 = 本值 × <see cref="DrawScale"/>（1.2 根 ⇒ 0.0024 m）≥ <see cref="MinGapWorld"/>。
         /// </summary>
-        public const float PredictionGapLength = 0.025f;
+        public const float PredictionGapLength = 0.002f;
 
         /// <summary>线宽（**规范米**）。世界宽 = 本值 × <see cref="DrawScale"/>。</summary>
         public const float PredictionLineWidth = 0.006f;
 
         /// <summary>目标球出射线段长度（**规范米**，与 `PhysicsTestDrive.aimIndicatorLength = 0.55` 同量级）。</summary>
         public const float TargetLineLength = 0.55f;
+
+        /// <summary>白球偏转线长度（**规范米**）。比目标球出射线短（主次分明）。</summary>
+        public const float CueDeflectLineLength = 0.35f;
+
+        /// <summary>幽灵球空心圆的圆周采样段数（平滑度）。</summary>
+        public const int GhostCircleSegments = 32;
 
         /// <summary>
         /// **屏幕可辨下限**（**世界米**，乙-系数选定）= 16:9 基准取景、**1920 px 宽**下 ≥1 像素所对应的世界米数。
@@ -62,11 +70,15 @@ namespace Billiards.Physics
         [Tooltip("可视野缩放根（PlayfieldRoot）。为空 ⇒ 绘制退化为 scale 1。")]
         public Transform playfieldRoot;
 
-        private static readonly Color PathColor = new Color(0.35f, 1.00f, 0.55f, 1f);
-        private static readonly Color GhostColor = new Color(1.00f, 0.85f, 0.35f, 1f);
-        private static readonly Color TargetColor = new Color(1.00f, 0.45f, 0.25f, 1f);
+        private static readonly Color PathColor = new Color(1.00f, 1.00f, 1.00f, 0.95f);
+        private static readonly Color GhostColor = new Color(1.00f, 1.00f, 1.00f, 0.60f);
+        private static readonly Color TargetColor = new Color(1.00f, 0.85f, 0.25f, 0.95f);
+        private static readonly Color CueDeflectColor = new Color(0.55f, 0.85f, 1.00f, 0.80f);
 
         private readonly List<LineRenderer> _dashPool = new List<LineRenderer>();
+        private LineRenderer _ghostCircle;
+        private LineRenderer _targetLine;
+        private LineRenderer _cueDeflectLine;
         private Material _runtimeLineMaterial;
 
         // ── 纯几何 / 单点（判据直接驱动，不必真画）────────────────────────────────
@@ -171,6 +183,13 @@ namespace Billiards.Physics
                 Gizmos.DrawLine(ghostWorld,
                     ghostWorld + WorldDirection(prediction.TargetOutgoingDirection) * (TargetLineLength * scale));
             }
+
+            if (prediction.CueOutgoingDirection != Vector2.zero)
+            {
+                Gizmos.color = CueDeflectColor;
+                Gizmos.DrawLine(ghostWorld,
+                    ghostWorld + WorldDirection(prediction.CueOutgoingDirection) * (CueDeflectLineLength * scale));
+            }
         }
 
         // ── Game 视图虚线（PlayMode；EditMode 不产生对象 ⇒ 不污染场景）────────────
@@ -195,6 +214,7 @@ namespace Billiards.Physics
             }
 
             SyncRenderers(segments);
+            SyncContactMarkers(prediction);
         }
 
         /// <summary>
@@ -227,6 +247,8 @@ namespace Billiards.Physics
                 lr.startWidth = PredictionLineWidth;
                 lr.endWidth = PredictionLineWidth;
                 lr.numCapVertices = 0;
+                lr.startColor = PathColor;
+                lr.endColor = PathColor;
                 if (_runtimeLineMaterial != null)
                 {
                     lr.sharedMaterial = _runtimeLineMaterial;
@@ -252,6 +274,102 @@ namespace Billiards.Physics
                 lr.SetPosition(0, new Vector3(segments[i].a.x, PoolConstants.ClothHeightY, segments[i].a.y));
                 lr.SetPosition(1, new Vector3(segments[i].b.x, PoolConstants.ClothHeightY, segments[i].b.y));
             }
+        }
+
+        /// <summary>
+        /// 首接触标记（Game 视图）：幽灵球空心圆 + 目标球出射线 + 白球偏转线。
+        /// 坐标口径与虚线一致：`useWorldSpace = false` ⇒ 局部坐标 = 规范坐标，天然继承显示缩放；
+        /// 方向一律走 <see cref="WorldDirection"/>（父缩放不改方向 ⇒ 渲染方向与 Scene Gizmos 一致）。
+        /// 无首接触（打空）⇒ 三者全部隐藏，只留路径线。
+        /// </summary>
+        private void SyncContactMarkers(in ShotPrediction prediction)
+        {
+            if (playfieldRoot == null)
+            {
+                return;
+            }
+
+            bool hasContact = prediction.HasFirstContact;
+            Vector2 ghost = prediction.GhostBall;
+            Vector3 ghostLocal = new Vector3(ghost.x, PoolConstants.ClothHeightY, ghost.y);
+
+            if (_ghostCircle == null)
+            {
+                _ghostCircle = CreateMarkerLine("AimAssistGhostCircle", GhostColor, GhostCircleSegments);
+                _ghostCircle.loop = true;
+            }
+
+            if (_ghostCircle.positionCount != GhostCircleSegments)
+            {
+                _ghostCircle.positionCount = GhostCircleSegments;
+            }
+
+            _ghostCircle.gameObject.SetActive(hasContact);
+            if (hasContact)
+            {
+                float radius = PoolConstants.BallRadius;
+                for (int i = 0; i < GhostCircleSegments; i++)
+                {
+                    float angle = i * Mathf.PI * 2f / GhostCircleSegments;
+                    _ghostCircle.SetPosition(i, ghostLocal + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius));
+                }
+            }
+
+            bool hasTarget = hasContact && prediction.TargetOutgoingDirection != Vector2.zero;
+            if (_targetLine == null)
+            {
+                _targetLine = CreateMarkerLine("AimAssistTargetLine", TargetColor, 2);
+            }
+
+            _targetLine.gameObject.SetActive(hasTarget);
+            if (hasTarget)
+            {
+                _targetLine.SetPosition(0, ghostLocal);
+                _targetLine.SetPosition(1, ghostLocal + WorldDirection(prediction.TargetOutgoingDirection) * TargetLineLength);
+            }
+
+            bool hasCue = hasContact && prediction.CueOutgoingDirection != Vector2.zero;
+            if (_cueDeflectLine == null)
+            {
+                _cueDeflectLine = CreateMarkerLine("AimAssistCueDeflectLine", CueDeflectColor, 2);
+            }
+
+            _cueDeflectLine.gameObject.SetActive(hasCue);
+            if (hasCue)
+            {
+                _cueDeflectLine.SetPosition(0, ghostLocal);
+                _cueDeflectLine.SetPosition(1, ghostLocal + WorldDirection(prediction.CueOutgoingDirection) * CueDeflectLineLength);
+            }
+        }
+
+        /// <summary>创建一条挂在可视野根下的标记线（局部坐标 = 规范坐标；颜色/宽度见常量与调用方）。</summary>
+        private LineRenderer CreateMarkerLine(string markerName, Color color, int positions)
+        {
+            if (_runtimeLineMaterial == null)
+            {
+                Shader shader = Shader.Find("Sprites/Default");
+                if (shader != null)
+                {
+                    _runtimeLineMaterial = new Material(shader);
+                }
+            }
+
+            var go = new GameObject(markerName);
+            go.transform.SetParent(playfieldRoot, false);
+            var lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.positionCount = positions;
+            lr.startWidth = PredictionLineWidth;
+            lr.endWidth = PredictionLineWidth;
+            lr.numCapVertices = 0;
+            lr.startColor = color;
+            lr.endColor = color;
+            if (_runtimeLineMaterial != null)
+            {
+                lr.sharedMaterial = _runtimeLineMaterial;
+            }
+
+            return lr;
         }
     }
 }
