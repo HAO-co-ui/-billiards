@@ -324,6 +324,11 @@ namespace Billiards.EditorTools
             camGo.transform.SetParent(root.transform, false);
 
             Camera cam = camGo.AddComponent<Camera>();
+
+            // **场景唯一的音频监听器**：代码生成的相机**不会**自带 AudioListener（只有编辑器"新建场景"的
+            // 默认相机才带）——缺它则**全场景无声**（所有 AudioSource 不输出；`T91` 守这条）。
+            camGo.AddComponent<AudioListener>();
+
             camGo.transform.position = new Vector3(0f, 2.10f, -0.75f);
             camGo.transform.rotation = Quaternion.LookRotation(
                 new Vector3(0f, 0.02f, 0.06f) - camGo.transform.position, Vector3.up);

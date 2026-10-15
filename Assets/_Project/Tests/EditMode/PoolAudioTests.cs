@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using Billiards.EditorTools;
 using Billiards.Physics;
 using Billiards.Table;
 using NUnit.Framework;
@@ -214,6 +217,46 @@ namespace Billiards.Tests
             Assert.IsEmpty(failures, "T90 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine(
                 $"T90: 音量 0/半/满 = {v0:R}/{vHalf:R}/{vFull:R}；音高轮转 3 值；限流 7 格全对 ✓");
+        }
+
+        // ════════════ T91 场景音频接线（恰 1 个 AudioListener）════════════
+
+        /// <summary>
+        /// **场景必须恰有 1 个 AudioListener**：代码生成的相机**不会**自带监听器（只有编辑器"新建场景"的
+        /// 默认相机才带）——缺它则**全场景无声**（所有 `AudioSource` 不输出；用户实测"听不到音效"的根因）。
+        /// 文本级快扫（同 `GreyboxSceneTests` 的 `ScanGreyboxScene` 口径）：数 `!u!81`（AudioListener 类 ID）
+        /// 的出现次数；并校验 `PoolAudio` 宿主在场景里。
+        /// **注入负对照**：从场景移除 AudioListener 段 ⇒ 本判据红。
+        /// </summary>
+        [Test]
+        public void T91_Scene_HasSingleAudioListener()
+        {
+            string path = Path.Combine(Path.GetDirectoryName(Application.dataPath), GreyboxSceneSetup.ScenePath);
+            Assert.IsTrue(File.Exists(path), "T91：场景文件必须存在：" + path);
+
+            string text = File.ReadAllText(path);
+
+            int listeners = 0;
+            int at = 0;
+            while ((at = text.IndexOf("!u!81 ", at, StringComparison.Ordinal)) >= 0)
+            {
+                listeners++;
+                at += 7;
+            }
+
+            var failures = new List<string>();
+            if (listeners != 1)
+            {
+                failures.Add($"场景应恰有 1 个 AudioListener，实测 {listeners}（缺它全场景无声）。");
+            }
+
+            if (!text.Contains("PoolAudio"))
+            {
+                failures.Add("场景应含 PoolAudio 宿主（音频层接线）。");
+            }
+
+            Assert.IsEmpty(failures, "T91 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine($"T91: AudioListener={listeners}（恰 1）；PoolAudio 宿主在场景 ✓");
         }
     }
 }
