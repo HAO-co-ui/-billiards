@@ -54,6 +54,7 @@ namespace Billiards.EditorTools
         public const string PointerPowerControllerObjectName = "PointerPowerController";
         public const string CueStickControllerObjectName = "CueStick";
         public const string PoolAudioObjectName = "PoolAudio";
+        public const string PoolVfxObjectName = "PoolVfx";
 
         /// <summary>瞄准辅助宿主对象名（预测线控制器 + 视图；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string AimAssistObjectName = "AimAssist";
@@ -246,6 +247,14 @@ namespace Billiards.EditorTools
             poolAudio.railClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/SFX/rail.wav");
             poolAudio.pocketClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/SFX/pocket.wav");
             poolAudio.bgmClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/BGM/late-set.wav");
+
+            // 5e) **特效层** —— 计数增量门 + 状态推导生成 4 类程序化特效（池化、可开关；不消费接触事件流）。
+            var vfxGo = new GameObject(PoolVfxObjectName);
+            vfxGo.transform.SetParent(root.transform, false);
+            var vfxView = vfxGo.AddComponent<PoolVfxView>();
+            vfxView.drive = drive;
+            vfxView.tableConfig = config;
+            vfxView.playfieldRoot = playfieldRoot.transform;
 
             // 6) **瞄准辅助**（预测线）：控制器（胶水：只读内核 + 读驱动器开关）+ 视图（绘制：过显示层单点）。
             //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。

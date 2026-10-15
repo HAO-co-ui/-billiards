@@ -155,6 +155,10 @@ namespace Billiards.Physics
         /// </summary>
         private Vector3[] _lastVisualPositions;
 
+        // ── 入袋下沉动画状态（表现层；索引惰性扩展；`-1` = 未启动）────────────
+        private float[] _pocketSinkStart;
+        private Vector3[] _ballBaseScales;
+
         /// <summary>是否已有可用的"上一帧位置"；<c>false</c> 时本帧只记录、不旋转。</summary>
         private bool _hasLastVisualPositions;
 
@@ -533,6 +537,9 @@ namespace Billiards.Physics
                 }
 
                 visual.localPosition = canonicalPosition;
+
+                // 入袋反馈：离台球的下沉 + 缩小消失；回场球复位（曲线 = `PoolVfxView.PocketSinkPose`）。
+                ApplyPocketSink(visual, index);
             }
 
             if (_lastVisualPositions == null)
@@ -547,6 +554,96 @@ namespace Billiards.Physics
             }
 
             _lastVisualPositions[index] = canonicalPosition;
+        }
+
+        /// <summary>
+        /// **入袋反馈动画**（排期「下沉 + 缩放 + 短暂高亮」的可实现部分）：球离开台面后，可视物在
+        /// <see cref="PoolVfxView.SinkDurationSeconds"/> 内按 <see cref="PoolVfxView.PocketSinkPose"/>
+        /// 下沉并缩小，完成即隐藏；球回到场上（重摆 / 重载）⇒ 复位（激活 + 恢复基准缩放 + 清计时）。
+        /// （"短暂高亮"由 <see cref="PoolVfxView"/> 的袋口双环承担；球体材质级高亮待正式美术接入，登记。）
+        ///
+        /// ⚠ 表现层允许读 `Time`（确定性纪律针对内核；本类 `Update` 本就驱动表现）。
+        /// 基准缩放**首见时记录**（不假设为 1——将来美术换模型缩放不会漂移）。
+        /// </summary>
+        private void ApplyPocketSink(Transform visual, int index)
+        {
+            if (_simulator == null || index >= _simulator.Balls.Count)
+            {
+                return;
+            }
+
+            EnsureSinkArrays(index);
+            if (_ballBaseScales[index] == Vector3.zero)
+            {
+                _ballBaseScales[index] = visual.localScale;   // 首见记录基准
+            }
+
+            if (_simulator.IsBallInPlay(index))
+            {
+                if (_pocketSinkStart[index] >= 0f)
+                {
+                    // 回场复位（含动画中途被打断的情形）。
+                    _pocketSinkStart[index] = -1f;
+                    visual.localScale = _ballBaseScales[index];
+                    if (!visual.gameObject.activeSelf)
+                    {
+                        visual.gameObject.SetActive(true);
+                    }
+                }
+
+                return;
+            }
+
+            if (_pocketSinkStart[index] < 0f)
+            {
+                _pocketSinkStart[index] = Time.time;   // 首次观测到离台 ⇒ 启动下沉
+            }
+
+            float p = (Time.time - _pocketSinkStart[index]) / PoolVfxView.SinkDurationSeconds;
+            PoolVfxView.PocketSinkPose(p, out float yOffset, out float scale);
+            visual.localScale = _ballBaseScales[index] * scale;
+            visual.localPosition += new Vector3(0f, yOffset, 0f);
+
+            if (p >= 1f && visual.gameObject.activeSelf)
+            {
+                visual.gameObject.SetActive(false);
+            }
+        }
+
+        private void EnsureSinkArrays(int index)
+        {
+            if (_pocketSinkStart == null)
+            {
+                _pocketSinkStart = new float[Mathf.Max(4, index + 1)];
+                for (int i = 0; i < _pocketSinkStart.Length; i++)
+                {
+                    _pocketSinkStart[i] = -1f;
+                }
+            }
+            else if (index >= _pocketSinkStart.Length)
+            {
+                int oldLen = _pocketSinkStart.Length;
+                var grown = new float[Mathf.Max(index + 1, oldLen * 2)];
+                System.Array.Copy(_pocketSinkStart, grown, oldLen);
+                for (int i = oldLen; i < grown.Length; i++)
+                {
+                    grown[i] = -1f;
+                }
+
+                _pocketSinkStart = grown;
+            }
+
+            if (_ballBaseScales == null || index >= _ballBaseScales.Length)
+            {
+                int newLen = Mathf.Max(Mathf.Max(index + 1, (_ballBaseScales?.Length ?? 0) * 2), 4);
+                var grown = new Vector3[newLen];
+                if (_ballBaseScales != null)
+                {
+                    System.Array.Copy(_ballBaseScales, grown, _ballBaseScales.Length);
+                }
+
+                _ballBaseScales = grown;
+            }
         }
 
         /// <summary>
