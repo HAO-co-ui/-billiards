@@ -53,6 +53,7 @@ namespace Billiards.EditorTools
         public const string PointerAimControllerObjectName = "PointerAimController";
         public const string PointerPowerControllerObjectName = "PointerPowerController";
         public const string CueStickControllerObjectName = "CueStick";
+        public const string PoolAudioObjectName = "PoolAudio";
 
         /// <summary>瞄准辅助宿主对象名（预测线控制器 + 视图；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string AimAssistObjectName = "AimAssist";
@@ -234,6 +235,17 @@ namespace Billiards.EditorTools
             cueStick.drive = drive;
             cueStick.pull = powerController;
             powerController.cueStick = cueStick;
+
+            // 5d) **音频层** —— 内核接触事件流 → 撞声；strike 轮询出杆计数；纯函数调制 + 限流。
+            var audioGo = new GameObject(PoolAudioObjectName);
+            audioGo.transform.SetParent(root.transform, false);
+            var poolAudio = audioGo.AddComponent<PoolAudio>();
+            poolAudio.drive = drive;
+            poolAudio.strikeClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/SFX/strike.wav");
+            poolAudio.hitClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/SFX/hit.wav");
+            poolAudio.railClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/SFX/rail.wav");
+            poolAudio.pocketClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/SFX/pocket.wav");
+            poolAudio.bgmClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/BGM/late-set.wav");
 
             // 6) **瞄准辅助**（预测线）：控制器（胶水：只读内核 + 读驱动器开关）+ 视图（绘制：过显示层单点）。
             //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。

@@ -520,6 +520,7 @@ namespace Billiards.Physics
             _completedSteps = 0;
             _completedSubStepsInCurrentStep = 0;
             _subStepRemainingAtContact = 0f;
+            _contactEvents.Clear();
         }
 
         /// <summary>
@@ -1139,6 +1140,9 @@ namespace Billiards.Physics
             BallState ball = _balls[index];
             float speedIn = Length(ball.velocity);
 
+            // 只读诊断：接触事件（音频层消费；不改任何解算量）。
+            RecordContactEvent(ContactKind.Cushion, speedIn, ball.position);
+
             Vector2 q = ClosestPointOnSegment(ball.position, _segA[seg], _segB[seg]);
             Vector2 diff = ball.position - q;
 
@@ -1245,6 +1249,9 @@ namespace Billiards.Physics
 
             Vector2 rel = vi - vk;
             float vn = Dot(rel, n);
+
+            // 只读诊断：接触事件（音频层消费；不改任何解算量——惰性由 T72b 逐位基线验证）。
+            RecordContactEvent(ContactKind.BallBall, Length(rel), (pi + pk) * 0.5f);
 
             // ⚠ **计数必须反映"真实解算"**：只在"确实施加了冲量"或"确实做了位置分离"时才计。
             // 否则"保留计数、停止解算"的注入会因计数虚增而**全部通过**（计数与动量交换解耦）。
@@ -1512,6 +1519,9 @@ namespace Billiards.Physics
                     PocketJawCrossingCount++;
                 }
 
+                // 只读诊断：接触事件（越喉前速度；音频层消费——不改任何解算量）。
+                RecordContactEvent(ContactKind.Pocket, Length(_balls[index].velocity), _balls[index].position);
+
                 // 不变量：越喉平面即离台（不论分类）。
                 _balls[index].velocity = Vector2.zero;
                 _frozen[index] = true;
@@ -1594,6 +1604,70 @@ namespace Billiards.Physics
             float inv = 1f / PoolMath.Sqrt(len2);
             return new Vector2(v.x * inv, v.y * inv);
         }
+
+        // ── 接触事件（只读诊断；音频层消费）────────────────────────────────
+
+        private readonly List<ContactEvent> _contactEvents = new List<ContactEvent>();
+
+        /// <summary>接触事件的**单点记录器**（三条接触路径各调用一次；只读复制，不改任何解算量）。</summary>
+        private void RecordContactEvent(ContactKind kind, float relativeSpeed, Vector2 position)
+        {
+            _contactEvents.Add(new ContactEvent
+            {
+                kind = kind,
+                relativeSpeed = relativeSpeed,
+                position = position,
+            });
+        }
+
+        /// <summary>
+        /// **接触事件出口（drain 语义：读即清）**：把自上次 drain（或最近一次 <see cref="ResetDiagnostics"/>）
+        /// 以来记录的全部接触事件并入 <paramref name="into"/> 并清空内部缓冲，返回本次取出的条数。
+        /// **不做**"只读列表 + 单独清空"（两处状态易漏清）。缓冲随 <see cref="ResetDiagnostics"/> 归零
+        /// （与每杆计数同族语义）。
+        /// </summary>
+        public int DrainContactEvents(List<ContactEvent> into)
+        {
+            if (into == null || _contactEvents.Count == 0)
+            {
+                return 0;
+            }
+
+            int count = _contactEvents.Count;
+            into.AddRange(_contactEvents);
+            _contactEvents.Clear();
+            return count;
+        }
+    }
+
+    /// <summary>接触事件的类别（只读诊断；音频层用）。</summary>
+    public enum ContactKind
+    {
+        /// <summary>球-球（含"只分离不施冲量"的退化情形）。</summary>
+        BallBall,
+
+        /// <summary>球-库段（含深层重叠的贴库修正）。</summary>
+        Cushion,
+
+        /// <summary>越袋喉平面（落袋或擦角离台——二者同一判定单点）。</summary>
+        Pocket,
+    }
+
+    /// <summary>
+    /// **单条接触事件**（只读诊断，供音频层做"撞声"事件流）。
+    /// 语义：在接触**解算入口**（冲量 / 位置修正之前）记下"类别 + 接触前相对速度 + 接触位置"；
+    /// 越喉事件在速度**置零之前**取值。不读 `Time`、不引随机 ⇒ 确定性不破。
+    /// </summary>
+    public struct ContactEvent
+    {
+        /// <summary>接触类别。</summary>
+        public ContactKind kind;
+
+        /// <summary>接触前相对速度（m/s）：球-球 = |v_i − v_k|；球-库 = 球速；越喉 = 越界前球速。</summary>
+        public float relativeSpeed;
+
+        /// <summary>接触位置（物理平面，米）：球-球 = 两球中点；球-库 / 越喉 = 球心。</summary>
+        public Vector2 position;
     }
 
     /// <summary>

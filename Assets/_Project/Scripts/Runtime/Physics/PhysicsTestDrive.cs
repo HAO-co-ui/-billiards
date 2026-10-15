@@ -171,6 +171,12 @@ namespace Billiards.Physics
         /// </summary>
         public bool LastLaunchRespawnedCueBall { get; private set; }
 
+        /// <summary>**累计出杆次数**（只读出口；音频层轮询增量 ⇒ strike 事件。**不清零**）。</summary>
+        public int LaunchCount { get; private set; }
+
+        /// <summary>最近一次**成功出杆**的白球初速大小（m/s；被门控拒绝时保持旧值）。</summary>
+        public float LastLaunchSpeed { get; private set; }
+
         /// <summary>
         /// **瞄准辅助预测线开关的唯一读点**（= <see cref="enableShotPrediction"/>）。
         ///
@@ -451,6 +457,10 @@ namespace Billiards.Physics
             _simulator.ResetDiagnostics();
             _accumulator = 0f;
             LastLaunchRespawnedCueBall = cueOffTable;
+
+            // 只读出口（音频层轮询增量 ⇒ strike 事件；累计不清零）。
+            LaunchCount++;
+            LastLaunchSpeed = speed;
 
             if (cueOffTable)
             {
