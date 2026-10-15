@@ -46,11 +46,47 @@ namespace Billiards.Physics
         [Tooltip("可视野缩放根（PlayfieldRoot）。")]
         public Transform playfieldRoot;
 
+        /// <summary>
+        /// 球杆侧（击球流程状态机的唯一驱动者）。松手（力度达标）时若已接线 ⇒ 置**事件锁存**，
+        /// 由球杆在前推到位帧击球；**未接线 ⇒ 本类直接出杆**（兜底，输入路径不被阻塞）。
+        /// </summary>
+        [Tooltip("球杆控制器（可空）。接线后松手经球杆前推动画击球；为空则松手直接出杆。")]
+        public CueStickController cueStick;
+
         /// <summary>是否处于蓄力中（只读诊断出口）。</summary>
         public bool IsCharging { get; private set; }
 
         private Vector2 _dragStartPhysics;
         private bool _hadPick;
+
+        // ── 事件锁存（供球杆侧消费；消费即清零 ⇒ 不因两组件的 Update 顺序丢事件，至多滞后一帧）──
+        private bool _chargeBeginRequested;
+        private bool _chargeCancelRequested;
+        private bool _strikeRequested;
+
+        /// <summary>消费"请求进入蓄力"事件（读取即清零）。</summary>
+        public bool ConsumeChargeBeginRequested()
+        {
+            bool value = _chargeBeginRequested;
+            _chargeBeginRequested = false;
+            return value;
+        }
+
+        /// <summary>消费"蓄力被取消"事件（读取即清零）。</summary>
+        public bool ConsumeChargeCancelRequested()
+        {
+            bool value = _chargeCancelRequested;
+            _chargeCancelRequested = false;
+            return value;
+        }
+
+        /// <summary>消费"请求击球"事件（读取即清零；由球杆在前推到位帧执行 Launch）。</summary>
+        public bool ConsumeStrikeRequested()
+        {
+            bool value = _strikeRequested;
+            _strikeRequested = false;
+            return value;
+        }
 
         /// <summary>
         /// **拖向量 → 力度 ∈ [0,1]**（纯函数，判据 `T86` 直接驱动）：
@@ -92,6 +128,7 @@ namespace Billiards.Physics
                     _dragStartPhysics = start;
                     _hadPick = true;
                     IsCharging = true;
+                    _chargeBeginRequested = true;
                 }
             }
             else if (IsCharging && Input.GetMouseButton(1))
@@ -109,14 +146,22 @@ namespace Billiards.Physics
             }
             else if (IsCharging && Input.GetMouseButtonUp(1))
             {
-                // 松手：达到阈值 ⇒ 出杆；否则取消并把力度归零。
+                // 松手：达到阈值 ⇒ 出杆（接线球杆时经前推动画在到位帧击球；否则直接出杆兜底）；否则取消并力度归零。
                 IsCharging = false;
                 if (_hadPick && drive.power >= launchThreshold)
                 {
-                    drive.Launch();
+                    if (cueStick != null)
+                    {
+                        _strikeRequested = true;   // 球杆侧消费，前推到位帧击球
+                    }
+                    else
+                    {
+                        drive.Launch();
+                    }
                 }
                 else
                 {
+                    _chargeCancelRequested = true;
                     drive.power = 0f;
                 }
 

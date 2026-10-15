@@ -52,6 +52,7 @@ namespace Billiards.EditorTools
         /// <summary>指针瞄准控制器宿主对象名（交互胶水；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string PointerAimControllerObjectName = "PointerAimController";
         public const string PointerPowerControllerObjectName = "PointerPowerController";
+        public const string CueStickControllerObjectName = "CueStick";
 
         /// <summary>瞄准辅助宿主对象名（预测线控制器 + 视图；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string AimAssistObjectName = "AimAssist";
@@ -224,6 +225,15 @@ namespace Billiards.EditorTools
             powerController.drive = drive;
             powerController.aimCamera = cam;
             powerController.playfieldRoot = playfieldRoot.transform;
+
+            // 5c) **球杆控制器** —— 击球流程状态机的唯一驱动者 + 杆程序动画（前推到位帧击球恰一次）。
+            //     拉杆松手 ⇒ 事件锁存 ⇒ 球杆前推 ⇒ 命中帧出杆；与指示物同层（根下、不进缩放根）。
+            var cueStickGo = new GameObject(CueStickControllerObjectName);
+            cueStickGo.transform.SetParent(root.transform, false);
+            var cueStick = cueStickGo.AddComponent<CueStickController>();
+            cueStick.drive = drive;
+            cueStick.pull = powerController;
+            powerController.cueStick = cueStick;
 
             // 6) **瞄准辅助**（预测线）：控制器（胶水：只读内核 + 读驱动器开关）+ 视图（绘制：过显示层单点）。
             //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。
