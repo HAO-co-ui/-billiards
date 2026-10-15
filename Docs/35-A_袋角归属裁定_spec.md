@@ -15,9 +15,33 @@
 | `s > 0` 且 `ρ ≤ captureRadius` | 入袋（冻结离台） | **不变** |
 | `s > 0` 且 `captureRadius < ρ ≤ openingRadius` | **冻结**（速度置零、离台、**无反弹**） | **弹回**：推回喉平面内侧 + 法向反射 × 恢复系数，**不冻结、不离台** |
 | `s > 0` 且 `ρ > openingRadius` | **冻结**（同上） | **不算袋口事件**：不冻结、不计数，交给正常库边碰撞处理 |
+| **`s ≤ 0` 且球心落在袋口开口区内，且整盘静止** | **什么都不发生**（球永久挂在袋口） | **判入袋**（见 §1.1） |
 
 **用户原话**：「碰网框边缘时感觉不真实，好像缺少些弹力，球碰到碰网框边缘像贴在上面一样」
 ⇒ 第 2 行就是病根；第 3 行是同一个 bug 的另一种表现（球在库边上也被"粘住"）。
+
+### 1.1 第 4 行（**第二批反馈补入 —— 本规格第一版漏了这一支**）
+
+> 用户第二次贴图："**这样挂着视角看着不太合理**" —— 一颗球**可见地停在袋口里**（袋网之上）。
+
+**这一支为什么第一版没盖到**：本规格前三行都以 `s > 0`（球心越过袋喉平面）为前提；
+而用户截图中那颗球**球心尚未越过喉平面** ⇒ 它**仍是"在台上的球"**，
+捕获契约（美术包 `captureNote`：球心穿过袋喉朝网方向后才捕获）**根本不认为有事发生**
+⇒ 内核**合法地什么都不做**，球就**永久挂在袋口**。
+
+**裁定**：整盘静止时，若某球球心落在**袋口开口区**内，判它**入袋**（现实里袋口边缘的球会掉下去）。
+- **开口区的形式化**（沿用 §2.1 的逐袋几何）：球心到**袋喉中心** `throatCenter` 的距离
+  ≤ `openingRadius`，**且**球心在**袋喉外侧**（`s ≤ 0`，即尚未越喉但已在开口内）。
+  用 `openingRadius` 而非 `mouthWidth/2`：前者是美术包给的**开口半径**单值，逐袋已存在，语义直接。
+- **触发时机**：只在**整盘静止**（`TableAtRest` 达成的那个子步）判 —— **不得**每子步判，
+  否则会与 §3.1 第 2/3 行的弹回逻辑抢判定（正在飞入袋的球会半路被"静止"误伤）。
+- 判定后走**与正常入袋完全相同的路径**（`CapturedBallCount++`、`_capturedPocket[index] = p`、
+  速度置零、`_frozen = true`）⇒ 表现层**自动**获得下沉动画与袋口特效，不需要任何新表现代码。
+- ⚠ **`PocketProximityEvents` 是否 +1**：本支**不是**越喉事件 ⇒ **不加**（保持
+  `PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount` 的既有恒等式**不被破坏**）。
+  但那样 `CapturedBallCount` 会**大于**恒等式右边 ⇒ **该恒等式必须改为**：
+  `PocketProximityEvents + AtRestMouthDrops == CapturedBallCount + PocketJawCrossingCount`，
+  并新增一个独立计数 `AtRestMouthDrops`；**恒等式改动本身要写进判据**（`T108` 扩面）。
 
 ---
 
@@ -96,9 +120,13 @@ _frozen[index] = true;                   // ← 永远离开台面
 - 取 `ρ > openingRadius`（仍在 `s > 0` 的半平面内、但在开口带外）⇒：
   `PocketProximityEvents` 不增、`IsBallInPlay == true`、速度**未被置零**（由库边解算负责）。
 
-### `T108` 恒等式与既有捕获不变量
+### `T108` 恒等式与既有捕获不变量（**扩面**：加入 §1.1 的 `AtRestMouthDrops`）
 
-- `PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount` 在三类场景各成立（正中入袋 / 擦角弹回 / 开口带外）。
+- `PocketProximityEvents + AtRestMouthDrops == CapturedBallCount + PocketJawCrossingCount`
+  在**四类**场景各成立（正中入袋 / 擦角弹回 / 开口带外 / **静止在开口内的球被补判入袋**）。
+- **(新) 静止补判**：一球球心置于某袋 `openingRadius` 内、`s ≤ 0`，推进到整盘静止 ⇒
+  `AtRestMouthDrops == 1`、`IsBallInPlay == false`、`CapturedPocketIndex` 指向该袋；
+  **且飞行中的球不得被误伤**（同一场景把该球给一个朝袋的速度，静止前不得触发本支）。
 - 正中入袋路径**行为逐位不变**（`ρ ≈ 0`）：`CapturedBallCount == 1` 且冻结。
 
 **注入负对照（每档必须实测红）**：
