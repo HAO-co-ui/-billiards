@@ -59,6 +59,21 @@ namespace Billiards.EditorTools
         /// <summary>瞄准辅助宿主对象名（预测线控制器 + 视图；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string AimAssistObjectName = "AimAssist";
 
+        // ── 主相机取景（**HUD 布局期望值的前提**）──────────────────────────────
+        // 球桌在屏幕上的投影包围盒完全由这三项 + 可视野缩放决定；`PracticeHudLayout` 的三块分区
+        // 就是照着该投影的实测空余带宽摆的（见 `Docs/35-A_Day13_最小HUD_spec.md` §3.3）。
+        // 提成公开常量 + `BuildCamera` 直接引用 ⇒ 相机取景与 HUD 布局**不可能各自漂移**；
+        // 判据 `T95 (f)` 再从**已提交场景**回读校验一次（防"场景被手改、代码没跟上"）。
+
+        /// <summary>主相机世界位置。</summary>
+        public static readonly Vector3 CameraPosition = new Vector3(0f, 2.10f, -0.75f);
+
+        /// <summary>主相机注视点。</summary>
+        public static readonly Vector3 CameraLookTarget = new Vector3(0f, 0.02f, 0.06f);
+
+        /// <summary>基准垂直 FOV（度）；同时是场景序列化 FOV（`CameraViewportFitter` 从相机取 ⇒ 二者不可能漂移）。</summary>
+        public const float CameraBaseVerticalFovDeg = 52f;
+
         // ── 入口 ───────────────────────────────────────────────────────────
 
         [MenuItem("Billiards/Visual/Build Physics Greybox Scene", false, 402)]
@@ -338,10 +353,10 @@ namespace Billiards.EditorTools
             // 默认相机才带）——缺它则**全场景无声**（所有 AudioSource 不输出；`T91` 守这条）。
             camGo.AddComponent<AudioListener>();
 
-            camGo.transform.position = new Vector3(0f, 2.10f, -0.75f);
+            camGo.transform.position = CameraPosition;
             camGo.transform.rotation = Quaternion.LookRotation(
-                new Vector3(0f, 0.02f, 0.06f) - camGo.transform.position, Vector3.up);
-            cam.fieldOfView = 52f;
+                CameraLookTarget - camGo.transform.position, Vector3.up);
+            cam.fieldOfView = CameraBaseVerticalFovDeg;
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = 60f;
             cam.clearFlags = CameraClearFlags.SolidColor;

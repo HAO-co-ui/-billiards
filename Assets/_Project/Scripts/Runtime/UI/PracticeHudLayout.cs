@@ -1,0 +1,188 @@
+using System.Collections.Generic;
+using Billiards.Core;
+using Billiards.Physics;
+using UnityEngine;
+
+namespace Billiards.UI
+{
+    /// <summary>HUD 三块的视口矩形（`x`/`y` = 左下原点、`width`/`height` 为比例，全部 ∈ [0,1]）。</summary>
+    public struct PracticeHudRects
+    {
+        /// <summary>计数组（剩余球数 / 杆数 / 已进球）。</summary>
+        public Rect counters;
+
+        /// <summary>状态条（`Aim` / `Moving`）。</summary>
+        public Rect status;
+
+        /// <summary>力度块（`POWER` + 百分比 + 横条 + `Shoot`）。</summary>
+        public Rect power;
+    }
+
+    /// <summary>
+    /// **最小 HUD 的布局单点**（`Docs/35-A_Day13_最小HUD_spec.md` §4）。
+    ///
+    /// ── 为什么全部落在「顶带」（几何硬约束，不是审美选择）──────────────────────
+    /// 本工程的相机构图（球桌几乎充满视口）实测给出：**顶带空余 0.235298**（16:9，六档中最紧）、
+    /// **底带仅 0.093984**、**左右各仅 0.049899**。参考实现的"右侧竖栏 + 底部横条"在本工程**摆不下**；
+    /// 底带还被球桌近侧库边/木框占据 ⇒ 三块一律落在顶带 `y ∈ [0.780, 0.982]`。
+    /// 定量依据与六档投影表见 spec §3.3。
+    ///
+    /// ── 盲带（如实）────────────────────────────────────────────────────────
+    /// 本类只保证**几何不变量**（不越界 / 不压球桌 / 互不重叠 / 字号下限）。
+    /// **文字在块内的实际像素溢出**、颜色观感、间距舒适度均**不在**判据覆盖内（`-nographics` 无渲染）。
+    /// </summary>
+    public static class PracticeHudLayout
+    {
+        // ── 画布基准（`CanvasScaler.ScaleWithScreenSize` + `match = 0.5`）──────
+        public const int ReferenceWidth = 1920;
+        public const int ReferenceHeight = 1080;
+
+        /// <summary>`matchWidthOrHeight`（0 = 只按宽、1 = 只按高）。</summary>
+        public const float MatchWidthOrHeight = 0.5f;
+
+        // ── 三块分区（视口比例，规格 §4.1 逐字）────────────────────────────
+        // y 上界 0.982 < 1（上边距 0.018）；y 下界 0.780 > 球桌最高投影 0.764702（余量 0.015298）。
+        public static readonly Rect CountersZone = new Rect(0.020f, 0.780f, 0.280f, 0.202f);
+        public static readonly Rect StatusZone = new Rect(0.360f, 0.780f, 0.280f, 0.202f);
+        public static readonly Rect PowerZone = new Rect(0.700f, 0.780f, 0.280f, 0.202f);
+
+        // ── 可读性下限（规格 §4.2）──────────────────────────────────────────
+        /// <summary>小标签 / 状态 / 按钮文案的设计字号（1080 域像素）。</summary>
+        public const float LabelFontSize = 14f;
+
+        /// <summary>数值大字的设计字号（1080 域像素）。</summary>
+        public const float ValueFontSize = 26f;
+
+        /// <summary>文本在 **1280×720** 下的实际像素高下限。</summary>
+        public const float MinReadablePixels = 9f;
+
+        /// <summary>`Shoot` 按钮设计尺寸（1080 域像素）。</summary>
+        public const float ShootButtonWidth = 150f;
+        public const float ShootButtonHeight = 43f;
+
+        // ── 球桌口径（唯一来源 = `PoolConstants` / `PoolGeometry`，此处不另立数值）──
+        /// <summary>台面矩形的四个物理角（`PoolGeometry` 是唯一坐标转换点，铁律 16）。</summary>
+        public static IReadOnlyList<Vector2> ClothCorners { get; } = new[]
+        {
+            new Vector2(-PoolConstants.ClothInnerLength * 0.5f, -PoolConstants.ClothInnerWidth * 0.5f),
+            new Vector2(PoolConstants.ClothInnerLength * 0.5f, -PoolConstants.ClothInnerWidth * 0.5f),
+            new Vector2(-PoolConstants.ClothInnerLength * 0.5f, PoolConstants.ClothInnerWidth * 0.5f),
+            new Vector2(PoolConstants.ClothInnerLength * 0.5f, PoolConstants.ClothInnerWidth * 0.5f),
+        };
+
+        /// <summary>
+        /// 三块分区。**注**：规格 §5.3 曾写作 `Resolve(float aspect)`，实现改为**无参** ——
+        /// 三块是**视口比例常量**，宽高比不进入求解 ⇒ 保留该参数只会得到一个"传了不用"的空参数（死参数）。
+        /// 该偏离已登记（规格只钉死分区的**数值**，未钉死"必须依赖 aspect"）。
+        /// </summary>
+        public static PracticeHudRects Resolve()
+        {
+            return new PracticeHudRects
+            {
+                counters = CountersZone,
+                status = StatusZone,
+                power = PowerZone,
+            };
+        }
+
+        /// <summary>转发 <see cref="CameraViewportFitter.ResolveVerticalFovDeg"/>（同一不变量单点实现，铁律 16）。</summary>
+        public static float ResolveVerticalFovDeg(float aspect, float baseAspect, float baseVerticalFovDeg, float maxVerticalFovDeg)
+        {
+            return CameraViewportFitter.ResolveVerticalFovDeg(aspect, baseAspect, baseVerticalFovDeg, maxVerticalFovDeg);
+        }
+
+        /// <summary>
+        /// **针孔投影**：世界点 → 视口（`(0,0)` = 左下）。
+        /// 相机无 roll（`up = +Y`）⇒ `right = normalize(cross(up, forward))`、`upCam = cross(forward, right)`。
+        /// **刻意不用 `Camera.WorldToViewportPoint`** —— 判据要能在**没有相机对象**时算（纯函数、可复现）。
+        /// </summary>
+        public static Vector2 ProjectToViewport(Vector3 worldPoint, Vector3 cameraPosition, Vector3 cameraForward,
+                                                float verticalFovDeg, float aspect)
+        {
+            Vector3 forward = cameraForward.normalized;
+            Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
+            Vector3 up = Vector3.Cross(forward, right);
+
+            Vector3 v = worldPoint - cameraPosition;
+            float z = Vector3.Dot(v, forward);
+            float x = Vector3.Dot(v, right);
+            float y = Vector3.Dot(v, up);
+
+            if (!(Mathf.Abs(z) > 1e-6f))
+            {
+                return new Vector2(float.NaN, float.NaN);   // 退化：点在相机平面上（本工程用不到）
+            }
+
+            float halfH = Mathf.Tan(verticalFovDeg * 0.5f * Mathf.Deg2Rad);
+            float halfW = halfH * aspect;
+            return new Vector2(0.5f + 0.5f * (x / z / halfW), 0.5f + 0.5f * (y / z / halfH));
+        }
+
+        /// <summary>
+        /// **球桌主区**在视口的投影包围盒 = 台面（内库）矩形四角的投影包围盒。
+        /// 四角经 `playfieldRoot.TransformPoint(PoolGeometry.PhysicsToUnity(corner, 0))` 得世界点 ⇒
+        /// 显示缩放（`PlayfieldVisualScale`）**由变换本身提供**，本类不重复乘。
+        /// 台面在 `y = 0`（台呢面）。
+        /// </summary>
+        public static Rect TableViewportRect(Transform playfieldRoot, Vector3 cameraPosition, Vector3 cameraForward,
+                                             float verticalFovDeg, float aspect)
+        {
+            float minX = float.PositiveInfinity, minY = float.PositiveInfinity;
+            float maxX = float.NegativeInfinity, maxY = float.NegativeInfinity;
+
+            foreach (Vector2 corner in ClothCorners)
+            {
+                Vector3 world = playfieldRoot == null
+                    ? PoolGeometry.PhysicsToUnity(corner, 0f)
+                    : playfieldRoot.TransformPoint(PoolGeometry.PhysicsToUnity(corner, 0f));
+
+                Vector2 viewport = ProjectToViewport(world, cameraPosition, cameraForward, verticalFovDeg, aspect);
+                minX = Mathf.Min(minX, viewport.x);
+                maxX = Mathf.Max(maxX, viewport.x);
+                minY = Mathf.Min(minY, viewport.y);
+                maxY = Mathf.Max(maxY, viewport.y);
+            }
+
+            return Rect.MinMaxRect(minX, minY, maxX, maxY);
+        }
+
+        /// <summary>视口矩形 → 像素矩形（`(0,0)` = 左下）。</summary>
+        public static Rect ToScreenPixels(Rect viewportRect, int screenWidth, int screenHeight)
+        {
+            return new Rect(
+                viewportRect.xMin * screenWidth,
+                viewportRect.yMin * screenHeight,
+                viewportRect.width * screenWidth,
+                viewportRect.height * screenHeight);
+        }
+
+        /// <summary>
+        /// **画布缩放系数**：照抄 `CanvasScaler` 在 `ScaleWithScreenSize` + `match=0.5` 下的对数插值
+        /// （不是 `min(w,h)/1080` 的近似 —— 那在非 16:9 档会算错）。
+        /// </summary>
+        public static float CanvasScale(int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+            {
+                return 1f;
+            }
+
+            float logWidth = Mathf.Log((float)screenWidth / ReferenceWidth, 2f);
+            float logHeight = Mathf.Log((float)screenHeight / ReferenceHeight, 2f);
+            return Mathf.Pow(2f, Mathf.Lerp(logWidth, logHeight, MatchWidthOrHeight));
+        }
+
+        /// <summary>某设计字号在给定分辨率下的**实际像素高**（"两档可读"的可计算口径）。</summary>
+        public static float RenderedFontPixels(float designFontSize, int screenWidth, int screenHeight)
+        {
+            return designFontSize * CanvasScale(screenWidth, screenHeight);
+        }
+
+        /// <summary>`inner ⊆ outer`（四条边逐条判，容差 0）。</summary>
+        public static bool ContainsFully(Rect outer, Rect inner)
+        {
+            return inner.xMin >= outer.xMin && inner.xMax <= outer.xMax
+                && inner.yMin >= outer.yMin && inner.yMax <= outer.yMax;
+        }
+    }
+}
