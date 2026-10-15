@@ -255,6 +255,30 @@ namespace Billiards.Physics
             SyncAimIndicator();
         }
 
+        /// <summary>
+        /// **重摆开新局**（练习"再来一局"的唯一入口）：按当前模式重新装球 + 清累加器 + 重置自转跟踪。
+        ///
+        /// ── 为什么**刻意不动 `LaunchCount`** ────────────────────────────────────
+        /// `LaunchCount` 是 `PoolAudio`（击杆声）与 `PoolVfxView`（击杆特效）的**单调出杆计数器**，
+        /// 二者都只认"**上升**"（`count > last`）。归零后再从 1 涨起，**永远追不上**归零前的 `last`
+        /// ⇒ 重摆后的第一杆会**既不响也不出特效**。故本方法只重装球，计数器留给会话层做差值。
+        ///
+        /// 入袋球的可视物由 `SyncBallVisual` 的"回场复位"分支自动激活（下沉动画的中断路径已覆盖）。
+        /// </summary>
+        public void ReloadRack()
+        {
+            if (_simulator == null)
+            {
+                return;
+            }
+
+            _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
+            _accumulator = 0f;
+            ResetVisualRotationTracking();   // 重摆是瞬移 ⇒ 不得被当成真实位移、否则球凭空猛转
+            SyncVisual();
+            SyncAimIndicator();
+        }
+
         private void Update()
         {
             if (_simulator == null)

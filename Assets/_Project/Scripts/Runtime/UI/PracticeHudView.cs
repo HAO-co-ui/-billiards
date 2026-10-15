@@ -60,6 +60,20 @@ namespace Billiards.UI
 
         /// <summary>环境光/背景色随场景设置；本组件只画 UI。</summary>
         private Canvas _canvas;
+
+        /// <summary>
+        /// HUD 画布的根 `RectTransform`。**结算卡挂这里而不是自建第二个画布** ——
+        /// 同一画布 = 同一个 `CanvasScaler` 口径（不存在两份画布缩放），且只有一个 `sortingOrder` 需要维护。
+        /// </summary>
+        public RectTransform CanvasRoot
+        {
+            get
+            {
+                EnsureBuilt();
+                return (RectTransform)_canvas.transform;
+            }
+        }
+
         private RectTransform _counters;
         private RectTransform _status;
         private RectTransform _power;
@@ -114,6 +128,10 @@ namespace Billiards.UI
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = PracticeHudLayout.MatchWidthOrHeight;
 
+            // 射线器：**结算卡的按钮**需要它（本画布是全场景唯一带射线器的画布，`T102 (c)` 守）。
+            // HUD 自身的三块仍只显示、不接收射线（各控件的 `raycastTarget` 保持 false）。
+            canvasGo.AddComponent<GraphicRaycaster>();
+
             _counters = CreateZone(canvasGo.transform, zones.counters, "Counters");
             _status = CreateZone(canvasGo.transform, zones.status, "Status");
             _power = CreateZone(canvasGo.transform, zones.power, "Power");
@@ -126,7 +144,7 @@ namespace Billiards.UI
         // ── 建树 ─────────────────────────────────────────────────────────────
 
         /// <summary>分区落地：**锚点 = 视口分区**（`offsetMin/Max = 0`）⇒ 与分辨率无关，且与判据同源。</summary>
-        private static RectTransform CreateZone(Transform parent, Rect zone, string name)
+        public static RectTransform CreateZone(Transform parent, Rect zone, string name)
         {
             var go = new GameObject(name, typeof(RectTransform));
             var rect = (RectTransform)go.transform;
@@ -238,16 +256,9 @@ namespace Billiards.UI
 
             if (drive != null && drive.Simulator != null)
             {
-                PoolSimulator simulator = drive.Simulator;
-                int totalObjects = Mathf.Max(0, simulator.Balls.Count - 1);   // 0 号是白球
-                int pocketed = 0;
-                for (int i = 1; i < simulator.Balls.Count; i++)
-                {
-                    if (!simulator.IsBallInPlay(i))
-                    {
-                        pocketed++;
-                    }
-                }
+                // 逐球清点走 `PracticeSession.CountBalls`（**唯一实现点**，铁律 16）——
+                // 结算卡的三列与 HUD 的计数组共用同一份口径，不存在两处各数一遍。
+                PracticeSession.CountBalls(drive.Simulator, out int pocketed, out int totalObjects);
 
                 _counterValues[0].text = (totalObjects - pocketed).ToString();
                 _counterValues[1].text = drive.LaunchCount.ToString();
@@ -263,13 +274,13 @@ namespace Billiards.UI
 
         // ── 小工具 ───────────────────────────────────────────────────────────
 
-        private static RectTransform AddPanel(RectTransform parent, Color fill, Color border)
+        public static RectTransform AddPanel(RectTransform parent, Color fill, Color border)
         {
             return AddPanel(parent, fill, border, Vector2.zero, Vector2.one);
         }
 
-        private static RectTransform AddPanel(RectTransform parent, Color fill, Color border,
-                                              Vector2 anchorMin, Vector2 anchorMax)
+        public static RectTransform AddPanel(RectTransform parent, Color fill, Color border,
+                                             Vector2 anchorMin, Vector2 anchorMax)
         {
             var go = new GameObject("Panel", typeof(RectTransform), typeof(Image));
             var rect = (RectTransform)go.transform;
@@ -284,9 +295,9 @@ namespace Billiards.UI
             return rect;
         }
 
-        private static TextMeshProUGUI CreateText(Transform parent, string name, TMP_FontAsset font, float size,
-                                                  Color color, TextAlignmentOptions alignment,
-                                                  Vector2 anchorMin, Vector2 anchorMax)
+        public static TextMeshProUGUI CreateText(Transform parent, string name, TMP_FontAsset font, float size,
+                                                 Color color, TextAlignmentOptions alignment,
+                                                 Vector2 anchorMin, Vector2 anchorMax)
         {
             var go = new GameObject(name, typeof(RectTransform));
             var rect = (RectTransform)go.transform;

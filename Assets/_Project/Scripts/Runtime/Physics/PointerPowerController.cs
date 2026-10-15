@@ -115,6 +115,13 @@ namespace Billiards.Physics
                 return;
             }
 
+            // **模态让位**：结算卡打开期间不许蓄力 —— 否则在卡片上右键拖拽会蓄力、松手时出杆，
+            // 把刚开的新一局当场打乱。唯一判据点 = `PracticeResultView.IsOpen`。
+            if (Billiards.UI.PracticeResultView.IsOpen)
+            {
+                return;
+            }
+
             if (Input.GetMouseButtonDown(1))
             {
                 // 进入蓄力：球必须静止（与出杆门控同口径）；起点拾取失败（台面外）则不进入。

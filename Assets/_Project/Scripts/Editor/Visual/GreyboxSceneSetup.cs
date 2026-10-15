@@ -8,6 +8,7 @@ using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 
 namespace Billiards.EditorTools
@@ -60,6 +61,12 @@ namespace Billiards.EditorTools
 
         /// <summary>最小 HUD 宿主对象名（与其它表现层同层：`PhysicsGreybox` 根下，**不进缩放根**）。</summary>
         public const string PracticeHudObjectName = "PracticeHud";
+
+        /// <summary>练习结算卡宿主对象名。</summary>
+        public const string PracticeResultObjectName = "PracticeResult";
+
+        /// <summary>`EventSystem` 宿主对象名（结算卡按钮的射线入口）。</summary>
+        public const string EventSystemObjectName = "EventSystem";
 
         /// <summary>瞄准辅助宿主对象名（预测线控制器 + 视图；挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
         public const string AimAssistObjectName = "AimAssist";
@@ -287,6 +294,22 @@ namespace Billiards.EditorTools
             hud.cueStick = cueStick;
             hud.titleFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.TitleFontAssetPath);
             hud.bodyFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.BodyFontAssetPath);
+
+            // 5g) **练习结算卡**（排期「练习结算与埋点」）+ 模态交互所需的最小 UI 基础设施。
+            //     `EventSystem` + `StandaloneInputModule`（**旧输入**）—— 与本工程既有输入口径一致：
+            //     `PointerAimController` / `PointerPowerController` 一律用 `Input.GetMouseButton` / `KeyCode`，
+            //     且 `ProjectSettings.activeInputHandler = 2`（新旧都开）⇒ 无需引入 `InputSystemUIInputModule`
+            //     与额外的 InputAction 资产。
+            var eventSystemGo = new GameObject(EventSystemObjectName);
+            eventSystemGo.transform.SetParent(root.transform, false);
+            eventSystemGo.AddComponent<EventSystem>();
+            eventSystemGo.AddComponent<StandaloneInputModule>();
+
+            var resultGo = new GameObject(PracticeResultObjectName);
+            resultGo.transform.SetParent(root.transform, false);
+            var resultView = resultGo.AddComponent<PracticeResultView>();
+            resultView.drive = drive;
+            resultView.hud = hud;
 
             // 6) **瞄准辅助**（预测线）：控制器（胶水：只读内核 + 读驱动器开关）+ 视图（绘制：过显示层单点）。
             //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。

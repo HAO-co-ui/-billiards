@@ -110,6 +110,13 @@ namespace Billiards.Physics
                 return;
             }
 
+            // **模态让位**：结算卡打开期间不作瞄准 —— 唯一判据点 = `PracticeResultView.IsOpen`。
+            // 否则在卡片上左键拖拽会同时驱动瞄准锁，交互会串。
+            if (Billiards.UI.PracticeResultView.IsOpen)
+            {
+                return;
+            }
+
             bool fine = Input.GetKey(fineKey);
 
             // 1) 方向键微调（与"指针拖拽"正交，锁定时也允许微调 —— 那是"锁定后微调"的正常用途）。
