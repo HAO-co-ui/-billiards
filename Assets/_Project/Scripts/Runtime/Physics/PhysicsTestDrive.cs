@@ -275,6 +275,7 @@ namespace Billiards.Physics
             _simulator = new PoolSimulator(tableConfig, parameters, captureScale, restSpeed, restFrames);
             _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
             _accumulator = 0f;
+            TotalSteps = 0;
             ResetVisualRotationTracking();   // 首帧只落位、不自转（无"上一帧位置"可用）
 
             if (cushionGizmo != null)
@@ -305,6 +306,7 @@ namespace Billiards.Physics
 
             _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
             _accumulator = 0f;
+            TotalSteps = 0;
             ResetVisualRotationTracking();   // 重摆是瞬移 ⇒ 不得被当成真实位移、否则球凭空猛转
             SyncVisual();
             SyncAimIndicator();
@@ -405,8 +407,18 @@ namespace Billiards.Physics
                 _simulator.Step();
             }
 
+            TotalSteps += steps;
+            // 只读上报：给冒烟证据用（Core 层只存一个数字，不认识物理类型 ⇒ 不形成反向依赖）。
+            SmokeProbe.ReportPhysicsSteps(TotalSteps);
+
             SyncVisual();
         }
+
+        /// <summary>
+        /// **累计已推进的物理步数**（只读出口）。用途：① 冒烟证据里核"物理是否真的按 120 Hz 在走"；
+        /// ② 判据可直接断言"累计步数 == 期望步数"而不用反推累加器。
+        /// </summary>
+        public long TotalSteps { get; private set; }
 
         /// <summary>
         /// 由累计时间求应推进的**整数**步数（向下取整）。纯函数，供单测直接断言。
