@@ -480,8 +480,12 @@ namespace Billiards.Tests
         ///    **酒红**并显示 `Foul` / `Ball in hand` + 计进结算卡的 `FOULS` 列。
         ///    （手动自由球摆位未实现，登记 35-B；判据只锁"看得见 + 数得对"。）
         ///
-        /// **可被打死**：把 `ShouldShowAimAssist` 的 `tableAtRest` 项去掉 ⇒ (a) 红；
-        /// 把 `StatusLabel` 的犯规优先去掉 ⇒ (b) 红。
+        /// ③ **杆不得穿模**：`VisibleStickLength` 把杆尾夹在桌面外框内（实机反馈"球杆穿模了"）。
+        /// ④ **白球离台即隐藏**：`ShouldShowAimAssist` 的 `cueBallInPlay` 与 `CueStickController` 的
+        ///    可见门都判"白球在场上"（实机反馈"落网没反馈 + 线从袋口射出来"）。
+        ///
+        /// **可被打死**：把 `ShouldShowAimAssist` 的任一条去掉 ⇒ (a) 红；
+        /// 把 `StatusLabel` 的犯规优先去掉 ⇒ (b) 红；把 `VisibleStickLength` 改成恒返回满长 ⇒ (e) 红。
         /// </summary>
         [Test]
         public void T104_AimAssistVisibility_AndFoulFeedback()
@@ -497,11 +501,43 @@ namespace Billiards.Tests
                 }
             }
 
-            Check("(a) 三条全真", AimAssistController.ShouldShowAimAssist(true, true, false), true);
-            Check("(a) 预测开关关闭", AimAssistController.ShouldShowAimAssist(false, true, false), false);
-            Check("(a) **球在运动**（线不得停在原地）", AimAssistController.ShouldShowAimAssist(true, false, false), false);
-            Check("(a) 结算卡打开（模态让位）", AimAssistController.ShouldShowAimAssist(true, true, true), false);
-            Check("(a) 三者全否", AimAssistController.ShouldShowAimAssist(false, false, true), false);
+            Check("(a) 四条全真", AimAssistController.ShouldShowAimAssist(true, true, true, false), true);
+            Check("(a) 预测开关关闭", AimAssistController.ShouldShowAimAssist(false, true, true, false), false);
+            Check("(a) **球在运动**（线不得停在原地）", AimAssistController.ShouldShowAimAssist(true, false, true, false), false);
+            Check("(a) **白球不在场上**（不得从袋口残留位置画线）",
+                AimAssistController.ShouldShowAimAssist(true, true, false, false), false);
+            Check("(a) 结算卡打开（模态让位）", AimAssistController.ShouldShowAimAssist(true, true, true, true), false);
+            Check("(a) 四条全否", AimAssistController.ShouldShowAimAssist(false, false, false, true), false);
+
+            // (e) 杆长夹取：杆尾不得越过桌面外框（实机表现为杆穿过木库边）
+            const float full = CueStickController.StickLength;
+            float towardMinusX = CueStickController.VisibleStickLength(
+                Vector3.zero, new Vector3(1f, 0f, 0f), full, -1f, 1f, -1f, 1f);
+            if (Mathf.Abs(towardMinusX - 1f) > 1e-4f)
+            {
+                failures.Add($"(e) 朝 +X 瞄准时杆尾应刚好贴 x=−1（可见长 1.0），实际 {towardMinusX:R}。");
+            }
+
+            float towardMinusZ = CueStickController.VisibleStickLength(
+                new Vector3(0.6f, 0f, 0f), new Vector3(0f, 0f, 1f), full, -1f, 1f, -1f, 1f);
+            if (Mathf.Abs(towardMinusZ - 1f) > 1e-4f)
+            {
+                failures.Add($"(e) 朝 +Z 瞄准时杆尾应刚好贴 z=−1（可见长 1.0），实际 {towardMinusZ:R}。");
+            }
+
+            float insideBox = CueStickController.VisibleStickLength(
+                Vector3.zero, new Vector3(0f, 0f, 1f), 0.5f, -1f, 1f, -1f, 1f);
+            if (Mathf.Abs(insideBox - 0.5f) > 1e-4f)
+            {
+                failures.Add($"(e) 框内应给满长 0.5，实际 {insideBox:R}。");
+            }
+
+            float degenerate = CueStickController.VisibleStickLength(
+                Vector3.zero, Vector3.zero, full, -1f, 1f, -1f, 1f);
+            if (Mathf.Abs(degenerate - full) > 1e-4f)
+            {
+                failures.Add($"(e) 退化方向应给满长 {full:R}，实际 {degenerate:R}。");
+            }
 
             // (b) 犯规窗口内状态条优先显示犯规（否则按流程相位）
             if (PracticeHudState.StatusLabel(ShotPhase.Aim, true) != PracticeHudState.StateFoul)
@@ -556,7 +592,7 @@ namespace Billiards.Tests
             }
 
             Assert.IsEmpty(failures, "T104 失败：\n" + string.Join("\n", failures));
-            TestContext.WriteLine("T104: 显示门真值表 5 例 ✓；犯规优先显示 ✓；文案常量可区分 ✓；scratch 出厂态 ✓");
+            TestContext.WriteLine("T104: 显示门真值表 6 例 ✓；杆长夹取 4 例 ✓；犯规优先显示 ✓；文案常量可区分 ✓；scratch 出厂态 ✓");
         }
 
         private static string Trim(string value)

@@ -149,6 +149,9 @@ namespace Billiards.Physics
         private PoolSimulator _simulator;
         private float _accumulator;
 
+        /// <summary>上一帧白球是否在场上（scratch 上升沿检测用）。</summary>
+        private bool _cueWasInPlay = true;
+
         /// <summary>
         /// 各球可视物**上一帧写入的世界位置**（按球索引），用于求本帧世界位移 ⇒ 纯滚动自转。
         /// <c>null</c> 表示"尚无上一帧"（首帧 / 重新装载后）⇒ 只记录、不旋转。
@@ -324,6 +327,32 @@ namespace Billiards.Physics
             }
 
             Advance(Time.fixedDeltaTime);
+            TrackCueBallScratch();
+        }
+
+        /// <summary>
+        /// **白球离台的那一刻**记账（**不是**等到下一杆）。
+        ///
+        /// 用户实测反馈："发射白球落网又没反馈"。原实现把 scratch 计在**下一次 `Launch()`** 里
+        /// ⇒ 本杆结束后状态条毫无反应、判罚迟了一杆。改为在推进循环里判**上升沿**：
+        /// `IsBallInPlay(0)` 由真变假 ⇒ 立即 `ScratchCount++` + 打时间戳，
+        /// HUD 与音频据此**当帧**给出反馈。
+        /// </summary>
+        private void TrackCueBallScratch()
+        {
+            if (_simulator == null)
+            {
+                return;
+            }
+
+            bool inPlay = _simulator.IsBallInPlay(0);
+            if (_cueWasInPlay && !inPlay)
+            {
+                ScratchCount++;
+                LastScratchTime = Time.unscaledTime;
+            }
+
+            _cueWasInPlay = inPlay;
         }
 
         /// <summary>
@@ -504,9 +533,8 @@ namespace Billiards.Physics
 
             if (cueOffTable)
             {
-                // scratch：白球离台 ⇒ 计一次犯规（本工程唯一可观测的犯规类型）。
-                ScratchCount++;
-                LastScratchTime = Time.unscaledTime;
+                // ⚠ scratch 的**计数与时间戳**不在这里加 —— 见 `TrackCueBallScratch()`：
+                // 若等到下一杆才计，玩家在本杆结束后**看不到任何判罚**（用户实测："落网又没反馈"）。
 
                 // 白球从袋口**瞬移**回开球点 ⇒ 必须重置自转跟踪，否则这一瞬移会被当成真实位移、球凭空猛转一下。
                 ResetVisualRotationTracking();

@@ -68,11 +68,14 @@ namespace Billiards.Physics
         ///    球在滚时它是**上一杆的旧结果**；继续画就会表现为"瞄准线停在原地不动"
         ///    （**用户实测反馈**）。隐藏到球停住再恢复，与本类文档里"与 `AimIndicator` 隐藏口径一致"的
         ///    说法终于对齐 —— 此前那句话只是注释、**实现里从未落地**。
+        ///  · `cueBallInPlay` —— **白球必须在场上**。白球落袋后整盘会静止、相位也回到 `Aim`，
+        ///    若不判这一条，线会从**袋口那个残留位置**画出来（用户实测截图：一条白线从顶袋射向台面）。
         ///  · `resultCardOpen == false` —— 结算卡是模态，打开期间整体让位。
         /// </summary>
-        public static bool ShouldShowAimAssist(bool predictionEnabled, bool tableAtRest, bool resultCardOpen)
+        public static bool ShouldShowAimAssist(bool predictionEnabled, bool tableAtRest, bool cueBallInPlay,
+                                               bool resultCardOpen)
         {
-            return predictionEnabled && tableAtRest && !resultCardOpen;
+            return predictionEnabled && tableAtRest && cueBallInPlay && !resultCardOpen;
         }
 
         /// <summary>本组件当前是否应当绘制（把实时状态喂给 <see cref="ShouldShowAimAssist"/>）。</summary>
@@ -84,6 +87,7 @@ namespace Billiards.Physics
                 return ShouldShowAimAssist(
                     drive != null && drive.PredictionEnabled,
                     sim != null && sim.TableAtRest,
+                    sim != null && sim.IsBallInPlay(0),
                     Billiards.UI.PracticeResultView.IsOpen);
             }
         }

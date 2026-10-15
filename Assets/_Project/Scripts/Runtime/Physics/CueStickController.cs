@@ -1,3 +1,4 @@
+using Billiards.Core;
 using UnityEngine;
 
 namespace Billiards.Physics
@@ -46,8 +47,13 @@ namespace Billiards.Physics
         [Tooltip("拉杆侧 PointerPowerController。为空 ⇒ 本组件不生效。")]
         public PointerPowerController pull;
 
+        /// <summary>可视野缩放根（**只用来把杆长夹在桌面外框内**；判据 `T104 (e)` 驱动纯函数）。</summary>
+        [Tooltip("可视野缩放根（PlayfieldRoot）。为空 ⇒ 按缩放 1 计算外框。")]
+        public Transform playfieldRoot;
+
         private readonly ShotFlowState _flow = new ShotFlowState();
         private Transform _stick;
+        private Transform _stickMesh;
         private MeshRenderer _stickRenderer;
         private float _pullbackAtRelease;
         private int _strikeCountdown = -1;   // < 0 = 未在前推
@@ -113,7 +119,10 @@ namespace Billiards.Physics
             }
 
             // 杆可见性 = 流程口径（Moving/Settle 隐藏；与旧指示物同走渲染器口径，不动激活语义）
-            bool visible = _flow.IsStickVisible;
+            // **白球不在场上 ⇒ 杆也隐藏**（用户实测要求"发射白球出去后瞄准线和球杆都暂时消失"）。
+            // 否则白球落袋后相位回到 `Aim`，杆会停在**袋口那个残留位置**，看起来像杆插在袋里。
+            bool cueBallInPlay = drive.Simulator != null && drive.Simulator.IsBallInPlay(0);
+            bool visible = _flow.IsStickVisible && cueBallInPlay;
             if (_stickRenderer != null && _stickRenderer.enabled != visible)
             {
                 _stickRenderer.enabled = visible;
@@ -150,6 +159,68 @@ namespace Billiards.Physics
 
             _stick.position = StickTipPosition(cueBallWorld, aimDir, pullback);
             _stick.rotation = Quaternion.LookRotation(-aimDir, Vector3.up);   // 杆身 +Z 从杆尾指向杆尖
+
+            // 杆长夹取：尾部不得越过桌面**外框**（实机表现为杆穿过木库边）。
+            StickBounds(out float minX, out float maxX, out float minZ, out float maxZ);
+            ApplyStickLength(VisibleStickLength(_stick.position, aimDir, StickLength, minX, maxX, minZ, maxZ));
+        }
+
+        /// <summary>
+        /// **可见杆长**（纯函数）：杆身沿 `−aimDirection` 从**杆尖**向后延伸，
+        /// 若按满长会越过桌面外框（实机表现为**杆穿过木库边**），则夹到刚好贴外框为止。
+        /// 逐轴求最大允许比例再取最小 —— 尾部在 XZ 上是 `tip + (−aimDir × requestedLength) × t` 的线性插值。
+        /// 轴位移为 0（或退化方向）⇒ 该轴不约束。
+        /// </summary>
+        public static float VisibleStickLength(Vector3 tipWorld, Vector3 aimDirectionWorld, float requestedLength,
+                                               float minX, float maxX, float minZ, float maxZ)
+        {
+            if (!(requestedLength > 0f) || aimDirectionWorld.sqrMagnitude <= 0f)
+            {
+                return requestedLength;
+            }
+
+            Vector3 back = -aimDirectionWorld.normalized * requestedLength;
+            float t = Mathf.Min(AxisLimit(tipWorld.x, back.x, minX, maxX),
+                                AxisLimit(tipWorld.z, back.z, minZ, maxZ));
+            return requestedLength * Mathf.Clamp01(t);
+        }
+
+        private static float AxisLimit(float origin, float displacement, float min, float max)
+        {
+            if (Mathf.Abs(displacement) < 1e-6f)
+            {
+                return 1f;   // 该轴不动 ⇒ 不约束
+            }
+
+            float limit = displacement > 0f ? (max - origin) / displacement : (min - origin) / displacement;
+            return Mathf.Clamp01(limit);
+        }
+
+        /// <summary>桌面**外框**的世界 XZ 边界（供杆长夹取）。</summary>
+        public void StickBounds(out float minX, out float maxX, out float minZ, out float maxZ)
+        {
+            float scale = playfieldRoot != null ? AimAssistView.DrawScale(playfieldRoot) : 1f;
+            minX = PoolGeometry.OuterBoundsMin.x * scale;
+            maxX = PoolGeometry.OuterBoundsMax.x * scale;
+            minZ = PoolGeometry.OuterBoundsMin.z * scale;
+            maxZ = PoolGeometry.OuterBoundsMax.z * scale;
+        }
+
+        private void ApplyStickLength(float length)
+        {
+            if (_stickMesh == null)
+            {
+                return;
+            }
+
+            float half = length * 0.5f;
+            if (Mathf.Approximately(_stickMesh.localScale.y, half))
+            {
+                return;
+            }
+
+            _stickMesh.localScale = new Vector3(StickRadius * 2f, half, StickRadius * 2f);
+            _stickMesh.localPosition = new Vector3(0f, 0f, half);
         }
 
         /// <summary>
@@ -184,6 +255,7 @@ namespace Billiards.Physics
             meshGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             meshGo.transform.localPosition = new Vector3(0f, 0f, StickLength * 0.5f);
             meshGo.transform.localScale = new Vector3(StickRadius * 2f, StickLength * 0.5f, StickRadius * 2f);
+            _stickMesh = meshGo.transform;
 
             MeshRenderer renderer = meshGo.GetComponent<MeshRenderer>();
             if (renderer != null)
