@@ -94,8 +94,16 @@ namespace Billiards.Physics
         [Tooltip("瞄准指示物长度（米）。")]
         public float aimIndicatorLength = 0.55f;
 
-        [Tooltip("瞄准指示物截面厚度（米）。")]
+        /// <summary>瞄准指示物的截面厚度（米）。</summary>
         public float aimIndicatorThickness = 0.012f;
+
+        /// <summary>
+        /// 是否**渲染**瞄准指示物（细长立方体）。瞄准预测线（白线路径 + 幽灵球 + 出射线）已承担方向指示
+        /// ⇒ 出厂**隐藏**本指示物；对象仍按跟随口径创建 / 对齐 / 激活（判据对象不变），仅关闭渲染可见性。
+        /// 置 true 可恢复显示（例如调试方向链时与预测线对照）。
+        /// </summary>
+        [Tooltip("是否渲染瞄准指示物。默认隐藏——方向指示由瞄准预测线承担。")]
+        public bool showAimIndicator = false;
 
         [Tooltip("瞄准辅助：预测线开关（设置项预留接口）。")]
         public bool enableShotPrediction = true;
@@ -613,6 +621,14 @@ namespace Billiards.Physics
             if (aimIndicator == null)
             {
                 return;
+            }
+
+            // 渲染可见性 = 开关（**不动激活语义**：对象仍激活、位置/朝向仍更新 ⇒ 跟随口径判据的对象不变，
+            // 仅用户不再看到这根多余的柱子——方向指示已由瞄准预测线承担）。
+            MeshRenderer indicatorRenderer = aimIndicator.GetComponent<MeshRenderer>();
+            if (indicatorRenderer != null && indicatorRenderer.enabled != showAimIndicator)
+            {
+                indicatorRenderer.enabled = showAimIndicator;
             }
 
             Vector3 dir = AimDirectionUnity;

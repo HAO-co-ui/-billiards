@@ -231,7 +231,12 @@ namespace Billiards.Tests
                 Assert.IsNotNull(drive.aimIndicator, "T42：指示物未创建。");
                 Assert.IsNotNull(drive.aimIndicator.GetComponent<MeshRenderer>(), "T42：指示物必须可渲染。");
                 Assert.IsNull(drive.aimIndicator.GetComponent<Collider>(), "T42：指示物不得带碰撞体（R5-1）。");
-                Assert.IsTrue(drive.aimIndicator.gameObject.activeSelf, "T42：全静止时指示物应**可见**。");
+                Assert.IsTrue(drive.aimIndicator.gameObject.activeSelf, "T42：全静止时指示物应**激活**（跟随口径的对象语义）。");
+
+                // (d) **出厂渲染隐藏**：方向指示已由瞄准预测线承担 ⇒ showAimIndicator 出厂 false ⇒ 渲染器不可见。
+                //     对象仍激活、位置仍更新（①②③ 的语义对象不变），仅渲染可见性关闭。
+                Assert.IsFalse(drive.aimIndicator.GetComponent<MeshRenderer>().enabled,
+                    "T42：showAimIndicator 出厂为 false ⇒ 渲染器应不可见（用户不应看到多余的柱状指示物）。");
 
                 float rad = 30f * Mathf.Deg2Rad;
 
