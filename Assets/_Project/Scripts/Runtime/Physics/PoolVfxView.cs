@@ -44,18 +44,32 @@ namespace Billiards.Physics
         public const float HitDistanceTolerance = 0.007f;
         public const float RailDistanceTolerance = 0.01f;
         /// <summary>
-        /// 线宽（**规范米**）。世界宽 = 本值 × <see cref="AimAssistView.DrawScale"/>。
+        /// 线宽（**规范米**，全类**唯一**线宽常量——环 / 弧 / 火花共用）。世界宽 = 本值 ×
+        /// <see cref="AimAssistView.DrawScale"/>。
         ///
         /// ⚠ **实测定值（2026-10-15，用户实机反馈"特效都是白的"）**：
         /// 原实现写 `0.004` 且**没有乘显示缩放** ⇒ 世界宽 4 mm；而瞄准线是
         /// `PredictionLineWidth(0.006) × DrawScale(1.2)` = **世界 7.2 mm** ⇒ 特效比瞄准线**细 44%**。
         /// 线越细，同 alpha 下颜色被深色台面稀释得越厉害（实测观感就是"一根白线"）。
-        /// ⇒ 本值取 **6 mm**（与瞄准线同值）并**乘显示缩放**，两条线的口径从此一致。
+        /// ⇒ 先取 **6 mm**（与瞄准线同值）并**乘显示缩放**，两条线的口径从此一致。
+        ///
+        /// ⚠ **强化定值（`D15-VF-02`，用户拍板 A 档）**：`6 mm → 8 mm` 规范 = **世界 9.6 mm**
+        /// （= 瞄准线 7.2 mm 的 **1.33×**）⇒ 一眼可辨"更粗的是特效、不是瞄准线"（可读性预算 R4，判据 `T115 ②`）。
+        ///
+        /// ⚠ **绝不能再新增第二个线宽常量**：`T99 (f)` 用**子串包含**做源码级计数守卫
+        /// （数 `LineWidth` 与 `AimAssistView.DrawScale(` 的**连写**是否恰 1 次）。若新增 `SparkLineWidth` 之类，
+        /// 其连写会以 `...LineWidth` 结尾而把守卫数成第 2 次 ⇒ 误红。故**火花与环/弧共用本常量**。
         /// </summary>
-        public const float LineWidth = 0.006f;
+        public const float LineWidth = 0.008f;
 
         /// <summary>入袋"下沉"动画时长（秒）——球可视物下沉 + 缩小至消失。</summary>
         public const float SinkDurationSeconds = 0.3f;
+
+        /// <summary>
+        /// 入袋**爆点延迟**（秒）：`SinkSlideFraction × SinkDurationSeconds`（**用常量相乘表达，不硬编码 0.18**）
+        /// = 球**到达洞口、开始落下**的那一瞬 —— 两段式"吸（Roll-in）→ 爆（Pop）"的**爆**相位在此生成（判据 `T92 (f)`）。
+        /// </summary>
+        public const float PocketBurstDelaySeconds = SinkSlideFraction * SinkDurationSeconds;
 
         private const int SparkCount = 3;
         private const float PocketInset = 0.013f;
@@ -64,19 +78,31 @@ namespace Billiards.Physics
         private const float SparkTravelFactor = 0.65f;
 
         /// <summary>
-        /// 击杆 / 碰球的**粉笔色**。
+        /// 击杆 / 碰球的**粉笔色**（**冷青蓝 ≈206°**，`#a9d8ff`）。
         ///
-        /// ⚠ **刻意偏离参考实现（用户实机反馈后裁定，2026-10-15）**：
-        /// 参考的 `COLORS.chalk = '#f8f5e7'`（近白的暖白），设计说明原文也写"击杆：白球后侧 0.12 秒**粉白**小冲击弧"。
-        /// 但用户实机看到的是"一撮白色火花"，**与瞄准线的纯白无法区分**，也读不出"粉笔"的语义
-        /// ⇒ 用户明确要求改成能辨认的粉笔色。本值 **`#cfe3ef`（粉笔青白）**：明度仍接近粉白，
-        /// 带明确**青蓝倾向**，与瞄准线的纯白（`AimAssistView.PathColor = (1,1,1,.95)`）一眼可分，
-        /// 且不破坏参考稿"清淡微特效"的整体观感。
-        /// **回退方式**：把本行换成 `new Color(0.973f, 0.961f, 0.906f, 1f)` 即回到参考原值（一行）。
+        /// ⚠ **配色沿革（用户实机反馈驱动，2026-10-15 → `D15-VF-02`）**：
+        /// ① 参考的 `COLORS.chalk = '#f8f5e7'`（近白暖白）；用户实机看到"一撮白色火花"**与瞄准线纯白无法区分**，
+        ///    先改 `#cfe3ef`（粉笔青白）以拉开与纯白的距离；
+        /// ② `D15-VF-02` 再改本值 **`#a9d8ff`** —— 青蓝纯度更高、相对亮度更高（无 Bloom 下更"亮"），
+        ///    且与 brass（金 ≈43°）/ rail（紫灰 ≈229°）**色相三足鼎立**（可读性预算 R5/三色分离，判据 `T115 ⑤`）。
+        /// **回退**：把本行换回 `new Color(0.973f, 0.961f, 0.906f, 1f)` 即回到参考原值（一行）。
         /// </summary>
-        private static readonly Color ChalkColor = new Color(0.812f, 0.890f, 0.937f, 1f);   // #cfe3ef
-        private static readonly Color BrassColor = new Color(0.953f, 0.851f, 0.600f, 1f);   // #f3d999
-        private static readonly Color RailColor = new Color(0.800f, 0.855f, 0.796f, 1f);    // #ccdacb
+        public static readonly Color ChalkColor = new Color(0.663f, 0.847f, 1.000f, 1f);   // #a9d8ff
+        /// <summary>入袋**爆外环**的暖金（`#f3d999`，≈43°）：入袋奖励的"金"。**回退**：本值未变。</summary>
+        public static readonly Color BrassColor = new Color(0.953f, 0.851f, 0.600f, 1f);   // #f3d999
+        /// <summary>
+        /// 入袋**爆内核**的暖白（`#fff4de`，≈36°）：全屏**最亮**的 VFX（峰值明度序之顶）。
+        /// 刻意用**暖白**而非中性白 ⇒ 与瞄准线的纯白（`AimAssistView.PathColor`）色相可分。
+        /// **回退**：换回 `new Color(1f, 1f, 1f, 1f)` 即回到原"纯白内核"（一行）。
+        /// </summary>
+        public static readonly Color BrassCoreColor = new Color(1.000f, 0.957f, 0.871f, 1f); // #fff4de
+        /// <summary>
+        /// 撞库的**冷紫灰**（`#aab4de`，≈229°）。
+        /// ⚠ 由原 `#ccdacb`（**淡绿**，与绿台呢**同色系**、对比度最低，且易与 chalk 冷白混淆）改来 ⇒
+        /// **脱离台呢同色系**、与 chalk（青）/brass（金）色相拉开；**饱和度低** ⇒ 撞库虽频发但不抢戏（"安静档"）。
+        /// **回退**：把本行换回 `new Color(0.800f, 0.855f, 0.796f, 1f)` 即还原（一处常量，判据 `T115 ⑤`）。
+        /// </summary>
+        public static readonly Color RailColor = new Color(0.667f, 0.706f, 0.871f, 1f);    // #aab4de
 
         [Tooltip("被驱动的驱动器（读计数出口与内核）。为空 ⇒ 本组件不生效。")]
         public PhysicsTestDrive drive;
@@ -109,6 +135,7 @@ namespace Billiards.Physics
             public int sparkVisible;
             public float sparkLength;
             public Vector2 center;
+            public float spawnDelay;   // 入袋"爆内核"用：age 从 −delay 起算（< 0 时不出层）
         }
 
         private readonly List<VfxSlot> _slots = new List<VfxSlot>();
@@ -175,6 +202,174 @@ namespace Billiards.Physics
                 Mathf.Lerp(originLocal.x, holeLocal.x, s),
                 originLocal.y + yOffset,
                 Mathf.Lerp(originLocal.z, holeLocal.z, s));
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  VFX 规格表 + 力度分级（纯函数 / 常量；判据 T115 / T116 / T117 直接驱动）
+        // ════════════════════════════════════════════════════════════════════
+
+        /// <summary>单个特效**层**的静态规格（**规范米**）：半径 / 扩张 / 时长 / 峰值 alpha / 形态。</summary>
+        public readonly struct VfxLayer
+        {
+            public readonly string Name;
+            public readonly float Radius;
+            public readonly float Expansion;
+            public readonly float Duration;
+            public readonly float PeakAlpha;
+            public readonly bool IsArc;
+
+            public VfxLayer(string name, float radius, float expansion, float duration, float peakAlpha, bool isArc)
+            {
+                Name = name;
+                Radius = radius;
+                Expansion = expansion;
+                Duration = duration;
+                PeakAlpha = peakAlpha;
+                IsArc = isArc;
+            }
+        }
+
+        // —— 4 类事件 × 各层的**基准**规格（力度分档的"档位 T1"值；判据 `T115 ①` 逐层读）——
+        public static readonly VfxLayer StrikeCoreLayer = new VfxLayer("strike.core", 0.011f, 0.45f, 0.14f, 0.95f, true);
+        public static readonly VfxLayer StrikeHaloLayer = new VfxLayer("strike.halo", 0.014f, 0.50f, 0.20f, 0.30f, true);
+        public static readonly VfxLayer HitCoreLayer = new VfxLayer("hit.core", 0.011f, 0.50f, 0.11f, 0.90f, false);
+        public static readonly VfxLayer HitHaloLayer = new VfxLayer("hit.halo", 0.014f, 0.50f, 0.13f, 0.28f, false);
+        public static readonly VfxLayer RailLayer = new VfxLayer("rail", 0.012f, 0.35f, 0.15f, 0.60f, true);
+        public static readonly VfxLayer PocketOuterLayer = new VfxLayer("pocket.outer", 0.023f, 0.50f, 0.30f, 0.85f, false);
+        public static readonly VfxLayer PocketCoreLayer = new VfxLayer("pocket.core", 0.015f, 0.25f, 0.20f, 1.00f, false);
+
+        /// <summary>撞击类（strike / hit / rail）各层（判据 `T115 ①`）。</summary>
+        public static readonly VfxLayer[] ImpactLayers =
+        {
+            StrikeCoreLayer, StrikeHaloLayer, HitCoreLayer, HitHaloLayer, RailLayer,
+        };
+
+        /// <summary>入袋各层（判据 `T115 ①`）。</summary>
+        public static readonly VfxLayer[] PocketLayers = { PocketOuterLayer, PocketCoreLayer };
+
+        // —— 可读性预算（R1）的世界半径上限与"规范半径"夹取上限（判据 T115 ① / T116 ③）——
+        /// <summary>撞击类各层"最大世界半径（含扩张）"上限 = 26 mm（环不压任一球心 / 球号）。</summary>
+        public const float ImpactMaxWorldRadius = 0.026f;
+
+        /// <summary>入袋各层"最大世界半径（含扩张）"上限 = 44 mm（此时球已离台，放宽）。</summary>
+        public const float PocketMaxWorldRadius = 0.044f;
+
+        /// <summary>撞击类半径夹取上限（规范 m）= 26 mm ÷ 1.2（可读性预算 R1 的规范换算；判据 `T116 ③`）。</summary>
+        public const float ImpactRadiusCap = 0.02167f;
+
+        /// <summary>入袋半径夹取上限（规范 m）= 44 mm ÷ 1.2。</summary>
+        public const float PocketRadiusCap = 0.03667f;
+
+        // —— 力度分档（§2）：边界左闭右开，档位倍率单调非减（判据 T116）——
+        /// <summary>力度档位（0 轻 → 3 猛）。</summary>
+        public enum VfxIntensityTier { T0Light = 0, T1Medium = 1, T2Heavy = 2, T3Extreme = 3 }
+
+        public const float TierLightMaxSpeed = 0.60f;    // [0.10, 0.60) ⇒ T0
+        public const float TierMediumMaxSpeed = 1.80f;   // [0.60, 1.80) ⇒ T1
+        public const float TierHeavyMaxSpeed = 3.60f;    // [1.80, 3.60) ⇒ T2；[3.60, 8.00] ⇒ T3
+
+        /// <summary>**按接触相对速度分档**（纯函数；边界左闭右开；`s ≥ 3.60` 归 T3）。</summary>
+        public static VfxIntensityTier ClassifyIntensity(float speed)
+        {
+            if (speed < TierLightMaxSpeed)
+            {
+                return VfxIntensityTier.T0Light;
+            }
+
+            if (speed < TierMediumMaxSpeed)
+            {
+                return VfxIntensityTier.T1Medium;
+            }
+
+            if (speed < TierHeavyMaxSpeed)
+            {
+                return VfxIntensityTier.T2Heavy;
+            }
+
+            return VfxIntensityTier.T3Extreme;
+        }
+
+        /// <summary>**档位倍率**（纯函数，**无任何随机 / 时间抖动**）：size / alpha / expansion / dur + 火花增减。</summary>
+        public static void TierMultipliers(VfxIntensityTier tier, out float sizeMul, out float alphaMul,
+                                           out float expansionMul, out float durMul, out int sparkDelta)
+        {
+            switch (tier)
+            {
+                case VfxIntensityTier.T0Light:
+                    sizeMul = 0.85f; alphaMul = 0.85f; expansionMul = 0.95f; durMul = 0.90f; sparkDelta = -1;
+                    break;
+                case VfxIntensityTier.T2Heavy:
+                    sizeMul = 1.15f; alphaMul = 1.00f; expansionMul = 1.05f; durMul = 1.10f; sparkDelta = 0;
+                    break;
+                case VfxIntensityTier.T3Extreme:
+                    sizeMul = 1.25f; alphaMul = 1.00f; expansionMul = 1.10f; durMul = 1.20f; sparkDelta = 0;
+                    break;
+                default:   // T1Medium（常规对碰）
+                    sizeMul = 1.00f; alphaMul = 1.00f; expansionMul = 1.00f; durMul = 1.00f; sparkDelta = 0;
+                    break;
+            }
+        }
+
+        /// <summary>**半径夹取**（纯函数）：`min(baseRadius × sizeMul, radiusCap)`（保证 R1 不被倍率击穿）。</summary>
+        public static float FinalRadius(float baseRadius, float sizeMul, float radiusCap)
+        {
+            return Mathf.Min(baseRadius * sizeMul, radiusCap);
+        }
+
+        /// <summary>**峰值 alpha 夹取**：全部 ≤ 1.0（可读性预算 R6）。</summary>
+        public static float FinalAlpha(float peakAlpha, float alphaMul)
+        {
+            return Mathf.Min(peakAlpha * alphaMul, 1f);
+        }
+
+        /// <summary>**槽内火花数夹取**：`clamp(base + delta, 1, 3)`（槽内火花上限 = `SparkCount`）。</summary>
+        public static int FinalSparkCount(int baseSparks, int sparkDelta)
+        {
+            return Mathf.Clamp(baseSparks + sparkDelta, 1, SparkCount);
+        }
+
+        /// <summary>
+        /// **对一层应用力度分档**（纯函数；夹取顺序 = 半径 → 扩张 → alpha → 时长；夹取后**再**走 `VfxPose`）。
+        /// 仅供**带接触速度**的层使用（strike / hit / rail）—— pocket 无速度输入 ⇒ 恒用基准值。
+        /// </summary>
+        public static void ApplyIntensity(float speed, float baseRadius, float baseExpansion, float baseAlpha,
+                                          float baseDuration, float radiusCap,
+                                          out float radius, out float expansion, out float alpha, out float duration)
+        {
+            TierMultipliers(ClassifyIntensity(speed), out float sizeMul, out float alphaMul,
+                            out float expansionMul, out float durMul, out _);
+            radius = FinalRadius(baseRadius, sizeMul, radiusCap);
+            expansion = baseExpansion * expansionMul;
+            alpha = FinalAlpha(baseAlpha, alphaMul);
+            duration = baseDuration * durMul;
+        }
+
+        // —— 槽与顶点预算（§7；判据 T117）——
+        public const int StrikeSlotCost = 2;   // 核弧 + 晕弧
+        public const int HitSlotCost = 2;      // 核环 + 晕环
+        public const int RailSlotCost = 1;     // 单弧
+        public const int PocketSlotCost = 2;   // 爆外环 + 爆内核
+
+        /// <summary>单杆最坏入袋数（开球实测 ≤2；§7.1 边界：同袋 ≥3 时末位特效被丢弃）。</summary>
+        public const int PocketWorstEventsPerRack = 2;
+
+        /// <summary>
+        /// **最坏并发槽数**（Little 定律，§7.1；纯函数）：`Σ ceil(最长层时长 / 门间隔) × 每事件槽`。
+        /// 实测（规格 §7.1）= hit 3×2 + rail 3×1 + strike 1×2 + pocket 2×2 = **15 ≤ `SlotCapacity`(16)**。
+        /// </summary>
+        public static int MaxConcurrentSlots()
+        {
+            int hit = Mathf.CeilToInt(HitHaloLayer.Duration / HitIntervalSeconds) * HitSlotCost;
+            int rail = Mathf.CeilToInt(RailLayer.Duration / RailIntervalSeconds) * RailSlotCost;
+            int strike = StrikeSlotCost;
+            int pocket = PocketWorstEventsPerRack * PocketSlotCost;
+            return hit + rail + strike + pocket;
+        }
+
+        /// <summary>**单帧顶点写入上界** = `SlotCapacity × (RingSegments + 3 火花 × 2)` = 16 × 38 = **608**（§7.2）。</summary>
+        public static int MaxVerticesPerFrame()
+        {
+            return SlotCapacity * (RingSegments + SparkCount * 2);
         }
 
         /// <summary>
@@ -411,25 +606,49 @@ namespace Billiards.Physics
 
             float rad = drive.aimDegrees * Mathf.Deg2Rad;
             var aimDir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
-            float strength = 0.7f + Mathf.Clamp01(drive.power) * 0.6f;
-            Vector2 center = cue - aimDir * (PoolConstants.BallRadius * 0.85f);
 
-            Spawn(true, center, aimDir: drive.aimDegrees + 180f,
-                radius: 0.012f * strength, duration: 0.12f, expansion: 0.4f, opacity: 0.72f,
-                color: ChalkColor, sparks: 3, sparkLength: 0.008f * strength);
+            // `k`：沿用的力度缩放（`T86` 映射链不动）；`launchSpeed`：喂力度分档的初速（§2.1）。
+            float power = Mathf.Clamp01(drive.power);
+            float k = 0.7f + power * 0.6f;
+            float launchSpeed = Mathf.Lerp(drive.minLaunchSpeed, drive.maxLaunchSpeed, power);
+            Vector2 center = cue - aimDir * (PoolConstants.BallRadius * 0.85f);
+            float backDeg = drive.aimDegrees + 180f;
+
+            // A 核弧（亮、短）
+            ApplyIntensity(launchSpeed, StrikeCoreLayer.Radius * k, StrikeCoreLayer.Expansion,
+                StrikeCoreLayer.PeakAlpha, StrikeCoreLayer.Duration, ImpactRadiusCap,
+                out float cr, out float ce, out float ca, out float cd);
+            Spawn(true, center, backDeg, cr, cd, ce, ca, ChalkColor,
+                FinalSparkCount(3, TierSparkDelta(launchSpeed)), 0.008f * k);
+
+            // B 晕弧（大、弱、久 —— 无 Bloom 的伪辉光）
+            ApplyIntensity(launchSpeed, StrikeHaloLayer.Radius * k, StrikeHaloLayer.Expansion,
+                StrikeHaloLayer.PeakAlpha, StrikeHaloLayer.Duration, ImpactRadiusCap,
+                out float hr, out float he, out float ha, out float hd);
+            Spawn(true, center, backDeg, hr, hd, he, ha, ChalkColor, 0, 0f);
         }
 
         private void SpawnHit(PoolSimulator sim)
         {
             CollectBallStates(sim);
             if (!FindHitContact(_posBuffer, _velBuffer, PoolConstants.BallRadius,
-                                out Vector2 point, out float angle, out float _))
+                                out Vector2 point, out float angle, out float speed))
             {
                 return;
             }
 
-            Spawn(false, point, angle, radius: 0.011f, duration: 0.11f, expansion: 0.5f,
-                opacity: 0.58f, color: ChalkColor, sparks: 2, sparkLength: 0.008f);
+            // A 核环（亮、短）
+            ApplyIntensity(speed, HitCoreLayer.Radius, HitCoreLayer.Expansion, HitCoreLayer.PeakAlpha,
+                HitCoreLayer.Duration, ImpactRadiusCap,
+                out float cr, out float ce, out float ca, out float cd);
+            Spawn(false, point, angle, cr, cd, ce, ca, ChalkColor,
+                FinalSparkCount(3, TierSparkDelta(speed)), 0.010f);
+
+            // B 晕环（大、弱、久）
+            ApplyIntensity(speed, HitHaloLayer.Radius, HitHaloLayer.Expansion, HitHaloLayer.PeakAlpha,
+                HitHaloLayer.Duration, ImpactRadiusCap,
+                out float hr, out float he, out float ha, out float hd);
+            Spawn(false, point, angle, hr, hd, he, ha, ChalkColor, 0, 0f);
         }
 
         private void SpawnRail(PoolSimulator sim)
@@ -441,13 +660,16 @@ namespace Billiards.Physics
 
             CollectBallStates(sim);
             if (!FindRailContact(_posBuffer, _velBuffer, tableConfig.segments, PoolConstants.BallRadius,
-                                 out Vector2 point, out float angle, out float _))
+                                 out Vector2 point, out float angle, out float speed))
             {
                 return;
             }
 
-            Spawn(true, point, angle, radius: 0.014f, duration: 0.15f, expansion: 0.2f,
-                opacity: 0.46f, color: RailColor, sparks: 0, sparkLength: 0.008f);
+            // 单弧（安静档；力度越大越"实"，但颜色低饱和 ⇒ 不抢戏）
+            ApplyIntensity(speed, RailLayer.Radius, RailLayer.Expansion, RailLayer.PeakAlpha,
+                RailLayer.Duration, ImpactRadiusCap,
+                out float r, out float e, out float a, out float d);
+            Spawn(true, point, angle, r, d, e, a, RailColor, 0, 0f);
         }
 
         private void SpawnPocket(PoolSimulator sim)
@@ -492,12 +714,22 @@ namespace Billiards.Physics
                 }
             }
 
-            Spawn(false, center, inwardDeg, radius: 0.023f, duration: 0.29f, expansion: 0.5f,
-                opacity: 0.8f, color: BrassColor, sparks: 3, sparkLength: 0.012f);
+            // **吸（Roll-in）**：捕获当帧 —— 爆外环（brass）+ 3 火花沿袋口法向飞散 ⇒ "球被吸进洞口"。
+            Spawn(false, center, inwardDeg, PocketOuterLayer.Radius, PocketOuterLayer.Duration,
+                PocketOuterLayer.Expansion, PocketOuterLayer.PeakAlpha, BrassColor, 3, 0.013f);
 
-            // **短暂高亮**：叠加一个更亮更短的内环（"进球有回报"的可判定实现）。
-            Spawn(false, center, inwardDeg, radius: 0.015f, duration: 0.18f, expansion: 0.2f,
-                opacity: 0.9f, color: new Color(1f, 1f, 1f, 1f), sparks: 0, sparkLength: 0.008f);
+            // **爆（Pop）**：`PocketBurstDelaySeconds` 后（球到达洞口、开始落下）—— 爆内核（brassCore，暖白，全屏最亮）。
+            // 延迟让"爆点"与"落球"严格同步；内核半径 15 mm < 球半径 ⇒ 环在球底、不盖号码。
+            Spawn(false, center, inwardDeg, PocketCoreLayer.Radius, PocketCoreLayer.Duration,
+                PocketCoreLayer.Expansion, PocketCoreLayer.PeakAlpha, BrassCoreColor, 0, 0f,
+                spawnDelay: PocketBurstDelaySeconds);
+        }
+
+        /// <summary>取某速度所处档位的**火花增减**（纯函数；供无需完整 `ApplyIntensity` 的火花层用）。</summary>
+        private static int TierSparkDelta(float speed)
+        {
+            TierMultipliers(ClassifyIntensity(speed), out _, out _, out _, out _, out int delta);
+            return delta;
         }
 
         private void CollectBallStates(PoolSimulator sim)
@@ -518,7 +750,8 @@ namespace Billiards.Physics
         }
 
         private void Spawn(bool arc, Vector2 center, float aimDir, float radius, float duration,
-                           float expansion, float opacity, Color color, int sparks, float sparkLength)
+                           float expansion, float opacity, Color color, int sparks, float sparkLength,
+                           float spawnDelay = 0f)
         {
             EnsurePool();
             VfxSlot slot = null;
@@ -538,7 +771,7 @@ namespace Billiards.Physics
             }
 
             slot.active = true;
-            slot.age = 0f;
+            slot.age = -spawnDelay;   // `spawnDelay > 0` ⇒ 本层延后 `spawnDelay` 秒才生成（`age` 先到 0）
             slot.duration = duration;
             slot.radius = radius;
             slot.expansion = expansion;
@@ -549,8 +782,12 @@ namespace Billiards.Physics
             slot.sparkVisible = sparks;
             slot.sparkLength = sparkLength;
             slot.center = center;
+            slot.spawnDelay = spawnDelay;
 
-            WriteSlot(slot, 0f);
+            if (spawnDelay <= 0f)
+            {
+                WriteSlot(slot, 0f);
+            }
         }
 
         private void Advance(float dt)
@@ -569,6 +806,11 @@ namespace Billiards.Physics
                 }
 
                 slot.age += dt;
+                if (slot.age < 0f)
+                {
+                    continue;   // 延迟未到（入袋"爆内核"）：本层尚未生成 ⇒ 不写点、不激活
+                }
+
                 if (slot.age >= slot.duration)
                 {
                     slot.active = false;

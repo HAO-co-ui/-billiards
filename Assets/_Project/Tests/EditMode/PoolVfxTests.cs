@@ -99,9 +99,22 @@ namespace Billiards.Tests
                 failures.Add($"(e) 终点下沉量应为 −0.08，实际 {q1.y - origin.y:R}。");
             }
 
+            // (f) 入袋爆点延迟闭式：`PocketBurstDelaySeconds == SinkSlideFraction × SinkDurationSeconds`（= 0.18）。
+            //     两段式"吸→爆"的**爆**相位 = 球到达洞口、开始落下那一瞬 ⇒ 必须与下沉曲线**同源**、不得硬编码，
+            //     否则将来改下沉节奏时"爆点"会与落球脱同步（`D15-VF-02`，规格 §5）。
+            const float expectDelay = 0.6f * 0.3f;
+            const float delayClosed = PoolVfxView.SinkSlideFraction * PoolVfxView.SinkDurationSeconds;
+            if (Mathf.Abs(PoolVfxView.PocketBurstDelaySeconds - delayClosed) > 1e-6f
+                || Mathf.Abs(PoolVfxView.PocketBurstDelaySeconds - expectDelay) > 1e-6f)
+            {
+                failures.Add($"(f) 入袋爆点延迟应为 SinkSlideFraction×SinkDurationSeconds = {expectDelay:R}，"
+                             + $"实际 {PoolVfxView.PocketBurstDelaySeconds:R}。");
+            }
+
             Assert.IsEmpty(failures, "T92 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine(
-                $"T92: scale {s0:R}/{s5:R}/{s1:R}；alpha {a0:R}/{a5:R}/{a1:R}；下沉曲线三段 ✓");
+                $"T92: scale {s0:R}/{s5:R}/{s1:R}；alpha {a0:R}/{a5:R}/{a1:R}；下沉曲线三段 ✓；"
+                + $"爆点延迟闭式 {PoolVfxView.PocketBurstDelaySeconds:R} ✓");
         }
 
         // ════════════ T93 接触推导（质量排序 + 门）════════════════════════════
@@ -368,6 +381,313 @@ namespace Billiards.Tests
             {
                 Object.DestroyImmediate(go);
             }
+        }
+
+        // ════════════ T115 VFX 可读性预算（半径 / 线宽 / 明度阶梯 / alpha 上限 / 三色分离）═══════════
+
+        /// <summary>
+        /// **VFX 可读性预算**（`D15-VF-02`；规格 §1.3 R1–R6）。
+        /// ① 各事件各层最大世界半径（含扩张）≤ 档位上限（撞击类 26 mm / 入袋 44 mm）；
+        /// ② 特效线**严格**比瞄准线粗；③ 明度阶梯严格单调 `pocketCore &gt; strike ≥ hit &gt; rail`；
+        /// ④ 峰值 alpha ≤ 1.0；⑤ chalk / brass / rail 三色两两**色相**相距 ≥ 20°。
+        /// **注入**：把 hit 晕层半径写成 `0.030` ⇒ ① 红（0.030×1.5×1.2 = 54 mm &gt; 26 mm）。
+        /// </summary>
+        [Test]
+        public void T115_ReadabilityBudget()
+        {
+            var failures = new List<string>();
+            const float display = PoolConstants.PlayfieldVisualScale;   // 1.2（唯一显示尺度真源）
+
+            // ① 各层最大世界半径 ≤ 档位上限
+            foreach (PoolVfxView.VfxLayer layer in PoolVfxView.ImpactLayers)
+            {
+                float maxWorld = layer.Radius * (1f + layer.Expansion) * display;
+                if (maxWorld > PoolVfxView.ImpactMaxWorldRadius + 1e-6f)
+                {
+                    failures.Add($"① 撞击类层 {layer.Name} 最大世界半径 {maxWorld * 1000f:R} mm > 上限 "
+                                 + $"{PoolVfxView.ImpactMaxWorldRadius * 1000f:R} mm。");
+                }
+            }
+
+            foreach (PoolVfxView.VfxLayer layer in PoolVfxView.PocketLayers)
+            {
+                float maxWorld = layer.Radius * (1f + layer.Expansion) * display;
+                if (maxWorld > PoolVfxView.PocketMaxWorldRadius + 1e-6f)
+                {
+                    failures.Add($"① 入袋层 {layer.Name} 最大世界半径 {maxWorld * 1000f:R} mm > 上限 "
+                                 + $"{PoolVfxView.PocketMaxWorldRadius * 1000f:R} mm。");
+                }
+            }
+
+            // ② 特效线严格比瞄准线粗（世界 9.6 mm > 7.2 mm）
+            Assert.IsTrue(PoolVfxView.LineWidth > AimAssistView.PredictionLineWidth,
+                $"T115 ② 特效线宽 {PoolVfxView.LineWidth:R} 应严格大于瞄准线宽 "
+                + $"{AimAssistView.PredictionLineWidth:R}（「更粗 = 是特效」）。");
+
+            // ③ 明度阶梯严格单调
+            float pocketCore = PoolVfxView.PocketCoreLayer.PeakAlpha;
+            float strike = PoolVfxView.StrikeCoreLayer.PeakAlpha;
+            float hit = PoolVfxView.HitCoreLayer.PeakAlpha;
+            float rail = PoolVfxView.RailLayer.PeakAlpha;
+            if (!(pocketCore > strike && strike >= hit && hit > rail))
+            {
+                failures.Add($"③ 明度阶梯应 pocketCore > strike ≥ hit > rail，"
+                             + $"实际 {pocketCore:R} / {strike:R} / {hit:R} / {rail:R}。");
+            }
+
+            // ④ 峰值 alpha ≤ 1.0
+            foreach (PoolVfxView.VfxLayer layer in AllVfxLayers())
+            {
+                if (layer.PeakAlpha > 1f + 1e-6f)
+                {
+                    failures.Add($"④ 层 {layer.Name} 峰值 alpha {layer.PeakAlpha:R} > 1.0。");
+                }
+            }
+
+            // ⑤ 三色（chalk / brass / rail）两两色相相距 ≥ 20°（避免四类趋同成白）
+            AssertHueSeparation(failures, "chalk", PoolVfxView.ChalkColor, "brass", PoolVfxView.BrassColor, 20f);
+            AssertHueSeparation(failures, "chalk", PoolVfxView.ChalkColor, "rail", PoolVfxView.RailColor, 20f);
+            AssertHueSeparation(failures, "brass", PoolVfxView.BrassColor, "rail", PoolVfxView.RailColor, 20f);
+
+            Assert.IsEmpty(failures, "T115 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine($"T115: 撞击类上界 {PoolVfxView.ImpactMaxWorldRadius * 1000f:R} mm / 入袋 "
+                                  + $"{PoolVfxView.PocketMaxWorldRadius * 1000f:R} mm；线宽 {PoolVfxView.LineWidth:R} > "
+                                  + $"瞄准线 {AimAssistView.PredictionLineWidth:R}；明度 {pocketCore:R}/{strike:R}/{hit:R}/{rail:R}；"
+                                  + "三色色相分离 ✓");
+        }
+
+        // ════════════ T116 力度分级闭式 + 无随机（确定性）═══════════════════
+
+        /// <summary>
+        /// **力度分级**（`D15-VF-02`；规格 §2）。① 边界（左闭右开）；② 倍率随档**单调非减**、`alphaMul ≤ 1`；
+        /// ③ **夹取**（`sizeMul = 10` ⇒ `finalRadius ≤ MaxRadiusCap`）；④ **确定性**（同一 `s` 序列双跑逐位一致）；
+        /// ⑤ **源码级**：`PoolVfxView.cs` 中 `Random` 出现 **0** 次。
+        /// **注入**：把 `TierLightMaxSpeed`（0.60）改成 `0.50` ⇒ `s = 0.59` 用例红（应 T0，实际 T1）。
+        /// </summary>
+        [Test]
+        public void T116_IntensityTier_ClosedForm_And_Deterministic()
+        {
+            var failures = new List<string>();
+
+            // ① 档位边界（左闭右开）
+            var cases = new[]
+            {
+                (s: 0.59f, expected: PoolVfxView.VfxIntensityTier.T0Light),
+                (s: 0.60f, expected: PoolVfxView.VfxIntensityTier.T1Medium),
+                (s: 1.79f, expected: PoolVfxView.VfxIntensityTier.T1Medium),
+                (s: 1.80f, expected: PoolVfxView.VfxIntensityTier.T2Heavy),
+                (s: 3.59f, expected: PoolVfxView.VfxIntensityTier.T2Heavy),
+                (s: 3.60f, expected: PoolVfxView.VfxIntensityTier.T3Extreme),
+                (s: 8.00f, expected: PoolVfxView.VfxIntensityTier.T3Extreme),
+            };
+            foreach (var c in cases)
+            {
+                PoolVfxView.VfxIntensityTier got = PoolVfxView.ClassifyIntensity(c.s);
+                if (got != c.expected)
+                {
+                    failures.Add($"① s={c.s:R} 应 {c.expected}，实际 {got}。");
+                }
+            }
+
+            // ② 倍率随档单调非减（size / expansion / dur）；alphaMul ≤ 1.0
+            var order = new[]
+            {
+                PoolVfxView.VfxIntensityTier.T0Light, PoolVfxView.VfxIntensityTier.T1Medium,
+                PoolVfxView.VfxIntensityTier.T2Heavy, PoolVfxView.VfxIntensityTier.T3Extreme,
+            };
+            float prevSize = float.NegativeInfinity;
+            float prevExp = float.NegativeInfinity;
+            float prevDur = float.NegativeInfinity;
+            foreach (PoolVfxView.VfxIntensityTier tier in order)
+            {
+                PoolVfxView.TierMultipliers(tier, out float sizeMul, out float alphaMul,
+                                            out float expansionMul, out float durMul, out _);
+                if (sizeMul < prevSize - 1e-6f || expansionMul < prevExp - 1e-6f || durMul < prevDur - 1e-6f)
+                {
+                    failures.Add($"② 倍率应随档单调非减，档 {tier} 出现回落 "
+                                 + $"(size {sizeMul:R} / exp {expansionMul:R} / dur {durMul:R})。");
+                }
+
+                if (alphaMul > 1f + 1e-6f)
+                {
+                    failures.Add($"② 档 {tier} 的 alphaMul {alphaMul:R} > 1.0。");
+                }
+
+                prevSize = sizeMul;
+                prevExp = expansionMul;
+                prevDur = durMul;
+            }
+
+            // ③ 夹取：极端 sizeMul 不得击穿上限
+            float clamped = PoolVfxView.FinalRadius(0.011f, 10f, PoolVfxView.ImpactRadiusCap);
+            if (clamped > PoolVfxView.ImpactRadiusCap + 1e-6f)
+            {
+                failures.Add($"③ sizeMul=10 时 finalRadius {clamped:R} 应 ≤ 上限 {PoolVfxView.ImpactRadiusCap:R}。");
+            }
+
+            // ④ 确定性：同一 s 序列双跑，输出逐位一致（无随机 / 无时间抖动）
+            var seq = new[] { 0.30f, 0.59f, 0.60f, 1.20f, 1.80f, 3.59f, 3.60f, 7.90f };
+            string runA = TierTrace(seq);
+            string runB = TierTrace(seq);
+            if (!string.Equals(runA, runB, System.StringComparison.Ordinal))
+            {
+                failures.Add($"④ 双跑不一致：\n  A={runA}\n  B={runB}");
+            }
+
+            // ⑤ 源码级：无任何随机源
+            string root = System.IO.Path.GetDirectoryName(Application.dataPath);
+            string source = System.IO.File.ReadAllText(
+                System.IO.Path.Combine(root ?? ".", "Assets/_Project/Scripts/Runtime/Physics/PoolVfxView.cs"));
+            int randomCount = CountOccurrences(source, "Random");
+            if (randomCount != 0)
+            {
+                failures.Add($"⑤ `PoolVfxView.cs` 中 `Random` 应出现 0 次，实际 {randomCount} 次。");
+            }
+
+            Assert.IsEmpty(failures, "T116 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine("T116: 边界 7 例 ✓；倍率单调非减 ✓；夹取生效 ✓；"
+                                  + $"双跑逐位一致 ✓；`Random` 出现 {randomCount} 次 ✓");
+        }
+
+        // ════════════ T117 槽与顶点预算 ═══════════════════════════════════
+
+        /// <summary>
+        /// **槽与顶点预算**（`D15-VF-02`；规格 §7）。① 每事件槽成本 ≤ 声明；② 最坏并发槽 ≤ `SlotCapacity`(16)；
+        /// ③ 单帧顶点上界 ≤ `SlotCapacity × (RingSegments + 3×2)` = 608。
+        /// **注入**：把 hit 每事件槽成本改成 `4` ⇒ ② 红（最坏并发 21 &gt; 16）。
+        /// </summary>
+        [Test]
+        public void T117_SlotAndVertexBudget()
+        {
+            var failures = new List<string>();
+
+            // ① 每事件槽成本 ≤ 声明
+            CheckSlotCost(failures, "strike", PoolVfxView.StrikeSlotCost, 2);
+            CheckSlotCost(failures, "hit", PoolVfxView.HitSlotCost, 2);
+            CheckSlotCost(failures, "rail", PoolVfxView.RailSlotCost, 1);
+            CheckSlotCost(failures, "pocket", PoolVfxView.PocketSlotCost, 2);
+
+            // ② 最坏并发槽 ≤ SlotCapacity
+            int worst = PoolVfxView.MaxConcurrentSlots();
+            if (worst > PoolVfxView.SlotCapacity)
+            {
+                failures.Add($"② 最坏并发槽 {worst} > SlotCapacity {PoolVfxView.SlotCapacity}。");
+            }
+
+            // ③ 单帧顶点上界
+            const int expectVerts = 16 * (32 + 3 * 2);   // = 608，独立十进制
+            int verts = PoolVfxView.MaxVerticesPerFrame();
+            if (verts > expectVerts)
+            {
+                failures.Add($"③ 单帧顶点上界 {verts} > {expectVerts}。");
+            }
+
+            Assert.IsEmpty(failures, "T117 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine($"T117: 槽成本 strike/hit/rail/pocket = "
+                                  + $"{PoolVfxView.StrikeSlotCost}/{PoolVfxView.HitSlotCost}/{PoolVfxView.RailSlotCost}/{PoolVfxView.PocketSlotCost}；"
+                                  + $"最坏并发 {worst} ≤ {PoolVfxView.SlotCapacity}；单帧顶点 {verts} ≤ {expectVerts} ✓");
+        }
+
+        private static string TierTrace(float[] speeds)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (float s in speeds)
+            {
+                PoolVfxView.VfxIntensityTier tier = PoolVfxView.ClassifyIntensity(s);
+                PoolVfxView.TierMultipliers(tier, out float sizeMul, out float alphaMul,
+                                            out float expansionMul, out float durMul, out int sparkDelta);
+                sb.Append(s.ToString("R")).Append('|').Append((int)tier).Append('|')
+                  .Append(sizeMul.ToString("R")).Append('|').Append(alphaMul.ToString("R")).Append('|')
+                  .Append(expansionMul.ToString("R")).Append('|').Append(durMul.ToString("R")).Append('|')
+                  .Append(sparkDelta).Append(';');
+            }
+
+            return sb.ToString();
+        }
+
+        private static void CheckSlotCost(List<string> failures, string name, int actual, int declared)
+        {
+            if (actual > declared)
+            {
+                failures.Add($"① {name} 每事件槽成本 {actual} > 声明 {declared}。");
+            }
+        }
+
+        private static IEnumerable<PoolVfxView.VfxLayer> AllVfxLayers()
+        {
+            foreach (PoolVfxView.VfxLayer layer in PoolVfxView.ImpactLayers)
+            {
+                yield return layer;
+            }
+
+            foreach (PoolVfxView.VfxLayer layer in PoolVfxView.PocketLayers)
+            {
+                yield return layer;
+            }
+        }
+
+        private static void AssertHueSeparation(List<string> failures, string nameA, Color a,
+                                                string nameB, Color b, float minDegrees)
+        {
+            float ha = HueDeg(a);
+            float hb = HueDeg(b);
+            float dist = HueDistanceDeg(ha, hb);
+            if (dist < minDegrees)
+            {
+                failures.Add($"⑤ 色相分离不足：{nameA}({ha:F1}°) vs {nameB}({hb:F1}°) 相距 {dist:F1}° < {minDegrees}°。");
+            }
+        }
+
+        private static float HueDeg(Color c)
+        {
+            float max = Mathf.Max(c.r, Mathf.Max(c.g, c.b));
+            float min = Mathf.Min(c.r, Mathf.Min(c.g, c.b));
+            float delta = max - min;
+            if (delta < 1e-6f)
+            {
+                return 0f;
+            }
+
+            float h;
+            if (max == c.r)
+            {
+                h = ((c.g - c.b) / delta) % 6f;
+            }
+            else if (max == c.g)
+            {
+                h = (c.b - c.r) / delta + 2f;
+            }
+            else
+            {
+                h = (c.r - c.g) / delta + 4f;
+            }
+
+            h *= 60f;
+            if (h < 0f)
+            {
+                h += 360f;
+            }
+
+            return h;
+        }
+
+        private static float HueDistanceDeg(float a, float b)
+        {
+            float d = Mathf.Abs(a - b) % 360f;
+            return d > 180f ? 360f - d : d;
+        }
+
+        private static int CountOccurrences(string source, string token)
+        {
+            int count = 0;
+            int index = 0;
+            while ((index = source.IndexOf(token, index, System.StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += token.Length;
+            }
+
+            return count;
         }
 
         private static void AssertColor(string label, Color expected, Color start, Color end)
