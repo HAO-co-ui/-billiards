@@ -247,18 +247,23 @@ namespace Billiards.Physics
         /// <summary>入袋各层（判据 `T115 ①`）。</summary>
         public static readonly VfxLayer[] PocketLayers = { PocketOuterLayer, PocketCoreLayer };
 
-        // —— 可读性预算（R1）的世界半径上限与"规范半径"夹取上限（判据 T115 ① / T116 ③）——
-        /// <summary>撞击类各层"最大世界半径（含扩张）"上限 = 26 mm（环不压任一球心 / 球号）。</summary>
+        // —— 可读性预算（R1）：**上限常量只有一处**（`D15-VF-02` 加固）──────────────────────
+        // 唯一源 = 规格 §1.3 的**世界毫米值**；"规范半径"夹取上限一律由它**派生**（除以显示尺度），
+        // **不再各写一份字面量**（两份上限必然分叉，且会破坏"上限只有一处"这一可核对性质）。
+        /// <summary>撞击类各层"最大世界半径（含扩张）"上限 = 26 mm（环不压任一球心 / 球号）。**唯一源**。</summary>
         public const float ImpactMaxWorldRadius = 0.026f;
 
-        /// <summary>入袋各层"最大世界半径（含扩张）"上限 = 44 mm（此时球已离台，放宽）。</summary>
+        /// <summary>入袋各层"最大世界半径（含扩张）"上限 = 44 mm（此时球已离台，放宽）。**唯一源**。</summary>
         public const float PocketMaxWorldRadius = 0.044f;
 
-        /// <summary>撞击类半径夹取上限（规范 m）= 26 mm ÷ 1.2（可读性预算 R1 的规范换算；判据 `T116 ③`）。</summary>
-        public const float ImpactRadiusCap = 0.02167f;
+        /// <summary>
+        /// 撞击类夹取上限（**规范 m**）= `ImpactMaxWorldRadius ÷ 显示尺度` = 26 ÷ 1.2 = **0.021667**。
+        /// **派生量（不是第二处字面量）** —— §1.3 的唯一上限是世界 26 mm。
+        /// </summary>
+        public const float ImpactRadiusCap = ImpactMaxWorldRadius / PoolConstants.PlayfieldVisualScale;
 
-        /// <summary>入袋半径夹取上限（规范 m）= 44 mm ÷ 1.2。</summary>
-        public const float PocketRadiusCap = 0.03667f;
+        /// <summary>入袋夹取上限（**规范 m**）= `PocketMaxWorldRadius ÷ 显示尺度` = 44 ÷ 1.2 = **0.036667**。**派生量**。</summary>
+        public const float PocketRadiusCap = PocketMaxWorldRadius / PoolConstants.PlayfieldVisualScale;
 
         // —— 力度分档（§2）：边界左闭右开，档位倍率单调非减（判据 T116）——
         /// <summary>力度档位（0 轻 → 3 猛）。</summary>
@@ -310,10 +315,46 @@ namespace Billiards.Physics
             }
         }
 
-        /// <summary>**半径夹取**（纯函数）：`min(baseRadius × sizeMul, radiusCap)`（保证 R1 不被倍率击穿）。</summary>
-        public static float FinalRadius(float baseRadius, float sizeMul, float radiusCap)
+        /// <summary>
+        /// **击杆力度缩放 `k`**（纯函数；`k = 0.7 + 0.6 · clamp01(power)` ∈ [0.7, 1.3]）——
+        /// `SpawnStrike` 的环/弧半径都乘它（沿用现行口径，`T86` 的"拖距→力度"映射链不动）。
+        /// 抽成**单点**是为了让 `T115 ①` 能取到**真实最坏半径** `Radius × k(1)`（而非基准 k=1）——
+        /// 否则该守卫测不到"满力度 + 高力度档"这一真实存在的组合（k=1.3 与 T3 在满力度时同时发生）。
+        /// </summary>
+        public static float StrikePowerScale(float power)
         {
-            return Mathf.Min(baseRadius * sizeMul, radiusCap);
+            return StrikePowerScaleMin + Mathf.Clamp01(power) * StrikePowerScaleSpan;
+        }
+
+        /// <summary>力度缩放 `k` 的下界（`power = 0` ⇒ `k = 0.7`）。</summary>
+        public const float StrikePowerScaleMin = 0.7f;
+
+        /// <summary>力度缩放 `k` 的跨度（`power` 0→1 ⇒ `k` 0.7→1.3）。</summary>
+        public const float StrikePowerScaleSpan = 0.6f;
+
+        /// <summary>
+        /// **半径夹取（作用于"最终半径"＝含扩张）**（纯函数；`D15-VF-02` 加固）。
+        ///
+        /// 规格 §2.3 的**定义**：本层在 `VfxPose` 取极值处（`p → 1`）的**最大几何半径**
+        /// `maxExtent = baseRadius × sizeMul × (1 + expansion × expansionMul)` 必须 **≤** `radiusCap`。
+        ///
+        /// 而 `VfxPose` 的入参是**未扩张**的半径、扩张另由 `expansion` 承担 ⇒ 本函数返回的是
+        /// **喂给 `VfxPose` 的半径**（把上式解出 `radius`）：
+        /// ```
+        /// radius = min(baseRadius × sizeMul × (1 + E), cap) / (1 + E)
+        ///        == min(baseRadius × sizeMul, cap / (1 + E))        // E = expansion × expansionMul &gt; 0，代数等价
+        /// ```
+        /// ⇒ 调用方随后用**同一个** `expansion = baseExpansion × expansionMul` 走 `VfxPose`，
+        /// 故 `p → 1` 处的半径恰为 `min(..., cap)` ⇒ **上限作用于最终半径（含扩张）**。
+        ///
+        /// ⚠ **原实现只夹 `baseRadius × sizeMul`、不含扩张** ⇒ 档位 T2/T3 的"晕层"会越预算
+        /// （实测 hit 晕 T3 ≈ **32.5 mm &gt; 26 mm**）—— 这正是本加固消除的。高力度档的"更狠"
+        /// 改由**亮度 / 线宽 / 层数 / 火花**承担，**不再由无界半径**承担 ⇒ 可读性预算在任何档位都成立。
+        /// </summary>
+        public static float FinalRadius(float baseRadius, float sizeMul, float expansion, float expansionMul, float radiusCap)
+        {
+            float finalExpansion = expansion * expansionMul;
+            return Mathf.Min(baseRadius * sizeMul, radiusCap / (1f + finalExpansion));
         }
 
         /// <summary>**峰值 alpha 夹取**：全部 ≤ 1.0（可读性预算 R6）。</summary>
@@ -329,8 +370,9 @@ namespace Billiards.Physics
         }
 
         /// <summary>
-        /// **对一层应用力度分档**（纯函数；夹取顺序 = 半径 → 扩张 → alpha → 时长；夹取后**再**走 `VfxPose`）。
-        /// 仅供**带接触速度**的层使用（strike / hit / rail）—— pocket 无速度输入 ⇒ 恒用基准值。
+        /// **对一层应用力度分档**（纯函数；夹取顺序 = 扩张 → 半径（含扩张的最终半径）→ alpha → 时长；
+        /// 夹取后**再**走 `VfxPose`）。仅供**带接触速度**的层使用（strike / hit / rail）—— pocket 无速度输入
+        /// ⇒ 恒用基准值（但其 `FinalRadius` 仍走同一夹取，见 `SpawnPocket`）。
         /// </summary>
         public static void ApplyIntensity(float speed, float baseRadius, float baseExpansion, float baseAlpha,
                                           float baseDuration, float radiusCap,
@@ -338,8 +380,8 @@ namespace Billiards.Physics
         {
             TierMultipliers(ClassifyIntensity(speed), out float sizeMul, out float alphaMul,
                             out float expansionMul, out float durMul, out _);
-            radius = FinalRadius(baseRadius, sizeMul, radiusCap);
             expansion = baseExpansion * expansionMul;
+            radius = FinalRadius(baseRadius, sizeMul, baseExpansion, expansionMul, radiusCap);
             alpha = FinalAlpha(baseAlpha, alphaMul);
             duration = baseDuration * durMul;
         }
@@ -607,9 +649,9 @@ namespace Billiards.Physics
             float rad = drive.aimDegrees * Mathf.Deg2Rad;
             var aimDir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
 
-            // `k`：沿用的力度缩放（`T86` 映射链不动）；`launchSpeed`：喂力度分档的初速（§2.1）。
+            // `k`：沿用的力度缩放（`T86` 映射链不动，单点 `StrikePowerScale`）；`launchSpeed`：喂力度分档的初速（§2.1）。
             float power = Mathf.Clamp01(drive.power);
-            float k = 0.7f + power * 0.6f;
+            float k = StrikePowerScale(power);
             float launchSpeed = Mathf.Lerp(drive.minLaunchSpeed, drive.maxLaunchSpeed, power);
             Vector2 center = cue - aimDir * (PoolConstants.BallRadius * 0.85f);
             float backDeg = drive.aimDegrees + 180f;
@@ -714,13 +756,19 @@ namespace Billiards.Physics
                 }
             }
 
+            // pocket **不参与力度分档** ⇒ `sizeMul = expansionMul = 1`；但仍过 §2.3 **同一**夹取
+            //（上限作用于"含扩张的最终半径" ⇒ 与撞击类同口径；§1.3 的 44 mm）。基值本就在上限内、
+            // 故这是**结构性一致**（不是行为改变）：若将来调大 pocket 基半径，夹取在此生效。
+            float outerRadius = FinalRadius(PocketOuterLayer.Radius, 1f, PocketOuterLayer.Expansion, 1f, PocketRadiusCap);
+            float coreRadius = FinalRadius(PocketCoreLayer.Radius, 1f, PocketCoreLayer.Expansion, 1f, PocketRadiusCap);
+
             // **吸（Roll-in）**：捕获当帧 —— 爆外环（brass）+ 3 火花沿袋口法向飞散 ⇒ "球被吸进洞口"。
-            Spawn(false, center, inwardDeg, PocketOuterLayer.Radius, PocketOuterLayer.Duration,
+            Spawn(false, center, inwardDeg, outerRadius, PocketOuterLayer.Duration,
                 PocketOuterLayer.Expansion, PocketOuterLayer.PeakAlpha, BrassColor, 3, 0.013f);
 
             // **爆（Pop）**：`PocketBurstDelaySeconds` 后（球到达洞口、开始落下）—— 爆内核（brassCore，暖白，全屏最亮）。
             // 延迟让"爆点"与"落球"严格同步；内核半径 15 mm < 球半径 ⇒ 环在球底、不盖号码。
-            Spawn(false, center, inwardDeg, PocketCoreLayer.Radius, PocketCoreLayer.Duration,
+            Spawn(false, center, inwardDeg, coreRadius, PocketCoreLayer.Duration,
                 PocketCoreLayer.Expansion, PocketCoreLayer.PeakAlpha, BrassCoreColor, 0, 0f,
                 spawnDelay: PocketBurstDelaySeconds);
         }

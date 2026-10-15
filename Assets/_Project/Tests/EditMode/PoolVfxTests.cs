@@ -387,10 +387,13 @@ namespace Billiards.Tests
 
         /// <summary>
         /// **VFX 可读性预算**（`D15-VF-02`；规格 §1.3 R1–R6）。
-        /// ① 各事件各层最大世界半径（含扩张）≤ 档位上限（撞击类 26 mm / 入袋 44 mm）；
+        /// ① 各事件各层最大世界半径（**含扩张**）≤ 档位上限（撞击类 26 mm / 入袋 44 mm）——
+        ///    **全档 T0–T3 × 全层**扫描（只测基准 T1 会让守卫"只在基准档有效"）；strike 取力度缩放
+        ///    `k` 的**上界**（= 真实最坏：`k=1.3` 与 `T3` 在满力度时同时发生）；
         /// ② 特效线**严格**比瞄准线粗；③ 明度阶梯严格单调 `pocketCore &gt; strike ≥ hit &gt; rail`；
         /// ④ 峰值 alpha ≤ 1.0；⑤ chalk / brass / rail 三色两两**色相**相距 ≥ 20°。
-        /// **注入**：把 hit 晕层半径写成 `0.030` ⇒ ① 红（0.030×1.5×1.2 = 54 mm &gt; 26 mm）。
+        /// **注入（本单实测）**：把 §2.3 夹取里的 `expansionMul` 去掉（夹取退回"不含扩张"）⇒ ① 红
+        /// （hit 晕 **T3 ≈ 26.9 mm**、T2 ≈ 26.4 mm &gt; 26 mm）；若连同整个扩张因子一起去掉 ⇒ T3 ≈ **32.5 mm**。
         /// </summary>
         [Test]
         public void T115_ReadabilityBudget()
@@ -398,24 +401,58 @@ namespace Billiards.Tests
             var failures = new List<string>();
             const float display = PoolConstants.PlayfieldVisualScale;   // 1.2（唯一显示尺度真源）
 
-            // ① 各层最大世界半径 ≤ 档位上限
-            foreach (PoolVfxView.VfxLayer layer in PoolVfxView.ImpactLayers)
+            // ① 各层最大世界半径（含扩张）≤ 档位上限 —— **全档 T0–T3 × 全层**（`D15-VF-02` 加固）。
+            //    加固前只测"基准层值"（即 T1）⇒ 这条预算守卫**只在基准档有效**：T2/T3 的晕层会越界
+            //    （hit 晕 T3 ≈ 32.5 mm）。现对**每一档 × 每一层**都成立。
+            //    另：strike 半径乘力度缩放 `k(power) ∈ [0.7, 1.3]`，最坏组合是 **满力度 k=1.3 且 T3**
+            //    （满力度时二者同时发生）⇒ 必须取 `k` 上界，否则测不到真实最坏半径。
+            var tiers = new[]
             {
-                float maxWorld = layer.Radius * (1f + layer.Expansion) * display;
-                if (maxWorld > PoolVfxView.ImpactMaxWorldRadius + 1e-6f)
+                PoolVfxView.VfxIntensityTier.T0Light, PoolVfxView.VfxIntensityTier.T1Medium,
+                PoolVfxView.VfxIntensityTier.T2Heavy, PoolVfxView.VfxIntensityTier.T3Extreme,
+            };
+            // 各档代表速度（落在档内；边界左闭右开 0.60 / 1.80 / 3.60）。
+            var tierSpeeds = new[] { 0.30f, 1.20f, 2.70f, 7.90f };
+            for (int t = 0; t < tiers.Length; t++)
+            {
+                if (PoolVfxView.ClassifyIntensity(tierSpeeds[t]) != tiers[t])
                 {
-                    failures.Add($"① 撞击类层 {layer.Name} 最大世界半径 {maxWorld * 1000f:R} mm > 上限 "
-                                 + $"{PoolVfxView.ImpactMaxWorldRadius * 1000f:R} mm。");
+                    failures.Add($"① 代表速度 {tierSpeeds[t]:R} 未落在档 {tiers[t]} ⇒ 全档扫描测错了档"
+                                 + "（档位边界漂移时本表须同步）。");
                 }
             }
 
-            foreach (PoolVfxView.VfxLayer layer in PoolVfxView.PocketLayers)
+            float strikeKMax = PoolVfxView.StrikePowerScale(1f);   // = 1.3（力度缩放上界）
+            var impact = new (PoolVfxView.VfxLayer layer, float baseRadius)[]
             {
-                float maxWorld = layer.Radius * (1f + layer.Expansion) * display;
-                if (maxWorld > PoolVfxView.PocketMaxWorldRadius + 1e-6f)
+                (PoolVfxView.StrikeCoreLayer, PoolVfxView.StrikeCoreLayer.Radius * strikeKMax),
+                (PoolVfxView.StrikeHaloLayer, PoolVfxView.StrikeHaloLayer.Radius * strikeKMax),
+                (PoolVfxView.HitCoreLayer, PoolVfxView.HitCoreLayer.Radius),
+                (PoolVfxView.HitHaloLayer, PoolVfxView.HitHaloLayer.Radius),
+                (PoolVfxView.RailLayer, PoolVfxView.RailLayer.Radius),
+            };
+            foreach (var (layer, baseRadius) in impact)
+            {
+                for (int t = 0; t < tiers.Length; t++)
                 {
-                    failures.Add($"① 入袋层 {layer.Name} 最大世界半径 {maxWorld * 1000f:R} mm > 上限 "
-                                 + $"{PoolVfxView.PocketMaxWorldRadius * 1000f:R} mm。");
+                    AssertLayerMaxWorldWithinCap(failures, "撞击类层", layer, baseRadius, tierSpeeds[t],
+                        PoolVfxView.ImpactRadiusCap, PoolVfxView.ImpactMaxWorldRadius, display);
+                }
+            }
+
+            // 入袋各层：生产**不参与力度分档**（恒基准值），但 §2.3 的夹取与 §1.3 的 44 mm 上限对
+            // "任何档位"都必须成立（防御性：证夹取对档位不敏感）⇒ 同样逐一过全档。
+            var pocketed = new (PoolVfxView.VfxLayer layer, float baseRadius)[]
+            {
+                (PoolVfxView.PocketOuterLayer, PoolVfxView.PocketOuterLayer.Radius),
+                (PoolVfxView.PocketCoreLayer, PoolVfxView.PocketCoreLayer.Radius),
+            };
+            foreach (var (layer, baseRadius) in pocketed)
+            {
+                for (int t = 0; t < tiers.Length; t++)
+                {
+                    AssertLayerMaxWorldWithinCap(failures, "入袋层", layer, baseRadius, tierSpeeds[t],
+                        PoolVfxView.PocketRadiusCap, PoolVfxView.PocketMaxWorldRadius, display);
                 }
             }
 
@@ -450,17 +487,18 @@ namespace Billiards.Tests
             AssertHueSeparation(failures, "brass", PoolVfxView.BrassColor, "rail", PoolVfxView.RailColor, 20f);
 
             Assert.IsEmpty(failures, "T115 失败：\n" + string.Join("\n", failures));
-            TestContext.WriteLine($"T115: 撞击类上界 {PoolVfxView.ImpactMaxWorldRadius * 1000f:R} mm / 入袋 "
-                                  + $"{PoolVfxView.PocketMaxWorldRadius * 1000f:R} mm；线宽 {PoolVfxView.LineWidth:R} > "
-                                  + $"瞄准线 {AimAssistView.PredictionLineWidth:R}；明度 {pocketCore:R}/{strike:R}/{hit:R}/{rail:R}；"
-                                  + "三色色相分离 ✓");
+            TestContext.WriteLine($"T115 ①: **全档 × 全层**（7 层 × 4 档 = 28 组）最大世界半径（含扩张）"
+                                  + $"均 ≤ 上限（撞击类 {PoolVfxView.ImpactMaxWorldRadius * 1000f:R} mm / 入袋 "
+                                  + $"{PoolVfxView.PocketMaxWorldRadius * 1000f:R} mm）✓；"
+                                  + $"② 线宽 {PoolVfxView.LineWidth:R} > 瞄准线 {AimAssistView.PredictionLineWidth:R}；"
+                                  + $"③ 明度 {pocketCore:R}/{strike:R}/{hit:R}/{rail:R}；⑤ 三色色相分离 ✓");
         }
 
         // ════════════ T116 力度分级闭式 + 无随机（确定性）═══════════════════
 
         /// <summary>
         /// **力度分级**（`D15-VF-02`；规格 §2）。① 边界（左闭右开）；② 倍率随档**单调非减**、`alphaMul ≤ 1`；
-        /// ③ **夹取**（`sizeMul = 10` ⇒ `finalRadius ≤ MaxRadiusCap`）；④ **确定性**（同一 `s` 序列双跑逐位一致）；
+        /// ③ **夹取**（`sizeMul = 10` ⇒ **含扩张的最终半径** ≤ `MaxRadiusCap`）；④ **确定性**（同一 `s` 序列双跑逐位一致）；
         /// ⑤ **源码级**：`PoolVfxView.cs` 中 `Random` 出现 **0** 次。
         /// **注入**：把 `TierLightMaxSpeed`（0.60）改成 `0.50` ⇒ `s = 0.59` 用例红（应 T0，实际 T1）。
         /// </summary>
@@ -518,11 +556,16 @@ namespace Billiards.Tests
                 prevDur = durMul;
             }
 
-            // ③ 夹取：极端 sizeMul 不得击穿上限
-            float clamped = PoolVfxView.FinalRadius(0.011f, 10f, PoolVfxView.ImpactRadiusCap);
-            if (clamped > PoolVfxView.ImpactRadiusCap + 1e-6f)
+            // ③ 夹取：极端 sizeMul 不得击穿上限（上限作用于**含扩张的最终半径** ⇒ 判 maxExtent）
+            const float capExpansion = 0.5f;
+            const float capExpansionMul = 1f;
+            float clampedRadius = PoolVfxView.FinalRadius(0.011f, 10f, capExpansion, capExpansionMul,
+                                                          PoolVfxView.ImpactRadiusCap);
+            float clampedExtent = clampedRadius * (1f + capExpansion * capExpansionMul);
+            if (clampedExtent > PoolVfxView.ImpactRadiusCap + 1e-6f)
             {
-                failures.Add($"③ sizeMul=10 时 finalRadius {clamped:R} 应 ≤ 上限 {PoolVfxView.ImpactRadiusCap:R}。");
+                failures.Add($"③ sizeMul=10 时最终半径（含扩张）{clampedExtent:R} 应 ≤ 上限 "
+                             + $"{PoolVfxView.ImpactRadiusCap:R}。");
             }
 
             // ④ 确定性：同一 s 序列双跑，输出逐位一致（无随机 / 无时间抖动）
@@ -610,6 +653,25 @@ namespace Billiards.Tests
             if (actual > declared)
             {
                 failures.Add($"① {name} 每事件槽成本 {actual} > 声明 {declared}。");
+            }
+        }
+
+        /// <summary>
+        /// `T115 ①` 的一格：对「层 × 档位」算"**最终半径（含扩张）** → 世界半径"，超上限即记失败。
+        /// 走**生产同一条路径** `ApplyIntensity`（→ `FinalRadius`）—— 判据若自算公式，就会与实现脱节
+        /// （本工程已有"判据重述设计公式、实现画的却是另一条线"的教训）。
+        /// </summary>
+        private static void AssertLayerMaxWorldWithinCap(List<string> failures, string group,
+            PoolVfxView.VfxLayer layer, float baseRadius, float speed,
+            float radiusCap, float maxWorldCap, float display)
+        {
+            PoolVfxView.ApplyIntensity(speed, baseRadius, layer.Expansion, layer.PeakAlpha, layer.Duration,
+                radiusCap, out float radius, out float expansion, out _, out _);
+            float maxWorld = radius * (1f + expansion) * display;
+            if (maxWorld > maxWorldCap + 1e-6f)
+            {
+                failures.Add($"① {group} {layer.Name} @ s={speed:R} 最大世界半径 {maxWorld * 1000f:R} mm > 上限 "
+                             + $"{maxWorldCap * 1000f:R} mm（夹取须作用于含扩张的最终半径）。");
             }
         }
 
