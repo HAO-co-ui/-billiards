@@ -40,6 +40,20 @@ namespace Billiards.Physics
         [Tooltip("勾选后装载「白球 + 球堆」而非单球，便于在编辑器里直接观察球-球碰撞。")]
         public bool loadRackForBallBallDemo = true;
 
+        /// <summary>
+        /// 球堆模式下的**目标球数**（不含白球）。**正式对局 = <see cref="RackBallCount"/>(15)**，
+        /// 字段化的唯一目的是让**测试可以显式**搭小堆场景。
+        ///
+        /// ⚠ 为什么必须显式可配：本轮把正式球数从 3 改成 15 之后，两个**与球堆大小无关**的用例
+        /// （`T65` 出杆不清盘、`T78` 银行球预测与实跑一致）因为"场景里多了 12 颗球"而失效 ——
+        /// 它们的摆位/瞄准角是**在 3 球堆下量出来的**（`T78` 的注释里就写着"实测它们不参与本场景的接触"）。
+        /// 与其让"默认值"继续隐式决定场上球数（这正是本轮踩过的坑：默认值悄悄让场上只剩 4 颗），
+        /// 不如把这件事**变成测试里的显式参数**：小堆用例写 `rackBallCount = 3`，
+        /// 正式球数由 `T122`（场景球数）与 `T111`（满堆开球收敛）守。
+        /// </summary>
+        [Tooltip("球堆模式的目标球数（不含白球）。正式对局用默认值；测试可显式调小以搭隔离场景。")]
+        public int rackBallCount = RackBallCount;
+
         [Header("物理参数（占位值；正式值待手感标定）")]
         [Tooltip("库边法向恢复系数 e。占位值，未经策划确认。")]
         [Range(0f, 1f)]
@@ -447,9 +461,19 @@ namespace Billiards.Physics
         /// 球堆模式：白球 + 三球小堆（间距 = 2r + 2e-4 ⇒ **合法不重叠**）。
         /// 用于在编辑器里**直接观察球-球碰撞**（本驱动器是调试入口，不是最终交互）。
         /// </summary>
+        /// <summary>
+        /// **正式对局的球堆球数**（目标球 15 颗 ⇒ 加白球共 **16** 颗）。
+        ///
+        /// ⚠ 与 <see cref="RackPositions"/> 的**默认参数 3** 刻意分开：那个默认值是早期"球-球演示"的遗留，
+        /// 仍被 `T38`（向后兼容闸门）与验收器 `D4` 的初始摆位检查依赖 ⇒ **不动它**；
+        /// **正式对局一律走本常量**，避免"默认值悄悄决定场上球数"（本轮实测正是如此：场上一度只有 4 颗）。
+        /// </summary>
+        public const int RackBallCount = 15;
+
         private BallState[] BuildRack()
         {
-            Vector2[] positions = RackPositions(tableConfig.footSpot);
+            int count = Mathf.Max(1, rackBallCount);
+            Vector2[] positions = RackPositions(tableConfig.footSpot, count);
             var balls = new BallState[positions.Length];
             for (int i = 0; i < positions.Length; i++)
             {

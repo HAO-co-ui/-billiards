@@ -805,6 +805,14 @@ namespace Billiards.Tests
                 drive.tableConfig = AssetDatabase.LoadAssetAtPath<TableConfig>(TablePath);
                 Assert.IsNotNull(drive.tableConfig, "T78：需要 TableConfig.asset。");
                 drive.loadRackForBallBallDemo = true;
+
+                // ⚠ **显式用小堆（3 颗）**：本场景的瞄准角 172.50° 与目标位 (-0.40, 0.30) 是
+                // **在 3 球堆下量出来的**（下面那句"其余堆球不动；实测它们不参与本场景的接触"只在
+                // 小堆下成立）。本轮正式球数从 3 改成 15 后，满堆的白球会在**撞库之前**先碰到堆球 ⇒
+                // `CushionBounceCountBeforeContact` 变 0，判据按设计报红（它守的是"预测真的跑了库边"）。
+                // 银行球这条性质**与球堆大小无关**，故这里把球堆调小以恢复被验证过的隔离场景；
+                // 满堆行为由 `T111`（满堆开球收敛）与 `T122`（场景 16 球）覆盖。
+                drive.rackBallCount = 3;
                 drive.Initialize();
                 Assert.IsNotNull(drive.Simulator, "T78：Initialize 后应有内核。");
 

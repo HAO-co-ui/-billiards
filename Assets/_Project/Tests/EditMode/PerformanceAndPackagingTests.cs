@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using Billiards.Core;
 using Billiards.EditorTools;
 using Billiards.Physics;
@@ -16,7 +18,9 @@ namespace Billiards.Tests
     /// **性能与打包判据族**（Day 16，编号续 `T114`：`T119`–`T121`）。
     ///
     /// · **`T119` 物理单步预算**：拦"量级失控"（历史上出现过单子步 199 次接触那种爆炸），**不声称 fps**；
-    /// · **`T120` 性能与构建配置一致性**：阴影收敛 / 帧率策略 / 构建场景列表三项**有意设置**与代码常量、资产实际值一致；
+    /// · **`T120` 性能与构建配置一致性**：阴影收敛 / 帧率策略 / **出包入口不打出黑屏死包**三项
+    ///   （前两项比对代码常量与资产实际值；第三项断言**出包入口的三重保护** + 灰盒场景非空壳 ——
+    ///   口径变更的原因见 `T120` 方法内注释：持久 build list 与 `SCN-02` / `D4-BLD-01` **互斥**）；
     /// · **`T121` 冒烟纯逻辑**：`SmokeProbe` 的命令行解析、帧时统计、达标判定（全纯函数、无随机）。
     ///
     /// **为什么 `T119` 是"宽松闸门"而不是精确基线**：计时受机器负载影响，写死数字会变成假红；
@@ -221,21 +225,64 @@ namespace Billiards.Tests
                 Application.targetFrameRate = oldTarget;
             }
 
-            // ③ 构建场景列表
-            EditorBuildSettingsScene[] scenes = EditorBuildSettings.scenes;
-            if (scenes.Length != 1 || scenes[0].path != PerformanceSetup.GreyboxScenePath || !scenes[0].enabled)
+            // ③ 出包不得是黑屏死包 —— **判据的对象是"出包入口的保证"，不是 `EditorBuildSettings.asset` 的持久值**。
+            //
+            // ── 为什么改了口径（实测冲突，必须写下来，否则会被重复"修"回去）──────────────
+            // · `SCN-02`（Day1 工程配置验收）与 `D4-BLD-01`（Day4 物理验收）**都**断言**提交态**的
+            //   build list **恰好**是 `[Main.unity]`；而 `BilliardsProjectSetup` 的 Apply 每次会把它
+            //   写回 `Main.unity` ⇒ 两个验收各自自洽（我实测 26/33/22/7 全绿）。
+            // · Day16 修"黑屏死包"的做法是让**构建入口**改用灰盒场景 ⇒ 与上面那条**互斥**：
+            //   谁后跑谁生效。**不能**靠"把持久值改成灰盒"来同时满足两边 ——
+            //   那会让 `SCN-02` 变 25/26、`D4-BLD-01` 直接 FAIL、两份已入库证据作废。
+            // · 实测：出包入口 `BuildWindows.BuildFromCommandLine` **自带三重保护** ——
+            //   ① 先跑 `PerformanceSetup.Apply()`（把列表写成灰盒场景）→ ② 断言列表不是灰盒就**拒绝出包**
+            //   → ③ `BuildPlayerOptions.scenes` **显式**指定场景（出包内容与持久列表无关）。
+            //   ⇒ 出包正确性由这三条保证，**不依赖** `EditorBuildSettings.asset` 存着什么。
+            // ⇒ 故本项断言"那三重保护真的在"，而不是断言一个与另一验收口径互斥的持久值。
+            // （若将来把 `Main.unity` 做成真正的游戏入口，本项应改为断言"首个 build 场景不是空壳"。）
+            const string buildEntryPath = "Assets/_Project/Scripts/Editor/ProjectSetup/BuildWindows.cs";
+            string projectRoot = Path.GetDirectoryName(Application.dataPath) ?? ".";
+            string buildSource = File.ReadAllText(Path.Combine(projectRoot, buildEntryPath), Encoding.UTF8);
+
+            if (!Regex.IsMatch(buildSource, @"PerformanceSetup\.Apply\s*\("))
             {
-                string actual = scenes.Length == 0 ? "（空）" : string.Join(", ", System.Array.ConvertAll(scenes,
-                    s => (s.enabled ? "" : "禁用:") + s.path));
-                failures.Add($"③ 构建场景列表为 [{actual}]，应恰含并启用 {PerformanceSetup.GreyboxScenePath}"
-                             + "（空壳 Main.unity 会打出黑屏死包）。");
+                failures.Add("③ 出包入口没有先应用 `PerformanceSetup`（构建场景列表不会被写成灰盒场景）。");
+            }
+
+            if (!Regex.IsMatch(buildSource, @"scenes\[0\]\.path\s*!=\s*PerformanceSetup\.GreyboxScenePath"))
+            {
+                failures.Add("③ 出包入口没有「列表不对就拒绝出包」的闸门（会静默打出黑屏死包）。");
+            }
+
+            if (!Regex.IsMatch(buildSource, @"scenes\s*=\s*new\[\]\s*\{\s*PerformanceSetup\.GreyboxScenePath\s*\}"))
+            {
+                failures.Add("③ 出包入口没有在 `BuildPlayerOptions` 里显式指定场景"
+                             + "（那样出包内容会随持久列表漂移）。");
+            }
+
+            // 灰盒场景**必须不是空壳**：空壳场景编不出任何逻辑（黑屏的真因）。
+            var greyboxScene = AssetDatabase.LoadAssetAtPath<SceneAsset>(PerformanceSetup.GreyboxScenePath);
+            if (greyboxScene == null)
+            {
+                failures.Add($"③ 灰盒场景资产不存在：{PerformanceSetup.GreyboxScenePath}。");
+            }
+            else
+            {
+                string sceneText = File.ReadAllText(
+                    Path.Combine(projectRoot, PerformanceSetup.GreyboxScenePath), Encoding.UTF8);
+                if (!sceneText.Contains(GreyboxSceneSetup.DriveObjectName)
+                    || !sceneText.Contains(GreyboxSceneSetup.PracticeHudObjectName))
+                {
+                    failures.Add($"③ 灰盒场景里找不到 `{GreyboxSceneSetup.DriveObjectName}` / "
+                                 + $"`{GreyboxSceneSetup.PracticeHudObjectName}` ⇒ 它是空壳，出包即黑屏。");
+                }
             }
 
             Assert.IsEmpty(failures, "T120 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                "T120: 阴影 {0}m/级联 {1}/图 {2}²；帧率 vSync={3}/target={4}；构建场景 {5} ✓",
-                shadowDistance, cascades, resolution, FrameRateSettings.VSyncCount, FrameRateSettings.TargetFrameRate,
-                scenes.Length > 0 ? scenes[0].path : ""));
+                "T120: 阴影 {0}m/级联 {1}/图 {2}²；帧率 vSync={3}/target={4}；"
+                + "出包入口三重保护（应用配置/拒绝闸门/显式场景）✓；灰盒场景非空壳 ✓",
+                shadowDistance, cascades, resolution, FrameRateSettings.VSyncCount, FrameRateSettings.TargetFrameRate));
         }
 
         // ── T121 ─────────────────────────────────────────────────────────

@@ -284,9 +284,18 @@ namespace Billiards.Tests
 
                 Vector2 cuePhys = drive.Simulator.Balls[0].position;
 
-                // 球的**台呢切点**（显示世界）= 渲染球心 − 世界半径；球基元（直径 1）半径 = 0.5 × lossyScale。
+                // 球的**台呢切点**（显示世界）= 渲染球心 − 世界半径。
+                //
+                // ⚠ **世界半径的算法本轮改过，原因实测**：旧式写 `ball0.lossyScale.y * 0.5f`，
+                // 它只在"可视物是**单位直径的基元球**"时成立（基元球直径 1 ⇒ 半径 = 0.5×缩放）。
+                // 接入美术包**真模型**后，模型实例的缩放是 **1**（半径 0.028575 m 烘在网格里）⇒
+                // 旧式算出 **0.6 m** 的假半径，把切点推到球下方 0.6 m ⇒ 反解误差 **0.171 m**（实测），
+                // 判据报「误差 0.171189 m 超容差 2e-4 m」。
+                // ⇒ 改为**从物理常量 × 可视野缩放**取（球半径的真源在物理侧；可视物必须与它一致，
+                //    这正是本判据要验的"可视 ↔ 物理互逆"）。**不是产品缺陷**：渲染侧的位置与尺寸都是对的，
+                //    错的是本用例里"半径怎么算"这条脚手架公式。
+                float ballWorldRadius = PoolConstants.BallRadius * playfieldRoot.lossyScale.y;
                 Vector3 ballWorldCenter = ball0.position;
-                float ballWorldRadius = ball0.lossyScale.y * 0.5f;
                 Vector3 ballWorldGround = ballWorldCenter + Vector3.down * ballWorldRadius;
 
                 Vector3 screen = cam.WorldToScreenPoint(ballWorldGround);

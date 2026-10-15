@@ -56,9 +56,27 @@ namespace Billiards.UI
         /// <summary>文本在 **1280×720** 下的实际像素高下限。</summary>
         public const float MinReadablePixels = 9f;
 
-        /// <summary>`Shoot` 按钮设计尺寸（1080 域像素）。</summary>
+        /// <summary>
+        /// `Shoot` 按钮在**1080 域**下的**可读性下限宽度**。
+        ///
+        /// ⚠ **它不是设计稿的按钮宽** —— 两者是不同的量，本轮曾误合并成一个数，导致判据 `T95 (e)` 变红：
+        /// · **本常量（150）** = "**在 1280×720 上渲染出来仍 ≥ 90 px**"反推的宽度：
+        ///   `90 ÷ CanvasScale(1280,720)` = `90 ÷ 0.6667` ≈ 135，取 **150** 留余量。
+        ///   它是**可读性预算的下限**（`T95 (e)` 就按它算 720p 渲染宽）。
+        /// · **设计稿的按钮宽 = `ClubUiTokens.ButtonWidth`（112）** = 原型 `.shoot-button { width: 112px }`
+        ///   在 **1920×1080** 设计分辨率下的**参考值**。112 在 720p 上只有 74.7 px，
+        ///   **低于** 90 px 的下限 —— 但这不是问题，因为**本工程画得比它宽**：
+        ///   竖排力度块里按钮取**整栏宽**（= `PowerZone.width × 1920` ≈ **537.6** 设计像素，
+        ///   与设计稿 `@media (min-width: 900px) .shoot-button { width: 100% }` 同形）。
+        ///
+        /// ⇒ **别把这两个数合并**：一个是"最小可读宽度"，一个是"原型的参考宽度"，
+        /// 合并后要么误报红（如本轮），要么把设计参考值当成硬约束。
+        /// 视图侧另有一条构建期自检：若本常量 > 力度块宽，会在构建时告警（见 `PracticeHudView.BuildShotbar`）。
+        /// </summary>
         public const float ShootButtonWidth = 150f;
-        public const float ShootButtonHeight = 43f;
+
+        /// <summary>`Shoot` 按钮在 1080 域下的**设计参考高度**（= `ClubUiTokens.ButtonHeight` 的转发）。</summary>
+        public const float ShootButtonHeight = ClubUiTokens.ButtonHeight;
 
         // ── 球桌口径（唯一来源 = `PoolConstants` / `PoolGeometry`，此处不另立数值）──
         /// <summary>台面矩形的四个物理角（`PoolGeometry` 是唯一坐标转换点，铁律 16）。</summary>

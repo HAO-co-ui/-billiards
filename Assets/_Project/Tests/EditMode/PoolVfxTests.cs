@@ -595,8 +595,16 @@ namespace Billiards.Tests
         // ════════════ T117 槽与顶点预算 ═══════════════════════════════════
 
         /// <summary>
-        /// **槽与顶点预算**（`D15-VF-02`；规格 §7）。① 每事件槽成本 ≤ 声明；② 最坏并发槽 ≤ `SlotCapacity`(16)；
-        /// ③ 单帧顶点上界 ≤ `SlotCapacity × (RingSegments + 3×2)` = 608。
+        /// **槽与顶点预算**（`D15-VF-02`；规格 §7）。① 每事件槽成本 ≤ 声明；② 最坏并发槽 ≤ `SlotCapacity`；
+        /// ③ 单帧顶点上界 ≤ `SlotCapacity × (RingSegments + 3×2)`。
+        ///
+        /// ⚠ **本项的上界随容量改过一次，值不是"随手改的"**：
+        /// 补上**犯规环 + 结算环**两类事件后，最坏并发从 15 升到 **17**；16 槽下这会**溢出**，
+        /// 而溢出只会静默丢特效（`DroppedCount`，实机表现为"有时候没特效"）。
+        /// 设计说明 §VFX 明写"特效使用 **48 槽**对象池" ⇒ 按设计把容量提到 48，
+        /// 上界随之变为 `48 × 38 = 1824`。**② 仍是真正的最坏并发约束**（它才是"会不会溢出"的判据），
+        /// ③ 只是"容量 × 单槽顶点"的派生上界。
+        ///
         /// **注入**：把 hit 每事件槽成本改成 `4` ⇒ ② 红（最坏并发 21 &gt; 16）。
         /// </summary>
         [Test]
@@ -609,6 +617,8 @@ namespace Billiards.Tests
             CheckSlotCost(failures, "hit", PoolVfxView.HitSlotCost, 2);
             CheckSlotCost(failures, "rail", PoolVfxView.RailSlotCost, 1);
             CheckSlotCost(failures, "pocket", PoolVfxView.PocketSlotCost, 2);
+            CheckSlotCost(failures, "foul", PoolVfxView.FoulRingSlotCost, 1);
+            CheckSlotCost(failures, "result", PoolVfxView.ResultRingSlotCost, 1);
 
             // ② 最坏并发槽 ≤ SlotCapacity
             int worst = PoolVfxView.MaxConcurrentSlots();
@@ -617,8 +627,8 @@ namespace Billiards.Tests
                 failures.Add($"② 最坏并发槽 {worst} > SlotCapacity {PoolVfxView.SlotCapacity}。");
             }
 
-            // ③ 单帧顶点上界
-            const int expectVerts = 16 * (32 + 3 * 2);   // = 608，独立十进制
+            // ③ 单帧顶点上界（随容量派生；容量见 SlotCapacity 的注释）
+            int expectVerts = PoolVfxView.SlotCapacity * (32 + 3 * 2);
             int verts = PoolVfxView.MaxVerticesPerFrame();
             if (verts > expectVerts)
             {
@@ -626,8 +636,9 @@ namespace Billiards.Tests
             }
 
             Assert.IsEmpty(failures, "T117 失败：\n" + string.Join("\n", failures));
-            TestContext.WriteLine($"T117: 槽成本 strike/hit/rail/pocket = "
-                                  + $"{PoolVfxView.StrikeSlotCost}/{PoolVfxView.HitSlotCost}/{PoolVfxView.RailSlotCost}/{PoolVfxView.PocketSlotCost}；"
+            TestContext.WriteLine($"T117: 槽成本 strike/hit/rail/pocket/foul/result = "
+                                  + $"{PoolVfxView.StrikeSlotCost}/{PoolVfxView.HitSlotCost}/{PoolVfxView.RailSlotCost}/"
+                                  + $"{PoolVfxView.PocketSlotCost}/{PoolVfxView.FoulRingSlotCost}/{PoolVfxView.ResultRingSlotCost}；"
                                   + $"最坏并发 {worst} ≤ {PoolVfxView.SlotCapacity}；单帧顶点 {verts} ≤ {expectVerts} ✓");
         }
 

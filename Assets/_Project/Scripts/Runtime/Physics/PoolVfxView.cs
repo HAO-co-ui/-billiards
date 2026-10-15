@@ -1,13 +1,19 @@
 using System.Collections.Generic;
 using Billiards.Core;
 using Billiards.Table;
+using Billiards.UI;
 using UnityEngine;
 
 namespace Billiards.Physics
 {
     /// <summary>
-    /// **击球特效表现层**：4 类程序化特效（击杆 / 碰球 / 撞库 / 入袋）——按素材包 `pool-vfx.js` 的
-    /// 形状 / 颜色 / 时序**按意图重建**（包内无序列帧或 Prefab，不追求逐帧复刻）。
+    /// **击球特效表现层**：6 类程序化特效（击杆 / 碰球 / 撞库 / 入袋 / **犯规** / **结算**）——按素材包
+    /// `pool-vfx.js` 与设计说明 §VFX 的形状 / 颜色 / 时序**按意图重建**
+    /// （包内无序列帧或 Prefab，不追求逐帧复刻）。
+    ///
+    /// 犯规环与结算环是**后加**的两类（来源 = `04_UI/UI全流程设计说明` + `05_VFX/音画设计与资源说明`：
+    /// "犯规：白球周围 0.38 秒酒红短环"、"结算：最后黑八袋位细环"），
+    /// 补齐前本工程只有前 4 类 ⇒ 用户反馈的"反馈感不够"里有一半是**这两类缺失**造成的。
     ///
     /// ── 触发架构（与音频层的事件流正交，如实登记）──────────────────────
     /// · **门 = 既有只读计数增量**（strike = `LaunchCount`；hit = `BallBallContactCount`；
@@ -35,7 +41,18 @@ namespace Billiards.Physics
     public sealed class PoolVfxView : MonoBehaviour
     {
         // ── 参考实现参数（pool-vfx.js）──────────────────────────────────────
-        public const int SlotCapacity = 16;
+        /// <summary>
+        /// 槽容量。
+        ///
+        /// ⚠ **由 16 提到 48（`D15-VF-02` 之后的规格变更）**：设计说明 §VFX 明写
+        /// "特效使用 **48 槽**对象池"，而 16 槽在**新加两类事件**（犯规环 / 结算环）后
+        /// 最坏并发会顶到 17 ⇒ 超过容量即**静默丢弃**（只进 `DroppedCount`，实机上表现为
+        /// "有时候没特效"，是最难查的一类缺陷）。提容量是**唯一**能消除该失效模式的做法，
+        /// 且与设计稿一致。
+        /// 代价：启动期一次性多建 32 槽（每槽 4 个 `LineRenderer`）⇒ 约 +128 个对象；
+        /// 运行期仍是零 Instantiate，单帧顶点上界随容量同比上升（见 `MaxVerticesPerFrame`）。
+        /// </summary>
+        public const int SlotCapacity = 48;
         public const int RingSegments = 32;
         public const int ArcSegments = 16;
         public const float HitIntervalSeconds = 0.045f;
@@ -64,6 +81,33 @@ namespace Billiards.Physics
 
         /// <summary>入袋"下沉"动画时长（秒）——球可视物下沉 + 缩小至消失。</summary>
         public const float SinkDurationSeconds = 0.3f;
+
+        /// <summary>
+        /// **落袋环时长 0.29 s**（设计说明 §VFX 逐字："落袋：进口处 **0.29 秒**香槟细环和低高度短线"）。
+        /// 与 <see cref="SinkDurationSeconds"/>（球的**下沉动画** 0.3 s）是**两件事**：
+        /// 一个是环的存活时长、一个是球的表现时长，刻意不合并成一个常量
+        /// （合并后想单独调节其中之一就必须动另一处，这正是"一个常数管两件事"的典型耦合）。
+        /// </summary>
+        public const float PocketRingDurationSeconds = 0.29f;
+
+        /// <summary>
+        /// **黑八落袋延长到 0.45 s**（设计说明 §VFX 逐字："黑八延长至 **0.45 秒**"）。
+        /// 同时用作结算环时长 —— 设计说明 §VFX 的"结算：最后黑八袋位细环"描述的就是**同一次**黑八落袋，
+        /// 只是把它的环当作胜负落定的视觉标记，故两者共用同一个时长常量（**不是**两次独立取值）。
+        /// </summary>
+        public const float EightBallPocketDurationSeconds = 0.45f;
+
+        /// <summary>
+        /// **犯规环时长 0.38 s**（设计说明 §VFX 逐字："犯规：白球周围 **0.38 秒**酒红短环"）。
+        /// 与状态条的 0.8 s 边线脉冲是**两个**时长（见 `PracticeHudState.FoulPulseSeconds`）——
+        /// 一个在球上、一个在界面上，刻意分开。
+        /// </summary>
+        public const float FoulRingDurationSeconds = 0.38f;
+
+        /// <summary>
+        /// 犯规环在**规范米**下的半径：白球（r = 28.575 mm）外扩一圈 ⇒ 直径约 2.5 个球。
+        /// </summary>
+        public const float FoulRingRadius = 0.036f;
 
         /// <summary>
         /// 入袋**爆点延迟**（秒）：`SinkSlideFraction × SinkDurationSeconds`（**用常量相乘表达，不硬编码 0.18**）
@@ -103,6 +147,23 @@ namespace Billiards.Physics
         /// **回退**：把本行换回 `new Color(0.800f, 0.855f, 0.796f, 1f)` 即还原（一处常量，判据 `T115 ⑤`）。
         /// </summary>
         public static readonly Color RailColor = new Color(0.667f, 0.706f, 0.871f, 1f);    // #aab4de
+
+        /// <summary>
+        /// **犯规环的酒红**（设计说明 §一 明写"**酒红只用于犯规和失败**"）。
+        ///
+        /// ⚠ 这里**直接引用** <see cref="ClubUiTokens.FoulEdge"/> 而**不**再写一份字面量：
+        /// 同一个设计色一旦在 VFX 与界面各存一份，改一处必然漏另一处
+        /// （表现就是"状态条变红了、球上的环还是旧的酒红"）。
+        /// 依赖方向（物理表现 → UI 设计令牌）是**安全的**：`ClubUiTokens` 是不依赖任何本工程类型的纯数据。
+        /// </summary>
+        public static readonly Color FoulRingColor = ClubUiTokens.FoulEdge;
+
+        /// <summary>
+        /// **结算环的黄铜**。与入袋爆外环同色 —— 设计说明 §VFX 把"最后黑八袋位细环"定义为
+        /// **结算**的可视标记，而结算在本设计里就是黄铜色（胜局用黄铜、负局才换酒红）；
+        /// 环出现时结局尚未由界面宣布，故取中性偏好的黄铜，不预判胜负。
+        /// </summary>
+        public static readonly Color ResultRingColor = BrassColor;
 
         [Tooltip("被驱动的驱动器（读计数出口与内核）。为空 ⇒ 本组件不生效。")]
         public PhysicsTestDrive drive;
@@ -153,6 +214,9 @@ namespace Billiards.Physics
         private int _lastBallBall;
         private int _lastSegment;
         private int _lastPocket;
+        private int _lastScratch;
+        private Vector2 _lastPocketCenter;
+        private bool _lastPocketWasEight;
         private bool _wasEnabled = true;
 
         // ── 纯函数（判据直接驱动）──────────────────────────────────────────
@@ -229,14 +293,30 @@ namespace Billiards.Physics
             }
         }
 
-        // —— 4 类事件 × 各层的**基准**规格（力度分档的"档位 T1"值；判据 `T115 ①` 逐层读）——
+        // —— 6 类事件 × 各层的**基准**规格（力度分档的"档位 T1"值；判据 `T115 ①` 逐层读）——
         public static readonly VfxLayer StrikeCoreLayer = new VfxLayer("strike.core", 0.011f, 0.45f, 0.14f, 0.95f, true);
         public static readonly VfxLayer StrikeHaloLayer = new VfxLayer("strike.halo", 0.014f, 0.50f, 0.20f, 0.30f, true);
         public static readonly VfxLayer HitCoreLayer = new VfxLayer("hit.core", 0.011f, 0.50f, 0.11f, 0.90f, false);
         public static readonly VfxLayer HitHaloLayer = new VfxLayer("hit.halo", 0.014f, 0.50f, 0.13f, 0.28f, false);
         public static readonly VfxLayer RailLayer = new VfxLayer("rail", 0.012f, 0.35f, 0.15f, 0.60f, true);
-        public static readonly VfxLayer PocketOuterLayer = new VfxLayer("pocket.outer", 0.023f, 0.50f, 0.30f, 0.85f, false);
+        public static readonly VfxLayer PocketOuterLayer =
+            new VfxLayer("pocket.outer", 0.023f, 0.50f, PocketRingDurationSeconds, 0.85f, false);
         public static readonly VfxLayer PocketCoreLayer = new VfxLayer("pocket.core", 0.015f, 0.25f, 0.20f, 1.00f, false);
+
+        /// <summary>
+        /// 犯规环（`D15-VF-02` 之后新增；设计说明 §VFX："犯规：白球周围 **0.38 秒**酒红短环"）。
+        /// **无火花**（犯规是"克制、不刺耳"的提醒，不是奖励）⇒ `isArc = false`、生成时 `sparks = 0`。
+        /// </summary>
+        public static readonly VfxLayer FoulRingLayer =
+            new VfxLayer("foul.ring", FoulRingRadius, 0.30f, FoulRingDurationSeconds, 0.85f, false);
+
+        /// <summary>
+        /// 结算环（设计说明 §VFX："结算：最后黑八袋位**细环**"）。
+        /// 比同一次落袋的外环**更细**（半径更小、峰值 alpha 更低）⇒ 观感是"袋口里一圈细光"，
+        /// 不会与外环糊成一块；时长与黑八落袋一致（<see cref="EightBallPocketDurationSeconds"/>）。
+        /// </summary>
+        public static readonly VfxLayer ResultRingLayer =
+            new VfxLayer("result.ring", 0.018f, 0.30f, EightBallPocketDurationSeconds, 0.70f, false);
 
         /// <summary>撞击类（strike / hit / rail）各层（判据 `T115 ①`）。</summary>
         public static readonly VfxLayer[] ImpactLayers =
@@ -246,6 +326,9 @@ namespace Billiards.Physics
 
         /// <summary>入袋各层（判据 `T115 ①`）。</summary>
         public static readonly VfxLayer[] PocketLayers = { PocketOuterLayer, PocketCoreLayer };
+
+        /// <summary>犯规与结算各层（判据 `T115 ①`）。</summary>
+        public static readonly VfxLayer[] StateLayers = { FoulRingLayer, ResultRingLayer };
 
         // —— 可读性预算（R1）：**上限常量只有一处**（`D15-VF-02` 加固）──────────────────────
         // 唯一源 = 规格 §1.3 的**世界毫米值**；"规范半径"夹取上限一律由它**派生**（除以显示尺度），
@@ -392,12 +475,29 @@ namespace Billiards.Physics
         public const int RailSlotCost = 1;     // 单弧
         public const int PocketSlotCost = 2;   // 爆外环 + 爆内核
 
-        /// <summary>单杆最坏入袋数（开球实测 ≤2；§7.1 边界：同袋 ≥3 时末位特效被丢弃）。</summary>
-        public const int PocketWorstEventsPerRack = 2;
+        /// <summary>犯规环每事件槽成本 = **1**（单层、无火花）。一杆最多一次犯规 ⇒ 每杆 1 槽。</summary>
+        public const int FoulRingSlotCost = 1;
+
+        /// <summary>
+        /// 结算环每事件槽成本 = **1**（单层、无火花）。
+        /// 每局最多一次（黑八只可能进一次）⇒ 每杆 1 槽；它与同一次落袋的外环/内核**同时**存在。
+        /// </summary>
+        public const int ResultRingSlotCost = 1;
+
+        /// <summary>单杆最坏犯规数（白球只可能落袋一次）。</summary>
+        public const int FoulWorstEventsPerRack = 1;
+
+        /// <summary>单杆最坏结算数（黑八只可能进一次）。</summary>
+        public const int ResultWorstEventsPerRack = 1;
 
         /// <summary>
         /// **最坏并发槽数**（Little 定律，§7.1；纯函数）：`Σ ceil(最长层时长 / 门间隔) × 每事件槽`。
-        /// 实测（规格 §7.1）= hit 3×2 + rail 3×1 + strike 1×2 + pocket 2×2 = **15 ≤ `SlotCapacity`(16)**。
+        /// 实测 = hit 3×2 + rail 3×1 + strike 1×2 + pocket 2×2 = **15**；
+        /// 加上犯规环 1 + 结算环 1 = **17 ≤ `SlotCapacity`(48)**。
+        ///
+        /// ⚠ 容量由 16 提到 48 的原因见 <see cref="SlotCapacity"/> 的注释：
+        /// 在 16 槽下这 17 会**溢出**，而溢出只会静默丢特效（`DroppedCount`），实机表现为
+        /// "有时候没特效" —— 属于最难查的一类缺陷，故按设计稿的 48 槽消除它。
         /// </summary>
         public static int MaxConcurrentSlots()
         {
@@ -405,14 +505,18 @@ namespace Billiards.Physics
             int rail = Mathf.CeilToInt(RailLayer.Duration / RailIntervalSeconds) * RailSlotCost;
             int strike = StrikeSlotCost;
             int pocket = PocketWorstEventsPerRack * PocketSlotCost;
-            return hit + rail + strike + pocket;
+            int foul = FoulWorstEventsPerRack * FoulRingSlotCost;
+            int result = ResultWorstEventsPerRack * ResultRingSlotCost;
+            return hit + rail + strike + pocket + foul + result;
         }
 
-        /// <summary>**单帧顶点写入上界** = `SlotCapacity × (RingSegments + 3 火花 × 2)` = 16 × 38 = **608**（§7.2）。</summary>
+        /// <summary>**单帧顶点写入上界** = `SlotCapacity × (RingSegments + 3 火花 × 2)` = 48 × 38 = **1824**。</summary>
         public static int MaxVerticesPerFrame()
         {
             return SlotCapacity * (RingSegments + SparkCount * 2);
         }
+        /// <summary>单杆最坏入袋数（开球实测 ≤2；§7.1 边界：同袋 ≥3 时末位特效被丢弃）。</summary>
+        public const int PocketWorstEventsPerRack = 2;
 
         /// <summary>
         /// **碰球接触推导**（参考实现的质量排序）：在"距离 ≈ 2r（±0.007）且对速度和 > 0.1"的球对中，
@@ -620,9 +724,24 @@ namespace Billiards.Physics
             if (pocket > _lastPocket)
             {
                 SpawnPocket(sim);
+
+                // 黑八落袋 ⇒ 追加**结算环**（设计说明 §VFX："结算：最后黑八袋位细环"）。
+                // 判定用**物理可观测事实**（第 8 号球离台），不向界面层要"本局结束了"的信号
+                // ⇒ 表现层与 UI 层不互相依赖，两边各自从物理事实推导。
+                if (_lastPocketWasEight)
+                {
+                    SpawnResultRing();
+                }
             }
 
             _lastPocket = pocket;
+
+            // 犯规（白球落袋）⇒ 白球周围一圈 0.38 s 酒红短环（设计说明 §VFX）。
+            if (drive.ScratchCount > _lastScratch)
+            {
+                _lastScratch = drive.ScratchCount;
+                SpawnFoulRing();
+            }
 
             Advance(Time.deltaTime);
         }
@@ -635,6 +754,7 @@ namespace Billiards.Physics
             _lastBallBall = sim != null ? sim.BallBallContactCount : 0;
             _lastSegment = sim != null ? sim.TotalContactCount - sim.BallBallContactCount : 0;
             _lastPocket = sim != null ? sim.CapturedBallCount : 0;
+            _lastScratch = drive.ScratchCount;
         }
 
         private void SpawnStrike()
@@ -714,6 +834,9 @@ namespace Billiards.Physics
             Spawn(true, point, angle, r, d, e, a, RailColor, 0, 0f);
         }
 
+        /// <summary>八号球在球表里的**索引**（0 = 白球；1–15 = `RackPositions` 的顺序 = 球号）。</summary>
+        public const int EightBallIndex = 8;
+
         private void SpawnPocket(PoolSimulator sim)
         {
             if (tableConfig == null || tableConfig.pockets == null)
@@ -724,12 +847,14 @@ namespace Billiards.Physics
             // 找"刚离台"的球（本帧事件 ⇒ 在离台球里取第一个），推到最近的袋喉中心并向袋内偏 0.013。
             Vector2 anchor = Vector2.zero;
             bool hasAnchor = false;
+            int pottedIndex = -1;
             IReadOnlyList<BallState> balls = sim.Balls;
             for (int i = 0; i < balls.Count; i++)
             {
                 if (!sim.IsBallInPlay(i))
                 {
                     anchor = balls[i].position;
+                    pottedIndex = i;
                     hasAnchor = true;
                     break;
                 }
@@ -756,6 +881,13 @@ namespace Billiards.Physics
                 }
             }
 
+            // 黑八落袋 ⇒ 外环延长到 0.45 s（设计说明 §VFX 逐字："黑八延长至 0.45 秒"）。
+            bool isEightBall = pottedIndex == EightBallIndex;
+            float outerDuration = isEightBall ? EightBallPocketDurationSeconds : PocketRingDurationSeconds;
+
+            _lastPocketCenter = center;
+            _lastPocketWasEight = isEightBall;
+
             // pocket **不参与力度分档** ⇒ `sizeMul = expansionMul = 1`；但仍过 §2.3 **同一**夹取
             //（上限作用于"含扩张的最终半径" ⇒ 与撞击类同口径；§1.3 的 44 mm）。基值本就在上限内、
             // 故这是**结构性一致**（不是行为改变）：若将来调大 pocket 基半径，夹取在此生效。
@@ -763,7 +895,7 @@ namespace Billiards.Physics
             float coreRadius = FinalRadius(PocketCoreLayer.Radius, 1f, PocketCoreLayer.Expansion, 1f, PocketRadiusCap);
 
             // **吸（Roll-in）**：捕获当帧 —— 爆外环（brass）+ 3 火花沿袋口法向飞散 ⇒ "球被吸进洞口"。
-            Spawn(false, center, inwardDeg, outerRadius, PocketOuterLayer.Duration,
+            Spawn(false, center, inwardDeg, outerRadius, outerDuration,
                 PocketOuterLayer.Expansion, PocketOuterLayer.PeakAlpha, BrassColor, 3, 0.013f);
 
             // **爆（Pop）**：`PocketBurstDelaySeconds` 后（球到达洞口、开始落下）—— 爆内核（brassCore，暖白，全屏最亮）。
@@ -771,6 +903,34 @@ namespace Billiards.Physics
             Spawn(false, center, inwardDeg, coreRadius, PocketCoreLayer.Duration,
                 PocketCoreLayer.Expansion, PocketCoreLayer.PeakAlpha, BrassCoreColor, 0, 0f,
                 spawnDelay: PocketBurstDelaySeconds);
+        }
+
+        /// <summary>
+        /// **结算环**（设计说明 §VFX："结算：最后黑八袋位细环"）：黑八落袋的**同一袋口**再加一圈细环。
+        /// 位置取 <see cref="_lastPocketCenter"/>（刚算出的袋喉中心 + 内向偏移）——
+        /// 不重算一遍位置，避免"环和球落在两个地方"。
+        /// </summary>
+        private void SpawnResultRing()
+        {
+            Spawn(false, _lastPocketCenter, 0f, ResultRingLayer.Radius, ResultRingLayer.Duration,
+                ResultRingLayer.Expansion, ResultRingLayer.PeakAlpha, ResultRingColor, 0, 0f);
+        }
+
+        /// <summary>
+        /// **犯规环**（设计说明 §VFX："犯规：白球周围 0.38 秒酒红短环"）：绕白球一圈，无火花。
+        /// 位置取**当前**白球位置 —— 犯规的处置是白球被放回开球点（`PhysicsTestDrive`），
+        /// 故环出现在白球**实际所在**处，与"球回到手上了"这件事在视觉上对齐。
+        /// </summary>
+        private void SpawnFoulRing()
+        {
+            PoolSimulator sim = drive != null ? drive.Simulator : null;
+            if (sim == null || sim.Balls.Count == 0)
+            {
+                return;
+            }
+
+            Spawn(false, sim.Balls[0].position, 0f, FoulRingLayer.Radius, FoulRingLayer.Duration,
+                FoulRingLayer.Expansion, FoulRingLayer.PeakAlpha, FoulRingColor, 0, 0f);
         }
 
         /// <summary>取某速度所处档位的**火花增减**（纯函数；供无需完整 `ApplyIntensity` 的火花层用）。</summary>

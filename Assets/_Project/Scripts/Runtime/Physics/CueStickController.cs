@@ -47,6 +47,13 @@ namespace Billiards.Physics
         [Tooltip("拉杆侧 PointerPowerController。为空 ⇒ 本组件不生效。")]
         public PointerPowerController pull;
 
+        /// <summary>
+        /// **场景里预建的杆模型**（杆尖 = 局部原点、杆身沿 +Z、长 1.4 m）—— 由场景构建器接入美术包模型。
+        /// 为空时本组件在运行期自建基元圆柱**兜底**（不得因为没接线就没有杆）。位姿一律由本组件驱动（含可见性）。
+        /// </summary>
+        [Tooltip("场景预建的杆模型（杆尖为局部原点、杆身 +Z）。为空 ⇒ 运行时自建基元圆柱。")]
+        public Transform stickInstance;
+
         private readonly ShotFlowState _flow = new ShotFlowState();
         private Transform _stick;
         private MeshRenderer _stickRenderer;
@@ -288,6 +295,15 @@ namespace Billiards.Physics
                 return;
             }
 
+            // ① 场景预建的真模型优先（美术接入路径）：本组件只负责驱动位姿与可见性。
+            if (stickInstance != null)
+            {
+                _stick = stickInstance;
+                _stickRenderer = stickInstance.GetComponentInChildren<MeshRenderer>(true);
+                return;
+            }
+
+            // ② 兜底：运行期自建基元圆柱（未接线时仍有杆可打）。
             var stickGo = new GameObject("CueStick");
             stickGo.transform.SetParent(transform, false);
             _stick = stickGo.transform;

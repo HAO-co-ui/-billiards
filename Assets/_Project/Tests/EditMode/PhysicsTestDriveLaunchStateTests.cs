@@ -43,11 +43,24 @@ namespace Billiards.Tests
             return t;
         }
 
+        /// <summary>
+        /// 本文件全部用例的**小堆球数**（目标球 3 颗 ⇒ 加白球共 4 颗）。
+        ///
+        /// ⚠ **为什么显式钉成 3，而不是让正式默认值(15)决定**：本文件的用例都是**单元级**物理行为
+        /// （出杆不清盘 / 出杆前置门 / 状态转移…），它们的摆位与步数上限**是在 4 球摆放下量出来的**。
+        /// 本轮把正式球数从 3 改成 15（用户要求"15 个球 + 1 个白球"）后，满堆会让这些单元用例
+        /// 面对完全不同的接触场景 —— 那是**另一件事**，由 `T111`（满堆开球必须收敛）与
+        /// `T122`（场景里恰好 16 颗且逐号材质）覆盖。
+        /// 把"球堆多大"从隐式默认变成**显式参数**，正是本轮踩的坑（默认值曾悄悄让场上只剩 4 颗）。
+        /// </summary>
+        private const int SmallRackBallCount = 3;
+
         private static PhysicsTestDrive NewDrive(GameObject go, bool rack)
         {
             var drive = go.AddComponent<PhysicsTestDrive>();
             drive.tableConfig = Table();
             drive.loadRackForBallBallDemo = rack;
+            drive.rackBallCount = SmallRackBallCount;
             drive.Initialize();
             Assert.IsNotNull(drive.Simulator, "Initialize 后应有内核。");
             return drive;
@@ -145,6 +158,13 @@ namespace Billiards.Tests
             try
             {
                 PhysicsTestDrive drive = NewDrive(go, rack: true);
+
+                // 正式对局的目标球数必须是 **15**（用户要求"15 个球 + 1 个白球"）——
+                // 这里用**字面量 15** 而不是引用常量自比：常量自己改了自己当然还是相等，
+                // 那种断言是恒真的（铁律 9）。本文件其余用例显式用小堆，故这一条是"正式值"的守。
+                Assert.AreEqual(15, PhysicsTestDrive.RackBallCount,
+                    "T65：正式对局的目标球数应为 15（白球 + 15 = 16 颗）。");
+
                 Assert.AreEqual(4, drive.Simulator.Balls.Count, "T65：球堆模式应为 白球 + 3 颗。");
 
                 AdvanceToRest(drive, RestCap);

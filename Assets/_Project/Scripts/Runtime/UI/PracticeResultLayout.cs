@@ -32,6 +32,37 @@ namespace Billiards.UI
         public static readonly Rect PlayAgainButtonLocal = new Rect(0.046f, 0.174f, 0.872f, 0.070f);
         public static readonly Rect ExportButtonLocal = new Rect(0.046f, 0.067f, 0.872f, 0.070f);
 
+        // ── 卡内其余元素（同样从参考稿量，比例口径与上面两键一致）──────────────
+        /// <summary>顶部 3 px 主色/酒红条（设计稿 `#result-dialog { border-top: 3px solid }`）。</summary>
+        public const float TopEdgeHeightPx = 3f;
+
+        /// <summary>圆形徽章（奖杯环）：直径 = 参考稿 60 设计 px ÷ 卡宽 583。</summary>
+        public static readonly Rect IconLocal = new Rect(0.4485f, 0.827f, 0.103f, 0.0945f);
+
+        /// <summary>小标 chip（`PRACTICE COMPLETE`）。</summary>
+        public static readonly Rect BadgeLocal = new Rect(0.350f, 0.712f, 0.300f, 0.045f);
+
+        /// <summary>标题（`Rack ended` / `Table cleared`，Barlow 38 px）。</summary>
+        public static readonly Rect TitleLocal = new Rect(0.06f, 0.593f, 0.88f, 0.075f);
+
+        /// <summary>副标题（失败原因，11 px 静音灰）。</summary>
+        public static readonly Rect ReasonLocal = new Rect(0.06f, 0.521f, 0.88f, 0.045f);
+
+        /// <summary>三列统计的容器（内部再竖分"大数字 / 8 px 标签"）。</summary>
+        public static readonly Rect StatsLocal = new Rect(0.06f, 0.315f, 0.88f, 0.130f);
+
+        /// <summary>统计区上边线的卡内 y（设计稿 `.result-stats { border-top }`）。</summary>
+        public const float StatsTopLineY = 0.465f;
+
+        /// <summary>统计区下边线的卡内 y（设计稿 `.result-stats { border-bottom }`）。</summary>
+        public const float StatsBottomLineY = 0.308f;
+
+        /// <summary>出入的细线左右内缩（`0.06` = 卡宽的 6%）。</summary>
+        public const float RuleInset = 0.06f;
+
+        /// <summary>导出结果提示（toast）在卡内的矩形 —— 放在圆形徽章之上、顶部色条之下。</summary>
+        public static readonly Rect ToastLocal = new Rect(0.06f, 0.936f, 0.88f, 0.040f);
+
         /// <summary>画布尺寸（**画布单位** = 屏幕像素 / 画布缩放）。</summary>
         public static Vector2 CanvasSize(int screenWidth, int screenHeight)
         {

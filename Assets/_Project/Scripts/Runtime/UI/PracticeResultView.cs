@@ -6,7 +6,19 @@ using UnityEngine.UI;
 namespace Billiards.UI
 {
     /// <summary>
-    /// **练习结算卡**（排期 Day 14 任务 1）：模态卡片 + 三列真数据 + 两个按钮。
+    /// **练习结算卡** —— 模态卡片 + 三列真数据 + 两个按钮，按美术包 `04_UI` 的
+    /// `#result-dialog` 规则重建（圆形徽章 / 小标 chip / 大标题 / 副标题 / 三列统计 / 主次两键）。
+    ///
+    /// ── 与设计稿的映射（逐条）────────────────────────────────────────────────
+    /// · 遮罩 `::backdrop` `#040c10b8` → 全画布一层 <see cref="ClubUiTokens.Backdrop"/>（不接收射线）。
+    /// · `border-top: 3px solid` → 卡顶贴边色条；**胜局黄铜、负局酒红**（`data-outcome`）。
+    /// · `.result-icon` 60 px 圆环 + 奖杯 → 环形位图 + `Trophy` 图标，圆环与图标同色（负局换色）。
+    /// · `.result-badge` chip → 1 px 描边 + 透明底的小标（`PRACTICE COMPLETE`）。
+    /// · `h2` 38 px Barlow / `p` 11 px 静音灰 → 标题与失败原因。
+    /// · `.result-stats` 三列 → 上下细线 + （27 px 大数字 / 8 px 标签）。
+    /// · `.primary-button` / `.text-button` → 黄铜实底主键 + 描边次键。
+    /// · **全场结算（`data-stage: match`）的加重边框不实现** —— 本卡是**练习**卡，没有比赛比分；
+    ///   伪造"整场胜负"正是设计说明 §二之15 明令禁止的事（"练习结算不显示虚构比赛比分"）。
     ///
     /// ── 三列数据的真源（全部既有只读出口，本类不新建统计状态）────────────────────
     /// 杆数 / 进球数 / 犯规（= scratch，白球落袋）都由 <see cref="PracticeSessionTracker"/> 提供，
@@ -23,7 +35,8 @@ namespace Billiards.UI
     /// 这是"模态"在本工程的**唯一判据点**。
     ///
     /// ── 盲带（如实）────────────────────────────────────────────────────────
-    /// · 徽章**用菱形色点**代替参考稿的奖杯图标（本工程无矢量图标资源；与 HUD 状态点同一手法）。
+    /// · 设计稿的 `backdrop-filter: blur(4px)` 与 `@keyframes` 淡入在 uGUI 无对应能力
+    ///   ⇒ 遮罩是**纯色**、卡片**瞬时**出现（不伪造"轻微模糊/淡入"的说明）。
     /// · **真实鼠标点击**的端到端属手动验收；判据只锁 `EventSystem` / 射线器在场与几何矩形。
     /// </summary>
     [AddComponentMenu("Billiards/Practice Result View")]
@@ -44,7 +57,7 @@ namespace Billiards.UI
         [Tooltip("被驱动的驱动器（读数与重摆都经它）。为空 ⇒ 本组件不生效。")]
         public PhysicsTestDrive drive;
 
-        [Tooltip("HUD 视图（借它的画布与字体；为空 ⇒ 本组件不生效）。")]
+        [Tooltip("HUD 视图（借它的画布、字体与精灵槽位；为空 ⇒ 本组件不生效）。")]
         public PracticeHudView hud;
 
         [Tooltip("重摆键（卡片未显示时 = 主动结束本局；卡片显示时 = 再来一局）。")]
@@ -53,8 +66,14 @@ namespace Billiards.UI
         private readonly PracticeSessionTracker _tracker = new PracticeSessionTracker();
         private bool _built;
         private bool _started;
+        private RectTransform _backdrop;
         private RectTransform _card;
-        private Image _badge;
+        private Image _topEdge;
+        private Image _cardInner;
+        private Image _trophyRing;
+        private Image _trophyGlyph;
+        private RectTransform _badgeFrame;
+        private TextMeshProUGUI _badgeText;
         private TextMeshProUGUI _title;
         private TextMeshProUGUI _reason;
         private TextMeshProUGUI[] _statValues;
@@ -78,6 +97,11 @@ namespace Billiards.UI
             {
                 _card.gameObject.SetActive(false);
             }
+
+            if (_backdrop != null)
+            {
+                _backdrop.gameObject.SetActive(false);
+            }
         }
 
         /// <summary>**幂等建树**（`Awake` 会调；判据 `T102` 也可直接调 —— EditMode 下 `AddComponent` 不触发 `Awake`）。</summary>
@@ -94,37 +118,87 @@ namespace Billiards.UI
                 return;
             }
 
-            _card = PracticeHudView.CreateZone(hud.CanvasRoot, new Rect(0f, 0f, 0f, 0f), "PracticeResultCard");
+            RectTransform root = hud.CanvasRoot;
+
+            // ── 模态遮罩（设计稿 `::backdrop`；不接收射线，否则会挡住卡片上的按钮）──
+            _backdrop = PracticeHudView.AddRect(root, "PracticeResultBackdrop", Vector2.zero, Vector2.one);
+            hud.SetImage(_backdrop.gameObject.AddComponent<Image>(), null, ClubUiTokens.Backdrop);
+
+            // ── 卡片：外框（细边线，圆角 3）+ 内层（炭黑实底）────────────────────
+            _card = PracticeHudView.AddRect(root, "PracticeResultCard", Vector2.zero, Vector2.zero);
             ApplyCardRect(_card);
-            PracticeHudView.AddPanel(_card, PracticeHudView.PanelColor, PracticeHudView.AccentColor);
+            hud.SetImage(_card.gameObject.AddComponent<Image>(), ClubUiSprites.PanelForRadius(ClubUiTokens.RadiusDialog),
+                ClubUiTokens.LineCardEdge);
 
-            // 徽章：45° 菱形色点（代替参考稿的奖杯图标，见类注释的盲带）
-            RectTransform badge = PracticeHudView.AddPanel(
-                _card, PracticeHudView.AccentColor, PracticeHudView.AccentColor,
-                new Vector2(0.485f, 0.875f), new Vector2(0.515f, 0.925f));
-            badge.localRotation = Quaternion.Euler(0f, 0f, 45f);
-            _badge = badge.GetComponent<Image>();
+            _cardInner = PracticeHudView.AddRect(_card, "Fill", Vector2.zero, Vector2.one).gameObject.AddComponent<Image>();
+            hud.SetImage(_cardInner, ClubUiSprites.PanelForRadius(ClubUiTokens.RadiusDialog), ClubUiTokens.PanelCard);
+            _cardInner.rectTransform.offsetMin = new Vector2(ClubUiTokens.Hairline, ClubUiTokens.Hairline);
+            _cardInner.rectTransform.offsetMax = new Vector2(-ClubUiTokens.Hairline, -ClubUiTokens.Hairline);
 
-            RectTransform badgePill = PracticeHudView.AddPanel(
-                _card, new Color(0f, 0f, 0f, 0f), PracticeHudView.AccentColor,
-                new Vector2(0.300f, 0.800f), new Vector2(0.700f, 0.845f));
-            PracticeHudView.CreateText(badgePill, "BadgeLabel", hud.bodyFont, 12f, PracticeHudView.AccentColor,
-                TextAlignmentOptions.Center, new Vector2(0f, 0f), new Vector2(1f, 1f)).text = BadgeLabel;
+            // 顶部 3 px 色条（胜 = 黄铜 / 负 = 酒红，由 `Show()` 按结局改写）
+            _topEdge = PracticeHudView.AddRect(_card, "TopEdge", new Vector2(0f, 1f), new Vector2(1f, 1f))
+                .gameObject.AddComponent<Image>();
+            hud.SetImage(_topEdge, null, ClubUiTokens.ResultWinEdge);
+            _topEdge.rectTransform.offsetMin = new Vector2(0f, -PracticeResultLayout.TopEdgeHeightPx);
+            _topEdge.rectTransform.offsetMax = Vector2.zero;
 
-            _title = PracticeHudView.CreateText(_card, "Title", hud.titleFont, 26f, PracticeHudView.TextColor,
-                TextAlignmentOptions.Center, new Vector2(0.04f, 0.700f), new Vector2(0.96f, 0.785f));
+            BuildIcon();
+            BuildBadge();
 
-            _reason = PracticeHudView.CreateText(_card, "Reason", hud.bodyFont, 13f, PracticeHudView.MutedColor,
-                TextAlignmentOptions.Center, new Vector2(0.04f, 0.640f), new Vector2(0.96f, 0.695f));
+            _title = PracticeHudView.CreateText(_card, "Title", hud.titleFont, ClubUiTokens.FontResultTitle,
+                ClubUiTokens.Text, TextAlignmentOptions.Center,
+                new Vector2(PracticeResultLayout.TitleLocal.xMin, PracticeResultLayout.TitleLocal.yMin),
+                new Vector2(PracticeResultLayout.TitleLocal.xMax, PracticeResultLayout.TitleLocal.yMax));
+
+            _reason = PracticeHudView.CreateText(_card, "Reason", hud.bodyFont, ClubUiTokens.FontResultBody,
+                ClubUiTokens.Body, TextAlignmentOptions.Center,
+                new Vector2(PracticeResultLayout.ReasonLocal.xMin, PracticeResultLayout.ReasonLocal.yMin),
+                new Vector2(PracticeResultLayout.ReasonLocal.xMax, PracticeResultLayout.ReasonLocal.yMax));
 
             BuildStatsRow();
-            BuildButton(_card, PracticeResultLayout.PlayAgainButtonLocal, PlayAgainButtonLabel, true, OnPlayAgain);
-            BuildButton(_card, PracticeResultLayout.ExportButtonLocal, ExportButtonLabel, false, OnExport);
 
-            _toast = PracticeHudView.CreateText(_card, "Toast", hud.bodyFont, 12f, PracticeHudView.MutedColor,
-                TextAlignmentOptions.Center, new Vector2(0.04f, 0.250f), new Vector2(0.96f, 0.300f));
+            BuildButton(PracticeResultLayout.PlayAgainButtonLocal, PlayAgainButtonLabel, true,
+                ClubUiSprites.UiSprite.ArrowRight, OnPlayAgain);
+            BuildButton(PracticeResultLayout.ExportButtonLocal, ExportButtonLabel, false,
+                ClubUiSprites.UiSprite.House, OnExport);
 
+            _toast = PracticeHudView.CreateText(_card, "Toast", hud.bodyFont, ClubUiTokens.FontCaption,
+                ClubUiTokens.Muted, TextAlignmentOptions.Center,
+                new Vector2(PracticeResultLayout.ToastLocal.xMin, PracticeResultLayout.ToastLocal.yMin),
+                new Vector2(PracticeResultLayout.ToastLocal.xMax, PracticeResultLayout.ToastLocal.yMax));
+
+            _backdrop.gameObject.SetActive(false);
             _card.gameObject.SetActive(false);
+        }
+
+        private void BuildIcon()
+        {
+            // 圆形徽章：外圈是**环形位图**（uGUI 画不出圆边框）、内层再放奖杯图标。
+            var anchor = new Vector2(PracticeResultLayout.IconLocal.xMin + PracticeResultLayout.IconLocal.width * 0.5f,
+                PracticeResultLayout.IconLocal.yMin + PracticeResultLayout.IconLocal.height * 0.5f);
+
+            // `IconLocal.width` 是卡宽比例 ⇒ 换算成设计像素（卡宽 583）才是徽章的真实直径。
+            float diameter = PracticeResultLayout.IconLocal.width * PracticeResultLayout.CardWidthPx;
+
+            RectTransform ring = hud.AddFixed(_card, "TrophyRing", ClubUiSprites.UiSprite.Ring,
+                ClubUiTokens.ResultWinEdge, anchor, new Vector2(diameter, diameter));
+            _trophyRing = ring.GetComponent<Image>();
+
+            RectTransform glyph = hud.AddFixed(_card, "TrophyGlyph", ClubUiSprites.UiSprite.Trophy,
+                ClubUiTokens.Accent, anchor, new Vector2(ClubUiTokens.ResultIconGlyphSize, ClubUiTokens.ResultIconGlyphSize));
+            _trophyGlyph = glyph.GetComponent<Image>();
+        }
+
+        private void BuildBadge()
+        {
+            _badgeFrame = hud.AddFramed(_card, "Badge",
+                new Vector2(PracticeResultLayout.BadgeLocal.xMin, PracticeResultLayout.BadgeLocal.yMin),
+                new Vector2(PracticeResultLayout.BadgeLocal.xMax, PracticeResultLayout.BadgeLocal.yMax),
+                ClubUiTokens.LineBadge, ClubUiTokens.Transparent, ClubUiTokens.RadiusMin);
+
+            _badgeText = PracticeHudView.CreateText(_badgeFrame, "BadgeLabel", hud.bodyFont,
+                ClubUiTokens.FontCaption, ClubUiTokens.Accent, TextAlignmentOptions.Center, Vector2.zero, Vector2.one);
+            _badgeText.text = BadgeLabel;
         }
 
         private void BuildStatsRow()
@@ -132,37 +206,56 @@ namespace Billiards.UI
             string[] labels = { "SHOTS", "POCKETED", "FOULS" };
             _statValues = new TextMeshProUGUI[labels.Length];
 
+            // 统计区的上下细线（设计稿 `.result-stats { border-top / border-bottom }`）
+            AddRule(PracticeResultLayout.StatsTopLineY);
+            AddRule(PracticeResultLayout.StatsBottomLineY);
+
             for (int i = 0; i < labels.Length; i++)
             {
-                float share = 1f / labels.Length;
-                RectTransform column = PracticeHudView.CreateZone(
-                    _card, new Rect(0.05f + i * share * 0.9f, 0.430f, share * 0.9f, 0.170f), "Stat" + labels[i]);
+                float share = PracticeResultLayout.StatsLocal.width / labels.Length;
+                var column = PracticeHudView.AddRect(_card, "Stat" + labels[i],
+                    new Vector2(PracticeResultLayout.StatsLocal.xMin + i * share, PracticeResultLayout.StatsLocal.yMin),
+                    new Vector2(PracticeResultLayout.StatsLocal.xMin + (i + 1) * share, PracticeResultLayout.StatsLocal.yMax));
 
-                _statValues[i] = PracticeHudView.CreateText(column, "Value", hud.titleFont, 26f, PracticeHudView.TextColor,
-                    TextAlignmentOptions.Top, new Vector2(0f, 0.35f), new Vector2(1f, 1f));
-                PracticeHudView.CreateText(column, "Label", hud.bodyFont, 11f, PracticeHudView.MutedColor,
-                    TextAlignmentOptions.Bottom, new Vector2(0f, 0f), new Vector2(1f, 0.35f)).text = labels[i];
+                _statValues[i] = PracticeHudView.CreateText(column, "Value", hud.titleFont, ClubUiTokens.FontStatValue,
+                    ClubUiTokens.Text, TextAlignmentOptions.Bottom, new Vector2(0f, 0.42f), new Vector2(1f, 1f));
+                PracticeHudView.CreateText(column, "Label", hud.bodyFont, ClubUiTokens.FontMicro,
+                    ClubUiTokens.Body, TextAlignmentOptions.Top, new Vector2(0f, 0.10f), new Vector2(1f, 0.42f))
+                    .text = labels[i];
             }
         }
 
-        private void BuildButton(RectTransform parent, Rect local, string label, bool filled, UnityEngine.Events.UnityAction action)
+        private void AddRule(float y)
         {
-            Color fill = filled ? PracticeHudView.ShootFill : new Color(0f, 0f, 0f, 0f);
-            RectTransform rect = PracticeHudView.AddPanel(parent, fill, PracticeHudView.AccentColor);
-            rect.anchorMin = new Vector2(local.xMin, local.yMin);
-            rect.anchorMax = new Vector2(local.xMax, local.yMax);
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
+            RectTransform rule = PracticeHudView.AddRect(_card, "Rule" + y.ToString("F3"),
+                new Vector2(PracticeResultLayout.RuleInset, y), new Vector2(1f - PracticeResultLayout.RuleInset, y));
+            rule.offsetMin = new Vector2(0f, -ClubUiTokens.Hairline);
+            rule.offsetMax = Vector2.zero;
+            hud.SetImage(rule.gameObject.AddComponent<Image>(), null, ClubUiTokens.LineDivider);
+        }
 
-            var image = rect.GetComponent<Image>();
-            image.raycastTarget = true;   // 本画布唯一需要接收射线的控件
+        private void BuildButton(Rect local, string label, bool filled, ClubUiSprites.UiSprite glyph,
+                                 UnityEngine.Events.UnityAction action)
+        {
+            Color edge = filled ? ClubUiTokens.ButtonEdge : ClubUiTokens.LineButton;
+            Color fill = filled ? ClubUiTokens.ButtonFill : ClubUiTokens.Transparent;
+            Color textColor = filled ? ClubUiTokens.ButtonText : ClubUiTokens.Text;
 
-            PracticeHudView.CreateText(rect, "Label", hud.titleFont, 14f,
-                filled ? PracticeHudView.ShootText : PracticeHudView.TextColor,
-                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = label;
+            RectTransform rect = hud.AddFramed(_card, label, new Vector2(local.xMin, local.yMin),
+                new Vector2(local.xMax, local.yMax), edge, fill, ClubUiTokens.RadiusButton);
+
+            var hit = rect.GetComponent<Image>();
+            hit.raycastTarget = true;   // 本画布唯一需要接收射线的控件族
+
+            TextMeshProUGUI text = PracticeHudView.CreateText(rect, "Label", hud.bodyFont, ClubUiTokens.FontBody,
+                textColor, TextAlignmentOptions.Center, Vector2.zero, new Vector2(0.56f, 1f));
+            text.text = label;
+
+            hud.AddFixed(rect, "Glyph", glyph, textColor, new Vector2(0.575f, 0.5f),
+                new Vector2(ClubUiTokens.ButtonArrowSize, ClubUiTokens.ButtonArrowSize));
 
             var button = rect.gameObject.AddComponent<Button>();
-            button.targetGraphic = image;
+            button.targetGraphic = hit;
             button.onClick.AddListener(action);
         }
 
@@ -174,9 +267,7 @@ namespace Billiards.UI
             card.anchorMin = new Vector2(0.5f, 0.5f);
             card.anchorMax = new Vector2(0.5f, 0.5f);
             card.pivot = new Vector2(0.5f, 0.5f);
-            card.sizeDelta = new Vector2(
-                PracticeResultLayout.CardWidthPx,
-                PracticeResultLayout.CardHeightPx);
+            card.sizeDelta = new Vector2(PracticeResultLayout.CardWidthPx, PracticeResultLayout.CardHeightPx);
             card.anchoredPosition = Vector2.zero;
 
             // 视口矩形只用于"是否越界"的自检（越界时给一次警告，不静默）。
@@ -232,7 +323,7 @@ namespace Billiards.UI
             }
         }
 
-        /// <summary>显示结算卡并把本局冻结（刷新文案 + 置 <see cref="IsOpen"/>）。</summary>
+        /// <summary>显示结算卡并把本局冻结（刷新文案 + 按结局换配色 + 置 <see cref="IsOpen"/>）。</summary>
         public void Show()
         {
             EnsureBuilt();
@@ -243,17 +334,57 @@ namespace Billiards.UI
 
             PracticeSessionSnapshot snapshot = _tracker.Snapshot();
             RackOutcome outcome = snapshot.outcome;
+            bool win = outcome == RackOutcome.TableCleared;
 
             _title.text = PracticeSession.OutcomeTitle(outcome);
             _reason.text = PracticeSession.OutcomeReason(outcome);
-            _badge.color = outcome == RackOutcome.TableCleared ? PracticeHudView.AccentColor : PracticeHudView.MutedColor;
             _statValues[0].text = snapshot.shots.ToString();
             _statValues[1].text = snapshot.pots.ToString();
             _statValues[2].text = snapshot.fouls.ToString();
 
+            ApplyOutcomeStyle(win);
+
             IsOpen = true;
+            _backdrop.gameObject.SetActive(true);
             _card.gameObject.SetActive(true);
             _card.SetAsLastSibling();
+        }
+
+        /// <summary>
+        /// 按 `data-outcome` 换配色：**酒红只给负局**（设计说明 §一：酒红只用于犯规和失败）。
+        /// 胜局则一律黄铜。
+        /// </summary>
+        private void ApplyOutcomeStyle(bool win)
+        {
+            Color32 accentEdge = win ? ClubUiTokens.ResultWinEdge : ClubUiTokens.ResultLoseEdge;
+            Color32 iconColor = win ? ClubUiTokens.Accent : ClubUiTokens.ResultLoseIcon;
+            Color32 iconEdge = win ? ClubUiTokens.ResultWinEdge : ClubUiTokens.ResultLoseIconEdge;
+            Color32 badgeEdge = win ? ClubUiTokens.LineBadge : ClubUiTokens.ResultLoseBadgeEdge;
+
+            if (_topEdge != null)
+            {
+                _topEdge.color = accentEdge;
+            }
+
+            if (_trophyRing != null)
+            {
+                _trophyRing.color = iconEdge;
+            }
+
+            if (_trophyGlyph != null)
+            {
+                _trophyGlyph.color = iconColor;
+            }
+
+            if (_badgeFrame != null && _badgeFrame.GetComponent<Image>() != null)
+            {
+                _badgeFrame.GetComponent<Image>().color = badgeEdge;
+            }
+
+            if (_badgeText != null)
+            {
+                _badgeText.color = iconColor;
+            }
         }
 
         /// <summary>隐藏结算卡（不重置会话；由调用方决定是否 `BeginRack`）。</summary>
@@ -263,6 +394,11 @@ namespace Billiards.UI
             if (_card != null)
             {
                 _card.gameObject.SetActive(false);
+            }
+
+            if (_backdrop != null)
+            {
+                _backdrop.gameObject.SetActive(false);
             }
         }
 

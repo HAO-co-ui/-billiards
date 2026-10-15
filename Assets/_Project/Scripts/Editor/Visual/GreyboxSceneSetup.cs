@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using Billiards.Core;
 using Billiards.Physics;
@@ -23,11 +24,16 @@ namespace Billiards.EditorTools
     ///  · 俯视相机 + 主平行光（便于肉眼查看灰盒）
     ///
     /// ── 两条明文禁令（spec §8 H-6 / §10.3）─────────────────────────────────
-    ///  1. **严禁**把本场景写入 <c>EditorBuildSettings</c>。
-    ///     理由：工程配置验收项 <c>SCN-02</c> 断言 build list 中**恰好**只有 <c>Main.unity</c>；
-    ///     一旦注册灰盒场景，工程配置验收的 26/26 会变成 25/26、其验收证据立即作废。
-    ///     灰盒场景**用编辑器直接双击打开**即可，不需要进 build list。
-    ///     若确需注册，必须作为独立变更同时修订工程配置验收口径，不得夹带在物理场景变更内。
+    ///  1. **提交态的 build list 里不含本场景**（`EditorBuildSettings.asset` 只列 `Main.unity`）。
+    ///     理由：工程配置验收项 `SCN-02`（Day1）与 `D4-BLD-01`（Day4）都断言**提交态**的 build list
+    ///     **恰好**只有 `Main.unity`；一旦把本场景提交进去，两份已入库证据立即作废。
+    ///
+    ///     ⚠ **但"出包必须不是黑屏"这条要求仍然成立**（`Main.unity` 是空壳 ⇒ 用它打包 = 黑屏死包）。
+    ///     本工程的做法**不是**改持久列表，而是让**出包入口自带保证**：`BuildWindows.BuildFromCommandLine`
+    ///     ① 先跑 `PerformanceSetup.Apply()`（把列表临时写成本场景）→ ② 列表不对就**拒绝出包**
+    ///     → ③ `BuildPlayerOptions.scenes` **显式**指定本场景（出包内容与持久列表无关）。
+    ///     ⇒ 两条口径因此可以并存：**验收看持久态、出包看出包入口**。
+    ///     （将来若把 `Main.unity` 做成真正的游戏入口，应把 `T120 ③` 改为断言"首个 build 场景不是空壳"。）
     ///  2. **严禁**修改 <c>Assets/_Project/Scenes/Main.unity</c>（已被材质视觉验收 22/22 冻结）。
     ///
     /// 另：本文件只生成、**不校验**（生成/校验入口分离，R2）；校验见 <see cref="PhysicsValidator"/>。
@@ -40,6 +46,58 @@ namespace Billiards.EditorTools
         public const string ScenesDir = "Assets/_Project/Scenes";
         public const string TableConfigPath = "Assets/_Project/Data/TableConfig.asset";
         public const string CueBallMaterialPath = "Assets/_Project/Materials/Balls/Ball_00.mat";
+
+        /// <summary>
+        /// 球模型（`Art/Models/Balls/Ball_NN.fbx`）：**球心为本地原点、半径 0.028575 m、单位缩放**
+        /// （与 `PoolConstants.BallRadius` 逐位一致 ⇒ 实例化后**不需要再缩放**）。
+        /// </summary>
+        public const string BallModelPathFormat = "Assets/_Project/Art/Models/Balls/Ball_{0:00}.fbx";
+
+        /// <summary>球材质（`Materials/Balls/Ball_NN.mat`，URP Lit，**逐号独立 1024×512 贴图**，无 atlas）。</summary>
+        public const string BallMaterialPathFormat = "Assets/_Project/Materials/Balls/Ball_{0:00}.mat";
+
+        /// <summary>
+        /// 球杆模型：长轴沿 **−Y**、杆尖在局部原点、长 **1.400000 m** —— 由离线探针
+        /// `Docs/Tools/fbx_axis_probe.py` 直接解析 FBX 二进制量得（绕过 Unity）：
+        /// 原始局部 bbox `min=(-0.016148, -1.400000, -0.015760)`、`max=(0.015415, -0.000000, 0.016188)`
+        /// ⇒ 各轴尺寸 `X=0.0316 / Y=1.4000 / Z=0.0319` m。
+        ///
+        /// ⚠ **美术包 README 写的是"杆身沿 +Z"** —— 那是 **Blender 源工程（Z-up）** 的口径；
+        /// FBX 导出已做 Z-up → Y-up 转换 ⇒ 进 Unity 后长轴变成 **Y**，且杆身朝 **−Y**。
+        /// 实测证据：判据 `T123` 首版按 README 直接断言 min.z/长 Z ⇒ 报
+        /// 「杆长 0.0319 m ≠ 1.4 m、横向 1.4 m」，即**长轴不在 Z 上**。
+        /// ⇒ 需要一层修正旋转把 **−Y 映到 +Z**，才能满足 <see cref="Physics.CueStickController"/>
+        /// 的既有约定（杆尖=原点、杆身 +Z）。**不修改控制器**（它的坐标系是被多处证据钉住的）。
+        /// </summary>
+        public const string CueModelPath = "Assets/_Project/Art/Models/Cue/PoolCue_TipOrigin.fbx";
+
+        /// <summary>杆模型实例的对象名（判据 `T123` 按名定位）。</summary>
+        public const string CueModelObjectName = "CueModel";
+
+        /// <summary>
+        /// **杆根节点**对象名 —— 它是交给 <see cref="Physics.CueStickController.stickInstance"/> 的那一层，
+        /// 由控制器每帧写 `position/rotation`（世界）。模型作为它的**子物体**并带一层修正旋转
+        /// （<see cref="CueModelLocalRotation"/>）⇒ 控制器写父、几何约定由子提供，两者互不覆盖。
+        ///
+        /// 为什么必须多一层：控制器写的是 `_stick.rotation`（**绝对**旋转），
+        /// 若把修正旋转直接放在 `stickInstance` 上，会被每帧覆写掉（等于没修）。
+        /// </summary>
+        public const string CueStickRootObjectName = "CueStickRoot";
+
+        /// <summary>
+        /// 杆模型的**修正旋转**：把网格的 **−Y**（杆身方向）映到杆根局部空间的 **+Z**。
+        ///
+        /// 推导（不是试出来的）：绕 X 轴转 θ 把 (0,−1,0) 映到 (0,−cosθ,−sinθ)；
+        /// 要求等于 (0,0,1) ⇒ cosθ=0 且 −sinθ=1 ⇒ **θ = −90°** ⇒ `Quaternion.Euler(-90,0,0)`。
+        /// 旋转后原本的 X→X、Z→Y ⇒ 横向尺寸仍是 31.6 mm / 31.9 mm（球杆尾径 ≈ 32 mm，合理）。
+        /// </summary>
+        public static readonly Quaternion CueModelLocalRotation = Quaternion.Euler(-90f, 0f, 0f);
+
+        /// <summary>
+        /// 美术包给定的**号面朝向**（原型斜俯视相机的来向，见 `Balls/Editable/README.md`）。
+        /// 模型自带朝向已按它摆好 ⇒ 本工程只需把这一朝向**旋到本工程相机方向**（见 <see cref="BallFaceRotation"/>）。
+        /// </summary>
+        public static readonly Vector3 ArtBallFaceDirection = new Vector3(3.55f, 2.65f, 3.55f);
 
         public const string RootObjectName = "PhysicsGreybox";
         public const string GizmoObjectName = "CushionGizmo";
@@ -273,6 +331,10 @@ namespace Billiards.EditorTools
             cueStick.pull = powerController;
             powerController.cueStick = cueStick;
 
+            // 5c-1) **杆用美术包真模型**（杆尖=局部原点、杆身 +Z、长 1.4 m ⇒ 与控制器约定逐字一致）：
+            //       直接挂为控制器的子物体、位姿全交给控制器；模型缺失则留空 ⇒ 控制器自建基元兜底。
+            cueStick.stickInstance = BuildCueModel(cueStickGo.transform);
+
             // 5d) **音频层** —— 内核接触事件流 → 撞声；strike 轮询出杆计数；纯函数调制 + 限流。
             var audioGo = new GameObject(PoolAudioObjectName);
             audioGo.transform.SetParent(root.transform, false);
@@ -303,6 +365,15 @@ namespace Billiards.EditorTools
             hud.cueStick = cueStick;
             hud.titleFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.TitleFontAssetPath);
             hud.bodyFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.BodyFontAssetPath);
+
+            // 5f-1) **美术资源接线**（用户反馈"美术资源你也没给我用上"的正面回应）：
+            //       · 界面精灵（13 图标 + 5 形状）与 16 个球号贴片 —— **必须全部在场**，
+            //         任一缺失就在这里抛（构建期拦截 > 运行期看见空白，铁律 18）；
+            //       · 两个开关写的是**已存在的宿主**（VFX / 音频），不新建任何偏好状态。
+            hud.uiSprites = LoadUiSpritesOrThrow();
+            hud.ballChips = LoadBallChipsOrThrow();
+            hud.vfxView = vfxView;
+            hud.poolAudio = poolAudio;
 
             // 5g) **练习结算卡**（排期「练习结算与埋点」）+ 模态交互所需的最小 UI 基础设施。
             //     `EventSystem` + `StandaloneInputModule`（**旧输入**）—— 与本工程既有输入口径一致：
@@ -336,36 +407,174 @@ namespace Billiards.EditorTools
             EditorSceneManager.SaveScene(scene, ScenePath);
         }
 
-        /// <summary>白球：球体基元 + 材质；**立即移除基元自带的碰撞体**（自研物理铁律）。</summary>
+        /// <summary>白球（0 号）：美术包模型 + `Ball_00.mat`。</summary>
         private static GameObject BuildCueBall()
         {
-            return BuildBallObject(CueBallObjectName);
+            return BuildBallObject(CueBallObjectName, 0);
         }
 
-        /// <summary>生成一颗**纯可视**球（球体基元 + 球材质，立即移除自带碰撞体）。</summary>
-        private static GameObject BuildBallObject(string name)
+        /// <summary>
+        /// 载入一个界面精灵；**首次取不到就强制重导一次再取**。
+        ///
+        /// 为什么需要重导：PNG 是刚刚由脚本生成并落进 `Assets/` 的，
+        /// 若编辑器在导入设置（`UiSpriteImportPostprocessor`）生效**之前**就已经扫过一次目录，
+        /// 该文件会以默认设置（`textureType = Default`，**不是 Sprite**）入库 ⇒
+        /// `LoadAssetAtPath&lt;Sprite&gt;` 恒为 null，且**不会自己变好**。
+        /// 强制重导一次即可让后处理器重新决定导入设置；仍失败才是真的缺资源。
+        /// </summary>
+        private static Sprite LoadSpriteWithRetry(string assetPath)
         {
-            GameObject ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            ball.name = name;
-
-            Collider primitiveCollider = ball.GetComponent<Collider>();
-            if (primitiveCollider != null)
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
+            if (sprite != null)
             {
-                UnityEngine.Object.DestroyImmediate(primitiveCollider);
+                return sprite;
             }
 
-            // 基元球直径 = 1 Unity 单位 ⇒ 缩放到规范球直径。
-            ball.transform.localScale = Vector3.one * PoolConstants.BallDiameter;
+            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+            return AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
+        }
+
+        /// <summary>
+        /// 按 <see cref="ClubUiSprites"/> 的清单**逐格**载入界面精灵；
+        /// 任一格缺失或名字对不上就**抛异常**（构建期失败），不返回半成品数组。
+        ///
+        /// 为什么不"缺了就留空"：uGUI 的 `Image` 在 `sprite == null` 时画的是**白色方块**，
+        /// 而白色方块比"缺图"更糟（看起来像界面坏了、又查不出是资源没生成）。
+        /// 名字核对走 <see cref="ClubUiSprites.ValidateSlots"/>（与判据 `T124` **同一份实现**，
+        /// 不各写一遍，铁律 16）。
+        /// </summary>
+        public static Sprite[] LoadUiSpritesOrThrow()
+        {
+            var sprites = new Sprite[ClubUiSprites.Count];
+            for (int i = 0; i < sprites.Length; i++)
+            {
+                var kind = (ClubUiSprites.UiSprite)i;
+                string path = ClubUiSprites.AssetPath(kind);
+                sprites[i] = LoadSpriteWithRetry(path);
+                if (sprites[i] == null)
+                {
+                    throw new InvalidOperationException(
+                        $"界面精灵缺失或未按 Sprite 导入：{path}"
+                        + "（生成：`<venv python> Docs/Tools/make_ui_sprites.py`；导入设置：`UiSpriteImportPostprocessor`）。");
+                }
+            }
+
+            if (!ClubUiSprites.ValidateSlots(sprites, out string error))
+            {
+                throw new InvalidOperationException("界面精灵槽位校验失败：" + error);
+            }
+
+            return sprites;
+        }
+
+        /// <summary>按 <see cref="ClubBallChips"/> 的清单逐格载入 16 个球号贴片；缺失即抛（同 <see cref="LoadUiSpritesOrThrow"/>）。</summary>
+        public static Sprite[] LoadBallChipsOrThrow()
+        {
+            var chips = new Sprite[ClubBallChips.Count];
+            for (int i = 0; i < chips.Length; i++)
+            {
+                string path = ClubBallChips.AssetPath(i);
+                chips[i] = LoadSpriteWithRetry(path);
+                if (chips[i] == null)
+                {
+                    throw new InvalidOperationException(
+                        $"迷你球贴片缺失或未按 Sprite 导入：{path}"
+                        + "（生成：`<venv python> Docs/Tools/make_ball_chips.py`）。");
+                }
+            }
+
+            if (!ClubBallChips.ValidateSlots(chips, out string error))
+            {
+                throw new InvalidOperationException("迷你球贴片槽位校验失败：" + error);
+            }
+
+            return chips;
+        }
+
+        /// <summary>
+        /// 生成一颗**纯可视**球：优先用美术包模型 `Ball_NN.fbx`（球心原点、半径 0.028575 m、单位缩放），
+        /// 模型缺失时退回球体基元（**兜底不得让场景没有球**）。两种路径都**立即移除碰撞体**（自研物理铁律）。
+        ///
+        /// **材质逐号取**（`Ball_NN.mat`）：0 号 = 白球、1–15 号 = 各自花色与号数 —— 这是用户反馈
+        /// "球没弄全/全白"的直接修法（旧实现对**每一颗**都套 `Ball_00.mat`）。
+        /// </summary>
+        private static GameObject BuildBallObject(string name, int ballNumber)
+        {
+            GameObject ball = InstantiateModelOrNull(string.Format(CultureInfo.InvariantCulture,
+                BallModelPathFormat, ballNumber), name);
+            if (ball != null)
+            {
+                ball.transform.localPosition = Vector3.zero;
+                ball.transform.localRotation = BallFaceRotation();
+                ball.transform.localScale = Vector3.one;
+            }
+            else
+            {
+                ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                ball.name = name;
+                // 基元球直径 = 1 Unity 单位 ⇒ 缩放到规范球直径。
+                ball.transform.localScale = Vector3.one * PoolConstants.BallDiameter;
+            }
+
+            RemoveAllColliders(ball);
             ball.layer = BilliardsLayers.Ball;
 
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(CueBallMaterialPath);
-            var renderer = ball.GetComponent<MeshRenderer>();
-            if (material != null && renderer != null)
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(string.Format(CultureInfo.InvariantCulture,
+                BallMaterialPathFormat, ballNumber));
+            if (material != null)
             {
-                renderer.sharedMaterial = material;
+                var renderers = ball.GetComponentsInChildren<MeshRenderer>(true);
+                for (int i = 0; i < renderers.Length; i++)
+                {
+                    renderers[i].sharedMaterial = material;
+                }
             }
 
             return ball;
+        }
+
+        /// <summary>
+        /// **号面朝向修正**：美术包的球模型**自带朝向**已让号码面向原型相机方向
+        /// <see cref="ArtBallFaceDirection"/>（见 `Balls/Editable/README.md`）。本工程相机是更陡的俯视
+        /// （`CameraPosition` → `CameraLookTarget`）⇒ 只需把那个朝向**旋到本工程相机方向**，
+        /// 号面即朝观众。**不假设模型内部的局部轴**（用 `FromToRotation` 表达"朝向差"）。
+        ///
+        /// 盲带：只定"面朝哪"，**不定号在面内的旋转**（号码是否水平由模型自带朝向决定）；球滚动时号随之转（设计如此，非 billboard）。
+        /// </summary>
+        private static Quaternion BallFaceRotation()
+        {
+            Vector3 viewDirection = (CameraPosition - CameraLookTarget).normalized;
+            return Quaternion.FromToRotation(ArtBallFaceDirection.normalized, viewDirection);
+        }
+
+        /// <summary>实例化一个模型资产（保持与资产的 Prefab 连接，便于日后换模型）；失败返回 <c>null</c>（由调用方兜底）。</summary>
+        private static GameObject InstantiateModelOrNull(string assetPath, string objectName)
+        {
+            GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+            if (asset == null)
+            {
+                Debug.LogWarning($"[SCENE] 模型缺失，退回基元兜底：{assetPath}");
+                return null;
+            }
+
+            GameObject instance = PrefabUtility.InstantiatePrefab(asset) as GameObject;
+            if (instance == null)
+            {
+                instance = UnityEngine.Object.Instantiate(asset);
+            }
+
+            instance.name = objectName;
+            return instance;
+        }
+
+        /// <summary>移除对象及其子物体上的**所有碰撞体**（美术模型可能自带；自研物理铁律要求一律不用内置物理）。</summary>
+        private static void RemoveAllColliders(GameObject target)
+        {
+            var colliders = target.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                UnityEngine.Object.DestroyImmediate(colliders[i]);
+            }
         }
 
         /// <summary>
@@ -373,15 +582,50 @@ namespace Billiards.EditorTools
         /// 第 0 个复用已建的白球；其余为 `RackBall_i`。**只可视**：不引入任何物理组件。
         /// 全部挂 <paramref name="playfieldRoot"/>（缩放根）下，写入的是**局部规范坐标**。
         /// </summary>
+        /// <summary>
+        /// 建**杆模型**并挂到杆控制器下：
+        /// 杆根（<see cref="CueStickRootObjectName"/>，单位位姿，交给控制器驱动）
+        /// └ 模型实例（<see cref="CueModelObjectName"/>，带修正旋转 <see cref="CueModelLocalRotation"/>）
+        ///
+        /// 两层是**必需**的（原因见 <see cref="CueStickRootObjectName"/> 的注释）：
+        /// 控制器每帧写绝对 `position/rotation`，修正旋转只能落在它的子物体上。
+        /// 模型缺失时返回 <c>null</c> ⇒ 控制器自建基元兜底（不得因为没接线就没有杆）。
+        /// </summary>
+        private static Transform BuildCueModel(Transform parent)
+        {
+            GameObject cue = InstantiateModelOrNull(CueModelPath, CueModelObjectName);
+            if (cue == null)
+            {
+                return null;
+            }
+
+            RemoveAllColliders(cue);
+
+            var rootGo = new GameObject(CueStickRootObjectName);
+            rootGo.transform.SetParent(parent, false);
+            rootGo.transform.localPosition = Vector3.zero;
+            rootGo.transform.localRotation = Quaternion.identity;
+            rootGo.transform.localScale = Vector3.one;
+
+            cue.transform.SetParent(rootGo.transform, false);
+            cue.transform.localPosition = Vector3.zero;
+            cue.transform.localRotation = CueModelLocalRotation;
+            cue.transform.localScale = Vector3.one;
+            return rootGo.transform;
+        }
+
         private static Transform[] BuildRackVisuals(GameObject playfieldRoot, TableConfig config, GameObject cueBall)
         {
-            Vector2[] positions = PhysicsTestDrive.RackPositions(config.footSpot, 3);
+            // ⚠ **球数必须与内核一致**：内核走 `PhysicsTestDrive.RackBallCount`（15 目标球 ⇒ 共 16 颗）。
+            // 旧实现这里写死 3 ⇒ 场上只有 4 颗可视球，而驱动器里名义上有更多球 ⇒ "球没弄全"（用户反馈）。
+            // 现在两处**同取一个常量**，并由判据 `T122` 断言"可视球数 == 内核球数"。
+            Vector2[] positions = PhysicsTestDrive.RackPositions(config.footSpot, PhysicsTestDrive.RackBallCount);
             var visuals = new Transform[positions.Length];
             visuals[0] = cueBall.transform;
 
             for (int i = 1; i < positions.Length; i++)
             {
-                GameObject ball = BuildBallObject("RackBall_" + i.ToString());
+                GameObject ball = BuildBallObject("RackBall_" + i.ToString(), i);
                 ball.transform.SetParent(playfieldRoot.transform, false);
                 ball.transform.localPosition = PoolGeometry.PhysicsBallToUnity(positions[i]);
                 visuals[i] = ball.transform;

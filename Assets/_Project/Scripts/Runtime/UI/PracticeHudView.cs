@@ -6,81 +6,128 @@ using UnityEngine.UI;
 namespace Billiards.UI
 {
     /// <summary>
-    /// **最小练习 HUD 视图**：程序化建出三块（计数组 / 状态条 / 力度块），每帧从既有只读出口刷值。
+    /// **对局 HUD 视图** —— 按美术包 `04_UI` 的设计稿重建（记分牌 / 状态条 / 力度块）。
     ///
     /// ── 几何唯一来源 ────────────────────────────────────────────────────────
     /// 三块的矩形一律取自 <see cref="PracticeHudLayout.Resolve"/>，并以 **uGUI 锚点比例**落地
     /// （`anchorMin/anchorMax` = 视口分区）⇒ 分区一变，视图自动跟着变，**不存在第二份数字**。
     /// 分区本身由判据 `T95` 在六档宽高比下守住（不越界 / 不压球桌主区 / 互不重叠）。
     ///
+    /// ── 视觉唯一来源 ────────────────────────────────────────────────────────
+    /// 颜色 / 圆角 / 字号 / 尺寸**全部**取自 <see cref="ClubUiTokens"/>，
+    /// 图标与形状取自 <see cref="ClubUiSprites"/>，球号贴片取自 <see cref="ClubBallChips"/>。
+    /// 本类里**不出现任何颜色字面量或字号字面量**（判据 `T124` 守这条）——
+    /// 这正是重做前"两处视图各写一套色值 ⇒ 界面半新半旧"的机制性修法。
+    ///
+    /// ── 精灵为什么必须从场景数组来（实现约束，不是风格问题）──────────────────
+    /// 运行期**不能**用 `Resources`/路径加载资产（`Assets/` 目录在出包后不存在）。
+    /// 故所有精灵都挂在 <see cref="uiSprites"/> / <see cref="ballChips"/> 上、由场景序列化；
+    /// 本类只按 <see cref="ClubUiSprites"/> 的**清单序号**取，并做"取不到就不挂"的判空
+    /// （挂一个 `null` 会让 uGUI 画出**白色方块**，比不画更糟）。
+    ///
     /// ── 数据来源（全部既有只读出口，本类不新建任何状态）────────────────────────
-    /// · 状态与 `Shoot` 可用性 ← `CueStickController.Flow.Phase`（`ShotPhase`）
-    /// · 力度 ← `PhysicsTestDrive.power`
-    /// · 杆数 ← `PhysicsTestDrive.LaunchCount`；球数 ← `PoolSimulator.IsBallInPlay`
+    /// · 状态 ← `CueStickController.Flow.Phase`（`ShotPhase`）+ `ScratchCount` 上升沿（犯规）
+    ///   + `RefusedLaunchCount` 上升沿（出杆被拒）+ `LastLaunchRespawnedCueBall`（白球归位）
+    ///   + `PracticeResultView.IsOpen`（结算）
+    /// · 力度 ← `PhysicsTestDrive.power`；杆数/犯规 ← `LaunchCount` / `ScratchCount`；
+    ///   进球 / 总数 ← `PoolSimulator.IsBallInPlay`（经 `PracticeSession.CountBalls` 单点口径）
     ///
     /// ── 刻意不做（边界，如实登记）────────────────────────────────────────────
-    /// · **不接点击**：`Shoot` 只做显示态（可用/禁用随 `ShotPhase`），故**不挂 `GraphicRaycaster`**、
-    ///   不依赖 `EventSystem`。出杆通路仍是既有的右键拉杆 + `Space`（`PhysicsTestDrive.launchKey`）。
-    /// · **不绘制状态图标**：参考实现的准星 / 虚线圆需要矢量图标资源；本单用**状态色菱形点 + 文案**
-    ///   承担同一语义（设计说明 §4/§5 的"绿色指示自方回合 / 球运动"可用颜色区分）。
+    /// · **HUD 三块不接收射线**（各控件 `raycastTarget = false`）；只有右上两个 **VFX / SFX 开关**
+    ///   是真按钮（改的是 `PoolVfxView.vfxEnabled` / `PoolAudio.audioEnabled`）。
+    ///   出杆通路仍是既有的右键拉杆 + `Space`（`PhysicsTestDrive.launchKey`）。
+    /// · **模式切换里的 `AI Match` 是禁用态**（`opacity .38`，不挂按钮）：35-A 没有 AI 对手，
+    ///   做一个点得动的假入口等于欺骗 —— 设计稿里它就是"另一个模式"，这里如实呈现为"尚未开放"。
+    /// · 原型 CSS 的 `inset` 内阴影 / `backdrop-filter: blur` / `text-shadow` 在 uGUI 无对应能力
+    ///   ⇒ 不伪造，已登记为表现差异。
     /// · 文字在块内的**实际像素溢出**不判（`-nographics` 无渲染）⇒ 由用户实机截图兜。
     /// </summary>
     [AddComponentMenu("Billiards/Practice Hud View")]
     public sealed class PracticeHudView : MonoBehaviour
     {
-        // ── 设计 token（逐字抄参考实现 `style.css` 的 `:root`）──────────────────
-        public static readonly Color PanelColor = new Color32(0x10, 0x20, 0x25, 0xED);
-        public static readonly Color PanelBorder = new Color32(0xD4, 0xB4, 0x6C, 0x45);
-        public static readonly Color AccentColor = new Color32(0xD4, 0xB4, 0x6C, 0xFF);
-        public static readonly Color TextColor = new Color32(0xF2, 0xEF, 0xE4, 0xFF);
-        public static readonly Color MutedColor = new Color32(0xA9, 0xB9, 0xB4, 0xFF);
-        public static readonly Color StateGreen = new Color32(0x6D, 0xBD, 0xA9, 0xFF);
-        public static readonly Color PowerTrack = new Color32(0x3F, 0x61, 0x5A, 0xFF);
-        public static readonly Color ShootFill = new Color32(0xD4, 0xB4, 0x6C, 0xFF);
-        public static readonly Color ShootFillDisabled = new Color32(0xD4, 0xB4, 0x6C, 0x61);
-        public static readonly Color ShootText = new Color32(0x10, 0x20, 0x25, 0xFF);
-
-        /// <summary>犯规色（**酒红**，取参考 UI 的 `.status-bar[data-state='foul']` 边线色 `#b66370`）。</summary>
-        public static readonly Color FoulColor = new Color32(0xB6, 0x63, 0x70, 0xFF);
-
         /// <summary>
-        /// 「出杆被拒」的提示色（**黄铜主色**）。刻意与三种已有语义分开：
-        /// 绿 = 可操作（Aim）、灰 = 球在动、酒红 = 犯规。
-        /// 「被拒」既不是犯规也不是"没事发生" —— 它是**你想做的事没做成**，用主色提示你注意，
-        /// 但**不占用**酒红（酒红只给犯规，设计说明 §9）。
-        /// </summary>
-        public static readonly Color RefusedColor = AccentColor;
-
-        /// <summary>
-        /// 犯规提示的停留时长（秒）。参考设计说明给的是边线 **0.8 s 脉冲**（那是"看一眼就够"的动效）；
+        /// 犯规提示的停留时长（秒）。设计说明给的边线脉冲是 **0.8 s**（那是"看一眼就够"的动效）；
         /// 本处要让人**读完文字**再判断"刚才那杆犯没犯错"，故取 **1.6 s**（两倍）。
         /// </summary>
         public const float FoulBannerSeconds = 1.6f;
 
-        /// <summary>控件圆角（设计说明 §一：1–3 px，不做现代 SaaS 式圆角）。</summary>
-        public const float CornerRadius = 2f;
+        /// <summary>记分牌球行的列数（第一行 8 个，第二行放剩下的 7 个）。</summary>
+        public const int BallRowColumns = 8;
 
-        /// <summary>禁用态不透明度（参考实现 `button:disabled { opacity: .38 }`）。</summary>
-        public const float DisabledOpacity = 0.38f;
+        /// <summary>滑块在轨道两端的**锚点内缩**（半个滑块 ≈ 7 px ÷ 轨道宽 ≈ 0.014）。</summary>
+        private const float ThumbInsetFraction = 0.014f;
 
-        [Tooltip("被驱动的驱动器（读计数与力度）。为空 ⇒ 本组件只建结构、不刷值。")]
+        [Tooltip("被驱动的驱动器（读计数、力度、犯规与出杆数）。为空 ⇒ 本组件只建结构、不刷值。")]
         public PhysicsTestDrive drive;
 
         [Tooltip("球杆控制器（读击球流程相位）。为空 ⇒ 状态条按 Aim 显示。")]
         public CueStickController cueStick;
 
-        [Tooltip("标题族字体（数值 / POWER / Shoot）。")]
+        [Tooltip("标题族字体（品牌字 / 大数字 / POWER / Shoot）。")]
         public TMP_FontAsset titleFont;
 
         [Tooltip("正文族字体（小标签 / 状态文案）。")]
         public TMP_FontAsset bodyFont;
 
-        /// <summary>环境光/背景色随场景设置；本组件只画 UI。</summary>
+        [Tooltip("界面精灵槽位（长度与顺序必须等于 ClubUiSprites 的清单）。")]
+        public Sprite[] uiSprites;
+
+        [Tooltip("球号贴片槽位（16 个，索引 = 球号）。")]
+        public Sprite[] ballChips;
+
+        [Tooltip("特效宿主（右上开关写它的 vfxEnabled）。为空 ⇒ 开关只显示、不接线。")]
+        public PoolVfxView vfxView;
+
+        [Tooltip("音频宿主（右上开关写它的 audioEnabled）。为空 ⇒ 开关只显示、不接线。")]
+        public PoolAudio poolAudio;
+
         private Canvas _canvas;
+        private RectTransform _counters;
+        private RectTransform _status;
+        private RectTransform _power;
+
+        // ── 记分牌 ───────────────────────────────────────────────────────────
+        private TextMeshProUGUI _scoreValue;
+        private TextMeshProUGUI _playerStats;
+        private Image[] _ballChips;
+
+        // ── 状态条 ───────────────────────────────────────────────────────────
+        private Image _statusFrame;
+        private Image _statusFill;
+        private Image _stateSymbol;
+        private Image _turnDot;
+        private TextMeshProUGUI _stateText;
+        private TextMeshProUGUI _stateCaption;
+
+        // ── 力度块 ───────────────────────────────────────────────────────────
+        private TextMeshProUGUI _powerPercent;
+        private Image _powerFill;
+        private RectTransform _thumbGlow;
+        private RectTransform _thumb;
+        private Image _shootFrame;
+        private Image _shootFill;
+        private TextMeshProUGUI _shootText;
+        private Image _shootArrow;
+        private TextMeshProUGUI _shotInfoValue;
+
+        // ── 开关 ─────────────────────────────────────────────────────────────
+        private Image _vfxIcon;
+        private Image _sfxIcon;
+
+        // ── 轮询基线 ─────────────────────────────────────────────────────────
+        private int _lastScratchSeen;
+        private int _lastRefusedSeen;
+        private int _lastLaunchSeen;
+        private bool _ballInHandLatch;
+        private float _foulUntil;
+        private float _foulStart;
+        private float _refusedUntil;
+
+        private bool _built;
 
         /// <summary>
         /// HUD 画布的根 `RectTransform`。**结算卡挂这里而不是自建第二个画布** ——
-        /// 同一画布 = 同一个 `CanvasScaler` 口径（不存在两份画布缩放），且只有一个 `sortingOrder` 需要维护。
+        /// 同一画布 = 同一个 `CanvasScaler` 口径（不存在两份画布缩放），且只有一个 `sortingOrder` 要维护。
         /// </summary>
         public RectTransform CanvasRoot
         {
@@ -90,23 +137,6 @@ namespace Billiards.UI
                 return (RectTransform)_canvas.transform;
             }
         }
-
-        private RectTransform _counters;
-        private RectTransform _status;
-        private RectTransform _power;
-        private TextMeshProUGUI[] _counterValues;
-        private TextMeshProUGUI _stateText;
-        private TextMeshProUGUI _stateCaption;
-        private int _lastScratchSeen;
-        private float _foulUntil;
-        private int _lastRefusedSeen;
-        private float _refusedUntil;
-        private Image _stateDot;
-        private TextMeshProUGUI _powerPercent;
-        private Image _powerFill;
-        private Image _shootFill;
-        private TextMeshProUGUI _shootText;
-        private bool _built;
 
         private void Awake()
         {
@@ -150,111 +180,304 @@ namespace Billiards.UI
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = PracticeHudLayout.MatchWidthOrHeight;
 
-            // 射线器：**结算卡的按钮**需要它（本画布是全场景唯一带射线器的画布，`T102 (c)` 守）。
-            // HUD 自身的三块仍只显示、不接收射线（各控件的 `raycastTarget` 保持 false）。
+            // 射线器：**结算卡的按钮**与右上两个开关需要它
+            // （本画布是全场景唯一带射线器的画布，`T102 (c)` 守）。
             canvasGo.AddComponent<GraphicRaycaster>();
 
             _counters = CreateZone(canvasGo.transform, zones.counters, "Counters");
             _status = CreateZone(canvasGo.transform, zones.status, "Status");
             _power = CreateZone(canvasGo.transform, zones.power, "Power");
 
-            BuildCounters(_counters);
-            BuildStatus(_status);
-            BuildPower(_power);
+            BuildScoreboard(_counters);
+            BuildStatusBar(_status);
+            BuildShotbar(_power);
         }
 
-        // ── 建树 ─────────────────────────────────────────────────────────────
+        // ════════════════ 分区 A：品牌 + 记分牌 ═══════════════════════════════
 
-        /// <summary>分区落地：**锚点 = 视口分区**（`offsetMin/Max = 0`）⇒ 与分辨率无关，且与判据同源。</summary>
-        public static RectTransform CreateZone(Transform parent, Rect zone, string name)
+        private void BuildScoreboard(RectTransform zone)
         {
-            var go = new GameObject(name, typeof(RectTransform));
-            var rect = (RectTransform)go.transform;
-            rect.SetParent(parent, false);
-            rect.anchorMin = new Vector2(zone.xMin, zone.yMin);
-            rect.anchorMax = new Vector2(zone.xMax, zone.yMax);
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            return rect;
+            // ── 品牌行（设计稿 `.brand`：白球徽章 + wordmark + 模式小标）──────
+            RectTransform brand = AddRect(zone, "Brand", new Vector2(0f, 0.78f), new Vector2(1f, 1f));
+            var brandAnchor = new Vector2(0f, 0.5f);
+            var brandCenter = new Vector2(ClubUiTokens.BrandBallSize * 0.5f + ClubUiTokens.Hairline, 0f);
+
+            RectTransform ring = AddFixed(brand, "BrandBallRing", ClubUiSprites.UiSprite.Ring,
+                ClubUiTokens.BrandBallRing, brandAnchor,
+                new Vector2(ClubUiTokens.BrandBallRingSize, ClubUiTokens.BrandBallRingSize));
+            ring.anchoredPosition = brandCenter;
+
+            RectTransform ball = AddFixed(brand, "BrandBall", ClubUiSprites.UiSprite.Disc,
+                ClubUiTokens.BrandBallFill, brandAnchor,
+                new Vector2(ClubUiTokens.BrandBallSize, ClubUiTokens.BrandBallSize));
+            ball.anchoredPosition = brandCenter;
+
+            CreateText(ball, "BrandBallText", titleFont, ClubUiTokens.FontBrandBall, ClubUiTokens.BrandBallText,
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = PracticeHudState.BrandBallNumber;
+
+            CreateText(brand, "BrandTitle", titleFont, ClubUiTokens.FontBrand, ClubUiTokens.Text,
+                TextAlignmentOptions.BottomLeft, new Vector2(0.092f, 0.44f), new Vector2(0.70f, 0.98f))
+                .text = PracticeHudState.BrandTitle;
+
+            CreateText(brand, "BrandEyebrow", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Accent,
+                TextAlignmentOptions.TopLeft, new Vector2(0.092f, 0.04f), new Vector2(0.70f, 0.44f))
+                .text = PracticeHudState.BrandEyebrow;
+
+            BuildToolButtons(brand);
+
+            // ── 记分牌（设计稿 `.scoreboard`：上下细边线 + 85% 炭黑底）────────
+            RectTransform board = AddRect(zone, "Scoreboard", new Vector2(0f, 0.06f), new Vector2(1f, 0.72f));
+            SetImage(board.gameObject.AddComponent<Image>(), null, ClubUiTokens.PanelScoreboard);
+            AddEdgeStrip(board, "ScoreTopLine", true, ClubUiTokens.LineScoreTop);
+            AddEdgeStrip(board, "ScoreBottomLine", false, ClubUiTokens.Line);
+
+            // 左栏：头像 + 玩家名 + 实时统计
+            var avatarAnchor = new Vector2(0.075f, 0.5f);
+            RectTransform avatar = AddFixed(board, "Avatar", ClubUiSprites.UiSprite.Disc, ClubUiTokens.AvatarFill,
+                avatarAnchor, new Vector2(ClubUiTokens.AvatarSize, ClubUiTokens.AvatarSize));
+            AddFixed(board, "AvatarRing", ClubUiSprites.UiSprite.Ring, ClubUiTokens.AvatarEdge, avatarAnchor,
+                new Vector2(ClubUiTokens.AvatarSize, ClubUiTokens.AvatarSize));
+            AddFixed(avatar, "AvatarGlyph", ClubUiSprites.UiSprite.Player, ClubUiTokens.AvatarIcon,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(ClubUiTokens.AvatarIconSize, ClubUiTokens.AvatarIconSize));
+
+            CreateText(board, "PlayerName", bodyFont, ClubUiTokens.FontLabel, ClubUiTokens.Text,
+                TextAlignmentOptions.BottomLeft, new Vector2(0.152f, 0.62f), new Vector2(0.345f, 1f))
+                .text = PracticeHudState.LabelYou;
+
+            CreateText(board, "PlayerMode", bodyFont, ClubUiTokens.FontSmall, ClubUiTokens.Muted,
+                TextAlignmentOptions.Left, new Vector2(0.152f, 0.36f), new Vector2(0.345f, 0.60f))
+                .text = PracticeHudState.ModePractice;
+
+            _playerStats = CreateText(board, "PlayerStats", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Label,
+                TextAlignmentOptions.TopLeft, new Vector2(0.152f, 0.04f), new Vector2(0.345f, 0.36f));
+
+            // 中栏：`POCKETED` + 大数字 + 目标说明（设计稿 `.score-center`）
+            CreateText(board, "ScoreLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
+                TextAlignmentOptions.Bottom, new Vector2(0.36f, 0.80f), new Vector2(0.66f, 1f))
+                .text = PracticeHudState.LabelPocketed;
+
+            _scoreValue = CreateText(board, "ScoreValue", titleFont, ClubUiTokens.FontScore, ClubUiTokens.Text,
+                TextAlignmentOptions.Center, new Vector2(0.36f, 0.38f), new Vector2(0.66f, 0.80f));
+            _scoreValue.text = PracticeHudState.PocketedLabel(0, 0);
+
+            _playerStats.text = PracticeHudState.LabelShots + " 0   " + PracticeHudState.LabelFouls + " 0";
+
+            CreateText(board, "GoalText", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
+                TextAlignmentOptions.Top, new Vector2(0.34f, 0.04f), new Vector2(0.68f, 0.34f))
+                .text = PracticeHudState.CaptionIdle;
+
+            // 右栏：球行（未进亮、已进 20% 透明 ⇒ 一眼看出还剩哪些）
+            CreateText(board, "BallsLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
+                TextAlignmentOptions.BottomRight, new Vector2(0.70f, 0.80f), new Vector2(0.955f, 1f))
+                .text = PracticeHudState.LabelBallsLeft;
+
+            BuildBallRow(board);
         }
 
-        private void BuildCounters(RectTransform zone)
+        /// <summary>
+        /// 球行：15 个目标球，两行排布。**贴片自带球色与号码** ⇒ 这里只负责摆位与"已进袋"的压暗。
+        /// 贴片缺失时退回"纯色圆 + 色表颜色"（判据 `T124` 会把缺贴片钉红）。
+        /// </summary>
+        private void BuildBallRow(RectTransform board)
         {
-            AddPanel(zone, PanelColor, PanelBorder);
+            const int numbers = ClubBallChips.Count - 1;      // 15 个目标球（不含白球）
+            _ballChips = new Image[numbers];
 
-            _counterValues = new TextMeshProUGUI[PracticeHudState.CounterLabels.Length];
-            for (int i = 0; i < PracticeHudState.CounterLabels.Length; i++)
+            for (int i = 0; i < numbers; i++)
             {
-                float share = 1f / PracticeHudState.CounterLabels.Length;
-                var column = CreateZone(zone, new Rect(i * share, 0f, share, 1f), "Column" + i);
+                int row = i / BallRowColumns;
+                int column = i % BallRowColumns;
+                int columnsInRow = Mathf.Min(BallRowColumns, numbers - row * BallRowColumns);
+                int number = i + 1;                           // 球号 1..15
 
-                CreateText(column, "Label", bodyFont, PracticeHudLayout.LabelFontSize * 0.72f, AccentColor,
-                    TextAlignmentOptions.Bottom, new Vector2(0.02f, 0.52f), new Vector2(0.98f, 0.92f))
-                    .text = PracticeHudState.CounterLabels[i];
+                // 两行各占 0.30 的记分牌高度（记分牌在本工程是 0.66 × 218 ≈ 144 px ⇒ 每行 ≈ 43 px，
+                // 15 px 的球在其中垂直居中；`BallsLabel` 在其上方的 0.80–1.00 带内）。
+                var rowRect = AddRect(board, "BallRow" + row,
+                    new Vector2(0.70f, 0.36f - row * 0.30f),
+                    new Vector2(0.955f, 0.66f - row * 0.30f));
 
-                _counterValues[i] = CreateText(column, "Value", titleFont, PracticeHudLayout.ValueFontSize, TextColor,
-                    TextAlignmentOptions.Top, new Vector2(0.02f, 0.10f), new Vector2(0.98f, 0.56f));
+                float x = (column + 0.5f) / columnsInRow;
+                RectTransform chip = AddFixed(rowRect, "Ball" + number.ToString("00"),
+                    ClubUiSprites.UiSprite.Disc, ClubBallChips.PaletteColor(number),
+                    new Vector2(x, 0.5f), new Vector2(ClubUiTokens.MiniBallSize, ClubUiTokens.MiniBallSize));
+
+                var image = chip.GetComponent<Image>();
+                Sprite face = ClubBallChips.Resolve(ballChips, number);
+                if (face != null)
+                {
+                    image.sprite = face;
+                    image.color = ClubUiTokens.Opaque;        // 贴片自带颜色 ⇒ 不叠色
+                }
+
+                _ballChips[i] = image;
             }
         }
 
-        private void BuildStatus(RectTransform zone)
+        private void BuildToolButtons(RectTransform brand)
         {
-            AddPanel(zone, PanelColor, PanelBorder);
-
-            var dotGo = new GameObject("Dot", typeof(RectTransform), typeof(Image));
-            var dotRect = (RectTransform)dotGo.transform;
-            dotRect.SetParent(zone, false);
-            dotRect.anchorMin = new Vector2(0.06f, 0.5f);
-            dotRect.anchorMax = new Vector2(0.06f, 0.5f);
-            dotRect.sizeDelta = new Vector2(10f, 10f);
-            dotRect.localRotation = Quaternion.Euler(0f, 0f, 45f);   // 参考实现的 `#turn-dot` 是 5×5 菱形
-            _stateDot = dotGo.GetComponent<Image>();
-            _stateDot.color = StateGreen;
-
-            _stateText = CreateText(zone, "State", bodyFont, PracticeHudLayout.LabelFontSize, TextColor,
-                TextAlignmentOptions.Left, new Vector2(0.12f, 0.10f), new Vector2(0.98f, 0.90f));
-
-            _stateCaption = CreateText(zone, "ZoneCaption", bodyFont, PracticeHudLayout.LabelFontSize * 0.72f, MutedColor,
-                TextAlignmentOptions.Right, new Vector2(0.60f, 0.10f), new Vector2(0.98f, 0.34f));
-            _stateCaption.text = PracticeHudState.CaptionIdle;
+            // 设计稿 `.tools`：右上角一组 38×38 图标按钮。
+            // 本工程**只放真实生效的两个**（VFX / SFX）—— 做个点不动的齿轮按钮是最典型的假 UI。
+            _vfxIcon = AddIconButton(brand, "VfxToggle", ClubUiSprites.UiSprite.Sparkle, 0, OnToggleVfx);
+            _sfxIcon = AddIconButton(brand, "SfxToggle", ClubUiSprites.UiSprite.Volume, 1, OnToggleSfx);
         }
 
-        private void BuildPower(RectTransform zone)
+        private Image AddIconButton(RectTransform parent, string name, ClubUiSprites.UiSprite sprite, int slot,
+                                    UnityEngine.Events.UnityAction action)
         {
-            AddPanel(zone, PanelColor, PanelBorder);
+            float step = ClubUiTokens.IconButtonSize + ClubUiTokens.IconButtonGap;
+            RectTransform frame = AddFramed(parent, name,
+                new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
+            frame.pivot = new Vector2(1f, 0.5f);
+            frame.sizeDelta = new Vector2(ClubUiTokens.IconButtonSize, ClubUiTokens.IconButtonSize);
+            frame.anchoredPosition = new Vector2(-slot * step, 0f);
 
-            CreateText(zone, "PowerLabel", bodyFont, PracticeHudLayout.LabelFontSize * 0.72f, MutedColor,
-                TextAlignmentOptions.Left, new Vector2(0.04f, 0.70f), new Vector2(0.55f, 0.96f))
+            var hit = frame.GetComponent<Image>();
+            hit.raycastTarget = true;   // 本画布上少数几个真的可点的控件之一
+
+            RectTransform glyph = AddFixed(frame, "Glyph", sprite, ClubUiTokens.IconIdle,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(ClubUiTokens.IconButtonIconSize, ClubUiTokens.IconButtonIconSize));
+
+            var button = frame.gameObject.AddComponent<Button>();
+            button.targetGraphic = hit;
+            button.onClick.AddListener(action);
+            return glyph.GetComponent<Image>();
+        }
+
+        // ════════════════ 分区 B：模式切换 + 状态条 ═══════════════════════════
+
+        private void BuildStatusBar(RectTransform zone)
+        {
+            // ── 模式切换（设计稿 `.mode-switch`：外框 radius 3 + padding 3，内钮 radius 1）──
+            RectTransform segment = AddFramed(zone, "ModeSwitch",
+                new Vector2(0.16f, 0.79f), new Vector2(0.84f, 0.79f),
+                ClubUiTokens.Line, ClubUiTokens.PanelSegment, ClubUiTokens.RadiusSegment);
+            segment.offsetMin = new Vector2(0f, -ClubUiTokens.SegmentHeight * 0.5f);
+            segment.offsetMax = new Vector2(0f, ClubUiTokens.SegmentHeight * 0.5f);
+
+            RectTransform inner = AddRect(segment, "Padding", Vector2.zero, Vector2.one);
+            inner.offsetMin = new Vector2(ClubUiTokens.SegmentPadding, ClubUiTokens.SegmentPadding);
+            inner.offsetMax = new Vector2(-ClubUiTokens.SegmentPadding, -ClubUiTokens.SegmentPadding);
+
+            RectTransform active = AddRect(inner, "Practice", new Vector2(0f, 0f), new Vector2(0.5f, 1f));
+            SetImage(active.gameObject.AddComponent<Image>(),
+                ClubUiSprites.PanelForRadius(ClubUiTokens.RadiusSegmentInner), ClubUiTokens.ButtonFill);
+            CreateText(active, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.SegmentActiveText,
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = PracticeHudState.ModePractice;
+
+            RectTransform idle = AddRect(inner, "AiMatch", new Vector2(0.5f, 0f), new Vector2(1f, 1f));
+            TextMeshProUGUI idleLabel = CreateText(idle, "Label", bodyFont, ClubUiTokens.FontBody,
+                ClubUiTokens.SegmentIdleText, TextAlignmentOptions.Center, Vector2.zero, Vector2.one);
+            idleLabel.text = PracticeHudState.ModeAiMatch;
+            idleLabel.alpha = ClubUiTokens.DisabledOpacity;   // 35-A 无 AI 对手 ⇒ 如实禁用，不做假入口
+
+            // ── 状态条（设计稿 `.status-bar`：12 px 正文 + 圆点 + 图标 + 可换边线色）──
+            RectTransform bar = AddFramed(zone, "StatusBar",
+                new Vector2(0f, 0.04f), new Vector2(1f, 0.64f),
+                ClubUiTokens.LineMid, ClubUiTokens.PanelStatus, ClubUiTokens.RadiusPanel);
+            _statusFrame = bar.GetComponent<Image>();
+            _statusFill = bar.Find("Fill") != null ? bar.Find("Fill").GetComponent<Image>() : null;
+
+            RectTransform dot = AddFixed(bar, "TurnDot", ClubUiSprites.UiSprite.Panel1, ClubUiTokens.Green,
+                new Vector2(0.030f, 0.70f), new Vector2(ClubUiTokens.TurnDotSize, ClubUiTokens.TurnDotSize));
+            dot.localRotation = Quaternion.Euler(0f, 0f, 45f);   // 设计稿 `#turn-dot` 是 5×5 菱形
+            _turnDot = dot.GetComponent<Image>();
+
+            RectTransform symbol = AddFixed(bar, "StateSymbol", ClubUiSprites.UiSprite.Crosshair,
+                ClubUiTokens.Green, new Vector2(0.068f, 0.70f),
+                new Vector2(ClubUiTokens.StatusSymbolSize, ClubUiTokens.StatusSymbolSize));
+            _stateSymbol = symbol.GetComponent<Image>();
+
+            _stateText = CreateText(bar, "StateText", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
+                TextAlignmentOptions.Left, new Vector2(0.110f, 0.48f), new Vector2(0.96f, 0.94f));
+
+            _stateCaption = CreateText(bar, "StateCaption", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
+                TextAlignmentOptions.TopLeft, new Vector2(0.110f, 0.06f), new Vector2(0.96f, 0.48f));
+        }
+
+        // ════════════════ 分区 C：力度块（出杆栏）══════════════════════════════
+
+        private void BuildShotbar(RectTransform zone)
+        {
+            // **构建期自检**：力度块的设计域宽度必须容得下设计稿给按钮的**最小**宽度。
+            // 分区是视口比例常量 ⇒ 这一步在构建时就能确定地算出来，不必等实机才发现按钮被压扁。
+            float powerZoneWidthPx = PracticeHudLayout.PowerZone.width * PracticeHudLayout.ReferenceWidth;
+            if (PracticeHudLayout.ShootButtonWidth > powerZoneWidthPx)
+            {
+                Debug.LogWarning(
+                    $"力度块设计宽 {powerZoneWidthPx} px 放不下设计稿的按钮最小宽 "
+                    + $"{PracticeHudLayout.ShootButtonWidth} px —— 应调分区或改按钮尺寸口径。", this);
+            }
+
+            AddFramed(zone, "Shotbar", Vector2.zero, Vector2.one,
+                ClubUiTokens.LineStrong, ClubUiTokens.PanelShotbar, ClubUiTokens.RadiusDialog);
+
+            RectTransform bar = (RectTransform)zone.Find("Shotbar");
+
+            CreateText(bar, "PowerLabel", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Label,
+                TextAlignmentOptions.BottomLeft, new Vector2(0.045f, 0.80f), new Vector2(0.55f, 0.95f))
                 .text = PracticeHudState.LabelPower;
 
-            _powerPercent = CreateText(zone, "PowerValue", titleFont, PracticeHudLayout.ValueFontSize * 0.85f, AccentColor,
-                TextAlignmentOptions.Right, new Vector2(0.50f, 0.70f), new Vector2(0.96f, 0.96f));
+            _powerPercent = CreateText(bar, "PowerValue", titleFont, ClubUiTokens.FontBody, ClubUiTokens.PowerValue,
+                TextAlignmentOptions.BottomRight, new Vector2(0.50f, 0.80f), new Vector2(0.955f, 0.95f));
 
-            // 力条：轨道 + 填充（填充宽 = 力度比例）
-            var track = AddPanel(zone, PowerTrack, PowerTrack, new Vector2(0.04f, 0.56f), new Vector2(0.96f, 0.64f));
-            var fillGo = new GameObject("Fill", typeof(RectTransform), typeof(Image));
-            var fillRect = (RectTransform)fillGo.transform;
-            fillRect.SetParent(track, false);
-            fillRect.anchorMin = new Vector2(0f, 0f);
-            fillRect.anchorMax = new Vector2(1f, 1f);
-            fillRect.offsetMin = Vector2.zero;
-            fillRect.offsetMax = Vector2.zero;
-            _powerFill = fillGo.GetComponent<Image>();
-            _powerFill.color = AccentColor;
+            // 力度条：轨道（5 px）+ 填充 + 滑块（14 px 亮球 + 外光）
+            // ⚠ 填充**必须有精灵**：uGUI 的 `Image` 在 `sprite == null` 时会跳过 Filled 分支、
+            //    直接画一整块实心矩形 ⇒ `fillAmount` 完全失效（实测踩过）。
+            RectTransform track = AddRect(bar, "PowerTrack", new Vector2(0.045f, 0.63f), new Vector2(0.955f, 0.73f));
+            ClubUiSprites.UiSprite railSprite = ClubUiSprites.PanelForRadius(ClubUiTokens.RadiusTrack);
+
+            RectTransform rail = AddRect(track, "Rail", new Vector2(0f, 0.5f), new Vector2(1f, 0.5f));
+            rail.offsetMin = new Vector2(0f, -ClubUiTokens.PowerTrackHeight * 0.5f);
+            rail.offsetMax = new Vector2(0f, ClubUiTokens.PowerTrackHeight * 0.5f);
+            SetImage(rail.gameObject.AddComponent<Image>(), railSprite, ClubUiTokens.PowerTrack);
+
+            RectTransform fillRect = AddRect(track, "Fill", new Vector2(0f, 0.5f), new Vector2(1f, 0.5f));
+            fillRect.offsetMin = new Vector2(0f, -ClubUiTokens.PowerTrackHeight * 0.5f);
+            fillRect.offsetMax = new Vector2(0f, ClubUiTokens.PowerTrackHeight * 0.5f);
+            _powerFill = fillRect.gameObject.AddComponent<Image>();
+            SetImage(_powerFill, railSprite, ClubUiTokens.Accent);
             _powerFill.type = Image.Type.Filled;
             _powerFill.fillMethod = Image.FillMethod.Horizontal;
             _powerFill.fillOrigin = 0;
             _powerFill.fillAmount = 0f;
 
-            // Shoot（显示态；不接点击）
-            var button = AddPanel(zone, ShootFill, ShootFill, new Vector2(0.04f, 0.08f), new Vector2(0.96f, 0.46f));
-            _shootFill = button.GetComponent<Image>();
-            _shootText = CreateText(button, "ShootText", titleFont, PracticeHudLayout.LabelFontSize, ShootText,
-                TextAlignmentOptions.Center, new Vector2(0f, 0f), new Vector2(1f, 1f));
+            _thumbGlow = AddFixed(track, "ThumbGlow", ClubUiSprites.UiSprite.Disc,
+                ClubUiTokens.Alpha(ClubUiTokens.Accent, 0x22), new Vector2(0f, 0.5f),
+                new Vector2(ClubUiTokens.PowerThumbSize + 6f, ClubUiTokens.PowerThumbSize + 6f));
+            _thumb = AddFixed(track, "Thumb", ClubUiSprites.UiSprite.Disc, ClubUiTokens.PowerThumb,
+                new Vector2(0f, 0.5f), new Vector2(ClubUiTokens.PowerThumbSize, ClubUiTokens.PowerThumbSize));
+
+            // 主按钮（设计稿 `.shoot-button`：黄铜底 + 深字 + 1 px 亮边 + 右侧箭头）
+            RectTransform button = AddFramed(bar, "Shoot",
+                new Vector2(0.045f, 0.40f), new Vector2(0.955f, 0.40f),
+                ClubUiTokens.ButtonEdge, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusButton);
+            button.offsetMin = new Vector2(0f, -ClubUiTokens.ButtonHeight * 0.5f);
+            button.offsetMax = new Vector2(0f, ClubUiTokens.ButtonHeight * 0.5f);
+            _shootFrame = button.GetComponent<Image>();
+            _shootFill = button.Find("Fill") != null ? button.Find("Fill").GetComponent<Image>() : null;
+
+            _shootText = CreateText(button, "ShootText", titleFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
+                TextAlignmentOptions.Center, Vector2.zero, new Vector2(0.52f, 1f));
             _shootText.text = PracticeHudState.ButtonShoot;
+
+            RectTransform arrow = AddFixed(button, "Arrow", ClubUiSprites.UiSprite.ArrowRight,
+                ClubUiTokens.ButtonText, new Vector2(0.545f, 0.5f),
+                new Vector2(ClubUiTokens.ButtonArrowSize, ClubUiTokens.ButtonArrowSize));
+            _shootArrow = arrow.GetComponent<Image>();
+
+            // 出杆信息（设计稿 `.shot-info`）
+            CreateText(bar, "ShotInfoLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
+                TextAlignmentOptions.Bottom, new Vector2(0.045f, 0.19f), new Vector2(0.955f, 0.28f))
+                .text = PracticeHudState.LabelYourShot;
+
+            _shotInfoValue = CreateText(bar, "ShotInfoValue", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
+                TextAlignmentOptions.Top, new Vector2(0.045f, 0.06f), new Vector2(0.955f, 0.19f));
         }
 
-        // ── 刷新 ─────────────────────────────────────────────────────────────
+        // ════════════════ 刷新 ═══════════════════════════════════════════════
 
         /// <summary>按当前状态刷值。**只写显示层**，不碰任何物理量。</summary>
         public void Refresh()
@@ -265,93 +488,266 @@ namespace Billiards.UI
             }
 
             ShotPhase phase = cueStick != null && cueStick.Flow != null ? cueStick.Flow.Phase : ShotPhase.Aim;
+            float now = Time.unscaledTime;
 
-            // 犯规提示：轮询 `ScratchCount` 的**增量**（与 `PoolAudio` / `PoolVfxView` 同一口径：
-            // 计数只认上升，下降静默更新基准）。窗口内状态条整条转**酒红**并改文案 ——
-            // 设计说明 §9 要求"不以颜色作为唯一识别手段"，故**颜色与文字同时给**。
+            // 犯规 / 自由球：轮询 `ScratchCount` 与 `LaunchCount` 的**增量**（与 `PoolAudio` /
+            // `PoolVfxView` 同一口径：计数只认上升，下降静默更新基准）。
+            //
+            // ⚠ **顺序是硬约束**：先看 `LaunchCount`、再看 `ScratchCount`。
+            //    白球落袋发生在那一次出杆里 ⇒ 两个计数**同一帧**都上升；
+            //    若先处理犯规、后处理出杆，`_ballInHandLatch` 会被同一帧的出杆立刻清掉
+            //    ⇒ 自由球状态永远不会显示（这正是"写完看不见效果"的典型死法）。
             if (drive != null)
             {
+                if (drive.LaunchCount > _lastLaunchSeen)
+                {
+                    _lastLaunchSeen = drive.LaunchCount;
+                    _ballInHandLatch = false;
+                }
+
                 if (drive.ScratchCount > _lastScratchSeen)
                 {
                     _lastScratchSeen = drive.ScratchCount;
-                    _foulUntil = Time.unscaledTime + FoulBannerSeconds;
+                    _foulUntil = now + FoulBannerSeconds;
+                    _foulStart = now;
+                    _ballInHandLatch = true;
                 }
-            }
 
-            // 出杆被拒：轮询 `RefusedLaunchCount` 的增量。`Launch()` 在未静止时**静默返回零向量**，
-            // 玩家实测"这个角度发球为什么就发射不了了呢"——按了完全没反应、也看不到原因。
-            if (drive != null)
-            {
+                // 出杆被拒：`Launch()` 在未静止时**静默返回零向量**，玩家实测"这个角度为什么发不出去"
+                // —— 按了完全没反应、也看不到原因。这里把"没反应"变成"看得见的原因"。
                 if (drive.RefusedLaunchCount > _lastRefusedSeen)
                 {
                     _lastRefusedSeen = drive.RefusedLaunchCount;
-                    _refusedUntil = Time.unscaledTime + FoulBannerSeconds;
+                    _refusedUntil = now + FoulBannerSeconds;
                 }
             }
 
-            bool foulWindow = Time.unscaledTime < _foulUntil;
-            bool refusedWindow = Time.unscaledTime < _refusedUntil;
-            _stateText.text = PracticeHudState.StatusLabel(phase, foulWindow, refusedWindow);
-            _stateText.color = refusedWindow ? RefusedColor : foulWindow ? FoulColor : TextColor;
-            _stateCaption.text = PracticeHudState.StatusDetail(foulWindow, refusedWindow);
-            _stateDot.color = refusedWindow
-                ? RefusedColor
-                : foulWindow
-                    ? FoulColor
-                    : phase == ShotPhase.Aim || phase == ShotPhase.Charging ? StateGreen : MutedColor;
+            bool foulWindow = now < _foulUntil;
+            bool refusedWindow = now < _refusedUntil;
+            bool ballInHand = _ballInHandLatch && phase == ShotPhase.Aim;
+
+            HudVisualState state = PracticeHudState.ResolveVisualState(
+                phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen);
+
+            RefreshStatusBar(state);
+            RefreshPower(phase);
+            RefreshCounters();
+            RefreshToolButtons();
+        }
+
+        private void RefreshStatusBar(HudVisualState state)
+        {
+            Color32 symbol = PracticeHudState.SymbolColor(state);
+            Color32 edge = PracticeHudState.EdgeColor(state);
+
+            if (state == HudVisualState.Foul)
+            {
+                // 设计说明 §9：犯规是**0.8 秒克制脉冲**（从亮酒红衰减到稳定酒红），不是恒定色。
+                // 脉冲混量是纯函数（`T125` 直接驱动），这里只负责喂时间。
+                float blend = PracticeHudState.FoulPulseBlend(Time.unscaledTime - _foulStart);
+                edge = Color32.Lerp(ClubUiTokens.FoulSymbol, ClubUiTokens.FoulEdge, blend);
+            }
+
+            if (_statusFrame != null)
+            {
+                _statusFrame.color = edge;
+            }
+
+            if (_statusFill != null)
+            {
+                _statusFill.color = PracticeHudState.FillColor(state);
+            }
+
+            if (_stateSymbol != null)
+            {
+                Sprite face = ClubUiSprites.Resolve(uiSprites, ClubUiSprites.ForState(state));
+                if (face != null)
+                {
+                    _stateSymbol.sprite = face;
+                }
+
+                _stateSymbol.color = symbol;
+            }
+
+            if (_turnDot != null)
+            {
+                _turnDot.color = ClubUiTokens.Green;   // 设计稿 `#turn-dot` 恒为桌布绿（"你"的指示）
+            }
+
+            if (_stateText != null)
+            {
+                _stateText.text = PracticeHudState.StateTitle(state);
+                _stateText.color = symbol;
+            }
+
+            if (_stateCaption != null)
+            {
+                _stateCaption.text = PracticeHudState.StateDetail(state);
+            }
+
+            if (_shotInfoValue != null)
+            {
+                _shotInfoValue.text = PracticeHudState.StateTitle(state);
+            }
+        }
+
+        private void RefreshPower(ShotPhase phase)
+        {
+            float power = drive != null ? Mathf.Clamp01(drive.power) : 0f;
+
+            if (_powerPercent != null)
+            {
+                _powerPercent.text = PracticeHudState.PowerLabel(power);
+            }
+
+            if (_powerFill != null)
+            {
+                _powerFill.fillAmount = power;
+            }
+
+            // 两端各留半个滑块，避免夹在轨道外侧（设计稿的 range thumb 同此行为）。
+            float x = Mathf.Lerp(ThumbInsetFraction, 1f - ThumbInsetFraction, power);
+            if (_thumb != null)
+            {
+                _thumb.anchorMin = new Vector2(x, 0.5f);
+                _thumb.anchorMax = new Vector2(x, 0.5f);
+            }
+
+            if (_thumbGlow != null)
+            {
+                _thumbGlow.anchorMin = new Vector2(x, 0.5f);
+                _thumbGlow.anchorMax = new Vector2(x, 0.5f);
+            }
 
             bool canShoot = PracticeHudState.ShootEnabled(phase);
-            _shootFill.color = canShoot ? ShootFill : ShootFillDisabled;
-            _shootText.alpha = canShoot ? 1f : DisabledOpacity;
 
-            float power = drive != null ? Mathf.Clamp01(drive.power) : 0f;
-            _powerPercent.text = PracticeHudState.PowerLabel(power);
-            _powerFill.fillAmount = power;
-
-            if (drive != null && drive.Simulator != null)
+            if (_shootFrame != null)
             {
-                // 逐球清点走 `PracticeSession.CountBalls`（**唯一实现点**，铁律 16）——
-                // 结算卡的三列与 HUD 的计数组共用同一份口径，不存在两处各数一遍。
-                PracticeSession.CountBalls(drive.Simulator, out int pocketed, out int totalObjects);
-
-                _counterValues[0].text = (totalObjects - pocketed).ToString();
-                _counterValues[1].text = drive.LaunchCount.ToString();
-                _counterValues[2].text = PracticeHudState.PocketedLabel(pocketed, totalObjects);
+                _shootFrame.color = canShoot
+                    ? ClubUiTokens.ButtonEdge
+                    : ClubUiTokens.Alpha(ClubUiTokens.ButtonEdge, 0x61);
             }
-            else
+
+            if (_shootFill != null)
             {
-                _counterValues[0].text = "0";
-                _counterValues[1].text = "0";
-                _counterValues[2].text = PracticeHudState.PocketedLabel(0, 0);
+                _shootFill.color = canShoot
+                    ? ClubUiTokens.ButtonFill
+                    : ClubUiTokens.Alpha(ClubUiTokens.ButtonFill, 0x61);
+            }
+
+            if (_shootText != null)
+            {
+                _shootText.alpha = canShoot ? 1f : ClubUiTokens.DisabledOpacity;
+            }
+
+            if (_shootArrow != null)
+            {
+                _shootArrow.color = canShoot
+                    ? ClubUiTokens.ButtonText
+                    : ClubUiTokens.Alpha(ClubUiTokens.ButtonText, 0x61);
             }
         }
 
-        // ── 小工具 ───────────────────────────────────────────────────────────
-
-        public static RectTransform AddPanel(RectTransform parent, Color fill, Color border)
+        private void RefreshCounters()
         {
-            return AddPanel(parent, fill, border, Vector2.zero, Vector2.one);
+            int shots = drive != null ? drive.LaunchCount : 0;
+            int fouls = drive != null ? drive.ScratchCount : 0;
+
+            if (_playerStats != null)
+            {
+                _playerStats.text = PracticeHudState.LabelShots + " " + shots
+                                    + "   " + PracticeHudState.LabelFouls + " " + fouls;
+            }
+
+            if (drive == null || drive.Simulator == null)
+            {
+                return;
+            }
+
+            // 逐球清点走 `PracticeSession.CountBalls`（**唯一实现点**，铁律 16）——
+            // 结算卡的三列与 HUD 的记分牌共用同一份口径，不存在两处各数一遍。
+            PracticeSession.CountBalls(drive.Simulator, out int pocketed, out int totalObjects);
+
+            if (_scoreValue != null)
+            {
+                _scoreValue.text = PracticeHudState.PocketedLabel(pocketed, totalObjects);
+            }
+
+            RefreshBallRow();
         }
 
-        public static RectTransform AddPanel(RectTransform parent, Color fill, Color border,
-                                             Vector2 anchorMin, Vector2 anchorMax)
+        /// <summary>
+        /// 球行：把**已进**的球压到设计稿的 `opacity .2`，未进的保持原样。
+        /// 这是"还剩哪些球"的**唯一**视觉编码 —— 不再另写一份文字计数重复表达同一件事。
+        /// </summary>
+        private void RefreshBallRow()
         {
-            var go = new GameObject("Panel", typeof(RectTransform), typeof(Image));
-            var rect = (RectTransform)go.transform;
-            rect.SetParent(parent, false);
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
+            if (_ballChips == null || drive == null || drive.Simulator == null)
+            {
+                return;
+            }
 
-            var image = go.GetComponent<Image>();
-            image.color = fill;
+            for (int i = 0; i < _ballChips.Length; i++)
+            {
+                if (_ballChips[i] == null)
+                {
+                    continue;
+                }
+
+                bool inPlay = drive.Simulator.IsBallInPlay(i + 1);   // 索引 0 是白球 ⇒ 目标球从 1 起
+                float alpha = inPlay ? 1f : ClubUiTokens.PottedBallOpacity;
+                Color current = _ballChips[i].color;
+                _ballChips[i].color = ClubUiTokens.WithAlpha(_ballChips[i].color, alpha);   // 只改 alpha，保留贴片本色
+            }
+        }
+
+        private void RefreshToolButtons()
+        {
+            if (_vfxIcon != null)
+            {
+                bool on = vfxView == null || vfxView.vfxEnabled;
+                _vfxIcon.color = on ? ClubUiTokens.IconIdle : ClubUiTokens.DisabledIcon;
+            }
+
+            if (_sfxIcon != null)
+            {
+                bool on = poolAudio == null || poolAudio.audioEnabled;
+                _sfxIcon.color = on ? ClubUiTokens.IconIdle : ClubUiTokens.DisabledIcon;
+            }
+        }
+
+        // ════════════════ 开关回调 ═══════════════════════════════════════════
+
+        /// <summary>VFX 开关：写宿主上的既有 bool，不新建偏好状态（偏好持久化属 35-B 的设置页）。</summary>
+        public void OnToggleVfx()
+        {
+            if (vfxView != null)
+            {
+                vfxView.vfxEnabled = !vfxView.vfxEnabled;
+            }
+        }
+
+        /// <summary>SFX 开关：同上。</summary>
+        public void OnToggleSfx()
+        {
+            if (poolAudio != null)
+            {
+                poolAudio.audioEnabled = !poolAudio.audioEnabled;
+            }
+        }
+
+        // ════════════════ 建树小工具（同一套几何口径，供结算卡复用）═══════════
+
+        /// <summary>分区落地：**锚点 = 视口分区**（`offsetMin/Max = 0`）⇒ 与分辨率无关，且与判据同源。</summary>
+        public static RectTransform CreateZone(Transform parent, Rect zone, string name)
+        {
+            RectTransform rect = AddRect(parent, name, new Vector2(zone.xMin, zone.yMin),
+                new Vector2(zone.xMax, zone.yMax));
             return rect;
         }
 
-        public static TextMeshProUGUI CreateText(Transform parent, string name, TMP_FontAsset font, float size,
-                                                 Color color, TextAlignmentOptions alignment,
-                                                 Vector2 anchorMin, Vector2 anchorMax)
+        /// <summary>按**父级归一化锚点**建一个空的 `RectTransform` 容器。</summary>
+        public static RectTransform AddRect(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
         {
             var go = new GameObject(name, typeof(RectTransform));
             var rect = (RectTransform)go.transform;
@@ -360,8 +756,90 @@ namespace Billiards.UI
             rect.anchorMax = anchorMax;
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
+            return rect;
+        }
 
-            var text = go.AddComponent<TextMeshProUGUI>();
+        /// <summary>建一个**固定尺寸**的元素（头像 / 徽章 / 图标 / 迷你球）；`anchor` 即元素中心。</summary>
+        public RectTransform AddFixed(Transform parent, string name, ClubUiSprites.UiSprite sprite,
+                                      Color color, Vector2 anchor, Vector2 size)
+        {
+            RectTransform rect = AddRect(parent, name, anchor, anchor);
+            rect.sizeDelta = size;
+            SetImage(rect.gameObject.AddComponent<Image>(), sprite, color);
+            return rect;
+        }
+
+        /// <summary>
+        /// 建一块**带 1 px 细边线的圆角面板**：外层描边色 + 内层填充色
+        /// （uGUI 的 `Image` 没有边框属性，双层是唯一能画出真细线的做法）。
+        /// 圆角由 `radius` 经 <see cref="ClubUiSprites.PanelForRadius"/> 取九宫格位图
+        /// ⇒ 设计令牌里的圆角数值与画出来的圆角**只有一个来源**。
+        ///
+        /// 内层命名为 `Fill` 并**置为不接收射线**：这样 `Button.targetGraphic` 用外层时
+        /// 整块面板都是可点区域，且需要动态换底色时可以按名取到内层。
+        /// </summary>
+        public RectTransform AddFramed(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax,
+                                       Color edge, Color fill, float radius)
+        {
+            ClubUiSprites.UiSprite panel = ClubUiSprites.PanelForRadius(radius);
+
+            RectTransform rect = AddRect(parent, name, anchorMin, anchorMax);
+            SetImage(rect.gameObject.AddComponent<Image>(), panel, edge);
+
+            RectTransform inner = AddRect(rect, "Fill", Vector2.zero, Vector2.one);
+            inner.offsetMin = new Vector2(ClubUiTokens.Hairline, ClubUiTokens.Hairline);
+            inner.offsetMax = new Vector2(-ClubUiTokens.Hairline, -ClubUiTokens.Hairline);
+            SetImage(inner.gameObject.AddComponent<Image>(), panel, fill);
+            return rect;
+        }
+
+        /// <summary>建一条**贴边的 1 px 横线**（设计稿只给上/下边线时用它，避免四边框的观感误差）。</summary>
+        public RectTransform AddEdgeStrip(RectTransform parent, string name, bool top, Color color)
+        {
+            RectTransform rect = AddRect(parent, name,
+                top ? new Vector2(0f, 1f) : new Vector2(0f, 0f),
+                top ? new Vector2(1f, 1f) : new Vector2(1f, 0f));
+            rect.offsetMin = top ? new Vector2(0f, -ClubUiTokens.Hairline) : new Vector2(0f, 0f);
+            rect.offsetMax = top ? new Vector2(0f, 0f) : new Vector2(0f, ClubUiTokens.Hairline);
+
+            SetImage(rect.gameObject.AddComponent<Image>(), null, color);
+            return rect;
+        }
+
+        /// <summary>
+        /// 把一个 `Image` 按槽位口径配置好。
+        /// **精灵取不到时保持 `null`**（uGUI 会画一块白方块，而白方块比缺图更糟 ⇒ 调用方必须自己判）。
+        /// </summary>
+        public void SetImage(Image image, ClubUiSprites.UiSprite? sprite, Color color)
+        {
+            image.color = color;
+            image.raycastTarget = false;
+
+            if (sprite == null)
+            {
+                return;
+            }
+
+            Sprite face = ClubUiSprites.Resolve(uiSprites, sprite.Value);
+            if (face == null)
+            {
+                return;
+            }
+
+            image.sprite = face;
+            image.type = ClubUiSprites.IsSliced(sprite.Value) ? Image.Type.Sliced : Image.Type.Simple;
+        }
+
+        /// <summary>
+        /// 建文本。`font` 为空时（例如未接线的测试探针）**仍然建出对象** ——
+        /// 结构判据要能在没有字体资产的情况下跑，不能因为"字体没接"就整棵树建不出来。
+        /// </summary>
+        public static TextMeshProUGUI CreateText(Transform parent, string name, TMP_FontAsset font, float size,
+                                                Color color, TextAlignmentOptions alignment,
+                                                Vector2 anchorMin, Vector2 anchorMax)
+        {
+            RectTransform rect = AddRect(parent, name, anchorMin, anchorMax);
+            var text = rect.gameObject.AddComponent<TextMeshProUGUI>();
             text.font = font;
             text.fontSize = size;
             text.color = color;
