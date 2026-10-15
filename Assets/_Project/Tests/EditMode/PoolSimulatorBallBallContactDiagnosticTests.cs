@@ -47,10 +47,10 @@ namespace Billiards.Tests
         private const int T32bBaselineTotalContactCount = 74;
         private const int T32bBaselineCapturedBallCount = 1;
         private const int T37BaselineBallBallContactCount = 37;
-        private const int T37BaselineCapturedBallCount = 0;
+        private const int T37BaselineCapturedBallCount = 2;   // 袋角归属裁定 A：越喉且在喉口内 ⇒ 入袋（原 0）
         private const int T37BaselineTotalContactCount = 6746;
         private const int T37BaselinePocketProximityEvents = 2;
-        private const int T37BaselinePocketJawCrossingCount = 2;
+        private const int T37BaselinePocketJawCrossingCount = 0;   // 同上：边界移到 openingRadius 后该场景无越界（原 2）
         private const int T37BaselineGuardTrips = 0;
         private const int T37BaselineEnergyGain = 0;
         private const int T37BaselineBallBallMaxIterationsObserved = 6;

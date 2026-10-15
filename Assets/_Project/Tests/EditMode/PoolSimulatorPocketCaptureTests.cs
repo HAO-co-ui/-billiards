@@ -14,8 +14,15 @@ namespace Billiards.Tests
     /// 判据（规范二维物理平面，米）：
     ///  · 越界量   `s  = dot(C − tc, tn)`（`tn` 指向网内）；
     ///  · 横向偏移 `ρ  = |dot(C − tc, td)|`，`td = (−tn.y, tn.x)` —— **面内**偏移、**不含法向分量**。
-    ///  · `Captured` = `s > 0 ∧ ρ ≤ 该袋 captureRadius`；`JawCrossing` = `s > 0 ∧ ρ > captureRadius`；
-    ///    **两者一律冻结（离台）** ⇒ `PocketProximityEvents == Captured + JawCrossing`。
+    ///  · `Captured` = `s > 0 ∧ ρ ≤ 该袋 openingRadius`（球心已在洞口上方）⇒ **冻结（离台）**；
+    ///    `JawCrossing` = `s > 0 ∧ ρ > openingRadius`（球心在喉口之外，本工程只能靠**隧穿**达到）
+    ///    ⇒ **送回台内**（不冻结）；两者各自独立累加 ⇒
+    ///    `PocketProximityEvents + AtRestMouthDrops == Captured + JawCrossing`。
+    ///
+    /// ⚠ **边界量是 `openingRadius`（不再是 `captureRadius`）** —— 这是「袋角归属裁定 A」的口径，
+    /// 依据与四种候选动作的实测见 `Docs/35-A_袋角归属裁定_spec.md` §4c/§4d。
+    /// 历史口径（`ρ ≤ captureRadius ⇒ 捕获`，否则越界冻结）**已作废** ⇒ 原以 `captureRadius` 为边界的
+    /// `T31a/T31b/T31c` 随之**口径改写**（`T31b` 改为"超出喉口 ⇒ 不捕获"、新增 `T31d` 补边界双侧判别）。
     ///
     /// **几何两路**：真实表（6 袋逐一、擦角）与合成表（解析期望值、无真实网格干扰）。
     /// 每条判据都声明"能测出什么 / 测不出什么（盲带）"。
@@ -290,12 +297,17 @@ namespace Billiards.Tests
             TestContext.WriteLine($"T30b: 斜撞镜面 v_out=({v.x:F6},{v.y:F6})（期望 (0.8,1.8)）");
         }
 
-        // ══════════════════ T31 captureRadius 双边判别（判别力来源）════════
+        // ══════════════════ T31 喉口边界双边判别（判别力来源）════════════
+
+        /// <summary>探针用的合成袋参数：`captureRadius = 0.0307`、`openingRadius = cr + r + 2 mm`
+        /// （与 <see cref="MakePocket"/> 的构造口径逐字一致）。</summary>
+        private const float ProbeCaptureRadius = 0.0307f;
+
+        private static float ProbeOpeningRadius => ProbeCaptureRadius + PoolConstants.BallRadius + 0.002f;
 
         private static PoolSimulator RadiusProbe(float rho, out Pocket pocket)
         {
-            const float cr = 0.0307f;
-            pocket = MakePocket(0, Vector2.zero, new Vector2(0f, -1f), cr);
+            pocket = MakePocket(0, Vector2.zero, new Vector2(0f, -1f), ProbeCaptureRadius);
             var sim = new PoolSimulator(Synthetic(pocket), Params());
             sim.LoadBalls(new[] { Ball(rho, 0.20f, 0f, -PoolConstants.MaxBallSpeed) });
             Step(sim, 30);
@@ -303,41 +315,72 @@ namespace Billiards.Tests
         }
 
         /// <summary>
-        /// `ρ = captureRadius − 1e-3`（阈值内）⇒ **必须捕获**。
+        /// `ρ = captureRadius − 1e-3`（远在喉口内）⇒ **必须捕获**。
         /// 用 `8 m/s`（单子步位移 22.2 mm）使 `ρ` 与 `|C − tc|` **可分**：
-        /// 若实现误用 `|C − tc|`（含法向分量），越界那一子步 `|C−tc| ≈ √(0.0297²+0.0222²) = 0.037 &gt; cr` ⇒ 本档失败。
+        /// 若实现误用 `|C − tc|`（含法向分量），越界那一子步 `|C−tc| ≈ √(0.0297²+0.0222²) = 0.037` ⇒ 本档失败。
+        ///
+        /// ⚠ **判别力登记**：本档的 ρ 同时满足"≤ captureRadius"与"≤ openingRadius" ⇒
+        /// 在裁定 A 的口径下它**不再区分这两个量**（边界判别力已由 `T31b`/`T31d` 承担，见下）。
         /// </summary>
         [Test]
-        public void T31a_CaptureRadius_JustInside_IsCaptured()
+        public void T31a_InsideThroatOpening_FarInside_IsCaptured()
         {
-            PoolSimulator sim = RadiusProbe(0.0307f - 1e-3f, out Pocket pocket);
-            Assert.AreEqual(1, sim.CapturedBallCount, "T31a：阈值内的球必须被捕获。");
-            Assert.AreEqual(0, sim.PocketJawCrossingCount, "T31a：阈值内不应判为窗口。");
-            TestContext.WriteLine($"T31a: ρ={0.0307f - 1e-3f:F4} < cr={pocket.captureRadius:F4} ⇒ 捕获 ✓");
+            PoolSimulator sim = RadiusProbe(ProbeCaptureRadius - 1e-3f, out Pocket pocket);
+            Assert.AreEqual(1, sim.CapturedBallCount, "T31a：喉口内（远中心）的球必须被捕获。");
+            Assert.AreEqual(0, sim.PocketJawCrossingCount, "T31a：喉口内不应计擦袋角。");
+            TestContext.WriteLine($"T31a: ρ={ProbeCaptureRadius - 1e-3f:F4} ⇒ 捕获 ✓");
         }
 
         /// <summary>
-        /// `ρ = captureRadius + 1e-3`（阈值外）⇒ **不得捕获**，且计为擦袋角越界。
-        /// **这是本轮唯一能"打死"`captureRadius` 未实现的负对照**（若实现成"越平面即捕获"，本档失败）。
+        /// `ρ = openingRadius + 1e-3`（**超出喉口**）⇒ **不得捕获**，计擦袋角、**冻结离台**
+        /// （归属 = "离台但不计入袋"）。
+        ///
+        /// **这是本轮唯一能"打死"`openingRadius` 上界的负对照**：若实现把边界放宽成
+        /// "越喉即捕获"或误用 `ρ &lt; 某更大值`，本档失败。它是旧 `T31b`
+        /// （`ρ = captureRadius + 1e-3 ⇒ 不捕获`）在裁定 A 下的**等价替换** ——
+        /// 旧断言已作废（该 ρ 落在喉口内，按新口径必须捕获）。
         /// </summary>
         [Test]
-        public void T31b_CaptureRadius_JustOutside_IsNotCaptured()
+        public void T31b_OutsideThroatOpening_IsNotCaptured()
         {
-            PoolSimulator sim = RadiusProbe(0.0307f + 1e-3f, out Pocket pocket);
-            Assert.AreEqual(0, sim.CapturedBallCount, "T31b：阈值外的球不得被捕获（否则 captureRadius 未被使用）。");
-            Assert.AreEqual(1, sim.PocketJawCrossingCount, "T31b：阈值外应计为擦袋角越界。");
-            Assert.AreEqual(1, sim.PocketProximityEvents, "T31b：仍应越喉平面（冻结不变量）。");
-            TestContext.WriteLine($"T31b: ρ={0.0307f + 1e-3f:F4} > cr={pocket.captureRadius:F4} ⇒ 不捕获、计窗口 ✓");
+            float rho = ProbeOpeningRadius + 1e-3f;
+            PoolSimulator sim = RadiusProbe(rho, out Pocket pocket);
+            Assert.AreEqual(0, sim.CapturedBallCount, "T31b：超出喉口的球不得被捕获（否则 openingRadius 上界未被使用）。");
+            Assert.AreEqual(1, sim.PocketJawCrossingCount, "T31b：超出喉口应计为擦袋角越界。");
+            Assert.AreEqual(1, sim.PocketProximityEvents, "T31b：仍应越喉平面（越喉事件）。");
+            Assert.IsFalse(sim.IsBallInPlay(0), "T31b：擦袋角越界应**离台**（不得静默留在台面外）。");
+            Assert.AreEqual(-1, sim.CapturedPocketIndex(0), "T31b：越界冻结**不计入袋**（入袋索引 −1）。");
+            TestContext.WriteLine($"T31b: ρ={rho:F4} > opening={ProbeOpeningRadius:F4} ⇒ 不捕获、计擦袋角、越界冻结 ✓");
         }
 
-        /// <summary>`ρ = captureRadius` 恰等 ⇒ 捕获（`≤` 语义、边界闭合）。</summary>
+        /// <summary>`ρ = captureRadius` 恰等（仍在喉口内）⇒ 捕获（`≤` 语义、边界闭合），
+        /// 且**不在**擦袋角计数里。</summary>
         [Test]
         public void T31c_CaptureRadius_ExactBoundary_IsCaptured()
         {
-            PoolSimulator sim = RadiusProbe(0.0307f, out Pocket pocket);
-            Assert.AreEqual(1, sim.CapturedBallCount, "T31c：边界（≤）应捕获。");
-            Assert.AreEqual(0, sim.PocketJawCrossingCount, "T31c：边界不应判为窗口。");
-            TestContext.WriteLine($"T31c: ρ=cr={pocket.captureRadius:F4} ⇒ 捕获（≤ 语义）✓");
+            PoolSimulator sim = RadiusProbe(ProbeCaptureRadius, out Pocket pocket);
+            Assert.AreEqual(1, sim.CapturedBallCount, "T31c：captureRadius 处（喉口内）应捕获。");
+            Assert.AreEqual(0, sim.PocketJawCrossingCount, "T31c：不应判为擦袋角。");
+            TestContext.WriteLine($"T31c: ρ=cr={ProbeCaptureRadius:F4} ⇒ 捕获 ✓");
+        }
+
+        /// <summary>
+        /// **喉口边界（`openingRadius`）双侧判别** —— 裁定 A 的口径下"哪个量是边界"的守卫。
+        /// 内侧（`openingRadius − 1e-3`）⇒ 捕获；外侧（`+1e-3`）⇒ 不捕获且计擦袋角。
+        /// 能测出：把边界写回 `captureRadius`（内侧档仍过，外侧档失败）、或写成"无上界"。
+        /// </summary>
+        [Test]
+        public void T31d_ThroatOpeningBoundary_BothSides()
+        {
+            PoolSimulator inside = RadiusProbe(ProbeOpeningRadius - 1e-3f, out Pocket pocketIn);
+            Assert.AreEqual(1, inside.CapturedBallCount, "T31d：喉口内侧 1 mm 必须捕获。");
+            Assert.AreEqual(0, inside.PocketJawCrossingCount, "T31d：喉口内侧不应计擦袋角。");
+
+            PoolSimulator outside = RadiusProbe(ProbeOpeningRadius + 1e-3f, out Pocket pocketOut);
+            Assert.AreEqual(0, outside.CapturedBallCount, "T31d：喉口外侧 1 mm 不得捕获。");
+            Assert.AreEqual(1, outside.PocketJawCrossingCount, "T31d：喉口外侧应计擦袋角。");
+
+            TestContext.WriteLine($"T31d: opening={ProbeOpeningRadius:F6} 双侧判别 ✓（内 1 mm 捕获 / 外 1 mm 送回）");
         }
 
         // ══════════════════ T35 捕获归类的一致性（等值）════════════════════
@@ -366,8 +409,9 @@ namespace Billiards.Tests
             Assert.AreEqual(1, sim.CapturedBallCount, "T35：应恰有 1 次捕获。");
             Assert.AreEqual(1, sim.PocketJawCrossingCount, "T35：应恰有 1 次窗口越界。");
             Assert.AreEqual(2, sim.PocketProximityEvents, "T35：越界事件应恰 2 次。");
-            Assert.AreEqual(sim.CapturedBallCount + sim.PocketJawCrossingCount, sim.PocketProximityEvents,
-                "T35：归类应完备（ProximityEvents == Captured + JawCrossing）。");
+            Assert.AreEqual(sim.CapturedBallCount + sim.PocketJawCrossingCount,
+                sim.PocketProximityEvents + sim.AtRestMouthDrops,
+                "T35：归类应完备（ProximityEvents + AtRestMouthDrops == Captured + JawCrossing）。");
             TestContext.WriteLine(
                 $"T35: proxy={sim.PocketProximityEvents}, captured={sim.CapturedBallCount}, jaw={sim.PocketJawCrossingCount} ✓");
         }
@@ -416,6 +460,118 @@ namespace Billiards.Tests
             }
 
             TestContext.WriteLine($"T36: 同一步两球越两袋，入袋 {a.CapturedPocketIndex(0)}/{a.CapturedPocketIndex(1)}，双跑逐位一致 ✓");
+        }
+
+        // ══════════════════ T106 喉口内越喉 ⇒ 入袋（裁定 A）════════════════
+
+        /// <summary>
+        /// **T106：喉口内越喉 ⇒ 入袋** —— `ρ` 取**旧"擦袋角带"的中值**
+        /// `(captureRadius + openingRadius)/2`。该带在历史口径下"越界冻结"（用户实测：球像被粘在网框上）、
+        /// 在规格初稿里"弹回"；四种候选动作的实测见 `Docs/35-A_袋角归属裁定_spec.md` §4c
+        /// ⇒ 裁定 A 归入**入袋**（球心已在洞口上方）。
+        ///
+        /// 断言：捕获 1、擦袋角 0、入对袋、离台、捕获位在喉平面**进网侧**、横向偏移 ≤ `openingRadius`。
+        /// 盲带：只覆盖正对喉口的一条直线；边界判别由 `T31b`/`T31d` 承担。
+        /// </summary>
+        [Test]
+        public void T106_InsideThroatOpening_IsCaptured()
+        {
+            float rho = 0.5f * (ProbeCaptureRadius + ProbeOpeningRadius);
+            PoolSimulator sim = RadiusProbe(rho, out Pocket pocket);
+
+            Assert.AreEqual(1, sim.CapturedBallCount, $"T106：ρ={rho:F4} 落在喉口内 ⇒ 必须入袋。");
+            Assert.AreEqual(0, sim.PocketJawCrossingCount, "T106：喉口内不应计擦袋角。");
+            Assert.AreEqual(1, sim.PocketProximityEvents, "T106：应恰 1 次越喉事件。");
+            Assert.AreEqual(0, sim.CapturedPocketIndex(0), "T106：应入袋 0。");
+            Assert.IsFalse(sim.IsBallInPlay(0), "T106：入袋球应离台（冻结）。");
+
+            Vector2 c = sim.Balls[0].position;
+            Assert.Greater(Axial(c, pocket), 0f, $"T106：捕获位应在喉平面进网侧，实测 s={Axial(c, pocket):R}。");
+            Assert.LessOrEqual(Lateral(c, pocket), pocket.openingRadius + 1e-6f,
+                $"T106：捕获位横向偏移 {Lateral(c, pocket):R} 超 openingRadius {pocket.openingRadius:R}。");
+            TestContext.WriteLine($"T106: ρ={rho:F4}∈(cap,open) ⇒ 入袋 ✓ 捕获位 c={c:R}");
+        }
+
+        // ══════════════════ T107 超出喉口 ⇒ 越界冻结（不静默飞台）════════════
+
+        /// <summary>
+        /// **T107：`ρ &gt; openingRadius`（只能靠隧穿达到）⇒ 计擦袋角 + 冻结离台**。
+        /// 三条候选动作的实测（见规格 §4c）：什么都不做 ⇒ 球**静默飞出台面**（x = −7.077 m）；
+        /// 送回台内 + 反射 ⇒ 球被放进袋角环空腔、TOI 同刻接触组每子步解算 ~15 轮（总接触 199）
+        /// ⇒ 冻结是这里唯一**可证安全**的动作。
+        ///
+        /// 断言：不计入袋（入袋索引 −1）、计擦袋角恰 1、**离台**、速度置零 —— 即"离台但不入袋"。
+        /// </summary>
+        [Test]
+        public void T107_OutsideThroatOpening_IsFrozenOffTable()
+        {
+            float rho = ProbeOpeningRadius + 1e-3f;
+            PoolSimulator sim = RadiusProbe(rho, out Pocket pocket);
+
+            Assert.AreEqual(0, sim.CapturedBallCount, "T107：超出喉口不得计入袋。");
+            Assert.AreEqual(1, sim.PocketJawCrossingCount, "T107：应计擦袋角越界。");
+            Assert.AreEqual(1, sim.PocketProximityEvents, "T107：应恰 1 次越喉事件。");
+            Assert.AreEqual(-1, sim.CapturedPocketIndex(0), "T107：越界冻结**不计入袋**（入袋索引为 −1）。");
+            Assert.IsFalse(sim.IsBallInPlay(0), "T107：越界球必须离台（冻结）—— 不得静默留在台面外。");
+            Assert.AreEqual(0f, sim.Balls[0].velocity.x, "T107：越界球速度应置零（x）。");
+            Assert.AreEqual(0f, sim.Balls[0].velocity.y, "T107：越界球速度应置零（y）。");
+            TestContext.WriteLine($"T107: ρ={rho:F4} > opening={ProbeOpeningRadius:F4} ⇒ 越界冻结（离台不入袋）✓");
+        }
+
+        // ══════════════════ T108 归类恒等式 + 静止补判 ═════════════════════
+
+        /// <summary>
+        /// **T108：归类恒等式 + 静止补判入袋**。
+        ///
+        /// (a) `PocketProximityEvents + AtRestMouthDrops == CapturedBallCount + PocketJawCrossingCount`
+        ///     在**四类**场景各成立（正中入袋 / 喉口内 / 超出喉口 / 静止补判）。
+        ///     ⚠ `AtRestMouthDrops` **不进** `PocketProximityEvents`（它不是越喉事件）
+        ///     ⇒ 恒等式左边必须显式带上它，否则判据恒假。
+        /// (b) **正例**：停在开口内（未越喉）的球 ⇒ 补判入袋 + 入袋索引指向该袋 + 离台；
+        ///     **负例**：仍在移动的球**不得**被补判（飞行球不误伤）。
+        /// </summary>
+        [Test]
+        public void T108_ClassificationIdentity_AndAtRestMouthDrop()
+        {
+            string report = string.Empty;
+
+            // (a) 场景 1–3：合成袋（无段）
+            foreach (float rho in new[] { 0f, 0.5f * (ProbeCaptureRadius + ProbeOpeningRadius), ProbeOpeningRadius + 1e-3f })
+            {
+                PoolSimulator s = RadiusProbe(rho, out Pocket p);
+                int left = s.PocketProximityEvents + s.AtRestMouthDrops;
+                int right = s.CapturedBallCount + s.PocketJawCrossingCount;
+                Assert.AreEqual(right, left, $"T108：ρ={rho:F4} 场景恒等式不成立（左 {left} / 右 {right}）。");
+                report += $"[ρ={rho:F4}: {s.PocketProximityEvents}+{s.AtRestMouthDrops}=={s.CapturedBallCount}+{s.PocketJawCrossingCount}] ";
+            }
+
+            // (b) 正例：静止补判
+            Pocket pocket = MakePocket(0, Vector2.zero, new Vector2(0f, -1f), ProbeCaptureRadius);
+            var rest = new PoolSimulator(Synthetic(pocket), Params());
+            rest.LoadBalls(new[] { Ball(0f, 0.03f, 0f, 0f) });   // s = −0.03（未越喉）、|C−tc| = 0.03 ≤ openingRadius
+            Step(rest, PoolSimulator.RestStableFrames + 2);
+
+            Assert.IsTrue(rest.TableAtRest, "T108：前提不成立 —— 该场景应达成整盘静止。");
+            Assert.AreEqual(1, rest.AtRestMouthDrops, "T108：停在开口内的球应被补判入袋。");
+            Assert.AreEqual(1, rest.CapturedBallCount, "T108：补判应计入 CapturedBallCount（走与正常入袋相同的路径）。");
+            Assert.AreEqual(0, rest.PocketProximityEvents, "T108：补判不是越喉事件 ⇒ 不得计入 PocketProximityEvents。");
+            Assert.AreEqual(0, rest.PocketJawCrossingCount, "T108：补判不得计入擦袋角。");
+            Assert.AreEqual(0, rest.CapturedPocketIndex(0), "T108：补判应指向该袋（索引 0）。");
+            Assert.IsFalse(rest.IsBallInPlay(0), "T108：补判后球应离台。");
+            Assert.AreEqual(rest.CapturedBallCount + rest.PocketJawCrossingCount,
+                rest.PocketProximityEvents + rest.AtRestMouthDrops, "T108：补判场景恒等式不成立。");
+            report += $"[补判: {rest.PocketProximityEvents}+{rest.AtRestMouthDrops}=={rest.CapturedBallCount}+{rest.PocketJawCrossingCount}] ";
+
+            // (b) 负例：飞行中的球不得被补判。
+            var flying = new PoolSimulator(Synthetic(pocket), Params());
+            flying.LoadBalls(new[] { Ball(0f, 0.05f, 0.02f, 0f) });   // 移动中、仍属 s<0、仍在开口内
+            Step(flying, PoolSimulator.RestStableFrames + 2);
+
+            Assert.IsFalse(flying.TableAtRest, "T108：负例前提不成立 —— 移动中的球不应达成整盘静止。");
+            Assert.AreEqual(0, flying.AtRestMouthDrops, "T108：未静止的球**不得**被静止支补判（飞行球误伤）。");
+            Assert.IsTrue(flying.IsBallInPlay(0), "T108：未静止的球必须仍在场。");
+
+            TestContext.WriteLine("T108: 恒等式四场景成立 ✓ " + report);
         }
     }
 }

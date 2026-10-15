@@ -11,7 +11,10 @@ namespace Billiards.Physics
     ///
     /// ── 触发架构（与音频层的事件流正交，如实登记）──────────────────────
     /// · **门 = 既有只读计数增量**（strike = `LaunchCount`；hit = `BallBallContactCount`；
-    ///   rail = `TotalContactCount − BallBallContactCount`；pocket = `PocketProximityEvents`）；
+    ///   rail = `TotalContactCount − BallBallContactCount`；pocket = `CapturedBallCount`）；
+    ///   ⚠ `pocket` 用 `CapturedBallCount`（**真正入袋**）而**不是** `PocketProximityEvents`：
+    ///   后者自袋角归属裁定起还包含"擦袋角/隧穿越界"（球离台但**并未入袋**）⇒ 用它会为一次越界冻结爆出"入袋"特效。
+    ///   另：静止补判入袋（`AtRestMouthDrops`）只增 `CapturedBallCount` ⇒ 本门自动覆盖该支。
     /// · **位置 = 状态推导**（同参考实现：找质量最高的接触对 / 贴库球）——**不消费** `DrainContactEvents`
     ///   （那是音频的单消费者通道，避免争抢；若将来两者都要事件流，应改"单一分发者"，超出本单）。
     /// · 计数在 `ResetDiagnostics`（每次出杆）归零 ⇒ 门只认**上升**；下降（重置）静默更新基准、不触发。
@@ -349,7 +352,7 @@ namespace Billiards.Physics
 
             _lastSegment = segment;
 
-            int pocket = sim.PocketProximityEvents;
+            int pocket = sim.CapturedBallCount;
             if (pocket > _lastPocket)
             {
                 SpawnPocket(sim);
@@ -367,7 +370,7 @@ namespace Billiards.Physics
             _lastLaunch = drive.LaunchCount;
             _lastBallBall = sim != null ? sim.BallBallContactCount : 0;
             _lastSegment = sim != null ? sim.TotalContactCount - sim.BallBallContactCount : 0;
-            _lastPocket = sim != null ? sim.PocketProximityEvents : 0;
+            _lastPocket = sim != null ? sim.CapturedBallCount : 0;
         }
 
         private void SpawnStrike()

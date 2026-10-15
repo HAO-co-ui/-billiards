@@ -127,13 +127,19 @@ namespace Billiards.Physics
         private readonly Vector2[] _pocketThroatNormal;
 
         /// <summary>
-        /// **逐袋**的捕获半径（米），来自 <c>TableConfig.Pocket.captureRadius</c>。
-        /// 语义 = "开口内**容一球**"的**横向（面内）偏移上限** = `openingRadius − BallRadius − 0.002`。
-        /// **必须用逐袋值**：6 袋的 `captureRadius` 在 1e-8 量级互不相同，
-        /// 用 `PoolConstants.PocketCaptureRadius`（单值代表）做判定会使逐袋边界用例不可预期。
-        /// 构造时按可选全局乘子 <c>pocketCaptureRadiusScale</c>（默认 1.0）整体缩放 —— **真源仍是逐袋值**。
+        /// **逐袋**的开口半径（米），来自 <c>TableConfig.Pocket.openingRadius</c>。
+        /// 语义 = **袋喉半宽**（真实表 ≈ `0.061317`，与 `captureRadius + BallRadius + 2 mm` 逐袋恒等）。
+        ///
+        /// 用途：把"越喉"划成**两档** —— `ρ ≤ openingRadius` ⇒ **入袋**（球心已在洞口上方）；
+        /// `ρ &gt; openingRadius` ⇒ **越界冻结**（球心在喉口之外却越过喉平面，本工程只能靠隧穿达到）。
+        /// **必须用逐袋值**（6 袋的 `openingRadius` 在 1e-8 量级互不相同）。
+        ///
+        /// ⚠ **它是本判定唯一的边界量**。历史上的边界是 `captureRadius`（= `openingRadius − BallRadius − 2 mm`，
+        /// 语义"球体完全净空"）；袋角归属裁定 A 把边界改为 `openingRadius`，理由与实测见
+        /// <see cref="CheckPocketProximity"/> 的方法注释 ⇒ 内核**不再读取** `captureRadius`
+        /// （连带使 `pocketCaptureRadiusScale` 调参项**当前无效**，见 <see cref="_pocketCaptureRadiusScale"/>）。
         /// </summary>
-        private readonly float[] _pocketCaptureRadius;
+        private readonly float[] _pocketOpeningRadius;
 
         private readonly PhysicsParams _params;
 
@@ -143,7 +149,15 @@ namespace Billiards.Physics
         /// <summary>宏观静止连续帧数（**实例字段** ⇒ 可由 `PhysicsTuning` 资产覆盖；默认 = 同名常量）。</summary>
         private readonly int _restStableFrames;
 
-        /// <summary>袋口捕获半径的**全局乘子**（实例字段；默认 1 ⇒ 逐袋值不变）。</summary>
+        /// <summary>
+        /// 袋口捕获半径的**全局乘子**（实例字段；默认 1 ⇒ 逐袋值不变）。
+        ///
+        /// ⚠ **它当前对分类没有效果**：袋角归属裁定 A 把"越喉"的边界从 `captureRadius`
+        /// （= 该乘子作用的对象）改为 `openingRadius`（见 <see cref="_pocketOpeningRadius"/>）。
+        /// 保留它是为了**不改变 `PhysicsTuning` 资产 schema 与接线判据**（`T41` 比对资产值、
+        /// `T44` 比对出厂默认），并留给 35-B 重新定义"净空捕获"时使用。
+        /// **台账需相应改口径**：该调参项现为无效果参数。
+        /// </summary>
         private readonly float _pocketCaptureRadiusScale;
 
         private readonly float _ballRestitution;
@@ -215,28 +229,51 @@ namespace Billiards.Physics
         /// </summary>
         public int BallBallSeparationCount { get; private set; }
 
-        /// <summary>球心越过袋喉平面的次数（每次随即冻结该球）。</summary>
+        /// <summary>球心越过袋喉平面的次数（每次随即分类：入袋冻结 / 越界冻结）。</summary>
         public int PocketProximityEvents { get; private set; }
 
         /// <summary>
         /// **正常落袋**次数：球心越过袋喉平面（`s &gt; 0`）**且**面内横向偏移
-        /// `ρ = |dot(C − tc, td)| ≤ 该袋 captureRadius`。
+        /// `ρ = |dot(C − tc, td)| ≤ 该袋 openingRadius`（即**球心已在洞口上方**）。
+        /// 另加：整盘静止时**补判**入袋的球（见 <see cref="AtRestMouthDrops"/>，它同一支也 +1）。
         /// 由 <see cref="ResetDiagnostics"/> 归零。
         ///
-        /// **⚠ 与 <see cref="PocketProximityEvents"/>、<see cref="PocketJawCrossingCount"/> 的关系**：
-        /// 三者**必须各自独立累加**（在各自分支里 `++`），恒满足
-        /// `PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount` ——
-        /// 该等式是**待判据验证的结论**，**不得**在实现里用"一变量 = 另两者之和"来省略独立计数
+        /// **⚠ 与另两个计数的关系**：三者**必须各自独立累加**（在各自分支里 `++`），恒满足
+        /// `PocketProximityEvents + AtRestMouthDrops == CapturedBallCount + PocketJawCrossingCount` ——
+        /// 该等式是**判据验证的结论**，**不得**在实现里用"一变量 = 另两者之和"来省略独立计数
         /// （否则"归类完备"判据恒真、对"设计本身错"完全盲）。
+        ///
+        /// 本计数 = **"真正入袋"的唯一可观测量**（表现层的入袋反馈以它的增量为门）。
         /// </summary>
         public int CapturedBallCount { get; private set; }
 
         /// <summary>
-        /// **擦袋角越界**次数：球心越过袋喉平面但面内横向偏移 **超出**该袋 `captureRadius`。
-        /// 这类球**不再逃逸**（一律冻结，保持"越喉平面即离台"不变量），但其归属
-        /// （落袋 / 弹回）由后续裁定；本计数是该窗口的可观测量。
+        /// **擦袋角 / 隧穿越界**次数：球心越过袋喉平面但面内横向偏移 `ρ &gt; 该袋 openingRadius`
+        /// —— 球心已在**喉口之外**，本工程里只能靠**隧穿**达到（袋角侧壁是 8–14 mm 的首尾相接短段，
+        /// 而 8 m/s 的球单子步位移 22.2 mm）。
+        ///
+        /// 动作 = **冻结离台**（<c>_capturedPocket</c> 保持 −1 ⇒ "离台但不计入袋"），
+        /// 与 <see cref="CheckPocketProximity"/> 第 1 档同源；理由见该方法注释。
+        /// 由 <see cref="ResetDiagnostics"/> 归零。
         /// </summary>
         public int PocketJawCrossingCount { get; private set; }
+
+        /// <summary>
+        /// **静止补判入袋**次数：整盘静止（<see cref="TableAtRest"/> 声明成立）时，球心落在某袋
+        /// `openingRadius` 内的静止球，被**补判**为入袋。
+        ///
+        /// 为什么需要：捕获契约只认"球心越过袋喉平面"且横向偏移在 `captureRadius` 内。而**停在**袋口
+        /// 开口带里的球（尚未越喉 **或**已越喉后停在袋角 V 形槽里）**永不**满足捕获契约
+        /// ⇒ 内核"合法地什么都不做"⇒ 球**永久挂在袋口**（用户实测可见）。
+        /// 现实里袋口里的球会掉下去 ⇒ 静止时补判。
+        ///
+        /// ⚠ **只在 <see cref="TableAtRest"/> 的上升沿判一次**（不得每子步判 —— 否则会误伤正在飞入袋的球）。
+        /// 补判走**与正常入袋完全相同**的路径（含 <see cref="CapturedBallCount"/>），但它**不是**越喉事件
+        /// ⇒ <see cref="PocketProximityEvents"/> **不加**（恒等式因此加入本项，见
+        /// <see cref="CapturedBallCount"/> 的说明）。
+        /// </summary>
+        public int AtRestMouthDrops { get; private set; }
+
 
         /// <summary>
         /// **宏观静止**：全部未冻结球已**连续** <see cref="RestStableFrames"/> 步速度 ≤ <see cref="RestSpeedThreshold"/>。
@@ -365,13 +402,13 @@ namespace Billiards.Physics
             int pocketCount = table.PocketCount;
             _pocketThroatCenter = new Vector2[pocketCount];
             _pocketThroatNormal = new Vector2[pocketCount];
-            _pocketCaptureRadius = new float[pocketCount];
+            _pocketOpeningRadius = new float[pocketCount];
             for (int i = 0; i < pocketCount; i++)
             {
                 Pocket p = table.pockets[i];
                 _pocketThroatCenter[i] = p.throatCenter;
                 _pocketThroatNormal[i] = p.throatNormal;
-                _pocketCaptureRadius[i] = p.captureRadius * pocketCaptureRadiusScale;
+                _pocketOpeningRadius[i] = p.openingRadius;
             }
 
             SubSteps = DeriveSubSteps(PoolConstants.MaxBallSpeed);
@@ -511,6 +548,7 @@ namespace Billiards.Physics
             BallBallSeparationCount = 0;
             CapturedBallCount = 0;
             PocketJawCrossingCount = 0;
+            AtRestMouthDrops = 0;
             TableAtRest = false;
             ConsecutiveRestFrameCount = 0;
 
@@ -590,9 +628,9 @@ namespace Billiards.Physics
         /// 第 <paramref name="index"/> 号球是否**在场上**（未因越过袋喉平面而冻结离台）。越界索引 ⇒ <c>false</c>。
         ///
         /// <para>**⚠ 与 <see cref="CapturedPocketIndex"/> 的区别（两者都必需，不得互相代替）**：
-        /// 擦袋角越界（面内偏移 <c>ρ &gt; captureRadius</c>）的球**已经离台**（`_frozen = true`），
-        /// 但它的 <c>_capturedPocket</c> **仍是 −1** ⇒ "在不在场上"**必须**看本出口，
-        /// 不能用"入袋索引 ≥ 0"代替。</para>
+        /// 离台的球不一定是"入袋"的球 —— 例如由 <see cref="LoadBalls"/> 之外的重摆路径或既有的冻结路径
+        /// 置位的球（越界冻结、不计入袋），其 <c>_capturedPocket</c> **仍是 −1**
+        /// ⇒ "在不在场上"**必须**看本出口，不能用"入袋索引 ≥ 0"代替。</para>
         /// </summary>
         public bool IsBallInPlay(int index)
         {
@@ -1461,23 +1499,46 @@ namespace Billiards.Physics
             }
         }
 
-        // ── 袋口捕获与越界冻结（单点实现）─────────────────────────────────
+        // ── 袋口捕获与袋角归属（单点实现）───────────────────────────────────
 
         /// <summary>
-        /// **袋口判定单点实现**：越界、正常落袋、擦袋角越界三者都在此一处求值与分类。
+        /// **袋口判定单点实现**：越喉的分类（入袋 / 越界冻结）都在此一处求值。
         ///
         /// 判据（规范二维物理平面，米；`tc/tn` 取自 <c>TableConfig.Pocket</c> 的逐袋真源）：
         ///  · 越界量   `s = dot(C − tc, tn)`（`tn` 指向网内）；
         ///  · 横向偏移 `ρ = |dot(C − tc, td)|`，`td = (−tn.y, tn.x)` —— **面内**偏移、**不含法向分量**。
         ///
-        /// 分类：`s &gt; 0`（球心穿过袋喉、朝网方向）为**必要**条件；在此之上
-        /// `ρ ≤ 该袋 captureRadius` ⇒ **正常落袋**（<see cref="CapturedBallCount"/>）；
-        /// 否则 ⇒ **擦袋角越界**（<see cref="PocketJawCrossingCount"/>）。
+        /// **两档分类**（`s > 0` 为前提）：
+        /// <list type="number">
+        /// <item>`ρ ≤ openingRadius` ⇒ **入袋**：球心已越过袋喉平面**且仍在喉口开口宽度之内**
+        ///   ⇒ 球心已在洞口上方（现实里必然落下）⇒ 计 <see cref="PocketProximityEvents"/> +
+        ///   <see cref="CapturedBallCount"/>，**冻结离台**；</item>
+        /// <item>`ρ &gt; openingRadius` ⇒ **擦袋角/隧穿越界**：球心已在喉口**之外**却越过了喉平面
+        ///   （本工程里只能靠**隧穿**做到：袋角侧壁是 8–14 mm 的短段，而 8 m/s 的球单子步位移 22.2 mm）
+        ///   ⇒ 计二者 + <see cref="PocketJawCrossingCount"/>，并由
+        ///   动作 = **冻结离台**（不计入袋，`_capturedPocket` 保持 −1）。</item>
+        /// </list>
         /// 三计数**各自独立累加**，恒满足
-        /// `PocketProximityEvents == CapturedBallCount + PocketJawCrossingCount`（待判据验证的结论）。
+        /// `PocketProximityEvents + AtRestMouthDrops == CapturedBallCount + PocketJawCrossingCount`
+        /// （<see cref="AtRestMouthDrops"/> 见其属性说明）。
         ///
-        /// **不变量**：只要 `s &gt; 0`（**不论是否落袋**）⇒ 该球**离台**（速度置零、停止积分）。
-        /// 这是"球不得静默离台"的唯一保证。
+        /// **⚠ "喉口内即入袋"这个口径的来源与实测依据（规格 §4c）**：
+        /// `captureRadius = openingRadius − BallRadius − 2 mm`（6 袋逐袋成立）⇒ 擦袋角带
+        /// `(captureRadius, openingRadius]` **恰好等于"球体与袋角侧壁重叠"**，而"球心在喉口宽度内"
+        /// 意味着球心已在洞口上方。把它当"弹回"处理实测**三种候选全部失效**：
+        ///  · 推回 1 mm + 反射 ⇒ 球被塞进**袋角环的凹侧空腔**，TOI 同刻接触组每子步解算 ~15 轮
+        ///    （单步 +90 / +94、总接触数 74 → **199**）；
+        ///  · 什么都不做 ⇒ 球穿喉后**静默飞出台面**（实测 `x = −7.077 m`）；
+        ///  · 推回到"不与任何段重叠"的最近位置 + 反射 ⇒ 仍为 **199**（球被放进同一个空腔）。
+        /// ⇒ 该带的球**必须离开台面**。现实里球心已过洞口 ⇒ 归入**入袋**最自然，且实测它
+        /// 使 `T34` 从 199 次接触回到 **14** 次、两条失效同时消失。
+        ///
+        /// **⚠ 第 2 档为何是"冻结"而不是"什么都不做"或"送回台内"**：袋喉平面之**后没有任何碰撞几何**
+        /// （捕获契约完全由本方法兑现）⇒ 内核不动作就意味着球**永久飞出台面**。这正是历史实现
+        /// "越喉即离台"存在的原因 —— 它**唯一**的作用是保证"球不得静默离台"。
+        ///
+        /// **⚠ 归类后**两档都**立即冻结**该球 ⇒ 后续子步的 `_frozen` 早退保证**同一次越喉只计一次**
+        /// （不需要额外的迟滞标志：球一旦离台，本方法对它不再求值）。
         ///
         /// **为什么用 ρ 而非 |C − tc|**：判据在**子步末**求值，此时球可能已越界 `v·dt_sub`
         /// （8 m/s ⇒ 22.2 mm）。`ρ` 沿法向直行时恒定 ⇒ 鲁棒；`|C − tc|` 含法向分量 ⇒ 越界越多值越大
@@ -1507,35 +1568,46 @@ namespace Billiards.Physics
                 float tdy = tn.x;
                 float rho = Mathf.Abs((c.x - tc.x) * tdx + (c.y - tc.y) * tdy);
 
-                // ★ 三计数各自独立累加（不得由另两者相加得到 —— 否则"归类完备"判据恒真）。
+                // ★ 两计数各自独立累加（不得由另两者相加得到 —— 否则"归类完备"判据恒真）。
                 PocketProximityEvents++;
-                if (rho <= _pocketCaptureRadius[p])
+
+                if (rho > _pocketOpeningRadius[p])
                 {
-                    CapturedBallCount++;
-                    _capturedPocket[index] = p;
-                }
-                else
-                {
+                    // 第 2 档：球心已在**喉口之外**却越过喉平面（只能靠隧穿达到）⇒ 擦袋角/隧穿越界。
+                    // 动作 = **冻结离台**（与第 1 档同源）—— 该区域在袋喉平面之**后**、本工程**没有任何
+                    // 碰撞几何**，冻结是这里唯一**可证安全**的动作：
+                    //  · "什么都不做"实测 ⇒ 球从袋口缺口**静默飞出台面**（x = −7.077 m）；
+                    //  · "送回台内 + 反射"实测 ⇒ 球被放进袋角环空腔、TOI 同刻接触组每子步解算 ~15 轮
+                    //    （总接触数 74 → 199）；且**推回方向与入射路径反向** ⇒ 推回点必落在入射射线上，
+                    //    扫描式"最近不重叠位置"在本几何下**恒等于**推回 1 mm（实测亦然）
+                    //    ⇒ 无正当理由保留该机制。
+                    // 归属 = **离台、不计入袋**（`_capturedPocket` 保持 −1）。
                     PocketJawCrossingCount++;
+                    _balls[index].velocity = Vector2.zero;
+                    _frozen[index] = true;
+                    return;
                 }
 
-                // 只读诊断：接触事件（越喉前速度；音频层消费——不改任何解算量）。
+                // 第 1 档：球心越过喉平面**且**落在喉口开口宽度内 ⇒ 球心已在洞口上方 ⇒ **入袋**，冻结离台。
+                CapturedBallCount++;
+                _capturedPocket[index] = p;
+
+                // 只读诊断：接触事件（音频层消费——不改任何解算量）。
                 RecordContactEvent(ContactKind.Pocket, Length(_balls[index].velocity), _balls[index].position);
 
-                // 不变量：越喉平面即离台（不论分类）。
                 _balls[index].velocity = Vector2.zero;
                 _frozen[index] = true;
                 return;
             }
         }
 
-        // ── 运动终止（游戏级静止声明）─────────────────────────────────────
-
         /// <summary>
         /// 每 <see cref="Step"/> 末求值一次：全部未冻结球速度 ≤ <see cref="RestSpeedThreshold"/> 时
         /// 累加"连续静止帧数"，任一球超过阈值即清零；达到 <see cref="RestStableFrames"/> 即声明
         /// <see cref="TableAtRest"/>。**不置零速度**（避免改变物理）—— 数值终止由
         /// <see cref="StoppedSpeedEpsilon"/> 承担，两者**分层**、不得互相代替。
+        ///
+        /// 另外在此挂**静止补判入袋**的上升沿钩子（见 <see cref="DropBallsRestingInsidePocketMouths"/>）。
         /// </summary>
         private void UpdateTermination()
         {
@@ -1555,7 +1627,64 @@ namespace Billiards.Physics
             }
 
             ConsecutiveRestFrameCount = allAtRest ? ConsecutiveRestFrameCount + 1 : 0;
+
+            bool wasAtRest = TableAtRest;
             TableAtRest = ConsecutiveRestFrameCount >= _restStableFrames;
+
+            // ★ 只在 TableAtRest 的**上升沿**判一次（不得每子步/每步判 —— 否则会与袋口分类抢判定、
+            //   把正在飞入袋的球在半路"静止"误伤）。
+            if (TableAtRest && !wasAtRest)
+            {
+                DropBallsRestingInsidePocketMouths();
+            }
+        }
+
+        /// <summary>
+        /// **静止补判入袋**（见 <see cref="AtRestMouthDrops"/>）：把球心落在某袋
+        /// <c>openingRadius</c> 内的静止球**补判**为入袋。
+        ///
+        /// **判定口径**：`|C − tc| ≤ openingRadius`，**对 `s` 的符号不加限制**（不写成 `s ≤ 0`）。
+        /// 为什么不断言 `s`：本支只对**未冻结**球生效，而在 `CheckPocketProximity` 之下，
+        /// 任何 `s > 0 ∧ ρ ≤ openingRadius` 的球**当子步就被判入袋并冻结** ⇒ 能走到这里的未冻结球
+        /// 必然是 `s ≤ 0`（尚未越喉）⇒ 加 `s` 判据是**同义重复**（会给人"多一层保护"的错觉）。
+        ///
+        /// 走**与正常入袋完全相同**的路径（<see cref="CapturedBallCount"/> + <c>_capturedPocket</c>
+        /// + 速度置零 + <c>_frozen</c>）⇒ 表现层自动获得下沉与袋口反馈，不需要任何新表现代码。
+        /// **不**计 <see cref="PocketProximityEvents"/>（它不是越喉事件），改计 <see cref="AtRestMouthDrops"/>。
+        ///
+        /// 球索引**升序**遍历（与其余状态推进同序）⇒ 不破坏确定性。
+        /// 每球只认**一个**袋（取索引最小的命中袋）后即跳出内层循环。
+        /// </summary>
+        private void DropBallsRestingInsidePocketMouths()
+        {
+            for (int i = 0; i < _balls.Length; i++)
+            {
+                if (_frozen[i])
+                {
+                    continue;
+                }
+
+                Vector2 c = _balls[i].position;
+
+                for (int p = 0; p < _pocketThroatCenter.Length; p++)
+                {
+                    Vector2 tc = _pocketThroatCenter[p];
+                    float dx = c.x - tc.x;
+                    float dy = c.y - tc.y;
+                    if (dx * dx + dy * dy > _pocketOpeningRadius[p] * _pocketOpeningRadius[p])
+                    {
+                        continue;
+                    }
+
+                    RecordContactEvent(ContactKind.Pocket, Length(_balls[i].velocity), c);
+                    CapturedBallCount++;
+                    AtRestMouthDrops++;
+                    _capturedPocket[i] = p;
+                    _balls[i].velocity = Vector2.zero;
+                    _frozen[i] = true;
+                    break;
+                }
+            }
         }
 
         // ── 几何/向量小工具（开方走 PoolMath 单一口径）─────────────────────

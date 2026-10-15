@@ -412,8 +412,9 @@ namespace Billiards.Tests
             Assert.GreaterOrEqual(a.TotalContactCount, 1, "T34-5：总接触数应 ≥1。");
             Assert.LessOrEqual(a.TotalContactCount, 64, "T34-5：总接触数超上界 64。");
 
-            Assert.AreEqual(a.CapturedBallCount + a.PocketJawCrossingCount, a.PocketProximityEvents,
-                "T34-6：归类应完备。");
+            Assert.AreEqual(a.CapturedBallCount + a.PocketJawCrossingCount,
+                a.PocketProximityEvents + a.AtRestMouthDrops,
+                "T34-6：归类应完备（ProximityEvents + AtRestMouthDrops == Captured + JawCrossing）。");
             Assert.GreaterOrEqual(a.CapturedBallCount, 0, "T34-7：进球数下界。");
             Assert.LessOrEqual(a.CapturedBallCount, initial.Length, "T34-7：进球数不得超球数。");
             // 散球本就会让球斜擦袋口 ⇒ 出现"窗口球"（R-S）是**预期**行为（`Q-1`(a)：冻结不离台）；只设上界。

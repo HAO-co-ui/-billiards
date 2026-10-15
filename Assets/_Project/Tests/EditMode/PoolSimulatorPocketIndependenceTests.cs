@@ -138,7 +138,11 @@ namespace Billiards.Tests
 
                 indCross++;
                 float rho = Mathf.Abs(Dot(c - pocket.throatCenter, td));
-                if (rho <= pocket.captureRadius)
+                // ⚠ 分类边界必须与内核同规则 = `openingRadius`（袋角归属裁定 A）：
+                //   `ρ ≤ openingRadius` ⇒ 入袋冻结；`ρ > openingRadius` ⇒ 越界冻结（不计入袋）。
+                //   历史口径用 `captureRadius`；本场景（ρ=0.08 同时大于两者）两种规则给出同一结果，
+                //   故本行是**口径保真**修正、不改变结论。
+                if (rho <= pocket.openingRadius)
                 {
                     indCaptured++;
                 }
