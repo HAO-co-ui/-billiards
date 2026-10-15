@@ -553,11 +553,11 @@ namespace Billiards.Tests
 
                 Vector3 actual = AimAssistView.MarkerWorldPoint(root, p);
 
-                // 独立期望（手写双取反 + 引擎根变换；不复用被测链的任何函数）
-                Vector3 expected = root.TransformPoint(new Vector3(-p.x, Billiards.Core.PoolConstants.ClothHeightY, -p.y));
+                // 独立期望（手写双取反 + 球心高度 + 引擎根变换；不复用被测链的任何函数）
+                Vector3 expected = root.TransformPoint(new Vector3(-p.x, Billiards.Core.PoolConstants.BallRadius, -p.y));
 
                 // 直写镜像版（历史缺陷形态）
-                Vector3 mirrored = root.TransformPoint(new Vector3(p.x, Billiards.Core.PoolConstants.ClothHeightY, p.y));
+                Vector3 mirrored = root.TransformPoint(new Vector3(p.x, Billiards.Core.PoolConstants.BallRadius, p.y));
 
                 var failures = new List<string>();
                 if (!(Mathf.Abs(actual.x - expected.x) <= 1e-4f

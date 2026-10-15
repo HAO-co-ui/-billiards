@@ -26,8 +26,8 @@ namespace Billiards.Physics
         /// <summary>杆尖与白球心的静止间隙（米）——瞄准时杆尖贴白球但不穿模。</summary>
         public const float TipGap = 0.01f;
 
-        /// <summary>拉满力度时杆的后拉量（米）——蓄力期后拉 = 力度 × 本值（1:1）。</summary>
-        public const float MaxPullback = 0.15f;
+        /// <summary>拉满力度时杆的后拉量（米）——蓄力期后拉 = 力度 × 本值（1:1）。取值偏大以强化"拉满"的视觉反馈（用户实测：0.15 无感）。</summary>
+        public const float MaxPullback = 0.45f;
 
         /// <summary>出杆前推占用帧数（进入 Shooting 后第 N 帧命中）。</summary>
         public const int StrikeFrames = 2;

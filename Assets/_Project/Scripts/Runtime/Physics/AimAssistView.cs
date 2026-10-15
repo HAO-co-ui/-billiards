@@ -128,14 +128,15 @@ namespace Billiards.Physics
 
         /// <summary>
         /// **Game 视图标记线顶点（唯一口径）**：规范物理点 → 世界坐标 =
-        /// <see cref="PoolGeometry.PhysicsToUnity"/>（**X/Z 双取反** `(−px, h, −py)`）→ <see cref="DrawPoint"/>（显示层缩放）。
-        /// 与 Scene Gizmos 的画线**逐字同口径**。
+        /// <see cref="PoolGeometry.PhysicsBallToUnity"/>（**X/Z 双取反** `(−px, 球心高, −py)`）→ <see cref="DrawPoint"/>（显示层缩放）。
+        /// 与 Scene Gizmos 的画线**逐字同口径**；高度取**球心**而非台呢 ⇒ 与球杆（球心高度）同层，
+        /// 倾斜相机下无线杆视差（用户实测：台呢高度的线与球心高度的杆存在可见错位）。
         /// ⚠ 规范 y_physics 与世界 Z **符号相反**——直写 `(px, h, +py)` 会把线画到绕桌面中心旋转 180° 的
         /// 镜像位置上（用户实测截图定位；`T85` 锁死：手写双取反 + 根变换做独立期望比对）。
         /// </summary>
         public static Vector3 MarkerWorldPoint(Transform playfieldRoot, Vector2 physicsPoint)
         {
-            return DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(physicsPoint));
+            return DrawPoint(playfieldRoot, PoolGeometry.PhysicsBallToUnity(physicsPoint));
         }
 
         /// <summary>**显示层尺度因子**：委托 <see cref="CushionGizmo.DisplayScale"/>（由显示映射导出，**不硬编码**）。</summary>
