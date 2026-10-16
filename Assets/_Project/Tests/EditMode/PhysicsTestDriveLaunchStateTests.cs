@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using Billiards.Core;
 using Billiards.Physics;
@@ -1082,6 +1083,36 @@ namespace Billiards.Tests
         }
 
 
+        /// <summary>`PointerPowerController` 源码路径（T145 ⑧ 的调用点守卫用）。</summary>
+        private const string PointerPowerSourcePath = "Assets/_Project/Scripts/Runtime/Physics/PointerPowerController.cs";
+
+        /// <summary>逐行剥掉 `//` 之后注释（T145 ⑧ 守卫用；避免注释里的片段被数成调用点）。</summary>
+        private static string StripCommentLines(string source)
+        {
+            var sb = new StringBuilder(source.Length);
+            foreach (string line in source.Split('\n'))
+            {
+                int cut = line.IndexOf("//", System.StringComparison.Ordinal);
+                sb.Append(cut >= 0 ? line.Substring(0, cut) : line).Append('\n');
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>子串出现次数（T145 ⑧ 守卫用）。</summary>
+        private static int CountOccurrences(string haystack, string needle)
+        {
+            int count = 0;
+            int index = haystack.IndexOf(needle, System.StringComparison.Ordinal);
+            while (index >= 0)
+            {
+                count++;
+                index = haystack.IndexOf(needle, index + needle.Length, System.StringComparison.Ordinal);
+            }
+
+            return count;
+        }
+
         /// <summary>T145 的干净局面里**唯一在场**的目标球号（实色、≠8）。</summary>
         private const int AiCleanTargetBall = 3;
 
@@ -1328,6 +1359,152 @@ namespace Billiards.Tests
                                       + $"目标 {launched.targetBall} → 袋 {launched.pocketIndex} / 评估 "
                                       + $"{launched.candidatesEvaluated} 次（预算 {parameters.candidateBudget}）；"
                                       + $"偏杆进袋 = {missAlone}（应为 False）、参照候选进袋 = {potter}；事件流 {compareSteps} 步逐条相同 ✓");
+
+                // ── ⑤ 比赛宿主接缝（P5-B）：注册后可开局、且**球台真的建好** ──
+                // ⚠ 本用例前面建了**两个**驱动器（`drive` / `manual`）⇒ **后建者**才持有 `MatchSeams.Host`
+                //   （注册点只有一个，最后 `Awake` 的胜出）。所以要判"注册 + 开局"必须用**专用**宿主盘，
+                //   否则会像首版那样打错对象（判据红，但红的是"我打错了"，不是产品缺陷）。
+                if (!Billiards.UI.MatchSeams.HasHost)
+                {
+                    failures.Add("(⑤) `PhysicsTestDrive.Awake` 应把驱动器注册为 `MatchSeams.Host`（实测未注册）。");
+                }
+
+                var hostGo = new GameObject("T145Host");
+                try
+                {
+                    PhysicsTestDrive host = NewAiDrive(hostGo, rackSeed: 91);
+                    if (!ReferenceEquals(Billiards.UI.MatchSeams.Host, host))
+                    {
+                        failures.Add("(⑤) **最后创建的**驱动器应成为 `MatchSeams.Host`（注册点被别的对象占着）。");
+                    }
+
+                    if (!Billiards.UI.MatchSeams.TryStartMatch(AiDifficulty.Club))
+                    {
+                        failures.Add("(⑤) 已注册宿主时 `TryStartMatch(Club)` 应返回 true（否则赛前屏会误报「未接线」）。");
+                    }
+                    else
+                    {
+                        if (host.MatchTier != AiDifficulty.Club)
+                        {
+                            failures.Add($"(⑤) `StartMatch` 应记下档位 `Club`，实测 {host.MatchTier}。");
+                        }
+
+                        if (host.CurrentTurn != ShotTurn.Player)
+                        {
+                            failures.Add($"(⑤) 开局先手应为玩家，实测 {host.CurrentTurn}。");
+                        }
+
+                        if (host.aiGroupState != GroupState.OpenTable)
+                        {
+                            failures.Add($"(⑤) 新开一局应回到开放球局，实测 {host.aiGroupState}。");
+                        }
+
+                        if (host.Simulator == null || host.Simulator.Balls.Count != 16)
+                        {
+                            failures.Add($"(⑤) `StartMatch` 后应有 16 颗球，实测 "
+                                         + $"{(host.Simulator == null ? -1 : host.Simulator.Balls.Count)}。");
+                        }
+
+                        if (host.ResolvedRackSeed == 91)
+                        {
+                            failures.Add("(⑤) `StartMatch` 是**新开一局** ⇒ 应把 `rackSeed` 置回真随机并重掷"
+                                         + "（实测 `ResolvedRackSeed` 仍是注入值 91 ⇒ 每局摆法不会换）。");
+                        }
+
+                        AdvanceToRest(host, RestCap);
+                        if (!host.Simulator.TableAtRest)
+                        {
+                            failures.Add("(⑤) `StartMatch` 后应在步数上限内整盘静止。");
+                        }
+                    }
+
+                    // ── ⑥ 未注册宿主 ⇒ 不假装开局（返回 false + **世界状态一个字节都没变**）──
+                    Billiards.UI.MatchSeams.Host = null;
+                    string beforeUnregistered = Snapshot(host);
+                    bool startedWithoutHost = Billiards.UI.MatchSeams.TryStartMatch(AiDifficulty.Expert);
+                    if (startedWithoutHost)
+                    {
+                        failures.Add("(⑥) 未注册宿主时 `TryStartMatch` 必须返回 false（不许假装已开局）。");
+                    }
+
+                    if (Snapshot(host) != beforeUnregistered)
+                    {
+                        failures.Add("(⑥) 未注册宿主时 `TryStartMatch` 竟然改动了球台状态 ⇒ 界面会「假装已开局」。");
+                    }
+
+                    if (host.MatchTier != AiDifficulty.Club)
+                    {
+                        failures.Add($"(⑥) 未注册时不得改档位，实测 {host.MatchTier}（应仍为 Club）。");
+                    }
+
+                    // 注销语义（**只注销自己**）：注册点被**别人**占着时，注销**不得**把它一起抹掉。
+                    // ⚠ `OnDestroy` 在 EditMode 里**不会被 Unity 调到**（与 `Awake` 同因）⇒ 判据直接调
+                    //   `UnregisterMatchHost()`（`OnDestroy` 的唯一实现体），否则这条**无法判定**。
+                    Billiards.UI.MatchSeams.Host = manual;
+                    host.UnregisterMatchHost();
+                    if (!ReferenceEquals(Billiards.UI.MatchSeams.Host, manual))
+                    {
+                        failures.Add("(⑥) `UnregisterMatchHost` **只应注销自己** —— 它把别人的注册也抹掉了。");
+                    }
+
+                    Billiards.UI.MatchSeams.Host = host;
+                    host.UnregisterMatchHost();
+                    if (Billiards.UI.MatchSeams.HasHost)
+                    {
+                        failures.Add("(⑥) `UnregisterMatchHost` 应能清空**自己的**注册（否则接缝会指向已销毁对象）。");
+                    }
+
+                    Billiards.UI.MatchSeams.Host = host;   // 还原注册（交 finally 销毁）
+                }
+                finally
+                {
+                    Object.DestroyImmediate(hostGo);
+                }
+
+                // ── ⑦ 接线（**跑真路径**）：AI 回合期间玩家输入被拒 ⇒ 必须登记可见反馈 ──
+                Billiards.UI.MatchTurnNotice.Reset();
+                drive.SetTurn(ShotTurn.Ai);
+                bool consumedDuringAiTurn = drive.TryConsumePlayerInput();
+                if (consumedDuringAiTurn)
+                {
+                    failures.Add("(⑦) AI 回合期间玩家输入应被**拒绝**（`TryConsumePlayerInput` 返回 false）。");
+                }
+
+                if (Billiards.UI.MatchTurnNotice.BlockedCount != 1)
+                {
+                    failures.Add($"(⑦) AI 回合被拒应登记**一次**可见反馈，实测 `BlockedCount` = "
+                                 + $"{Billiards.UI.MatchTurnNotice.BlockedCount}（0 = 静默无反馈）。");
+                }
+
+                if (Billiards.UI.MatchTurnNotice.LastBlockedReason != Billiards.UI.MatchTurnNotice.ReasonOpponentTurn)
+                {
+                    failures.Add($"(⑦) 被拒原因应为字面量 `{Billiards.UI.MatchTurnNotice.ReasonOpponentTurn}`，"
+                                 + $"实测 `{Billiards.UI.MatchTurnNotice.LastBlockedReason}`。");
+                }
+
+                if (Billiards.UI.MatchTurnNotice.BlockedCount == 1)
+                {
+                    drive.SetTurn(ShotTurn.Player);
+                    if (!drive.TryConsumePlayerInput())
+                    {
+                        failures.Add("(⑦) 轮到玩家时 `TryConsumePlayerInput` 应放行（返回 true）。");
+                    }
+
+                    if (Billiards.UI.MatchTurnNotice.BlockedCount != 1)
+                    {
+                        failures.Add("(⑦) 轮到玩家时**不得**再登记被拒（计数应保持 1）。");
+                    }
+                }
+
+                // ── ⑧ 调用点守卫（机械化：判「调用括号 + 实参前缀」）──
+                // ⚠ 定义处住在 `PhysicsTestDrive.cs`；**这里只数调用点**，且限定在交互层的那个文件里。
+                string powerSource = File.ReadAllText(Path.Combine(
+                    Path.GetDirectoryName(Application.dataPath) ?? ".", PointerPowerSourcePath));
+                if (CountOccurrences(StripCommentLines(powerSource), "drive.TryConsumePlayerInput()") < 1)
+                {
+                    failures.Add("(⑧) `PointerPowerController` 里找不到 `drive.TryConsumePlayerInput()` 调用点"
+                                 + " ⇒ 「AI 回合拒绝玩家输入」的接线被摘掉了（值/设施还在，但没人调用它）。");
+                }
 
                 Assert.IsEmpty(failures, "T145（AI 出杆入口）失败：\n" + string.Join("\n", failures));
             }

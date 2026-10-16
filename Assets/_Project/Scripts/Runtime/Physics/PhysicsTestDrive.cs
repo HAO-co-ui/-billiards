@@ -19,7 +19,7 @@ namespace Billiards.Physics
     ///  4. 本类是**调试驱动**，不是最终交互：瞄准与力度属交互层，这里只求"能看到球动"。
     /// </summary>
     [AddComponentMenu("Billiards/Physics Test Drive")]
-    public sealed class PhysicsTestDrive : MonoBehaviour, ISmokeAimSweepTarget
+    public sealed class PhysicsTestDrive : MonoBehaviour, ISmokeAimSweepTarget, Billiards.UI.IMatchHost
     {
         /// <summary>球桌碰撞几何真源。</summary>
         [Tooltip("球桌碰撞几何真源（TableConfig.asset）。")]
@@ -300,6 +300,29 @@ namespace Billiards.Physics
             Initialize();
         }
 
+        private void OnDestroy()
+        {
+            UnregisterMatchHost();
+        }
+
+        /// <summary>
+        /// **注销比赛宿主接缝**（<see cref="OnDestroy"/> 调它；判据也直接调它）。
+        ///
+        /// **只注销自己** —— 注册点只有一个，别的东西（另一个驱动器 / 上层）可能已把注册点接管过去，
+        /// 无条件置 `null` 会把**别人的注册**一起抹掉。
+        ///
+        /// ⚠ **为什么做成公开方法**：**EditMode 下 Unity 不调 `Awake` / `OnDestroy`**（只 `AddComponent`
+        /// 不会触发它们）⇒ 把注销写成 `OnDestroy` 的私有内联体，就**无法被判定**（判据只能"相信"它）。
+        /// 抽出本方法后，"只注销自己"这条语义在 EditMode 里**可跑、可判**。
+        /// </summary>
+        public void UnregisterMatchHost()
+        {
+            if (ReferenceEquals(Billiards.UI.MatchSeams.Host, this))
+            {
+                Billiards.UI.MatchSeams.Host = null;
+            }
+        }
+
         /// <summary>构造内核并装载白球（开球点 = <see cref="TableConfig.footSpot"/>，初速 0）。</summary>
         public void Initialize()
         {
@@ -309,6 +332,13 @@ namespace Billiards.Physics
                 enabled = false;
                 return;
             }
+
+            // **注册比赛宿主接缝**（P5-B）：赛前屏的 `Start match` 通过 `MatchSeams` 找到本驱动器。
+            // ⚠ **必须在 `Initialize()` 里注册、不能放 `Awake()`**：**EditMode 下 `AddComponent` 不会调 `Awake`**
+            //   ⇒ 放 `Awake` 的话，"注册"这件事在 EditMode 驱动的路径上**永远不发生**（判据也就无从判定）。
+            //   运行期语义不变（`Awake()` 本来就只是 `Initialize()`）。
+            // ⚠ 用**全限定名**（不 `using Billiards.UI;`）⇒ "Physics 侧读了 UI 的哪个符号"在源码里一眼可 grep。
+            Billiards.UI.MatchSeams.Host = this;
 
             // **8 球摆位种子：每局解析一次**（35-C P5-A）。`-1` ⇒ 取真随机并**留痕**（可回读复现该局）。
             // ⚠ 解析点必须在 `BuildRack()` **之前**（`LoadBalls(...BuildRack())` 要用 `ResolvedRackSeed`）。
@@ -407,6 +437,8 @@ namespace Billiards.Physics
         }
 
         /// <summary>
+        /// ⚠ **本对函数参与出杆路径**（不是只读出口）：`Launch()` 与 AI 探针**共用同一算式**。
+        ///
         /// **力度 ⇒ 白球初速大小**（**唯一算式**）：`Lerp(minLaunchSpeed, maxLaunchSpeed, Clamp01(power))`。
         /// ⚠ <see cref="Launch"/> 与 <see cref="EvaluateAiCandidate"/> **必须共用本对函数**，
         /// 否则"AI 评估的那一杆"与"真正打出的那一杆"会各自演化（AI 照着**另一个物理**做决策）。
@@ -444,11 +476,63 @@ namespace Billiards.Physics
         /// </summary>
         private PoolSimulator _aiProbe;
 
-        /// <summary>**最近一次 AI 规划出的意图**（可读出口：UI 与事后诊断用；未规划过 ⇒ `planned == false`）。</summary>
+        /// <summary>**最近一次 AI 规划出的意图**（未规划过 ⇒ `planned == false`）。（**只读出口**：供判据与诊断用；**不参与出杆路径**）</summary>
         public AiShotIntent LastAiShotIntent { get; private set; }
 
-        /// <summary>**最近一次 AI 决策用的种子**（判据据此复现同一次决策）。</summary>
+        /// <summary>**最近一次 AI 决策用的种子**（判据据此复现同一次决策）。（**只读出口**：供判据与诊断用；**不参与出杆路径**）</summary>
         public int LastAiSeed { get; private set; }
+
+        // ── 比赛宿主（`Billiards.UI.IMatchHost`，P5-B）──────────────────────────
+
+        /// <summary>本局的难度档（`StartMatch` 写入；UI 显示与 AI 决策**共用同一个真源**）。（**只读出口**：供判据与诊断用；**不参与出杆路径**）</summary>
+        public AiDifficulty MatchTier { get; private set; } = EightBallAi.DefaultDifficulty;
+
+        /// <summary>**当前轮到谁**（回合真源：UI 的"轮到谁"与输入让位门都读它）。（**只读出口**：供判据与诊断用；**不参与出杆路径**）</summary>
+        public ShotTurn CurrentTurn { get; private set; } = ShotTurn.Player;
+
+        /// <summary>是否轮到对手。（**只读出口**：供判据与诊断用；**不参与出杆路径**）</summary>
+        public bool IsAiTurn => CurrentTurn == ShotTurn.Ai;
+
+        /// <summary>
+        /// **设置回合**（**施加端**）：规则层只判"下一杆轮到谁"（`RuleVerdict.nextTurn`），
+        /// 真正切回合由宿主做 —— 本方法就是那个唯一的施加口。
+        /// </summary>
+        public void SetTurn(ShotTurn turn)
+        {
+            CurrentTurn = turn;
+        }
+
+        /// <summary>
+        /// **开始一局 AI 对战**（<see cref="Billiards.UI.IMatchHost.StartMatch"/>）：
+        /// **新开一局** ⇒ ① 记档；② 定组回**开放球局**；③ `rackSeed` 置回 <see cref="RandomRackSeed"/>
+        /// （**每局换摆法归宿主**；`ResolvedRackSeed` 在 <see cref="Initialize"/> 里重掷）；
+        /// ④ 重建 15 颗；⑤ **先手交给玩家**（开球）。
+        /// </summary>
+        public void StartMatch(AiDifficulty tier)
+        {
+            MatchTier = tier;
+            aiGroupState = GroupState.OpenTable;
+            rackSeed = RandomRackSeed;
+            Initialize();
+            CurrentTurn = ShotTurn.Player;
+        }
+
+        /// <summary>
+        /// **玩家输入的让位门（单一实现点）**：轮到对手 ⇒ **拒绝本次输入**，并**登记一次可见反馈**
+        /// （<see cref="Billiards.UI.MatchTurnNotice"/>，**不许静默** —— 静默 = 界面在假装什么都没发生）。
+        /// 返回 `false` ⇒ 调用方**必须放弃**本次手势。
+        /// 交互层在**消费一次玩家手势之前**调它（例：`PointerPowerController` 的右键蓄力边沿）。
+        /// </summary>
+        public bool TryConsumePlayerInput()
+        {
+            if (!IsAiTurn)
+            {
+                return true;
+            }
+
+            Billiards.UI.MatchTurnNotice.RequestBlock(Billiards.UI.MatchTurnNotice.ReasonOpponentTurn);
+            return false;
+        }
 
         /// <summary>
         /// **只规划、不出杆**（可复现性判据与 UI 预览用）。`seed` 由**调用方注入**：
@@ -492,14 +576,16 @@ namespace Billiards.Physics
         }
 
         /// <summary>
-        /// **给一个候选打分（真内核）** —— <see cref="EightBallAi.Plan"/> 的求值器**本体**，
-        /// 也是**判据 / 诊断**的唯一入口（`public` 是刻意的：判据要能对**同一个候选**做顺序无关性检查）。
+        /// **给一个候选打分（真内核）** —— <see cref="EightBallAi.Plan"/> 的求值器**本体**。
+        /// （**只读出口**：供判据与诊断用；**不参与出杆路径**）
+        /// `public` 是刻意的（照 `PoolSimulator.ShotContactEvents` 的既有模式）：判据要能对**同一个候选**
+        /// 做顺序无关性检查、诊断要能回答"AI 为什么选了这一杆"。
         ///
-        /// 契约：**只读主内核、只写探针** ⇒ 调用任意次都**不改变真实球台**。
+        /// 契约：**只读主内核、只写探针** ⇒ 调用任意次都**不改变真实球台**（③a 判据守它）。
         ///
-        /// ⚠ **每次评估必须先 <see cref="PoolSimulator.ResetDiagnostics"/>**：`ShotContactEvents` 是
-        /// **累积到本杆**的流，而 `LoadBalls` **不清它** ⇒ 不清就会读到**上一个候选**的越喉事件，
-        /// 于是"这一杆其实没进"被评成"进了"（症状 = **评估结果依赖评估顺序** = 诊断被污染）。
+        /// ⚠ **探针设置（含 `ResetDiagnostics()`）全在 <see cref="PrepareProbe"/> 一处** ——
+        /// 本方法与 <see cref="AiCandidatePots"/> **共用**它；**改探针设置只改 `PrepareProbe`**（单一实现点）。
+        /// 少那一次归零会**同时**污染两个读出（本方法的分 + `AiCandidatePots` 的进袋判定）。
         /// </summary>
         public float EvaluateAiCandidate(AiShotContext context, float aimDegrees, float power, int targetBall,
             int pocketIndex)
@@ -544,7 +630,7 @@ namespace Billiards.Physics
         }
 
         /// <summary>
-        /// **只回答"这个候选会不会把目标球打进"**（**不含任何评分/惩罚**）。
+        /// **只回答"这个候选会不会把目标球打进"**（**不含任何评分/惩罚**）。（**只读出口**：供判据与诊断用；**不参与出杆路径**）
         ///
         /// ⚠ **为什么必须单独有这么一个读出**：<see cref="EvaluateAiCandidate"/> 的**合成分**不能当"进没进"的分类器 ——
         /// 它的"白球落袋 −300"能把"被污染而虚高的进袋分 (+98)"**压回负数**，于是"没进"与"进了但白球也落袋"
@@ -597,7 +683,7 @@ namespace Billiards.Physics
 
         /// <summary>
         /// 由**当前真实球台**构造 <see cref="AiShotContext"/>（**球号 = 下标**；球号约定见 35-C §6-P1）。
-        /// **只读**：`public` 是刻意的 —— 判据与 UI/诊断要能拿到"AI 眼里的局面"。
+        /// **只读**：`public` 是刻意的 —— 判据与 UI/诊断要能拿到"AI 眼里的局面"。（**只读出口**：供判据与诊断用；**不参与出杆路径**）
         /// </summary>
         public AiShotContext BuildAiContext()
         {

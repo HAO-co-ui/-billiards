@@ -131,6 +131,13 @@ namespace Billiards.Physics
 
             if (Input.GetMouseButtonDown(1))
             {
+                // **对手回合让位 + 可见反馈**（P5-B）：轮到 AI 时玩家输入被拒 —— 必须**登记一次可见提示**
+                // （`MatchTurnNotice`），不许静默；判定与登记都在驱动器的**单一实现点**里。
+                if (!drive.TryConsumePlayerInput())
+                {
+                    return;
+                }
+
                 // 进入蓄力：球必须静止（与出杆门控同口径）；起点拾取失败（台面外）则不进入。
                 if (drive.Simulator == null || !drive.Simulator.TableAtRest)
                 {
