@@ -165,9 +165,15 @@ namespace Billiards.Tests
             var failures = new List<string>();
 
             // (a) VolumeForSpeed：0 ⇒ 0.25；满速 ⇒ 1；半速 ⇒ 0.625（1:1 lerp 闭式）
-            float v0 = PoolAudio.VolumeForSpeed(0f);
-            float vFull = PoolAudio.VolumeForSpeed(PoolAudio.FullSpeedForVolume);
-            float vHalf = PoolAudio.VolumeForSpeed(PoolAudio.FullSpeedForVolume * 0.5f);
+            float v0 = PoolAudio.VolumeForSpeed(0f, 8f);
+            float vFull = PoolAudio.VolumeForSpeed(8f, 8f);
+            float vHalf = PoolAudio.VolumeForSpeed(4f, 8f);
+            // D2：满档饱和点**随传入的 fullSpeed 移动** ⇒ 证明它不是硬编码的第二份字面量（铁律 11）。
+            // 同一输入 4 m/s：fullSpeed=8 ⇒ 0.625；fullSpeed=4 ⇒ 饱和 1.0。
+            Assert.AreEqual(0.625f, PoolAudio.VolumeForSpeed(4f, 8f), 1e-6f,
+                "D2：fullSpeed=8 时 4 m/s 应为 0.625（饱和点随传入值走）。");
+            Assert.AreEqual(1f, PoolAudio.VolumeForSpeed(4f, 4f), 1e-6f,
+                "D2：fullSpeed=4 时同一 4 m/s 应饱和为 1.0 ⇒ 证明饱和点不是硬编码。");
             if (Mathf.Abs(v0 - 0.25f) > 1e-6f)
             {
                 failures.Add($"(a) 静音档应 0.25，实际 {v0:R}。");

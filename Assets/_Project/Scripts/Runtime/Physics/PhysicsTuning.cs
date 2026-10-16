@@ -81,7 +81,7 @@ namespace Billiards.Physics
         public float minLaunchSpeed = 0.5f;
 
         [Tooltip("**满力**对应的初速（m/s）。⚠ 与 `PoolConstants.MaxBallSpeed`（=8，喂 `DeriveSubSteps`）**不是一回事**，不得混用。")]
-        public float maxLaunchSpeed = 4.5f;
+        public float maxLaunchSpeed = 8f;
 
         [Header("运动终止（游戏级静止声明）")]
         [Tooltip("宏观静止速度阈值，m/s。默认与 PoolSimulator.RestSpeedThreshold 一致（1e-3）。**内核真的读它**。")]

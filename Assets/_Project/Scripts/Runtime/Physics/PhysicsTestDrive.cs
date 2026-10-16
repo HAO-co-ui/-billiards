@@ -97,9 +97,9 @@ namespace Billiards.Physics
         [Tooltip("力度 → 初速映射的端点（m/s）。")]
         public float minLaunchSpeed = 0.5f;
 
-        [Tooltip("力度 → 初速映射的**上界**（m/s）。**Day 7 调参定为 4.5**（原 8）。⚠ **不是** `PoolConstants.MaxBallSpeed` ——"
-                 + "那个常量喂 `DeriveSubSteps`（子步数），**必须保持 8** 作保守余量。")]
-        public float maxLaunchSpeed = 4.5f;
+        [Tooltip("力度 → 初速映射的**上界**（m/s）= 满力开球初速；与 `PoolConstants.MaxBallSpeed` **不是一回事** ——"
+                 + "那个常量喂 `DeriveSubSteps`（子步数）并**必须保持 8** 作取样余量。")]
+        public float maxLaunchSpeed = 8f;
 
         [Header("瞄准指示物（Game 视图可见；无物理组件）")]
         [Tooltip("瞄准指示物的 Transform（细长立方体）。留空 ⇒ Initialize 时按需自动创建（开箱即用）。")]
@@ -162,7 +162,7 @@ namespace Billiards.Physics
         public KeyCode powerDownKey = KeyCode.DownArrow;
 
         [Header("冒烟测试")]
-        [Tooltip("按此键把白球以 PoolConstants.MaxBallSpeed 打出。")]
+        [Tooltip("按此键**以当前 HUD 力度**出杆（力度来自拖距/方向键，见 `power`）。")]
         public KeyCode launchKey = KeyCode.Space;
 
         [Tooltip("单帧最多推进的物理步数（防掉帧死亡螺旋）。")]

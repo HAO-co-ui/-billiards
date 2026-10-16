@@ -467,6 +467,75 @@ namespace Billiards.Tests
             TestContext.WriteLine("T38: RackPositions(footSpot,3) 与旧 4 球字面逐位一致（含顺序）✓");
         }
 
+        // ══════════════════ T133 满力开球必须打散球堆（实机反馈的判据化）══════════
+
+        /// <summary>`PhysicsTuning` 资产路径（`T133` 读"产品生效值"用）。</summary>
+        private const string TuningAssetPath = "Assets/_Project/Data/PhysicsTuning.asset";
+
+        /// <summary>
+        /// **满力开球必须把球堆基本打散**（把用户的实机反馈变成可证伪的不变量）。
+        /// 夹具复用 `T37`：真实表 + `RackPositions(footSpot, 15)` + 白球从 `footSpot`、朝 **−x 正对顶点球**。
+        /// **v0 取"产品生效值"** = `PhysicsTuning` 资产的 `maxLaunchSpeed`（**不是** `MaxBallSpeed`）⇒
+        /// **有人把它调回 4.5 ⇒ 本项红**（这正是它的判别力）。
+        ///
+        /// **主判据**：终态**位移 &gt; 0.30 m** 的目标球数 **≥ 6**（15 颗里）。
+        /// 口径说明（**为何不用"半个球径 0.028575 m"**）：该口径会把**抖动**算进来 —— 实测 v0=4.5 时它数到 9 颗，
+        /// 但第 6 颗起骤降到 0.183 m 以下；**用户肉眼数的"3–4 个"与 0.30 m 口径的 4 颗吻合**。
+        /// **期望值 6 的取法**（**不是**贴着实测值取）：实测 v0=8.0 在 Mono（本套件运行时）= **8 颗**、
+        /// 在 CoreCLR（独立 headless 探针）= **7 颗**；退化侧 v0=4.5 ⇒ Mono **4** / CoreCLR **5** 颗。
+        /// 取 6 ⇒ **两侧都留余量**（跨运行时不会翻），而"把初速调回 4.5"仍必红（4–5 &lt; 6）。
+        /// ⚠ 如实登记：8.0 下"被真正打散"的球数是 **7–8 / 15**（约半数）——"超过半数"这条理想线**跨运行时并不稳健**，
+        /// 因此本判据的设计线取"**至少 6 颗被真正打散**"，而不是贴着 8。
+        /// **附加**：白球不出台 / 无球越出台面外缘（复用 `CheckEnvelope`）/ 1200 步内到 `TableAtRest`。
+        /// **盲带**：只覆盖**正对顶点**这一瞄准几何；偏角开球的分布未纳入。
+        /// </summary>
+        [Test]
+        public void T133_FullPowerBreak_ScattersTheRack()
+        {
+            var tuning = AssetDatabase.LoadAssetAtPath<PhysicsTuning>(TuningAssetPath);
+            Assert.IsNotNull(tuning, "T133：找不到 " + TuningAssetPath);
+            float v0 = tuning.maxLaunchSpeed;   // ← **产品生效值**（调回 4.5 ⇒ 本项红）
+
+            Vector2[] rack = PhysicsTestDrive.RackPositions(_config.footSpot, 15);
+            Assert.AreEqual(16, rack.Length, "T133：应为 白球 + 15 球 = 16。");
+
+            BallState[] initial = new BallState[rack.Length];
+            for (int i = 0; i < rack.Length; i++)
+            {
+                initial[i] = new BallState { position = rack[i], velocity = Vector2.zero };
+            }
+
+            initial[0].velocity = new Vector2(-v0, 0f);   // 朝球堆（顶点在 −x 侧）
+
+            var sim = new PoolSimulator(_config, ShipParams(0.9f, 0.8f));
+            sim.LoadBalls(initial);
+            Step(sim, 1200);
+
+            CheckEnvelope(sim, _config, true, "T133-越界", out float overrunX, out float overrunY);
+            Assert.IsTrue(sim.TableAtRest, "T133：1200 步内应到 TableAtRest。");
+
+            const float ScatterThreshold = 0.30f;   // ← 独立设计字面量（见上方口径说明）
+            // 期望取 6（**不是**实测值本身）：实测 8.0 在 **Mono（EditMode 运行时）= 8 颗**、
+            // 在 **CoreCLR（headless 探针）= 7 颗**（同族已知分歧：`T111` 静止步 488 vs 493）；
+            // 退化侧 4.5 ⇒ **Mono 4 / CoreCLR 5 颗**。取 6 ⇒ **两侧都留余量**（绿侧 ≥1、红侧 ≥1）。
+            const int MinScattered = 6;
+            int scattered = 0;
+            for (int i = 1; i < sim.Balls.Count; i++)
+            {
+                if ((sim.Balls[i].position - initial[i].position).magnitude > ScatterThreshold)
+                {
+                    scattered++;
+                }
+            }
+
+            TestContext.WriteLine($"T133: v0={v0:F2} m/s（资产生效值）⇒ 位移 > {ScatterThreshold} m 的球数 = "
+                                  + $"{scattered}/{sim.Balls.Count - 1}（期望 ≥ {MinScattered}）；"
+                                  + $"越界 overrunX={overrunX:F4} overrunY={overrunY:F4} ✓");
+            Assert.GreaterOrEqual(scattered, MinScattered,
+                $"T133：满力开球（v0={v0:F2} m/s）只打散 {scattered} 颗（阈值 {ScatterThreshold} m）< {MinScattered}"
+                + " ⇒ 球堆未被打散（初速上界偏低？）。");
+        }
+
         // ══════════════════ T37 真开球（15 球满堆，不含预算带断言）══════════
 
         /// <summary>

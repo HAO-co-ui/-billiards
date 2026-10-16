@@ -46,8 +46,8 @@ namespace Billiards.Physics
         /// <summary>同类事件跨帧最小播放间隔（秒）。</summary>
         public const float MinRepeatIntervalSeconds = 0.03f;
 
-        /// <summary>音量调制满档对应的相对速度（m/s，= 出厂初速上界）。</summary>
-        public const float FullSpeedForVolume = 4.5f;
+        /// <summary>音量满档对应的相对速度**不在此处写死** —— 它是"出厂初速上界"的**第二份字面量**（铁律 16）。
+        /// 由调用方传入 `PhysicsTestDrive.maxLaunchSpeed` 的**生效值**（单点实现）。</summary>
 
         /// <summary>AudioSource 池大小（限流后同时发声数有界）。</summary>
         public const int SourcePoolSize = 6;
@@ -148,7 +148,7 @@ namespace Billiards.Physics
         // ── 纯逻辑（判据 T90 直接驱动）──────────────────────────────────────
 
         /// <summary>相对速度 → 音量 ∈ [0.25, 1]（1:1 线性；轻碰轻响，快撞满响）。</summary>
-        public static float VolumeForSpeed(float relativeSpeed, float fullSpeed = FullSpeedForVolume)
+        public static float VolumeForSpeed(float relativeSpeed, float fullSpeed)
         {
             if (!(fullSpeed > 0f))
             {
@@ -393,7 +393,7 @@ namespace Billiards.Physics
                 int serial = _playSerial++;
                 SpeedTier tier = TierForSpeed(drive.LastLaunchSpeed);
                 PlayLayered(AudioCue.Strike, BaseLayerCount(tier),
-                    VolumeForSpeed(drive.LastLaunchSpeed), serial, now);
+                    VolumeForSpeed(drive.LastLaunchSpeed, drive.maxLaunchSpeed), serial, now);
             }
 
             // 2) 接触事件流：drain → 限流筛选 → 分档/分层 → 播放
@@ -427,7 +427,7 @@ namespace Billiards.Physics
                 int layers = LayerCountFor(cue, tier, priorAccepted);
 
                 int serial = _playSerial++;
-                PlayLayered(cue, layers, VolumeForSpeed(contact.relativeSpeed), serial, now);
+                PlayLayered(cue, layers, VolumeForSpeed(contact.relativeSpeed, drive.maxLaunchSpeed), serial, now);
             }
         }
 

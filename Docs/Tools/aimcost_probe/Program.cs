@@ -27,7 +27,8 @@ namespace aimcost
         private static int Main(string[] args)
         {
             bool eqMode = args.Length > 0 && args[0] == "eq";
-            int off = eqMode ? 1 : 0;
+            bool probeMode = args.Length > 0 && (args[0] == "predict" || args[0] == "scatter");
+            int off = (eqMode || probeMode) ? 1 : 0;
             string json = args.Length > off
                 ? args[off]
                 : Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "table.json");
@@ -41,6 +42,12 @@ namespace aimcost
             {
                 string projectRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(json), "..", "..", ".."));
                 return EqBaseline.Run(table, projectRoot);
+            }
+
+            // 仪器模式（`PredictProbe`）：纯**新增**分发 —— 对既有 `eq` / `full` 两条路径**零行为改变**。
+            if (probeMode)
+            {
+                return args[0] == "scatter" ? PredictProbe.Scatter(table) : PredictProbe.Run(table);
             }
 
             // 与 PhysicsTuning.asset 逐字段一致（= 运行时真源）。

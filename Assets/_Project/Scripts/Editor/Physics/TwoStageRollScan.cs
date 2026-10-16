@@ -114,7 +114,7 @@ namespace Billiards.EditorTools
 
             // ── 力度 → 初速（与交互层同式；**显式字面量**，不读资产）──────────
             const float minLaunch = 0.5f;
-            const float maxLaunch = 4.5f;
+            const float maxLaunch = 8f;
 
             // ── 网格 A（12 格）+ 网格 B（变长方向，36 格）+ 历史恒定档对照行 ────
             var rows = new List<Row>();

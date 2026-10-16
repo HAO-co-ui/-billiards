@@ -196,7 +196,7 @@ namespace Billiards.Tests
             Assert.AreEqual(1f, t.pocketCaptureRadiusScale, 1e-6f, "T44：pocketCaptureRadiusScale 偏离台账。");
             Assert.AreEqual(1e-3f, t.restSpeedThreshold, 1e-9f, "T44：restSpeedThreshold 偏离台账。");
             Assert.AreEqual(8, t.restStableFrames, "T44：restStableFrames 偏离台账。");
-            Assert.AreEqual(4.5f, t.maxLaunchSpeed, 1e-6f, "T44：maxLaunchSpeed 偏离台账。");
+            Assert.AreEqual(8f, t.maxLaunchSpeed, 1e-6f, "T44：maxLaunchSpeed 偏离台账（设计上界 8 m/s）。");
             Assert.AreEqual(0.5f, t.minLaunchSpeed, 1e-6f, "T44：minLaunchSpeed 偏离台账。");
 
             TestContext.WriteLine("T44: 出厂口径冻结表全部吻合（0.8/0.9/0.5/0.25/2.0/0.95/1.0/1.0/1e-3/8/4.5/0.5，共 12 项）✓");
