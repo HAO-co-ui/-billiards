@@ -781,6 +781,15 @@ quality-lead 自查发现：他给的内核清单里 `PhysicsParams.cs = 03c537e
    · 主理人把「清单里列了、只是缺证据」说成「**漏项**」（量级错）；
    · 主理人把 `IsPlacementLegal` 误拒带 **61 mm** 说大（真值 **1.41 mm**）。
    ⇒ **对策**：否定性结论必须**显式列出检索空间**（roots + pattern + 实际命令），并**对每个 root 各跑一次**；跨盘／跨目录的同名产物要显式排除。**「我搜过了」不是证据，「我搜过哪些地方」才是。**
+   ⇒ **补充（同名候选的排除必须是「内容判据」，不能只靠"看着像"）**：本批 `INJ2.xml` 实测有 **3 个**同名产物 ——
+   `%TEMP%\billiards_batch\verify\INJ2.xml`（`18:56:04`，214525 B，`2b08c062…`）、
+   `E:\Unity_Deve\_billiards_audit\verify-2026-10-16\INJ2.xml`（`19:09:20`，214499 B，`c730d687…`）、
+   `E:\Unity_Deve\_d8aim_out\inj2.xml`（**10-14 21:37**，7724 B，`b96b8388…`，属 **Day-8 瞄准卡**、与本批无关）。
+   机械排除依据（可执行）：**Day-8 那份 `total="5" passed="4" failed="1"` 且 `grep T125_StatusContract_MapsDesignStates` = 0**。
+   ⇒ 判据写法：*「同名候选 = 含 `T125_StatusContract_MapsDesignStates` 且 `total=231 / passed=230 / failed=1`」* ⇒ 3 个筛到 2 个（本批两份），再按 root 决定引用哪一份。
+   ⚠ 本批两份 **size 不同（214525 vs 214499）** ⇒ **不是逐字节副本、是两次不同运行**（后者是复核方独立重跑）
+   ⇒ **"同名 + 同 `mtime` 精度"都不足以唯一定位产物，必须带 `sha1`**（这就是规矩 6 不是形式主义的实测依据）。
+8. **登记（未做，待该文件下次被合法改动时顺手补）**：`ClubUiTests.cs` 里 ⑤''' 的指路写的是 `%TEMP%\billiards_batch\verify\INJ2.xml` + `mtime 18:56:04` + `231/230/1` + 用例名 —— **指向真实产物、可回读**，但① **指向的是副本**（非复核方那份最终凭据）、② **缺 `sha1`**。升级做法：补 `sha1 2b08c062…`，并**并列引** `E:\Unity_Deve\_billiards_audit\verify-2026-10-16\INJ2.xml`（`19:09:20` / `c730d687…`）。**本批不动**（改测试文件会作废绿锚点对应的字节）。
 4. **残留锁**：本轮第 4 次（`18:13` / `18:25` 两次残留）。⇒ **每次 Unity 跑批前先查锁**，别假定"我不是刚跑成功吗"；清理必须**两条件**（`tasklist | grep -ci unity` = **0** **且** 探针 `r+b` 抛 `OSError`）⇒ **活锁绝不删**（只用探针会放进第二个实例、毁 `Library`/`PackageCache`）。
 ### 12.2.7 场景两项**必须入库**（仪器证明：除新序列化字段外与 HEAD 语义等价）
 **为什么必须入库**：`PointerAimController` 本批新增了序列化字段 **`placementClickMaxPixels`（值 `12`）**，场景重存后把它写进了序列化值。
