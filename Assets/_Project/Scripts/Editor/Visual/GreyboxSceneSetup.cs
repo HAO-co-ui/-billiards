@@ -395,11 +395,13 @@ namespace Billiards.EditorTools
             TableVisualBuilder.AttachTable(playfieldRoot.transform);
             TableVisualBuilder.AttachRoom(playfieldRoot.transform);
 
-            // 1) 白球（物理平面 footSpot → **规范世界**，唯一转换点 PoolGeometry）
+            // 1) 白球（物理平面**开球位** → **规范世界**，唯一转换点 PoolGeometry）
+            //    ⚠ **与物理解算同源**：落点取自 `PhysicsTestDrive.CueBallHomePosition`（不是 `footSpot`）
+            //      —— 否则"画面上的白球"与"解算里的白球"会分叉（用户裁定把开球距离改成 1.27 m 后尤其明显）。
             //    ⚠ 挂到**缩放根**下：写入的是**局部坐标**（= 规范世界坐标），世界坐标会自动 ×1.2。
             GameObject cueBall = BuildCueBall();
             cueBall.transform.SetParent(playfieldRoot.transform, false);
-            cueBall.transform.localPosition = PoolGeometry.PhysicsBallToUnity(config.footSpot);
+            cueBall.transform.localPosition = PoolGeometry.PhysicsBallToUnity(PhysicsTestDrive.CueBallHomePosition(config.footSpot));
 
             // 2) 俯视相机（含视口适配器）+ 主平行光（灰盒可见即可；不引入任何物理组件）
             //    ⚠ **在玩法层之前建**：瞄准辅助 / 拉杆需要相机引用（与 Main 的叠加口径一致）。
@@ -626,7 +628,7 @@ namespace Billiards.EditorTools
             // 白球 + 球堆可视物：挂**既有 PlayfieldRoot** 下（写入**局部规范坐标**；该根在 Main 里 scale = 1）。
             GameObject cueBall = BuildCueBall();
             cueBall.transform.SetParent(playfieldRootGo.transform, false);
-            cueBall.transform.localPosition = PoolGeometry.PhysicsBallToUnity(config.footSpot);
+            cueBall.transform.localPosition = PoolGeometry.PhysicsBallToUnity(PhysicsTestDrive.CueBallHomePosition(config.footSpot));
             Transform[] ballVisuals = BuildRackVisuals(playfieldRootGo, config, cueBall);
 
             var root = new GameObject(MainGameplayRootName);

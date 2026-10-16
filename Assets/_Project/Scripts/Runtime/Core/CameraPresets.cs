@@ -94,21 +94,7 @@ namespace Billiards.Core
         }
 
         /// <summary>
-        /// **把某套预设施加到一台相机上** —— 运行期"施加预设"的实现点。
-        ///
-        /// ── ⚠ **已知重复（如实登记，不抽共享函数）** ────────────────────────────────────
-        /// 构建期的两个渲染工具**不调用**本方法，而是各自有一份**等价实现**：
-        /// · `MaterialVisualValidator.SetBaseFov/RestoreBaseFov`（证据图渲染路径）
-        /// · `RoomEnvironmentSetup.SetBaseFov`（房间预览渲染工具）
-        /// （本方法只被运行期组件 <see cref="Billiards.UI.PlayViewCamera"/> 调用。）
-        /// **三处同遵循同一不变量**：**先改 `fitter.baseVerticalFovDeg`，再 `Apply()`**。
-        /// **为什么不抽共享函数**：那要同时动 Runtime 与 Editor 两条链，且必须**重跑 `validators`
-        /// 证明渲染输出逐字节未变**（等于再刷一次入库证据）—— 消一处重复的收益不值这个代价。
-        /// ⇒ **将来若再改这条链路，必须三处同改**（规格 §12.7 已登记）。
-        ///
-        /// ⚠ **必须同时更新 `CameraViewportFitter` 的基准 fov**：适配器只在 `OnEnable` 与**宽高比变化**时
-        /// 写 `Camera.fieldOfView`，取值由它自己的 `baseVerticalFovDeg` 决定。若只改相机 fov、不改适配器基准，
-        /// 那么窗口比例一变，适配器就会用**旧基准**把 fov 覆写回去（"看着像生效了、换个窗口就弹回"）。
+        /// **把一套预设施加到相机**（= `GetPose` + <see cref="ApplyPose"/>）。
         /// </summary>
         public static void ApplyTo(Camera camera, Preset preset)
         {
@@ -118,6 +104,31 @@ namespace Billiards.Core
             }
 
             GetPose(preset, out Vector3 position, out Vector3 lookTarget, out float fovDeg);
+            ApplyPose(camera, position, lookTarget, fovDeg);
+        }
+
+        /// <summary>
+        /// **把任意位姿施加到相机** —— "施加"的**唯一实现点**。
+        ///
+        /// 两个调用方：<see cref="ApplyTo"/>（整套预设）与 `Billiards.UI.PlayViewCamera` 的**过渡**
+        /// （每帧传入插值出来的位姿）。**朝向一律由 `LookRotation(lookTarget − position)` 求得**
+        /// ⇒ 过渡的 `t = 1` 与"直接施加预设"走的是**同一行代码** ⇒ 终态**逐位一致**（`CAM-01..05` 判稳态）。
+        ///
+        /// ⚠ **仍保留的已知重复（规格 §12.7.1）**：构建期两个渲染工具
+        /// （`MaterialVisualValidator.SetBaseFov/RestoreBaseFov`、`RoomEnvironmentSetup.SetBaseFov`）
+        /// 各有一份等价实现 —— 三处同遵循同一不变量：**先改 `fitter.baseVerticalFovDeg`，再 `Apply()`**。
+        /// 将来再改这条链路，**必须三处同改**。
+        ///
+        /// ⚠ **为什么必须同时更新适配器基准**：`CameraViewportFitter` 只在 `OnEnable` 与**宽高比变化**时
+        /// 写 `Camera.fieldOfView`，取值由它自己的 `baseVerticalFovDeg` 决定。若只改相机 fov、不改适配器基准，
+        /// 那么窗口比例一变，适配器就会用**旧基准**把 fov 覆写回去（"看着像生效了、换个窗口就弹回"）。
+        /// </summary>
+        public static void ApplyPose(Camera camera, Vector3 position, Vector3 lookTarget, float fovDeg)
+        {
+            if (camera == null)
+            {
+                return;
+            }
 
             Transform t = camera.transform;
             t.position = position;

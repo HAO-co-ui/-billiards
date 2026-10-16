@@ -25,12 +25,23 @@ namespace Billiards.Tests
     ///   之所以走纯函数而不是去改 `HomeView.IsOpen`：它是 `{ get; private set; }`，**测试改不动**
     ///   —— 这也正是把切换规则抽成纯函数的原因（可测）。
     ///
-    /// **它为什么不是恒绿摆设**：把 `CameraPresets.HomePosition` 改成 `PlayPosition` ⇒ `T134①` 红；
-    /// **把 `HomePosition`/`HomeLookTarget` 一起改成与 `Play` 相同、只留 `HomeFovDeg=53`**（复核方的注入 (i)-1）
-    /// ⇒ `T134①` **也必须红** —— 本判据按**几何**判（位置距离与注视点距离都要 > 阈值），
-    /// **fov 差不再能顶替**；这正是那次 CONCERN 的修法（旧口径下该注入下 ① 仍绿、只被 ② 兜住）。
-    /// 把 `GreyboxSceneSetup.CameraPosition` 改指 `HomePosition` ⇒ `T134②` 红；
-    /// 把 `Resolve` 的两个分支写反 ⇒ `T135` 红；把 `ApplyPreset` 写成 no-op ⇒ `T135` 的施加断言红。
+    /// · **`T136`**：转场 ——
+    ///   ① **纯函数**：权重 `w(t)`（`w(0)=0`/`w(1)=1`/`w(0.5)=0.5`/单调不减/∈[0,1]/两端速度为 0）；
+    ///   ② **纯函数**：`Interpolate` 在 `t=0` 逐位等于起点、`t=1` **逐位等于目标预设**（不是容差）、
+    ///      `t∈(0,1)` 单调不回头且不越出两端点的包围盒；
+    ///   ③ **纯函数**：`ShouldAnimate` —— **首帧不做动画**、**状态未变不做动画**（二者合起来 ⇒ **冒烟全程不做过渡**）、
+    ///      状态真变了才做；
+    ///   ④ **状态机**：真组件上"首帧硬切 / 状态变化起转场 / 推进到时长后**逐位**落到目标预设"。
+    ///
+    /// **它们为什么不是恒绿摆设**：
+    /// · `T134①`：把 `HomePosition` 改成 `PlayPosition` ⇒ 红；**把 `HomePosition`/`HomeLookTarget` 一起改成与
+    ///   `Play` 相同、只留 `HomeFovDeg=53`**（复核方的注入 (i)-1）⇒ **也必须红** —— 本判据按**几何**判
+    ///   （位置距离与注视点距离都要 > 阈值），**fov 差不再能顶替**；这正是那次 CONCERN 的修法。
+    /// · `T134②`：把 `GreyboxSceneSetup.CameraPosition` 改指 `HomePosition` ⇒ 红。
+    /// · `T135`：把 `Resolve` 的两个分支写反 ⇒ 红；把 `ApplyPreset` 写成 no-op ⇒ 施加断言红。
+    /// · `T136`：删掉 `Interpolate` 的 `t ≥ 1` 分支（改成一直插值）⇒ ② 红（终态有残差）；
+    ///   `Weight` 改成线性（`return t`）⇒ ① 的两端速度断言红；`ShouldAnimate` 去掉 `hasApplied` 判断
+    ///   ⇒ ③ 的首帧断言红；把 `Tick` 的终态改成"用插值结果"⇒ ④ 的逐位断言红。
     /// </summary>
     public class PlayViewCameraTests
     {
@@ -155,6 +166,153 @@ namespace Billiards.Tests
             {
                 Object.DestroyImmediate(go);
             }
+        }
+
+        /// <summary>
+        /// **`T136`：转场（用户反馈"视角转场要丝滑"）** —— 纯函数三层 + 状态机一层。
+        /// 断言清单见类注释；**关键是 `t = 1` 必须逐位落到目标预设**（不许插值到 99% 就停，
+        /// 因为 `CAM-01..05` 判的是**稳态**）。
+        /// </summary>
+        [Test]
+        public void T136_Transition_Smoothstep_ExactEndpoints_NoAnimationWhenUnchanged()
+        {
+            // ── ① 权重（smoothstep）：端点、中点、单调、值域、两端速度为 0 ──
+            Assert.AreEqual(0f, CameraTransition.Weight(0f), "T136①：w(0) 应为 0。");
+            Assert.AreEqual(1f, CameraTransition.Weight(1f), "T136①：w(1) 应为 1。");
+            Assert.AreEqual(0.5f, CameraTransition.Weight(0.5f), 1e-6f, "T136①：w(0.5) 应为 0.5（smoothstep 对称）。");
+            Assert.AreEqual(0f, CameraTransition.Weight(-3f), "T136①：越界 t 应被 clamp 到 0。");
+            Assert.AreEqual(1f, CameraTransition.Weight(7f), "T136①：越界 t 应被 clamp 到 1。");
+
+            float[] w = CameraTransition.SampleWeights(101);
+            for (int i = 0; i < w.Length; i++)
+            {
+                Assert.GreaterOrEqual(w[i], 0f, $"T136①：w[{i}] 越下界。");
+                Assert.LessOrEqual(w[i], 1f, $"T136①：w[{i}] 越上界。");
+                if (i > 0)
+                {
+                    Assert.GreaterOrEqual(w[i] + 1e-7f, w[i - 1],
+                        $"T136①：权重非单调（w[{i - 1}]={w[i - 1]:R} > w[{i}]={w[i]:R}）⇒ 插值会「回头」。");
+                }
+            }
+
+            // 两端速度为 0（smoothstep 的定义性质；线性缓动在这里会红）
+            const float h = 1e-3f;
+            float slopeStart = (CameraTransition.Weight(h) - CameraTransition.Weight(0f)) / h;
+            float slopeEnd = (CameraTransition.Weight(1f) - CameraTransition.Weight(1f - h)) / h;
+            Assert.Less(Mathf.Abs(slopeStart), 0.02f, $"T136①：起点速度应 ≈0（实测 {slopeStart:R}）⇒ 起步不应突兀。");
+            Assert.Less(Mathf.Abs(slopeEnd), 0.02f, $"T136①：终点速度应 ≈0（实测 {slopeEnd:R}）⇒ 收尾不应突兀。");
+
+            // ── ② 插值：端点**逐位**、中途单调不回头、不越界 ──
+            Vector3 fromPos = CameraPresets.HomePosition;
+            Vector3 fromLook = CameraPresets.HomeLookTarget;
+            float fromFov = CameraPresets.HomeFovDeg;
+            Vector3 toPos = CameraPresets.PlayPosition;
+            Vector3 toLook = CameraPresets.PlayLookTarget;
+            float toFov = CameraPresets.PlayFovDeg;
+
+            CameraTransition.Interpolate(fromPos, fromLook, fromFov, toPos, toLook, toFov, 0f,
+                out Vector3 p0, out Vector3 l0, out float f0);
+            Assert.IsTrue(Exact(p0, fromPos) && Exact(l0, fromLook) && f0.ToString("R") == fromFov.ToString("R"),
+                "T136②：t=0 必须**逐位**等于起点。");
+
+            CameraTransition.Interpolate(fromPos, fromLook, fromFov, toPos, toLook, toFov, 1f,
+                out Vector3 p1, out Vector3 l1, out float f1);
+            Assert.IsTrue(Exact(p1, toPos) && Exact(l1, toLook) && f1.ToString("R") == toFov.ToString("R"),
+                $"T136②：t=1 必须**逐位**等于目标预设（实测 pos={p1}, fov={f1:R}）"
+                + " —— 不许「插值到 99% 就停」（`CAM-01..05` 判的是稳态）。");
+
+            // 中途：单调靠近目标 + 不越出两端点的包围盒
+            float prevDist = float.MaxValue;
+            for (int i = 0; i <= 100; i++)
+            {
+                float t = i / 100f;
+                CameraTransition.Interpolate(fromPos, fromLook, fromFov, toPos, toLook, toFov, t,
+                    out Vector3 p, out _, out float fov);
+                float dist = Vector3.Distance(p, toPos);
+                Assert.LessOrEqual(dist, prevDist + 1e-5f,
+                    $"T136②：t={t:R} 处距目标反而变远（{dist:R} > {prevDist:R}）⇒ 插值回头了。");
+                prevDist = dist;
+
+                Assert.IsTrue(InBox(p, fromPos, toPos), $"T136②：t={t:R} 处位置越出两端点包围盒：{p}。");
+                Assert.IsTrue(fov >= Mathf.Min(fromFov, toFov) - 1e-4f && fov <= Mathf.Max(fromFov, toFov) + 1e-4f,
+                    $"T136②：t={t:R} 处 fov {fov:R} 越出 [{Mathf.Min(fromFov, toFov):R},{Mathf.Max(fromFov, toFov):R}]。");
+            }
+
+            // ── ③ ShouldAnimate：首帧不动画 / 状态未变不动画（⇒ 冒烟全程不做过渡）/ 真变了才动 ──
+            Assert.IsFalse(CameraTransition.ShouldAnimate(false, CameraPresets.Preset.Play, CameraPresets.Preset.Home),
+                "T136③：**首帧**（尚未施放过）必须硬切 —— 从「场景序列化态」插值会让开机第一帧像「相机飞过来」。");
+            Assert.IsFalse(CameraTransition.ShouldAnimate(true, CameraPresets.Preset.Play, CameraPresets.Preset.Play),
+                "T136③：**状态未变**必须硬切（不做无谓动画）。");
+            Assert.IsFalse(CameraTransition.ShouldAnimate(true, CameraPresets.Preset.Home, CameraPresets.Preset.Home),
+                "T136③：状态未变（home 侧同理）必须硬切。");
+            Assert.IsTrue(CameraTransition.ShouldAnimate(true, CameraPresets.Preset.Home, CameraPresets.Preset.Play),
+                "T136③：首页→打球必须走转场（本卡唯一要接的方向）。");
+            // ⇒ 冒烟不做过渡的**证明**：冒烟全程无人操作 + 首页被抑制（homeStartup=suppressed）
+            //   ⇒ `HomeView.IsOpen` 恒为 false ⇒ 解出预设恒为 play ⇒ `from == to` ⇒ ③ 这条恒 false。
+
+            // ── ④ 状态机（真组件）：首帧硬切 / 状态变化起转场 / 推进满时长后逐位落到目标 ──
+            var go = new GameObject("T136PlayViewCamera");
+            try
+            {
+                Camera cam = go.AddComponent<Camera>();
+                var view = go.AddComponent<PlayViewCamera>();
+                view.targetCamera = cam;
+                view.transitionSeconds = CameraTransition.DefaultSeconds;
+
+                bool homeOpen = false;
+                view.homeOpenSource = () => homeOpen;
+
+                // 首帧：硬切到 play（此时 homeOpen=false），且**不在**转场中
+                view.Apply(0f);
+                Assert.IsFalse(view.IsTransitioning, "T136④：首帧必须硬切（不得进入转场）。");
+                Assert.IsTrue(Exact(cam.transform.position, CameraPresets.PlayPosition),
+                    $"T136④：首帧后相机应在 play 位（实测 {cam.transform.position}）。");
+
+                // 切到 home（硬切，用于把起点摆到 home）
+                view.ApplyPreset(CameraPresets.Preset.Home);
+                Assert.IsTrue(Exact(cam.transform.position, CameraPresets.HomePosition),
+                    "T136④：ApplyPreset(Home) 应硬切到 home。");
+
+                // 状态变化 ⇒ 起转场
+                homeOpen = false;
+                view.Apply(0f);
+                Assert.IsTrue(view.IsTransitioning, "T136④：home→play 应**起一段转场**（而不是硬切）。");
+
+                // 推进：中途应在两端点之间（不在任一端点上必然成立的"贴哪边"）
+                view.Apply(CameraTransition.DefaultSeconds * 0.5f);
+                Assert.IsTrue(view.IsTransitioning, "T136④：半程时应仍在转场中。");
+                float halfDist = Vector3.Distance(cam.transform.position, CameraPresets.PlayPosition);
+                Assert.Greater(halfDist, 1e-3f, "T136④：半程不应已经贴到终点（否则等于硬切）。");
+
+                // 推进满 ⇒ **逐位**落到 play，且转场结束
+                view.Apply(CameraTransition.DefaultSeconds);
+                Assert.IsFalse(view.IsTransitioning, "T136④：推进满时长后转场应结束。");
+                Assert.IsTrue(Exact(cam.transform.position, CameraPresets.PlayPosition),
+                    $"T136④：转场终态必须**逐位**等于 play 预设（实测 {cam.transform.position}）。");
+                Assert.AreEqual(CameraPresets.PlayFovDeg.ToString("R"), cam.fieldOfView.ToString("R"),
+                    "T136④：转场终态 fov 必须逐位等于 play 预设。");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>逐位相等（浮点用 `R` 往返串比较，避免 `Vector3.==` 的近似语义）。</summary>
+        private static bool Exact(Vector3 a, Vector3 b)
+        {
+            return a.x.ToString("R") == b.x.ToString("R")
+                   && a.y.ToString("R") == b.y.ToString("R")
+                   && a.z.ToString("R") == b.z.ToString("R");
+        }
+
+        /// <summary>`p` 是否落在 `a`/`b` 两个端点构成的轴对齐包围盒内（含容差）。</summary>
+        private static bool InBox(Vector3 p, Vector3 a, Vector3 b)
+        {
+            const float tol = 1e-4f;
+            return p.x >= Mathf.Min(a.x, b.x) - tol && p.x <= Mathf.Max(a.x, b.x) + tol
+                   && p.y >= Mathf.Min(a.y, b.y) - tol && p.y <= Mathf.Max(a.y, b.y) + tol
+                   && p.z >= Mathf.Min(a.z, b.z) - tol && p.z <= Mathf.Max(a.z, b.z) + tol;
         }
     }
 }

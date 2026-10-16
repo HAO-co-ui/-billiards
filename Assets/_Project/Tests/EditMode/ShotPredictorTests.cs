@@ -388,7 +388,10 @@ namespace Billiards.Tests
                              + "说明本工程的 `LoadBalls` 语义已变（快照筛选的前提不再成立）。");
             }
 
-            // ── 附加：白球也离台时 ⇒ 按出杆口径补一颗在 `footSpot` 的白球（球数 = inPlayCount + 1） ──
+            // ── 附加：白球也离台时 ⇒ 按**出杆口径**补一颗在**开球位**的白球（球数 = inPlayCount + 1） ──
+            // ⚠ 重钉（第五轮）：期望起点由 `footSpot` 改为 `PhysicsTestDrive.CueBallHomePosition(footSpot)`
+            //   —— 与 `PhysicsTestDrive.Launch()` 的重摆点、`T70` **同一个值**（用户裁定"开球距离对齐现实 1.27 m"）。
+            //   本判据的语义本就 是"与出杆口径一致"，此前那个"开球位"恰好等于 `footSpot`。**未放宽**（仍容差 1e-6）。
             // ⚠ **必须另起一个干净局面**：若在"1 号球已入袋"的同一局里把白球也打进**同一个袋**，
             //   白球会在**喉平面之前**撞上袋里那颗**已冻结**的球（在跑内核**不跳过**"运动球 vs 冻结球"的对）
             //   ⇒ 白球根本进不了袋。**这正是规格登记的盲带 `R-AP`**（预测侧把离台球排除、实跑侧不排除）；
@@ -430,13 +433,14 @@ namespace Billiards.Tests
                                  + "（应与出杆口径一致：白球放回开球点）。");
                 }
 
-                if ((predCueOff.CueStart - table.footSpot).magnitude > 1e-6f)
+                Vector2 cueHome = PhysicsTestDrive.CueBallHomePosition(table.footSpot);
+                if ((predCueOff.CueStart - cueHome).magnitude > 1e-6f)
                 {
-                    failures.Add($"(附加) 白球离台时预测起点应为 `footSpot` {RVec(table.footSpot)}，实测 {RVec(predCueOff.CueStart)}。");
+                    failures.Add($"(附加) 白球离台时预测起点应为**开球位** {RVec(cueHome)}，实测 {RVec(predCueOff.CueStart)}。");
                 }
 
                 TestContext.WriteLine($"T74(附加): 白球离台 ⇒ inPlay={inPlayAfter} ⇒ probe 球数 {predCueOff.ProbeBallCount}，"
-                                      + $"起点 {RVec(predCueOff.CueStart)} = footSpot ✓");
+                                      + $"起点 {RVec(predCueOff.CueStart)} = 开球位 ✓");
             }
 
             Assert.IsEmpty(failures, "T74 快照语义失败：\n" + string.Join("\n", failures));
@@ -783,6 +787,9 @@ namespace Billiards.Tests
         /// 期望值来源：**(a) 甲**（直线距离的几何构造）；**(b) 乙-同源**。
         /// **几何（实测选定）**：白球 `footSpot (0.51, 0)`、目标 `(−0.40, 0.30)`、瞄准 `172.50°`、力度 1
         /// ⇒ 先撞**左长库**（`x = −1.27`）再命中目标；实测反弹 **1** 次、幽灵球离直线 **0.0412 m**、需 **78** 步。
+        /// ⚠ **第五轮登记**：白球起点由夹具**显式固定**为 `footSpot`（不再跟随 `Initialize()` 的默认起点）——
+        ///   用户裁定"开球距离改 1.27 m"后默认起点变远，同一个瞄准角不再命中目标；本判据只测"银行球预测与实跑一致"，
+        ///   默认起点由 `T38`/`T70`/`T133` 覆盖。
         /// **盲带**：`d_min` 是**选定门限**（只判"离直线足够远"，不判具体落点）；`(b)` 的同源盲带见上。
         /// **注入负对照**：预测改用**解析直线**（沿瞄准方向直走、忽略库边）⇒ 白球打不到目标球
         /// ⇒ `HasFirstContact == false` ⇒ **(a) 与 (b) 同时红**；步长/参数不同源 ⇒ **(b) FAIL**。
@@ -815,6 +822,15 @@ namespace Billiards.Tests
                 drive.rackBallCount = 3;
                 drive.Initialize();
                 Assert.IsNotNull(drive.Simulator, "T78：Initialize 后应有内核。");
+
+                // ⚠ **夹具显式固定白球起点**（第五轮登记）：本场景的瞄准角 `172.50°` 与目标位 `(-0.40, 0.30)`
+                //   是**在"白球 = `footSpot`"这个起点下实测选定**的（要满足"先撞左长库、再命中目标"）。
+                //   用户裁定"开球距离对齐现实（1.27 m）"后，`Initialize()` 的默认起点变成 `CueBallHomePosition`
+                //   （更靠 +x 0.46 m）⇒ 同一个瞄准角**不再命中目标**（实测：实跑 4000 步无首次接触）。
+                //   ⇒ 本判据的**判别对象是"银行球：预测与实跑一致"**，与"默认起点在哪"无关 ⇒
+                //     在夹具里**把起点固定回被验证过的那一点**，使本判据只测那一件事。
+                //   （默认起点本身由 `T38`/`T70`/`T133` 覆盖，**不靠本判据**。）
+                drive.Simulator.PlaceBall(0, drive.tableConfig.footSpot, Vector2.zero);
 
                 // 把 1 号球摆成目标（其余堆球不动；实测它们不参与本场景的接触）。
                 drive.Simulator.PlaceBall(1, targetPos, Vector2.zero);

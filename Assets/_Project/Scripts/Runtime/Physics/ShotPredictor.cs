@@ -97,7 +97,7 @@ namespace Billiards.Physics
                 probe.ResetDiagnostics();
             }
 
-            // ── ② 快照：只装在场上球（白球离台时补一颗在 footSpot） ──
+            // ── ② 快照：只装在场上球（白球离台时补一颗在**开球位**） ──
             IReadOnlyList<BallState> srcBalls = source.Balls;
             List<BallState> snapshot = workspace.Snapshot;
             snapshot.Clear();
@@ -105,8 +105,9 @@ namespace Billiards.Physics
 
             if (!source.IsBallInPlay(0))
             {
-                // 白球不在场上（入袋 / 擦袋角离台）⇒ 与出杆口径一致：放回开球点。
-                snapshot.Add(new BallState { position = table.footSpot, velocity = Vector2.zero });
+                // 白球不在场上（入袋 / 擦袋角离台）⇒ 与出杆口径一致：放回**开球位**
+                // （⚠ 与 `PhysicsTestDrive.Launch()` 的重摆点**必须同源** —— 否则预测线与实际出杆位置分叉）。
+                snapshot.Add(new BallState { position = PhysicsTestDrive.CueBallHomePosition(table.footSpot), velocity = Vector2.zero });
                 cueLocalIndex = 0;
             }
 
@@ -127,8 +128,8 @@ namespace Billiards.Physics
 
             if (cueLocalIndex < 0)
             {
-                // 兜底：源内核一颗球都没有（`LoadBalls` 之前）⇒ 至少放一颗白球在开球点。
-                snapshot.Add(new BallState { position = table.footSpot, velocity = Vector2.zero });
+                // 兜底：源内核一颗球都没有（`LoadBalls` 之前）⇒ 至少放一颗白球在**开球位**。
+                snapshot.Add(new BallState { position = PhysicsTestDrive.CueBallHomePosition(table.footSpot), velocity = Vector2.zero });
                 cueLocalIndex = 0;
             }
 

@@ -1,6 +1,6 @@
 {
     "schema": "billiards.day3-verification.v1",
-    "generatedAtUtc": "2026-10-16T07:36:41.8430029Z",
+    "generatedAtUtc": "2026-10-16T08:35:47.3508365Z",
     "unityVersion": "6000.0.49f1",
     "activeBuildTarget": "StandaloneWindows64",
     "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
@@ -206,7 +206,7 @@
             "id": "RND-01",
             "title": "渲染证据图落盘且**非退化**（与 `qa_render_evidence_check.py` 同判）",
             "expected": "4 张且 distinctColors > 1",
-            "actual": "E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-top-view.png：39451 色 sha=7e76e901f4d8；E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-perspective.png：55248 色 sha=c904674196e2；E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-normal-ab\\ab-asis.png：43580 色 sha=d3910af9830d；E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-normal-ab\\ab-flipgreen.png：39820 色 sha=7c97509bb3e0",
+            "actual": "E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-top-view.png：42228 色 sha=c4e5d0e0b6bd；E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-perspective.png：55312 色 sha=b9ac3f033307；E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-normal-ab\\ab-asis.png：43534 色 sha=23fb37e5af18；E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-normal-ab\\ab-flipgreen.png：39792 色 sha=865d69590ebf",
             "status": "PASS",
             "detail": "**只查\"落盘\"不够**：无 GPU 的批处理下 `cam.Render()` 拿不到内容 ⇒ 纯灰空图。本项与离线工具 `qa_render_evidence_check.py` **同判**（`distinctColors > 1`）。"
         },
@@ -214,7 +214,7 @@
             "id": "NAB-01",
             "title": "法线 A/B 两版**必须有差异**（否则证据无信息）",
             "expected": "差异像素占比 > 0",
-            "actual": "A/B 差异 53.85% 像素不同（1296000 vs 1296000 像素）；均值亮度 asIs=0.1818 flipped=0.1723",
+            "actual": "A/B 差异 53.86% 像素不同（1296000 vs 1296000 像素）；均值亮度 asIs=0.1818 flipped=0.1723",
             "status": "PASS",
             "detail": "掠射光 Euler(12,-118,0)、低角度视图、`_BumpScale=4`（仅对比图放大，正式材质为 1）。方向判定仍是**视觉判据**（依据：受力特征明暗侧是否随绿色通道翻转而交换），结论与逐条依据写入 `Docs/35-A_Day3_材质与视觉基础_执行记录.md`；**本项只保证\"该证据不是空的\"**（两版相同 ⇒ FAIL）。"
         }

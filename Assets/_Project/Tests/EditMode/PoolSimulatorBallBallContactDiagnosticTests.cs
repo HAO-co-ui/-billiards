@@ -47,6 +47,12 @@ namespace Billiards.Tests
 
         // ── 实测基线（口径：`Tests/EditMode/PoolSimulatorTerminationAndBreakTests.cs` 的 T32b / T37 场景与串行化口径）──
         //
+        // ⚠ **第五轮重钉（白球开球位由 `footSpot` 改为 `CueBallHomePosition`：距球堆顶点 0.808 → 1.27 m）** —— 依据：
+        //   用户裁定"开球时白球离球堆再远一点，接近现实开球距离" ⇒ 白球**首碰前的行程变长** ⇒ 接触数略降、
+        //   逐球终态整体位移（这是**几何输入改变后的正常响应**，不是动力学缺陷）。本轮实测：
+        //   `T37 bb 37 → 35`、`total 49 → 48`；`captured/proximity/jaw/guard/energy/maxIter` **均未变**
+        //   （否则本判据会一并报出）。T32b 侧基线**未变**。
+        //
         // ⚠ **第四轮重钉（「袋角冲量」修复：`ResolveSegmentContact` 补接近判据）** —— 三条依据：
         //   ① **因果对照**：把该判据去掉（注入）⇒ 本判据的**全部旧基线逐位复原**
         //      （`T32b total=74`、`T37 total=6746`、16 球终态逐位相同，实测）⇒ 这些变化**只**由那一条判据引起。
@@ -57,36 +63,36 @@ namespace Billiards.Tests
         //      （弹到台面另一侧）—— 与「不再被库边吸住」一致。
         private const int T32bBaselineTotalContactCount = 2;
         private const int T32bBaselineCapturedBallCount = 1;
-        private const int T37BaselineBallBallContactCount = 37;
+        private const int T37BaselineBallBallContactCount = 35;   // 第五轮重钉：37 → 35（白球开球位改到 1.27 m）
         private const int T37BaselineCapturedBallCount = 2;   // 袋角归属裁定 A：越喉且在喉口内 ⇒ 入袋（原 0）
-        private const int T37BaselineTotalContactCount = 49;   // 第四轮重钉：原 6746 中 98.8% 是「已在分离」的伪接触（见上方注释）
+        private const int T37BaselineTotalContactCount = 48;   // 第五轮重钉：49 → 48（同上）
         private const int T37BaselinePocketProximityEvents = 2;
         private const int T37BaselinePocketJawCrossingCount = 0;   // 同上：边界移到 openingRadius 后该场景无越界（原 2）
         private const int T37BaselineGuardTrips = 0;
         private const int T37BaselineEnergyGain = 0;
         private const int T37BaselineBallBallMaxIterationsObserved = 6;
 
-        /// <summary>T37 的 16 颗球终态（`x;y`，逐位串；**第四轮重钉**后的实测基线，依据见上方注释）。
-        /// 其中 10 颗变化（0/1/3/6/7/8/10/12/13/14），6 颗逐位不变；变化最大的球 1 由「贴在 −y 长库上」
-        /// 变为「弹到台面另一侧」。</summary>
+        /// <summary>T37 的 16 颗球终态（`x;y`，逐位串；**第五轮重钉**后的实测基线，依据见上方注释）。
+        /// 第五轮变化：白球开球位改到 1.27 m ⇒ 首碰速度略降、终态整体位移（16 颗**全部**与第四轮基线不同，
+        /// 但量级都很小，最大约 1.2 cm）。</summary>
         private static readonly string[] T37BaselineFinalPositions =
         {
-            "1.21900022;0.0102524208",
-            "0.04816721;0.6526122",
-            "-0.3474119;0.0283389147",
-            "-0.277584672;-0.219319478",
-            "-0.399346828;0.0574025027",
-            "-0.399149865;0.0001637311",
-            "0.6000458;0.0312398374",
-            "-0.09315988;0.5284948",
-            "-0.662210941;0.08714859",
-            "-0.449126482;-0.0282310452",
-            "-0.5803914;-0.3078415",
-            "-1.256161;0.6710566",
-            "-0.7874716;0.396159828",
-            "-0.301134646;0.3414967",
-            "-0.1881547;-0.487112969",
-            "-1.255292;-0.6730765",
+            "1.20953846;0.0101854652",
+            "0.0470598526;0.6410577",
+            "-0.3474241;0.02833865",
+            "-0.2779553;-0.2180049",
+            "-0.399346769;0.0574001633",
+            "-0.3991561;0.000164250057",
+            "0.595983446;0.0439007543",
+            "-0.09880379;0.518244267",
+            "-0.660723269;0.08649037",
+            "-0.449124724;-0.02823431",
+            "-0.5798644;-0.306969345",
+            "-1.25922811;0.6749624",
+            "-0.7860226;0.4004279",
+            "-0.303173065;0.340408385",
+            "-0.190852433;-0.482139736",
+            "-1.25478649;-0.674243152",
         };
 
         // ── 辅助 ──────────────────────────────────────────────────────────

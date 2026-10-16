@@ -461,12 +461,12 @@ namespace Billiards.Physics
             return Mathf.FloorToInt(accumulated / fixedStep);
         }
 
-        /// <summary>单球模式：白球静止于开球点。</summary>
+        /// <summary>单球模式：白球静止于**开球位**（<see cref="CueBallHomePosition"/>；不再用 `footSpot`）。</summary>
         private BallState[] BuildSingleBall()
         {
             return new[]
             {
-                new BallState { position = tableConfig.footSpot, velocity = Vector2.zero },
+                new BallState { position = CueBallHomePosition(tableConfig.footSpot), velocity = Vector2.zero },
             };
         }
 
@@ -497,15 +497,49 @@ namespace Billiards.Physics
         }
 
         /// <summary>
+        /// **球堆顶点的 x（规范坐标）** —— 球堆从该点起沿 `−x` 展开。**唯一真源**：
+        /// <see cref="RackPositions"/>（排布）与 <see cref="CueBallHomePosition"/>（白球间距）共用，
+        /// 免得"顶点"与"间距"两处各写一个数而悄悄漂移。
+        /// </summary>
+        public const float RackApexX = -0.30f;
+
+        /// <summary>
+        /// **开球时白球到球堆顶点的间距（米）** —— **用户裁定**："开球时白球离球堆再远一点，接近现实开球距离"。
+        ///
+        /// 现实口径：白球在**头区**、球堆在**脚点** ⇒ 相距 ≈ **半个台长** = `ClothHalfLength` × 2 / 2 = **1.27 m**。
+        /// 旧值（白球放在 `footSpot`）实测只有 **0.808 m** ⇒ 短了约 0.46 m，与用户"有点近"一致。
+        ///
+        /// ⚠ **为什么不去调初速**：初速 8 m/s 是上一卡**用户拍板**的（`T133` 守它）；本条只动几何。
+        /// ⚠ **档位不是凭直觉挑的**（实测四组，见规格 §13.2）：打散数**不随距离单调**
+        ///   （1.15 m 档掉到 6/15 余量 0 且触发 TOI 守卫；而 1.27 m 档回到 8/15、guard=0）。
+        /// </summary>
+        public const float BreakClearanceMetres = 1.27f;
+
+        /// <summary>
+        /// **开球时白球的落点**（**纯函数，唯一真源**）—— `BuildRack` / `BuildSingleBall` /
+        /// **落袋重摆** / `ShotPredictor` 的幽灵白球 / **白球可视物** 全部读这里 ⇒ 物理与画面不分叉。
+        ///
+        /// ⚠ 它**取代**了"白球 = `footSpot`"的旧口径：`RackPositions[0]` 与它返回**同一个值**
+        /// （不留旧契约值 —— 否则 `T38` 会变成一个"守着没人再用的摆设值"的守卫）。
+        /// </summary>
+        public static Vector2 CueBallHomePosition(Vector2 footSpot)
+        {
+            return new Vector2(RackApexX + BreakClearanceMetres, footSpot.y);
+        }
+
+        /// <summary>
         /// 球堆位置（**纯函数**，灰盒驱动 / 验收器 / 测试**共用同一口径** —— 单一实现，铁律 16）。
         /// 返回数组 = **`[白球] + rackBallCount 颗堆球**；`rackBallCount` 默认 `3`（= 旧的 4 球摆放）。
+        ///
+        /// **⚠ `[0]` = <see cref="CueBallHomePosition"/>（不是 `footSpot`）** —— 用户裁定"开球距离对齐现实"后，
+        /// 白球落点由"脚点"改为"距球堆顶点 1.27 m"。`T38` 已按**新口径重新钉**（不是被绕过）。
         ///
         /// 排布：三角形、**顶点朝 +x（面向白球）**；第 `r` 行沿 y 关于 0 对称，行距 `s·√3/2`。
         /// 间距 `s = 2·BallRadius + 2e-4` ⇒ 满足 <see cref="PoolSimulator.BallInitialOverlapTolerance"/>
         /// 的"合法摆放"要求（任意两球间距 ≥ `2r − 1e-4`）。
         ///
         /// **⚠ 内层 `k` 必须降序**：在 `y = (k − r/2)·s` 下，降序才能让 `r = 1` 时 `+half` 先于 `−half` 入列
-        /// ⇒ 与旧 4 球字面 `[footSpot, (−0.30, 0), (−0.30 − row, +half), (−0.30 − row, −half)]` **逐位一致**。
+        /// ⇒ 与旧 4 球字面 **逐位一致**（只差 `[0]` 换成了新地标）。
         /// 若改升序，索引 2/3 互换 ⇒ 破坏既有按索引读取的证据（验收器 / 报告项 / 逐球终态）。
         /// </summary>
         public static Vector2[] RackPositions(Vector2 footSpot, int rackBallCount = 3)
@@ -519,7 +553,7 @@ namespace Billiards.Physics
                 rows++;
             }
 
-            var positions = new List<Vector2>(1 + rackBallCount) { footSpot };
+            var positions = new List<Vector2>(1 + rackBallCount) { CueBallHomePosition(footSpot) };
 
             int placed = 0;
             for (int r = 0; r < rows; r++)
@@ -531,7 +565,7 @@ namespace Billiards.Physics
                         break;
                     }
 
-                    positions.Add(new Vector2(-0.30f - r * row, (k - r * 0.5f) * s));
+                    positions.Add(new Vector2(RackApexX - r * row, (k - r * 0.5f) * s));
                     placed++;
                 }
 
@@ -593,9 +627,10 @@ namespace Billiards.Physics
             float speed = Mathf.Lerp(minLaunchSpeed, maxLaunchSpeed, Mathf.Clamp01(power));
             Vector2 v0 = direction * speed;
 
-            // ③ 白球不在场上（已入袋 / 擦袋角离台）⇒ 显式放回开球点；否则 ① 就在它停下的地方出杆。
+            // ③ 白球不在场上（已入袋 / 擦袋角离台）⇒ 显式放回**开球位**；否则 ① 就在它停下的地方出杆。
             bool cueOffTable = !_simulator.IsBallInPlay(0);
-            Vector2 from = cueOffTable ? tableConfig.footSpot : _simulator.Balls[0].position;
+            Vector2 cueHome = CueBallHomePosition(tableConfig.footSpot);
+            Vector2 from = cueOffTable ? cueHome : _simulator.Balls[0].position;
 
             _simulator.PlaceBall(0, from, v0);
 
@@ -613,9 +648,9 @@ namespace Billiards.Physics
                 // ⚠ scratch 的**计数与时间戳**不在这里加 —— 见 `TrackCueBallScratch()`：
                 // 若等到下一杆才计，玩家在本杆结束后**看不到任何判罚**（用户实测："落网又没反馈"）。
 
-                // 白球从袋口**瞬移**回开球点 ⇒ 必须重置自转跟踪，否则这一瞬移会被当成真实位移、球凭空猛转一下。
+                // 白球从袋口**瞬移**回开球位 ⇒ 必须重置自转跟踪，否则这一瞬移会被当成真实位移、球凭空猛转一下。
                 ResetVisualRotationTracking();
-                Debug.Log($"PhysicsTestDrive：白球已离台（入袋/擦袋角）⇒ 放回开球点 {tableConfig.footSpot} 后出杆。", this);
+                Debug.Log($"PhysicsTestDrive：白球已离台（入袋/擦袋角）⇒ 放回开球位 {cueHome} 后出杆。", this);
             }
 
             SyncVisual();

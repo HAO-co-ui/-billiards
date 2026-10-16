@@ -231,9 +231,11 @@ namespace Billiards.Tests
         /// **第二杆的白球位置 == 第一杆打完的静止位置**（"滚到哪就从哪打"）。
         ///
         /// 做法：单球模式 ⇒ 静止 ⇒ 满力出杆 ⇒ 推进到静止 ⇒ 记录白球位置 ⇒ **再出杆** ⇒ 立即断言位置未变。
-        /// 前提断言：静止位置**确实不在** `footSpot`（否则本判据无区分度 —— 会与"被摆回 `footSpot`"混淆）。
+        /// 前提断言：静止位置**确实不在<span>开球位</span>**（否则本判据无区分度 —— 会与"被摆回开球位"混淆）。
+        /// ⚠ 参照点用 `PhysicsTestDrive.CueBallHomePosition(footSpot)` 而**不是** `footSpot`：
+        ///   用户裁定开球距离改为 1.27 m 后，白球起点离 `footSpot` 已有 0.46 m ⇒ 拿 `footSpot` 当参照会让本前提**恒真**。
         ///
-        /// **能测出**：白球被摆回 `footSpot`（本缺陷的另一半）。
+        /// **能测出**：白球被摆回**开球位**（本缺陷的另一半）。
         /// **注入负对照（实测）**：把 `Launch()` 里的起点写成 `footSpot` ⇒ FAIL。
         /// </summary>
         [Test]
@@ -255,8 +257,12 @@ namespace Billiards.Tests
                 Assert.IsTrue(drive.Simulator.TableAtRest, "T66：前提 —— 第一杆应在上限内静止。");
 
                 Vector2 stopped = drive.Simulator.Balls[0].position;
-                Assert.Greater((stopped - Table().footSpot).magnitude, 0.05f,
-                    "T66：前提 —— 白球应确实滚离了开球点（否则本判据与“被摆回 footSpot”不可区分）。");
+                // ⚠ 参照点 = **开球位**（不是 `footSpot`）：用户裁定开球距离改为 1.27 m 后，
+                //   白球**起点本身**离 `footSpot` 已有 0.46 m ⇒ 若仍拿 `footSpot` 当参照，
+                //   本条前提会**恒真**（失去"白球确实滚离了起始位"的判别力）。
+                Vector2 cueHome = PhysicsTestDrive.CueBallHomePosition(Table().footSpot);
+                Assert.Greater((stopped - cueHome).magnitude, 0.05f,
+                    "T66：前提 —— 白球应确实滚离了开球位（否则本判据与“被摆回开球位”不可区分）。");
                 Assert.IsTrue(drive.Simulator.IsBallInPlay(0), "T66：前提 —— 白球应仍在场上（未入袋）。");
 
                 Assert.Greater(drive.Launch().magnitude, 0f, "T66：前提 —— 第二杆应被接受。");
@@ -266,7 +272,7 @@ namespace Billiards.Tests
                 Assert.Less((after - stopped).magnitude, 1e-9f,
                     $"T66：第二杆的白球位置应 == 它停下的地方 {RVec(stopped)}，实测 {RVec(after)}"
                     + "（被摆回开球点 = 整盘重置缺陷）。");
-                TestContext.WriteLine($"T66: 第二杆白球仍在 {RVec(after)}（开球点 {RVec(Table().footSpot)}）✓");
+                TestContext.WriteLine($"T66: 第二杆白球仍在 {RVec(after)}（开球位 {RVec(cueHome)}）✓");
             }
             finally
             {
@@ -458,15 +464,23 @@ namespace Billiards.Tests
             }
         }
 
-        // ══════════════════ T70 白球入袋 ⇒ 显式放回开球点（可观测）════════════
+        // ══════════════════ T70 白球入袋 ⇒ 显式放回开球位（可观测）════════════
 
         /// <summary>
-        /// **白球入袋 ⇒ 出杆时显式放回 `footSpot`，且这件事必须可观测**（不许静默）。
+        /// **白球入袋 ⇒ 出杆时显式放回<span>开球位</span>，且这件事必须可观测**（不许静默）。
         ///
         /// 做法：单球模式 ⇒ 静止 ⇒ 用 `PlaceBall(0, …)` 把白球放到中袋喉口内侧并朝袋内给初速
         /// ⇒ 推进到静止（白球**确定性入袋**、离台）⇒ 断言前提（已入袋、不在场上）
-        /// ⇒ 出杆 ⇒ 断言 ① 白球**已回到场上**；② 位置 == `footSpot`（逐位/容差 0）；
+        /// ⇒ 出杆 ⇒ 断言 ① 白球**已回到场上**；② 位置 == **`CueBallHomePosition(footSpot)`**（容差 0）；
         /// ③ 只读出口 <see cref="PhysicsTestDrive.LastLaunchRespawnedCueBall"/> == `true`（**可观测性**）。
+        ///
+        /// ── 重钉登记（**改的是什么 / 为什么 / 前后值**）────────────────────────────────
+        /// · **改的是什么**：期望落点由 `footSpot` 改为 **`PhysicsTestDrive.CueBallHomePosition(footSpot)`**
+        ///   （与 `RackPositions[0]` **同一个值** ⇒ 仍是一处真源）。
+        /// · **为什么**：**用户裁定**"开球距离对齐现实（约半台 1.27 m）" ⇒ 出杆/重摆**同口径**。
+        ///   本判据的语义**本就**是"放回**开球区**"，只是此前那个"开球区"恰好等于 `footSpot`。
+        /// · **前后值**：`(0.508, 0)` → **`(0.97, 0)`**。⚠ **未放宽**：仍是"逐位/容差 0"，没有改成
+        ///   "只要不在台外"这类模糊形态。
         ///
         /// **能测出**：白球入袋后"静默消失"（既不放回也不报错）／放回了但**没有任何出口**可断言。
         /// **注入负对照（实测）**：把 `Launch()` 的起点改成"白球当前位置"（不放回）⇒ FAIL。
@@ -491,7 +505,9 @@ namespace Billiards.Tests
                 Assert.IsFalse(drive.Simulator.IsBallInPlay(0), "T70：前提 —— 已入袋的白球应不在场上。");
                 Assert.IsTrue(drive.Simulator.TableAtRest, "T70：前提 —— 入袋后整盘应静止。");
 
-                Vector2 footSpot = Table().footSpot;
+                // ⚠ 期望落点 = **开球位**（与 `RackPositions[0]` 同源），不是 `footSpot`
+                //   —— 见本判据的重钉登记（用户裁定"开球距离对齐现实"）。
+                Vector2 cueHome = PhysicsTestDrive.CueBallHomePosition(Table().footSpot);
                 drive.aimDegrees = 180f;
                 drive.power = 1f;
                 Assert.Greater(drive.Launch().magnitude, 0f, "T70：前提 —— 出杆应被接受。");
@@ -502,10 +518,10 @@ namespace Billiards.Tests
                     failures.Add("白球入袋后出杆，它**没有回到场上**（静默消失）。");
                 }
 
-                float off = (drive.Simulator.Balls[0].position - footSpot).magnitude;
+                float off = (drive.Simulator.Balls[0].position - cueHome).magnitude;
                 if (!(off < 1e-6f))
                 {
-                    failures.Add($"白球应被放回开球点 {RVec(footSpot)}，实测 {RVec(drive.Simulator.Balls[0].position)}（偏 {off:E3} m）。");
+                    failures.Add($"白球应被放回开球位 {RVec(cueHome)}，实测 {RVec(drive.Simulator.Balls[0].position)}（偏 {off:E3} m）。");
                 }
 
                 if (!drive.LastLaunchRespawnedCueBall)
