@@ -79,6 +79,18 @@ namespace Billiards.Tests
             return steps;
         }
 
+        /// <summary>摆法签名（球号 → 位置，逐位可复现比较用；`P1` 判据 (d) 用）。</summary>
+        private static string RackSignature(Vector2[] positions)
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < positions.Length; i++)
+            {
+                sb.Append(i).Append(':').Append(RVec(positions[i])).Append(';');
+            }
+
+            return sb.ToString();
+        }
+
         private static string RVec(Vector2 v)
             => v.x.ToString("R", CultureInfo.InvariantCulture) + ";"
              + v.y.ToString("R", CultureInfo.InvariantCulture);
@@ -213,6 +225,142 @@ namespace Billiards.Tests
                         failures.Add($"球 {i}：出杆前 {before[i - 1]} → 出杆后 {now}（被“整盘重置”挪动了）。");
                     }
                 }
+
+            // ── **35-C P1：球号（下标即球号）+ 8 球 15 颗摆位**（种子注入 ⇒ 可复现）──────────────────
+            // 期望值来源：**独立几何式**（`BallDiameter + 2e-4` / `RackApexX` / `s·√3/2`）＋纯函数契约，非复述实现。
+            // **怎么打死它**：把"8 号放槽 4"改掉 ⇒ (b) 必红；把种子参数忽略（恒定排法）⇒ (d) 必红。
+            float rackSpacing = PoolConstants.BallDiameter + 2e-4f;
+            float rackRowSpacing = rackSpacing * 0.8660254f;
+            Vector2 rackFootSpot = Table().footSpot;
+
+            Vector2[] rackA = PhysicsTestDrive.EightBallRackPositions(rackFootSpot, 12345);
+
+            // (a) 16 个点（白球 + 15）＋ `[0]` = 白球开球位（逐位）＋ **最小球心距 == s**（与 3 颗版同源几何）
+            if (rackA.Length != 16)
+            {
+                failures.Add($"(a) `EightBallRackPositions` 应返回 16 个点（白球 + 15），实测 {rackA.Length}。");
+            }
+            else
+            {
+                if (RVec(rackA[0]) != RVec(PhysicsTestDrive.CueBallHomePosition(rackFootSpot)))
+                {
+                    failures.Add($"(a) `[0]` 应为白球开球位（逐位），实测 {RVec(rackA[0])}。");
+                }
+
+                float minGap = float.MaxValue;
+                for (int i = 1; i < rackA.Length; i++)
+                {
+                    for (int j = i + 1; j < rackA.Length; j++)
+                    {
+                        minGap = Mathf.Min(minGap, (rackA[i] - rackA[j]).magnitude);
+                    }
+                }
+
+                if (!(Mathf.Abs(minGap - rackSpacing) <= 1e-5f))
+                {
+                    failures.Add($"(a) 15 颗最小球心距应 == {rackSpacing:R}（同源几何），实测 {minGap:R}。");
+                }
+            }
+
+            // (b) **8 号在第三排正中**（逐位；期望 = 独立几何式）
+            if (rackA.Length == 16)
+            {
+                var expectedEight = new Vector2(PhysicsTestDrive.RackApexX - 2f * rackRowSpacing, 0f);
+                if (RVec(rackA[8]) != RVec(expectedEight))
+                {
+                    failures.Add($"(b) **8 号应在第三排正中** {RVec(expectedEight)}（逐位），实测 {RVec(rackA[8])}。");
+                }
+            }
+
+            // (c) **底排两角一实一花**（角 = 几何上 |y| 最大的两颗；实色 1..7 / 花色 9..15）
+            if (rackA.Length == 16)
+            {
+                int bestBall1 = -1;
+                int bestBall2 = -1;
+                float bestY1 = -1f;
+                float bestY2 = -1f;
+                for (int ball = 1; ball <= 15; ball++)
+                {
+                    float ay = Mathf.Abs(rackA[ball].y);
+                    if (ay > bestY1)
+                    {
+                        bestY2 = bestY1;
+                        bestBall2 = bestBall1;
+                        bestY1 = ay;
+                        bestBall1 = ball;
+                    }
+                    else if (ay > bestY2)
+                    {
+                        bestY2 = ay;
+                        bestBall2 = ball;
+                    }
+                }
+
+                if (bestBall1 < 0 || bestBall2 < 0)
+                {
+                    failures.Add("(c) 无法从几何上识别底排两角（|y| 最大的两颗）。");
+                }
+                else
+                {
+                    bool c1Solid = bestBall1 >= 1 && bestBall1 <= 7;
+                    bool c2Solid = bestBall2 >= 1 && bestBall2 <= 7;
+                    if (c1Solid == c2Solid)
+                    {
+                        failures.Add($"(c) 底排两角应**一实一花**，实测两颗同为「{(c1Solid ? "实色" : "花色")}」"
+                                     + $"（球号 {bestBall1} 与 {bestBall2}）。");
+                    }
+                }
+            }
+
+            // (d) **可复现**：同种子逐位相同；多种子中**至少 2 种**不同（避免"假随机"）
+            Vector2[] rackAgain = PhysicsTestDrive.EightBallRackPositions(rackFootSpot, 12345);
+            for (int ball = 0; ball < Mathf.Min(rackA.Length, rackAgain.Length); ball++)
+            {
+                if (RVec(rackA[ball]) != RVec(rackAgain[ball]))
+                {
+                    failures.Add($"(d) 同种子两次应逐位相同，球 {ball}：{RVec(rackA[ball])} ≠ {RVec(rackAgain[ball])}。");
+                    break;
+                }
+            }
+
+            string firstSig = RackSignature(PhysicsTestDrive.EightBallRackPositions(rackFootSpot, 1));
+            bool sawDifferent = false;
+            for (int seed = 2; seed <= 8; seed++)
+            {
+                if (RackSignature(PhysicsTestDrive.EightBallRackPositions(rackFootSpot, seed)) != firstSig)
+                {
+                    sawDifferent = true;
+                    break;
+                }
+            }
+
+            if (!sawDifferent)
+            {
+                failures.Add("(d) 不同种子应产生不同摆法（否则随机未生效 = 假随机）。");
+            }
+
+            // (e) **不误伤 3 颗版**：仍 4 个点、最小球心距仍 == s
+            Vector2[] rack3 = PhysicsTestDrive.RackPositions(rackFootSpot, 3);
+            if (rack3.Length != 4)
+            {
+                failures.Add($"(e) 3 颗版应返回 4 个点，实测 {rack3.Length}。");
+            }
+            else
+            {
+                float minGap3 = float.MaxValue;
+                for (int i = 1; i < rack3.Length; i++)
+                {
+                    for (int j = i + 1; j < rack3.Length; j++)
+                    {
+                        minGap3 = Mathf.Min(minGap3, (rack3[i] - rack3[j]).magnitude);
+                    }
+                }
+
+                if (!(Mathf.Abs(minGap3 - rackSpacing) <= 1e-5f))
+                {
+                    failures.Add($"(e) 3 颗版最小球心距应 == {rackSpacing:R}（未误伤），实测 {minGap3:R}。");
+                }
+            }
 
                 Assert.IsEmpty(failures,
                     "T65：`Launch()` **不得**移动任何非白球（整盘重置缺陷）：\n" + string.Join("\n", failures));

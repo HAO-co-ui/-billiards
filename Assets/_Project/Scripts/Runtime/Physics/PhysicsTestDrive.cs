@@ -588,11 +588,118 @@ namespace Billiards.Physics
         /// ⇒ 与旧 4 球字面 **逐位一致**（只差 `[0]` 换成了新地标）。
         /// 若改升序，索引 2/3 互换 ⇒ 破坏既有按索引读取的证据（验收器 / 报告项 / 逐球终态）。
         /// </summary>
-        public static Vector2[] RackPositions(Vector2 footSpot, int rackBallCount = 3)
+        /// <summary>
+        /// **摆球几何：单点实现**（`RackPositions` 与 <see cref="EightBallRackPositions"/> **共用**）——
+        /// 第 `r` 排（从顶点排 `r = 0` 起）第 `k` 槽（`k` 从 `r` 递减到 `0`）的**规范坐标**。
+        /// 球间距 `s = BallDiameter + 2e-4`；排间距 `s·√3/2`；顶点在 <see cref="RackApexX"/>。
+        /// ⚠ **不得**在别处再写一套摆球几何（铁律 16）。
+        /// </summary>
+        private static Vector2 RackSlot(int r, int k)
         {
             float s = PoolConstants.BallDiameter + 2e-4f;
-            float row = s * 0.8660254f;
+            return new Vector2(RackApexX - r * (s * 0.8660254f), (k - r * 0.5f) * s);
+        }
 
+        // ── **球号约定（35-C §6-P1）** ───────────────────────────────────────────────
+        // **下标即球号**：`0` = **白球**，`1..15` = **目标球**（`8` = **黑 8**）。
+        // 内核 `BallState` **只存 `position` / `velocity`、不存球号** ⇒ **球号 = 球表下标**（内核无需改）。
+        // 既有"逐号材质/可视物"**正依赖本约定**（故不要再立第二套编号）：
+        //   · `GreyboxSceneSetup.BallMaterialPathFormat` = `"Assets/_Project/Materials/Balls/Ball_{0:00}.mat"`
+        //     （`Ball_00` = **白球** ⇒ 与"下标 0 = 白球"一致）；
+        //   · `PhysicsTestDrive.ballVisuals`（`Transform[]`）与球表**同序**（见 `SyncVisual` 的 `ballVisuals[i]`）。
+
+        /// <summary>
+        /// **8 球三角框摆位（15 颗）—— 按**球号**索引返回**：`[0]` = 白球（<see cref="CueBallHomePosition"/>），
+        /// `[1..15]` = **各号球**的落点（`[8]` 即**黑 8**的落点）。
+        ///
+        /// 规则（35-C §6-P1）：
+        /// · **几何与 <see cref="RackPositions"/> 同源**（同一个 <see cref="RackSlot"/>；顶点 → 底排）；
+        /// · **`8` 号在第三排正中**（槽位按 `RackPositions` 的放置顺序编号：`0` = 顶点，`3/4/5` = 第 3 排，
+        ///   **`4` = 第三排正中**，其 `y = 0`）；
+        /// · **底排两角一实一花**（实色 = `1..7`、花色 = `9..15`；**角由种子随机决定哪边是实色**）；
+        /// · **其余 12 颗随机**（Fisher–Yates）。
+        ///
+        /// ⚠ **随机性与可复现**：**运行期每局取新种子**；**判据注入固定种子** ⇒ 同种子**逐位相同**、不同种子（一般）不同。
+        /// ⚠ **不改变** <see cref="RackPositions"/>（3 颗版）的既有行为（35-C §7-1：新增 15 颗夹具、保留 3 颗夹具）。
+        /// </summary>
+        public static Vector2[] EightBallRackPositions(Vector2 footSpot, int seed)
+        {
+            const int rackCount = RackBallCount;                 // 15
+            const int eightBall = 8;
+
+            var positions = new Vector2[1 + rackCount];          // [0] = 白球；[1..15] = 球号
+            positions[0] = CueBallHomePosition(footSpot);
+
+            // 槽位编号 = `RackPositions` 的放置顺序（r 升序、k 降序）：
+            //   0        = 顶点            （r=0）
+            //   1,2      = 第 2 排          （r=1）
+            //   3,4,5    = 第 3 排          （r=2）  ⇒ **4 = 正中**
+            //   6,7,8,9  = 第 4 排          （r=3）
+            //   10..14   = 第 5 排（底排）  （r=4）  ⇒ **10 与 14 = 两个底角**
+            const int slotEightBall = 4;
+            const int slotCornerLeft = 10;
+            const int slotCornerRight = 14;
+
+            var solids = new List<int> { 1, 2, 3, 4, 5, 6, 7 };        // 实色
+            var stripes = new List<int> { 9, 10, 11, 12, 13, 14, 15 }; // 花色
+            var rng = new System.Random(seed);
+
+            int solidIndex = rng.Next(solids.Count);
+            int solidCorner = solids[solidIndex];
+            solids.RemoveAt(solidIndex);
+
+            int stripeIndex = rng.Next(stripes.Count);
+            int stripeCorner = stripes[stripeIndex];
+            stripes.RemoveAt(stripeIndex);
+
+            bool leftCornerIsSolid = rng.Next(2) == 0;
+
+            var slotBall = new int[rackCount];
+            for (int i = 0; i < rackCount; i++)
+            {
+                slotBall[i] = -1;
+            }
+
+            slotBall[slotEightBall] = eightBall;
+            slotBall[slotCornerLeft] = leftCornerIsSolid ? solidCorner : stripeCorner;
+            slotBall[slotCornerRight] = leftCornerIsSolid ? stripeCorner : solidCorner;
+
+            // 其余 12 颗（实/花混合）随机铺进剩下的 12 个槽（Fisher–Yates，种子可复现）
+            var rest = new List<int>(rackCount - 3);
+            rest.AddRange(solids);
+            rest.AddRange(stripes);
+            for (int i = rest.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(i + 1);
+                int tmp = rest[i];
+                rest[i] = rest[j];
+                rest[j] = tmp;
+            }
+
+            int cursor = 0;
+            for (int slot = 0; slot < rackCount; slot++)
+            {
+                if (slotBall[slot] == -1)
+                {
+                    slotBall[slot] = rest[cursor++];
+                }
+            }
+
+            // 按槽位顺序把**球号**映射到**几何位置**
+            int index = 0;
+            for (int r = 0; r < 5; r++)
+            {
+                for (int k = r; k >= 0; k--)
+                {
+                    positions[slotBall[index++]] = RackSlot(r, k);
+                }
+            }
+
+            return positions;
+        }
+
+        public static Vector2[] RackPositions(Vector2 footSpot, int rackBallCount = 3)
+        {
             int rows = 1;
             while (rows * (rows + 1) / 2 < rackBallCount)
             {
@@ -611,7 +718,7 @@ namespace Billiards.Physics
                         break;
                     }
 
-                    positions.Add(new Vector2(RackApexX - r * row, (k - r * 0.5f) * s));
+                    positions.Add(RackSlot(r, k));   // ← 几何**单点实现**（35-C §6-P1：与 8 球摆位同源）
                     placed++;
                 }
 
