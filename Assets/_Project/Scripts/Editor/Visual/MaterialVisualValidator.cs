@@ -33,8 +33,22 @@ namespace Billiards.EditorTools
         /// </summary>
         public const float OuterCropWarnThreshold = 0.08f;
 
-        /// <summary>`CAM-04` 的打球区**横向占比下界**。灰盒参照实测 **0.900** ⇒ 取 **0.85**（余量 0.05）。</summary>
-        public const float ClothWidthFractionMin = 0.85f;
+        /// <summary>
+        /// `CAM-04` 的打球区**横向占比下界**。
+        ///
+        /// ── 口径重定（登记"谁裁定 / 为什么 / 前后值 / 旧意图"）──────────────────────────
+        /// **谁裁定**：用户（2026-10-16，经主理人转达）。
+        /// **为什么**：旧下限 **0.85** 是在"相机把打球区充满屏幕"的口径下定的（旧实测 0.900）。
+        ///   用户裁定"**要能看见球房环境**"⇒ 相机移到桌子 +Z 侧并放宽取景（见
+        ///   `GreyboxSceneSetup.CameraPosition` 的口径变更注释）。**"看得见房间"与"占比 ≥0.85"数学上互斥**：
+        ///   任何能把房间收进画面的取景都会把该占比压到 0.45~0.62。
+        /// **前后值**：**0.85 → 0.50**。实测 A 档 **0.616** ⇒ **余量 0.116**（不贴实测值定）。
+        /// **旧意图**：`CAM-04` 标题即"**防'缩成中间一张小桌'**"。该意图**不变** ——
+        ///   新下限 0.50 仍能抓住"缩成小桌"（`ClothHalfLength` 全宽 1.27×2×1.2 = 3.048 m 在画面里
+        ///   占比掉到 0.50 以下，意味着视锥水平半宽 > 3.05 m，那已不是"看球桌"的取景）。
+        ///   ⚠ 本阈值**只随取景口径变更**而变；**不得**为了让某次取景过而单独下调。
+        /// </summary>
+        public const float ClothWidthFractionMin = 0.50f;
 
         /// <summary>`CAM-05` 取景一致性容差：相机位置（米）。</summary>
         public const float FramingPoseTolerance = 1e-3f;
@@ -650,7 +664,7 @@ namespace Billiards.EditorTools
                         + "（`CAM-02` 只守打球区）⇒ 仅 WARN 不 FAIL；"
                         + $"阈值 {OuterCropWarnThreshold:P0} = 实测 3.9% 的约 2 倍余量。"));
 
-                // ── CAM-04：**取景占比**（守"桌子仍然充满屏幕"，防"缩成中间一张小桌"）────────────
+                // ── CAM-04：**取景占比**（守"桌子不至于缩成画面中间一小块"，防"缩成一张小桌"）────────────
                 // 参照值来源 = **灰盒**（用户认可的那套观感）。实测（aspect 1.6）：
                 //   · 灰盒 / 配置 B：打球区**横向占比 0.900**（0.950−0.050）、纵向 0.604；
                 //   · 配置 A（**保留 Main 高机位 (0,3.05,−0.88) + fov52 + aspect 1.6**）：横向占比 **0.593**
@@ -658,15 +672,18 @@ namespace Billiards.EditorTools
                 // ⚠ 这里**曾经**写过一个 "≈0.77" —— 那是**转述的粗估、不是任何一次实测**（后经复算，该配置各种解释最高只到 0.659）。
                 //   **已废弃**，改为上表的实测 0.593。⇒ 立规：**注释/规格/证据里引用实测值，必须可复现并注明来源**
                 //   （规格 §9.6）。
-                // ⇒ 阈值取 **0.85**：低于参照 0.900 留 **0.05** 余量；高于配置 A 的 0.593（余量 0.257）⇒ 能抓住"变小"。
+                // ⇒ 阈值见**上方 `ClothWidthFractionMin` 的口径重定推导（0.85 → 0.50）**。
+                //   ⚠ 本处**故意不再重复数值**：旧版把这句写成"取 0.85 / 参照 0.900"，口径重定后就成了
+                //   **注释与实现自相矛盾**的陈旧行（复核方抓到的那条）⇒ 数值只留常量那一处，避免两处各写一份而漂移。
                 float clothWidthFraction = cBox.y - cBox.x;
                 float clothHeightFraction = cBox.w - cBox.z;
+                const string clothWidthExpect = "≥ 0.50（口径重定后的新下限，实测 A 档 0.616 ⇒ 余量 0.116）";
                 report.Add(clothWidthFraction >= ClothWidthFractionMin
                     ? CheckResult.Ok("CAM-04", "打球区横向占比 ≥ 参照（防'缩成中间一张小桌'）",
-                        $"≥ {ClothWidthFractionMin:F2}（灰盒参照 0.900，余量 0.05）",
+                        clothWidthExpect,
                         $"宽占比 {clothWidthFraction:F3}（高占比 {clothHeightFraction:F3}）")
                     : CheckResult.Fail("CAM-04", "打球区横向占比 ≥ 参照（防'缩成中间一张小桌'）",
-                        $"≥ {ClothWidthFractionMin:F2}（灰盒参照 0.900，余量 0.05）",
+                        clothWidthExpect,
                         $"宽占比 {clothWidthFraction:F3}（高占比 {clothHeightFraction:F3}）"
                         + " ⇒ 桌子在屏幕上的占比明显偏小（取景被改小 / 相机后撤）。"));
 
@@ -912,12 +929,27 @@ namespace Billiards.EditorTools
             produced.Add(TopViewName);
 
             // 2) 透视（同一材质，低俯角，用于判断"是不是台球桌"）
+            //
+            // ── 机位口径变更（登记"谁裁定 / 为什么 / 前后值"）────────────────────────────
+            // **谁裁定**：主理人（2026-10-16），依据是本人上报的发现。
+            // **为什么**：本机位原为 `(0.15, 1.15, −2.15)`，是按**旧玩法取景（相机在 −Z 侧朝 +Z 看）**
+            //   调的。本轮用户裁定放宽取景后，主相机搬到 **+Z 侧**（`GreyboxSceneSetup.CameraPosition`
+            //   = `(0, 2.10, +2.80)`）⇒ 本机位变成"**从后墙那一侧看桌子**"：
+            //   它仍能判"是不是台球桌"（`RND-01` 照常 PASS），但**它自称"透视证据"、实际已不代表玩家观感**
+            //   —— 属"**证据与它的声称脱节**"，正是本卡在清的那类问题。
+            // **前后值**：pos `(0.15, 1.15, −2.15)` → **`(0.15, 1.15, +2.15)`**；
+            //   look `(0, 0.02, 0.05)` → **`(0, 0.02, −0.05)`**（即**按 z=0 镜像**，其余不变）。
+            // **为什么用"镜像"而不是"改成主相机机位"**：本项的价值在**独立机位** ——
+            //   独立机位能看到主相机看不到的侧面/入射角，是它对"材质/法线"的判别力来源；
+            //   改成主相机机位就退化成 `day3-top-view.png` 的重复（主理人明确**不批**这种顶替）。
+            //   镜像后仍是**低机位、离轴、贴近台面**的独立视角，只是换到了房间的**开口那一侧**，
+            //   顺带把后墙/摆件纳入背景（背景不再是一面挡在相机与桌子之间的墙）。
             Vector3 prevPos = cam.transform.position;
             Quaternion prevRot = cam.transform.rotation;
             float prevFov = cam.fieldOfView;
 
-            cam.transform.position = new Vector3(0.15f, 1.15f, -2.15f);
-            cam.transform.rotation = Quaternion.LookRotation(new Vector3(0f, 0.02f, 0.05f) - cam.transform.position, Vector3.up);
+            cam.transform.position = new Vector3(0.15f, 1.15f, 2.15f);
+            cam.transform.rotation = Quaternion.LookRotation(new Vector3(0f, 0.02f, -0.05f) - cam.transform.position, Vector3.up);
             cam.fieldOfView = 38f;
             RenderToPng(cam, 1440, 900, TestRootPath(PerspectiveName));
             produced.Add(PerspectiveName);

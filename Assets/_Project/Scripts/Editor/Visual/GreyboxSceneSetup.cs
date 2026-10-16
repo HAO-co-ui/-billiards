@@ -144,6 +144,9 @@ namespace Billiards.EditorTools
         /// <summary>练习结算卡宿主对象名。</summary>
         public const string PracticeResultObjectName = "PracticeResult";
 
+        /// <summary>**开始界面（首页）**宿主对象名（挂在 `PhysicsGreybox` 根下，不进缩放根）。</summary>
+        public const string HomeObjectName = "Home";
+
         /// <summary>`EventSystem` 宿主对象名（结算卡按钮的射线入口）。</summary>
         public const string EventSystemObjectName = "EventSystem";
 
@@ -155,15 +158,31 @@ namespace Billiards.EditorTools
         // 就是照着该投影的实测空余带宽摆的（见 `Docs/35-A_Day13_最小HUD_spec.md` §3.3）。
         // 提成公开常量 + `BuildCamera` 直接引用 ⇒ 相机取景与 HUD 布局**不可能各自漂移**；
         // 判据 `T95 (f)` 再从**已提交场景**回读校验一次（防"场景被手改、代码没跟上"）。
+        //
+        // ── 取景口径变更（登记"谁裁定 / 为什么 / 前后值 / 旧意图"）────────────────────────
+        // **谁裁定**：用户（2026-10-16，经主理人转达）。
+        // **为什么**：旧机位 `(0, 2.10, −0.75)` 朝 **+Z**、俯角 68.7°、离桌 2.25 m，画面只覆盖
+        //   桌远库外约 **0.6 m**；而参考球房的装饰（后墙/墙裙/长凳/盆栽/球杆架/边桌/灯/相框）
+        //   **全在 −Z 一侧** ⇒ 后墙整片落在相机**背后**，**12 件道具的包围盒 8 个角全部在视锥外**
+        //   （离线逐角视锥投影实测，判据 `CAM-*` 与 `day3-top-view.png` 自洽）。
+        //   用户裁定"**要能看见球房环境**"⇒ 相机移到桌子 **+Z 侧**并放宽取景。
+        // **前后值**：pos `(0,2.10,−0.75)` → **`(0,2.10,+2.80)`**；look `(0,0.02,0.06)` → **`(0,0.05,−1.00)`**；
+        //   fov `52` → **`53`**。实测（aspect 1.6 + `CameraViewportFitter` 抬后的有效 fov）：
+        //   打球区横向占比 `0.900` → **`0.616`**；外框裁切 `3.9%` → `4.7%`（仍 ≤ `CAM-03` 的 8%）；
+        //   房间可见件 `1/12` → **`12/12`**。
+        // **旧意图**：桌子**充满屏幕**（`CAM-04` "防缩成中间一张小桌"）。
+        //   ⇒ 该意图**保留**，只把量化下限随口径重定（`ClothWidthFractionMin` 0.85 → 0.50，见验收器）。
+        // **代价（如实）**：桌子在画面里变小（0.900 → 0.616）且下移到 `y≤0.46` —— 这是"看得见房间"的必然取舍。
+        // ⚠ 改这三项 ⇒ **`T95 (d)` 的三组派生期望值必须同步重新推导**（见 `PracticeHudTests` 的对应注释）。
 
         /// <summary>主相机世界位置。</summary>
-        public static readonly Vector3 CameraPosition = new Vector3(0f, 2.10f, -0.75f);
+        public static readonly Vector3 CameraPosition = new Vector3(0f, 2.10f, 2.80f);
 
         /// <summary>主相机注视点。</summary>
-        public static readonly Vector3 CameraLookTarget = new Vector3(0f, 0.02f, 0.06f);
+        public static readonly Vector3 CameraLookTarget = new Vector3(0f, 0.05f, -1.00f);
 
         /// <summary>基准垂直 FOV（度）；同时是场景序列化 FOV（`CameraViewportFitter` 从相机取 ⇒ 二者不可能漂移）。</summary>
-        public const float CameraBaseVerticalFovDeg = 52f;
+        public const float CameraBaseVerticalFovDeg = 53f;
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
@@ -404,7 +423,7 @@ namespace Billiards.EditorTools
         ///
         /// 在 <paramref name="root"/> 下逐层创建：`CushionGizmo` → `PhysicsTestDrive`（接线 tableConfig /
         /// tuning / 球可视物）→ `PointerAimController` / `PointerPowerController` / `CueStick` →
-        /// `PoolAudio` / `PoolVfx` / `PracticeHud` / `PracticeResult` / `EventSystem` / `AimAssist`。
+        /// `PoolAudio` / `PoolVfx` / `PracticeHud` / `PracticeResult` / `Home` / `EventSystem` / `AimAssist`。
         ///
         /// <para><b>调用方负责</b>：<paramref name="playfieldRoot"/>（可视缩放根）、<paramref name="cueBall"/>、
         /// <paramref name="ballVisuals"/> 已经建好并挂在该根下 —— 因为两个场景的"基础可视层"来源不同
@@ -515,6 +534,17 @@ namespace Billiards.EditorTools
             var resultView = resultGo.AddComponent<PracticeResultView>();
             resultView.drive = drive;
             resultView.hud = hud;
+
+            // ─ 首页（开始界面）──
+            // 启动先显示（`HomeView.shownOnStart`），关闭后 HUD 与可玩性才可用。
+            // `HomeView.IsOpen` 是**第二个**模态判据点（结算卡是第一个），三个输入控制器都读它；
+            // 首页自身的显隐与 HUD 三块分区的让位都在视图里做（不在生成器里，保持生成器只负责接线）。
+            var homeGo = new GameObject(HomeObjectName);
+            homeGo.transform.SetParent(root.transform, false);
+            var homeView = homeGo.AddComponent<HomeView>();
+            homeView.hud = hud;
+            homeView.vfxView = vfxView;
+            homeView.poolAudio = poolAudio;
 
             // ─ 瞄准辅助（预测线）：控制器（胶水）+ 视图（绘制过显示层单点）──
             var assistGo = new GameObject(AimAssistObjectName);

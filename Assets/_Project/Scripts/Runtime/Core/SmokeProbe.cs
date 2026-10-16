@@ -51,6 +51,50 @@ namespace Billiards.Core
         /// <summary>拖动瞄准时每帧推进的瞄准角（度）。4.5°/帧 ⇒ 60 fps 下 270°/s（快速连续拖动）。</summary>
         public const float AimSweepDegreesPerFrame = 4.5f;
 
+        // ── 冒烟态对"启动门"的抑制（开始界面）────────────────────────────────
+        //
+        // **为什么必须抑制**：两个冒烟都是**无人操作跑 N 帧**的验收工具。开始界面（首页）默认
+        // **启动即显示** ⇒ 若不让位，采到的就不是游戏内负载。更硬的一条：
+        // `AimAssistController.ShouldShow` 会被 `HomeView.IsOpen` 整体让位掉 ⇒ 预测路径**根本不执行**
+        // ⇒ `-billiards-smoke-aim` 测到的是"**没有预测的帧**" —— 那不是"数字偏乐观"，是**测错了对象**。
+        //
+        // **为什么挂在冒烟入口里、而不是命令行开关**：显式开关一旦有人手跑冒烟时忘了带，
+        // 就会**静默**去测菜单（正是最该避免的陷阱）；挂在入口上则**不可能被忘掉**。
+        //
+        // **为什么 Core 只提供"事实"、不直接去关首页**：依赖方向是 **UI → Core**（不得反向）
+        // ⇒ Core 不能引用 `Billiards.UI.HomeView`。故这里只置一个**中性的进程事实**
+        // （"本次进程是冒烟模式"），由首页在自己的 `Awake` 里读它并让位。
+
+        /// <summary>
+        /// **本次进程是否处于冒烟模式**（由 <see cref="ParseEarly"/> 在**场景加载前**置位）。
+        /// 启动门（开始界面）在 `Awake` 里读它 ⇒ 必须在场景加载**之前**就有值。
+        /// </summary>
+        public static bool IsSmokeMode { get; private set; }
+
+        /// <summary>`homeStartup` 字段：首页**确实显示**了（非冒烟态的常规启动）。</summary>
+        public const string HomeStartupShown = "shown";
+
+        /// <summary>`homeStartup` 字段：首页被**冒烟态抑制**了（这是冒烟应有的取值）。</summary>
+        public const string HomeStartupSuppressed = "suppressed";
+
+        /// <summary>
+        /// `homeStartup` 字段：**没有任何一方上报** —— 即场景里压根没有首页宿主
+        /// （接线缺失/旧场景）。**它不是"通过"**：冒烟证据里出现它就意味着"抑制"这件事没人证明。
+        /// </summary>
+        public const string HomeStartupUnreported = "unreported";
+
+        /// <summary>
+        /// 首页启动显示的报告（写进冒烟 JSON 的 `homeStartup`，取值见三个常量）。
+        /// **它是"抑制确实发生"的可验证证据** —— 光写注释不算证明。
+        /// </summary>
+        public static string HomeStartupReport { get; private set; } = HomeStartupUnreported;
+
+        /// <summary>由首页（<c>HomeView.Awake</c>）上报一次启动显示的实际走向。</summary>
+        public static void ReportHomeStartup(string state)
+        {
+            HomeStartupReport = state;
+        }
+
         /// <summary>
         /// **连续拖动瞄准角的纯函数**（判据可直接驱动）：第 <paramref name="frame"/> 帧的瞄准角（度，[0,360)）。
         /// 逐帧**单调递增**（模 360）⇒ 保证指纹每帧都变 ⇒ 触发预测重算路径。
@@ -305,6 +349,9 @@ namespace Billiards.Core
             sb.Append("  \"predictionComputeCount\": ").Append(result.predictionComputeCount).Append(",\n");
             sb.Append("  \"totalPredictSteps\": ").Append(result.totalPredictSteps).Append(",\n");
             sb.Append("  \"aimSweep\": ").Append(result.aimSweep ? "true" : "false").Append(",\n");
+            sb.Append("  \"homeStartup\": \"")
+                .Append(string.IsNullOrEmpty(result.homeStartup) ? HomeStartupUnreported : result.homeStartup)
+                .Append("\",\n");
             sb.Append("  \"gate\": \"").Append(result.gate).Append("\",\n");
             sb.Append("  \"frameGateOk\": ").Append(result.frameGateOk ? "true" : "false").Append(",\n");
             sb.Append("  \"sceneBudgetOk\": ").Append(result.sceneBudgetOk ? "true" : "false").Append(",\n");
@@ -345,6 +392,25 @@ namespace Billiards.Core
         {
             PredictComputeReported = computeCount;
             PredictStepsReported = totalSteps;
+        }
+
+        /// <summary>
+        /// **在场景加载前**解析一次命令行、把"冒烟模式"这个事实置上。
+        ///
+        /// ⚠ **时序是硬约束**：场景对象的 `Awake` 早于 <see cref="RuntimeInitializeLoadType.AfterSceneLoad"/>
+        /// ⇒ 若只在 <see cref="Bootstrap"/> 里（AfterSceneLoad）解析，首页的 `Awake` 早就跑完了
+        /// （那时它已经显示出来了）—— 抑制会**静默失效**，而这正是"看起来做了、其实没做"的典型死法。
+        /// 故这里用 **BeforeSceneLoad**。
+        ///
+        /// 本方法**只置位、不建对象**（建对象仍在 <see cref="Bootstrap"/> 里做）。
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void ParseEarly()
+        {
+            if (TryParse(System.Environment.GetCommandLineArgs(), out _, out _, out _))
+            {
+                IsSmokeMode = true;
+            }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -427,6 +493,15 @@ namespace Billiards.Core
         public long totalPredictSteps;
 
         public bool aimSweep;
+
+        /// <summary>
+        /// 启动门（开始界面）的实际走向：<see cref="SmokeProbe.HomeStartupSuppressed"/>（冒烟应有的取值）/
+        /// <see cref="SmokeProbe.HomeStartupShown"/>（非冒烟启动）/ <see cref="SmokeProbe.HomeStartupUnreported"/>
+        /// （没人上报 = 场景里没有首页宿主）。
+        /// **它是"冒烟确实把首页抑制掉了"的可验证证据**（只写注释不算）。
+        /// 取值与语义见 `Docs/35-A_美术接入与UI重做_spec.md` §9.3。**不参与判定**（与 `passed` 无关）。
+        /// </summary>
+        public string homeStartup;
 
         /// <summary>本次采样适用的**负载名**（`static` / `drag`；两者**同判** `MeetsTarget`）。</summary>
         public string gate;

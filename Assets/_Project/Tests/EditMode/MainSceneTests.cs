@@ -38,7 +38,7 @@ namespace Billiards.Tests
         /// <summary>
         /// **`T127`：`Main.unity` 是**可玩入口**（不是空壳）**。七组断言（任一失败即红）：
         /// ① 玩法层根 <see cref="GreyboxSceneSetup.MainGameplayRootName"/> 在场；
-        /// ② 玩法宿主齐备（驱动器 / HUD / 瞄准辅助 / 球杆 / 结算 / EventSystem）；
+        /// ② 玩法宿主齐备（驱动器 / HUD / 瞄准辅助 / 球杆 / 结算 / **首页** / EventSystem）；
         /// ③ 球可视物 == 16（非空转证据）；
         /// ④ 场景**恰 1 台相机**、**恰 1 个 `AudioListener`**（"两套相机 / 两个监听器"的守卫）；
         /// ⑤ `PlayfieldRoot` 的 `localScale` == 1（材质视觉验收 `SCN-02` 的前提，不得被玩法层改坏）；
@@ -93,6 +93,7 @@ namespace Billiards.Tests
                                  GreyboxSceneSetup.AimAssistObjectName,
                                  GreyboxSceneSetup.CueStickControllerObjectName,
                                  GreyboxSceneSetup.PracticeResultObjectName,
+                                 GreyboxSceneSetup.HomeObjectName,
                                  GreyboxSceneSetup.EventSystemObjectName,
                                  GreyboxSceneSetup.PointerAimControllerObjectName,
                                  GreyboxSceneSetup.PointerPowerControllerObjectName,

@@ -41,6 +41,9 @@ namespace Billiards.UI
     /// · 原型 CSS 的 `inset` 内阴影 / `backdrop-filter: blur` / `text-shadow` 在 uGUI 无对应能力
     ///   ⇒ 不伪造，已登记为表现差异。
     /// · 文字在块内的**实际像素溢出**不判（`-nographics` 无渲染）⇒ 由用户实机截图兜。
+    /// · **首页（`HomeView`）打开期间，本 HUD 的三块分区被临时隐藏**
+    ///   （参考稿 `body.home-active` 的 `display:none`，见 <see cref="SetChromeVisible"/>）
+    ///   ⇒ 这段时间本类的状态翻译仍在跑、但**看不见**（首页挡住一切交互，状态条的口径不适用）。
     /// </summary>
     [AddComponentMenu("Billiards/Practice Hud View")]
     public sealed class PracticeHudView : MonoBehaviour
@@ -135,6 +138,38 @@ namespace Billiards.UI
             {
                 EnsureBuilt();
                 return (RectTransform)_canvas.transform;
+            }
+        }
+
+        /// <summary>
+        /// **显示 / 隐藏三块 HUD 分区**（首页盖在上面时用）。
+        ///
+        /// 为什么需要：参考稿的首页是**整屏覆盖**在 3D 画面上的（`.home-screen{inset:0;z-index:5}`），
+        /// 且明确写了 `body.home-active .topbar /.scoreboard /.status-bar /.shotbar { display:none }`。
+        /// 本工程 HUD 三块落在顶带 `y ∈ [0.780, 0.982]`，而首页的俱乐部徽章在 `y ≈ 0.896…0.978`
+        /// ⇒ **不隐藏就必然叠字**（徽章与文字压住品牌行与记分牌）。
+        ///
+        /// ⚠ **只切三块分区**，**不动 `PracticeHudCanvas`、更不动 `GraphicRaycaster`**：
+        /// 首页正是建在这台画布上的（`HomeView` 走 <see cref="CanvasRoot"/>），
+        /// 把画布 `SetActive(false)` 会连首页一起停掉；而射线器是全场景唯一的那一个（`T102 (c)` 守）。
+        /// </summary>
+        public void SetChromeVisible(bool visible)
+        {
+            EnsureBuilt();
+
+            if (_counters != null)
+            {
+                _counters.gameObject.SetActive(visible);
+            }
+
+            if (_status != null)
+            {
+                _status.gameObject.SetActive(visible);
+            }
+
+            if (_power != null)
+            {
+                _power.gameObject.SetActive(visible);
             }
         }
 

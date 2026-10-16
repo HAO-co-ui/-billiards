@@ -238,6 +238,9 @@ namespace Billiards.Core
                 predictionComputeCount = SmokeProbe.PredictComputeReported,
                 totalPredictSteps = SmokeProbe.PredictStepsReported,
                 aimSweep = _aimSweep,
+                // 启动门（开始界面）的实际走向 —— **"冒烟确实抑制了首页"的可验证证据**。
+                // 冒烟态下若读到 `unreported` 或 `shown`，就说明这次采样量的不是纯玩法负载。
+                homeStartup = SmokeProbe.HomeStartupReport,
                 gate = _aimSweep ? "drag" : "static",
                 frameGateOk = frameGateOk,
                 sceneBudgetOk = sceneBudgetOk,
@@ -255,11 +258,20 @@ namespace Billiards.Core
                 }
 
                 File.WriteAllText(_outputPath, json);
+                // `homeStartup` 必须打在这一行里：只写 JSON 不进日志时，肉眼看日志的人**看不出**
+                // 这次到底测的是玩法还是开始界面（"注释不算证明"同样适用于日志）。
+                if (result.homeStartup != SmokeProbe.HomeStartupSuppressed)
+                {
+                    Debug.LogWarning($"[SMOKE] ⚠ 首页启动显示未被抑制（homeStartup={result.homeStartup}）"
+                                     + " ⇒ 本次采样量的可能不是纯玩法负载。");
+                }
+
                 Debug.Log($"[SMOKE] 写入 {_outputPath}：{result.frames}×{result.rounds} 帧 "
                           + $"mean={result.meanMs.ToString("F3", CultureInfo.InvariantCulture)}ms "
                           + $"fps={result.fpsMean.ToString("F2", CultureInfo.InvariantCulture)} "
                           + $"dropped={result.droppedOverBudget} loadRatio={result.loadRatio.ToString("F3", CultureInfo.InvariantCulture)} "
                           + $"machine={result.machineClass} renderers={result.rendererCount} "
+                          + $"home={result.homeStartup} "
                           + $"predSteps={result.totalPredictSteps} passed={result.passed}");
             }
             catch (System.Exception e)

@@ -148,6 +148,9 @@ namespace Billiards.EditorTools
             BuildFloorMaterial();
             BuildBallMaterials();
             BuildCueMaterial();
+
+            // 球房环境材质（墙 / 地毯 / 盆栽 / 长凳 / 木器族 / 黄铜族 / 粉笔）—— 唯一实现点在 RoomEnvironmentSetup。
+            RoomEnvironmentSetup.BuildMaterials();
         }
 
         private static void BuildBodyMaterial()
@@ -205,17 +208,14 @@ namespace Billiards.EditorTools
             EditorUtility.SetDirty(m);
         }
 
-        private static void BuildFloorMaterial()
+        public static void BuildFloorMaterial()
         {
             Material m = LoadOrCreate(FloorMaterialPath);
             Configure(m, "Room_Floor");
-            m.SetColor("_BaseColor", new Color(0.115f, 0.098f, 0.082f));
-            m.SetFloat("_Metallic", 0f);
-            m.SetFloat("_Smoothness", 0.12f);
-            m.SetFloat("_Surface", 0f);
-            m.SetFloat("_AlphaClip", 0f);
-            m.renderQueue = (int)RenderQueue.Geometry;
-            EditorUtility.SetDirty(m);
+
+            // 地面贴图与平铺口径的**唯一实现点**在 `RoomEnvironmentSetup`（可平铺木板贴图，复用本材质资产，
+            // 不新增材质 ⇒ 守住 `SmokeProbe.MaxDistinctMaterialCount`）。
+            RoomEnvironmentSetup.ConfigureFloorMaterial(m);
         }
 
         private static void BuildBallMaterials()

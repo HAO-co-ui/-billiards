@@ -194,6 +194,8 @@ namespace Billiards.Tests
         {
             "Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs",
             "Assets/_Project/Scripts/Runtime/UI/PracticeResultView.cs",
+            // 开始界面（首页）：与上面两个视图同一约束 —— 颜色只许来自 `ClubUiTokens`。
+            "Assets/_Project/Scripts/Runtime/UI/HomeView.cs",
         };
 
         private static void CheckSceneSpriteSlots(List<string> failures)

@@ -34,6 +34,22 @@ namespace Billiards.EditorTools
         /// <summary>九宫格边框（与 <c>ClubUiSprites.PanelSliceBorder</c> 同值）。</summary>
         public const int PanelBorder = 4;
 
+        /// <summary>
+        /// 图标与球贴片的**最大边长**。
+        /// 设计域里图标是 15–27 px，`Icons/` 的生成物本身就是 64×64 ⇒ 128 已足够（且更省内存）。
+        /// </summary>
+        public const int IconMaxTextureSize = 128;
+
+        /// <summary>
+        /// **品牌位图（俱乐部徽章）的最大边长**。它**不是**程序化生成的 64×64 图标，而是美术包的
+        /// 彩色成品位图；首页上按 88 设计 px 呈现，在 4K（画布缩放 2×）下要按 176 px 采样
+        /// ⇒ 128 会明显糊。取 512 留足余量（原始图远大于 512，仍会被降采样，但**不是被砍到 128**）。
+        /// </summary>
+        public const int BrandBitmapMaxTextureSize = 512;
+
+        /// <summary>品牌位图（俱乐部徽章）的文件名——与 <c>ClubUiSprites.BaseName(ClubCrest)</c> 同值。</summary>
+        public const string ClubCrestFileName = "ui-club-crest";
+
         private void OnPreprocessTexture()
         {
             string extension = Path.GetExtension(assetPath);
@@ -50,6 +66,8 @@ namespace Billiards.EditorTools
             }
 
             bool isPanel = isIcon && Path.GetFileNameWithoutExtension(assetPath).StartsWith("ui-panel-");
+            bool isBrandBitmap = isIcon
+                && string.Equals(Path.GetFileNameWithoutExtension(assetPath), ClubCrestFileName, System.StringComparison.Ordinal);
 
             var importer = (TextureImporter)assetImporter;
             importer.textureType = TextureImporterType.Sprite;
@@ -65,7 +83,7 @@ namespace Billiards.EditorTools
             importer.sRGBTexture = true;
             importer.filterMode = FilterMode.Bilinear;
             importer.wrapMode = TextureWrapMode.Clamp;
-            importer.maxTextureSize = 128;
+            importer.maxTextureSize = isBrandBitmap ? BrandBitmapMaxTextureSize : IconMaxTextureSize;
             importer.textureCompression = TextureImporterCompression.Uncompressed;
             importer.npotScale = TextureImporterNPOTScale.None;
             importer.isReadable = isBallChip;

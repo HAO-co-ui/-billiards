@@ -104,12 +104,13 @@ namespace Billiards.Physics
         ///    说法终于对齐 —— 此前那句话只是注释、**实现里从未落地**。
         ///  · `cueBallInPlay` —— **白球必须在场上**。白球落袋后整盘会静止、相位也回到 `Aim`，
         ///    若不判这一条，线会从**袋口那个残留位置**画出来（用户实测截图：一条白线从顶袋射向台面）。
-        ///  · `resultCardOpen == false` —— 结算卡是模态，打开期间整体让位。
+        ///  · `modalOpen == false` —— **模态让位**：结算卡或**首页**打开期间整体让位
+        ///    （两者都是"台面还没轮到你"的状态；判据由 <see cref="ShouldShow"/> 合并后传入）。
         /// </summary>
         public static bool ShouldShowAimAssist(bool predictionEnabled, bool tableAtRest, bool cueBallInPlay,
-                                               bool resultCardOpen)
+                                               bool modalOpen)
         {
-            return predictionEnabled && tableAtRest && cueBallInPlay && !resultCardOpen;
+            return predictionEnabled && tableAtRest && cueBallInPlay && !modalOpen;
         }
 
         /// <summary>本组件当前是否应当绘制（把实时状态喂给 <see cref="ShouldShowAimAssist"/>）。</summary>
@@ -122,7 +123,8 @@ namespace Billiards.Physics
                     drive != null && drive.PredictionEnabled,
                     sim != null && sim.TableAtRest,
                     sim != null && sim.IsBallInPlay(0),
-                    Billiards.UI.PracticeResultView.IsOpen);
+                    // 两个模态判据点：结算卡（`PracticeResultView`）与首页（`HomeView`）。
+                    Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen);
             }
         }
 

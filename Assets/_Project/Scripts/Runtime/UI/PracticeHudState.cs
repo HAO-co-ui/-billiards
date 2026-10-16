@@ -164,6 +164,42 @@ namespace Billiards.UI
         public const string TooltipVfx = "VFX";
         public const string TooltipSfx = "SFX";
 
+        // ── 开始界面（首页，参考稿 `04_UI/Reference_Screens/home-1920x1080.png`）────
+        // ⚠ **全英文、且只用 ASCII + `·`（U+00B7）**：美术包两套字体只覆盖 Latin 子集。
+        //   实测（读 5 个源 TTF 的 cmap）：`·` 五个字体都有；`♫`（U+266B）**五个字体都没有**
+        //   ⇒ 参考稿里的曲目行图标**不能**写成 `♫` 字符，只能用已有的 `Volume` 图标精灵
+        //   （见 `HomeView` 的类注释"与参考稿的偏离"）。
+
+        /// <summary>首页左上俱乐部名。</summary>
+        public const string HomeClubName = "THE EIGHT BALL CLUB";
+
+        /// <summary>首页左上俱乐部副标（中间的 `·` 是 U+00B7，5 个源字体全覆盖）。</summary>
+        public const string HomeClubSub = "PRIVATE TABLE · NO. 35";
+
+        /// <summary>首页标题上方的小标（黄铜 eyebrow）。</summary>
+        public const string HomeEyebrow = "8-BALL CLUB";
+
+        /// <summary>首页标题行里的台号。</summary>
+        public const string HomeTableNumber = "TABLE 01";
+
+        /// <summary>首页难度区的小标签。</summary>
+        public const string HomeDifficultyLabel = "OPPONENT";
+
+        /// <summary>首页难度分段的三项（`Club` 为参考稿的选中项）。</summary>
+        public const string HomeDifficultyCasual = "Casual";
+        public const string HomeDifficultyClub = "Club";
+        public const string HomeDifficultyExpert = "Expert";
+
+        /// <summary>首页底部统计第三项的标签（前两项复用 `SHOTS` / `POCKETED`）。</summary>
+        public const string HomeStatRacks = "RACKS";
+
+        /// <summary>首页右下角台号牌（标签 + 大号号码）。</summary>
+        public const string HomeHouseLabel = "HOUSE TABLE";
+        public const string HomeHouseNumber = "01";
+
+        /// <summary>首页右下角曲目名（图标另走 `Volume` 精灵，**不是** `♫` 字符）。</summary>
+        public const string HomeTrackTitle = "Late Set";
+
         // ════════════════ 状态 → 文案 / 配色 / 图标（唯一实现点）═════════════════
 
         /// <summary>`data-state` 契约 token（判据 `T125` 用它把枚举钉在设计契约上）。</summary>
@@ -419,6 +455,12 @@ namespace Billiards.UI
                 LabelBallsLeft, LabelShots, LabelPocketed, LabelFouls, LabelPower, LabelYou, ButtonShoot,
                 BrandEyebrow, BrandTitle, BrandBallNumber,
                 ModePractice, ModeAiMatch, LabelYourShot, TooltipVfx, TooltipSfx,
+                // 首页：`POOL ROOM` / `AI Match` / `Practice` / `SHOTS` / `POCKETED` 与上面**同值复用**
+                // （`BrandTitle` / `ModeAiMatch` / `ModePractice` / `LabelShots` / `LabelPocketed`）
+                // ⇒ 这里只补首页独有的那些串，不重复列举（重复列举会让"同一句话有两处字面量"）。
+                HomeClubName, HomeClubSub, HomeEyebrow, HomeTableNumber,
+                HomeDifficultyLabel, HomeDifficultyCasual, HomeDifficultyClub, HomeDifficultyExpert,
+                HomeStatRacks, HomeHouseLabel, HomeHouseNumber, HomeTrackTitle,
                 PowerLabel(0f), PowerLabel(0.45f), PowerLabel(1f),
                 PocketedLabel(0, 15), PocketedLabel(15, 15),
                 "0123456789");

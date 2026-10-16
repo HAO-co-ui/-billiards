@@ -163,6 +163,31 @@ namespace Billiards.UI
             return JsonUtility.ToJson(new HistoryWrapper { entries = entries.ToArray() });
         }
 
+        /// <summary>
+        /// **读磁盘上的导出历史**（<see cref="ExportPath"/>）—— 首页的 `SHOTS / POCKETED / RACKS`
+        /// 三项就是从这份历史累加出来的（参考实现的 `home-ui.js` 同样是 `sum(history ∪ session)`）。
+        ///
+        /// **文件不存在 / 读失败 / 内容坏 ⇒ 返回空列表**（不抛、不返回 <c>null</c>）：
+        /// 首页要能诚实地显示"还没有记录"，而不是因为一个坏文件整屏崩掉。
+        /// 读取口径完全走既有的 <see cref="ReadHistory"/>（坏记录逐条丢弃）⇒ 不存在第二套解析。
+        /// </summary>
+        public static List<PracticeSessionRecord> ReadHistoryFromDisk()
+        {
+            try
+            {
+                if (!File.Exists(ExportPath))
+                {
+                    return new List<PracticeSessionRecord>();
+                }
+
+                return ReadHistory(File.ReadAllText(ExportPath));
+            }
+            catch (Exception)
+            {
+                return new List<PracticeSessionRecord>();
+            }
+        }
+
         /// <summary>读历史（坏串 ⇒ 空历史，不抛）。</summary>
         public static List<PracticeSessionRecord> ReadHistory(string historyJson)
         {

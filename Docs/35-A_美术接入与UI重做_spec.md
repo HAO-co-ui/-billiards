@@ -224,3 +224,159 @@ Technical_Issues / Delivery_Checklist / TA_Handoff / Blender 审计 / 历史证�
 - **`paste` vs `alpha_composite`**：Pillow 的 `paste(src, box, mask)` 是**替换**语义，
   透明区域会把目标抹掉；"把色带盖到白底上"必须用 `alpha_composite`。
 
+## 9. 开始界面（首页）—— as-built 与偏离（后续增量）
+
+> 起因：用户要求"开始界面（首页）照参考图做"。参考稿真源 = `04_UI/Reference_Screens/home-1920x1080.png`
+> + `04_UI/Web_Implementation_Reference/style.css` 的 `.home-*` 段 + `home-ui.js` + `index.html` 的 `#home-screen`。
+
+### 9.1 新增 / 修改的文件
+
+| 文件 | 性质 |
+| --- | --- |
+| `Assets/_Project/Scripts/Runtime/UI/HomeView.cs` | **新增**：首页视图（建在既有 `PracticeHudCanvas` 上，与结算卡同构） |
+| `Assets/_Project/Scripts/Runtime/UI/HomeLayout.cs` | **新增**：首页几何单点（设计像素 → 视口归一化，唯一换算点 `Px()`） |
+| `Assets/_Project/UI/Icons/ui-club-crest.png` | **新增**：美术包 `Independent_Assets/club-crest-v1.png` 原样拷入（1254×1254，1.93 MB，md5 与源一致） |
+| `ClubUiTokens.cs` | 加：首页 8 个色令牌 + 5 个字号常量（并入 `ColorLedger`） |
+| `ClubUiSprites.cs` | 加：`UiSprite.ClubCrest = 18`（**只在末尾追加**，未插中间） |
+| `UiSpriteImportPostprocessor.cs` | 加：徽章（彩色成品位图）单独放宽 `maxTextureSize` 至 512 |
+| `PracticeHudState.cs` | 加：首页 12 条文案常量；全部并入 `AllDisplayCopy()` |
+| `PracticeHudView.cs` | 加：`SetChromeVisible(bool)`（首页打开时隐藏三块 HUD 分区） |
+| `PointerAimController.cs` / `PointerPowerController.cs` / `AimAssistController.cs` | 改：让位判据由"仅结算卡"扩为"结算卡 **或** 首页" |
+| `PracticeSessionStore.cs` | 加：`ReadHistoryFromDisk()`（首页三项统计的真源；缺失/坏文件 ⇒ 空列表，不抛） |
+| `GreyboxSceneSetup.cs` | 加：`HomeObjectName = "Home"` 宿主 + 接线（`BuildGameplayHosts` 是唯一构建点） |
+| `MainSceneTests.cs` | 改：`T127 ②` 的必需宿主清单加 `Home` |
+| `ClubUiTests.cs` | 改：`T124 ④` 的 `ViewSourceFiles` 加 `HomeView.cs` |
+
+### 9.2 三处**偏离参考稿**（全部登记，不包装成"照做"）
+
+1. **两个列表按钮同款式**（深色半透明底 + 描边 + 左文字 + 右箭头）。
+   参考稿把 `AI Match` 画成**黄铜实底的主按钮**（设计里的首选动作）；但 35-A **没有 AI 对手**
+   ⇒ 把不能用的入口画成整屏最亮的点，正是"假的可点态"。故两行同款，`Practice` 是首页唯一可用入口。
+   > **这是一处可逆的、有触发条件的偏离**：参考稿是**上亮下暗**（`AI Match` = `.home-action` 黄铜实底，
+   > `Practice` = `.home-secondary` 描边）。本工程把 `AI Match` **一并压暗**，唯一理由是"它没有真实功能"。
+   > ⇒ **AI 落地（35-B）时必须恢复参考稿的上亮下暗**（改 `HomeView.BuildActionRow` 的 fill/edge 令牌
+   > + 只给主入口换主色，2 个令牌；压暗的那层 `CanvasGroup` 同时移除）。
+2. **难度分段（`Casual | Club | Expert`）整体禁用**：三档难度在本工程**没有承接方**
+   （选谁都不改变任何东西）⇒ 保留参考稿的几何与"`Club` 选中"的配色位置（信息仍在），
+   但整段套 `CanvasGroup`（`alpha = DisabledOpacity`、`interactable = false`、`blocksRaycasts = false`）
+   且**三格都不挂 `Button`**（点击无效）。
+   **何时能接上**：需要真承接方（AI 强度 / 让球规则）才有意义 ⇒ **35-B**。接上时只需移除那一层 `CanvasGroup` 并挂按钮。
+3. **右上两个按钮 = VFX / SFX**（复用 HUD 上已在写的两个真开关），而参考稿是 `music-2` + `settings-2`：
+   本工程**没有设置页**（做出来就是"点了没反应"的假齿轮），曲目开关也**没有独立宿主**
+   （BGM 与音效同在 `PoolAudio.audioEnabled` 下）。
+   ⇒ 只放真的能改状态的两个；**接上设置页 / 独立曲目开关属 35-B**。
+   右下曲目行的音乐图标同理复用 `Volume` 精灵：参考稿的 `music-2` 本工程没有对应槽，
+   而 `♫`（U+266B）**5 个源字体全都没有**（离线读 5 个 TTF 的 `cmap` 实测）⇒ 写成字符会直接打红 `T97 (c)`。
+
+### 9.3 显隐门（`HomeView.IsOpen`）与冒烟让位（**已裁定：方案 1 + 可验证**）
+
+- 首页**默认启动即显示**（`shownOnStart = true`，用户"开始界面"的意图），关闭后 HUD 与可玩性才可用。
+  `HomeView.IsOpen` 是**第二个模态判据点**（第一个是 `PracticeResultView.IsOpen`），三个输入控制器都读它
+  —— 否则在首页上右键拖拽会蓄力、松手出杆（结算卡当年就是这么被咬过一次）。
+- **冲突**：两个冒烟（`-billiards-smoke` / `-billiards-smoke-aim`）都是**无人操作**跑 600 帧。
+  启动即显示首页 ⇒ ① 渲染负载变成"菜单 + 静态桌面"，帧时数字不再代表游戏内负载；
+  ② **更硬的**：`AimAssistController.ShouldShow` 因首页让位而恒假 ⇒ **拖动瞄准的预测路径根本不执行**，
+  `-billiards-smoke-aim` 测到的是"**没有预测的帧**" ⇒ **测错了对象**（不是"数字偏乐观"）。
+- **裁定（team-lead）= 方案 1：挂在冒烟入口里抑制，不用命令行开关。**
+  理由正是"防遗忘"：显式开关（方案 2）一旦有人手跑冒烟时忘了带，就会**静默**去测菜单 —— 那正是要避免的陷阱；
+  挂在入口上则不可能被忘掉。（方案 3「出包不显示首页」被否：等于把用户要的首页阉掉。方案 2 记为**备选**。）
+- **实现（时序是硬约束）**：
+  · `SmokeProbe.ParseEarly()`（`RuntimeInitializeLoadType.BeforeSceneLoad`）解析命令行并置
+    `SmokeProbe.IsSmokeMode` —— **必须在场景加载前**，因为场景对象的 `Awake` 早于 `AfterSceneLoad`；
+    若只在 `Bootstrap`（AfterSceneLoad）里解析，首页的 `Awake` 早已跑完 ⇒ 抑制**静默失效**。
+  · `HomeView.Awake` 读 `SmokeProbe.IsSmokeMode`：为真则**不显示首页**并上报。
+  · **依赖方向**：UI → Core（`HomeView` 读 Core 的中性事实）。反向（Core 去引用 `Billiards.UI.HomeView`）会形成反向依赖，禁止。
+- **可验证证据（不许只写注释）**：`smoke.json` 新增字段 **`homeStartup`**，取值三态：
+
+  | 取值 | 含义 | 冒烟时应为 |
+  | --- | --- | --- |
+  | `suppressed` | 首页被冒烟态抑制（`HomeView.Awake` 上报） | ✅ **期望值** |
+  | `shown` | 首页确实显示了（非冒烟态的常规启动） | ❌ 冒烟里出现即"测到了菜单" |
+  | `unreported` | **没有任何一方上报**（场景里没有首页宿主 / 接线缺失） | ❌ 出现即"抑制这件事没人证明" |
+
+  同时冒烟日志末尾打 `home=<取值>`，且当取值 **不是** `suppressed` 时额外打一条 `[SMOKE] ⚠` 警告。
+  该字段**不参与判定**（与 `passed` 无关）。
+- **待实测**：现有闸门基线（静置/拖动 **6.944 ms / 144 fps / 掉帧 0**）是"启动即进游戏"下测的
+  ⇒ 抑制后**必须重测一次**，与基线**同量级**才能称"口径逐位一致"；**若变了要如实报**（这一步需 Unity，属待放行项）。
+
+### 9.4 本轮**未做**（如实登记）
+
+- **"回到首页"没有实现**：参考稿局内顶栏有一个 `#home` 房子按钮，本工程 HUD 里没有它
+  ⇒ 首页只在**启动时**出现一次。局内返回首页要有暂停 / 离开语义 ⇒ 35-B。
+- **首页文字压在 3D 画面上 ⇒ 需要实机 / 截图确认对比度**（面向用户验收项）：
+  参考稿 `.home-screen` 给了 `text-shadow: 0 2px 10px #0009` 把文字从桌布上"托"起来，而 uGUI **无对应能力**
+  ⇒ 本工程**不做**该阴影，也**没有**用任何伪造手段代替（**没有**贴一张假阴影图、
+  **没有**给文字加人为描边/半透明底板去冒充 `text-shadow`）。⇒ 文字与桌布的对比度**只能由眼睛判定**，
+  请以实机截图验收；若不够，应作为**设计变更**提出（例如给左侧菜单加一层底板），而不是在实现里偷偷补阴影。
+- 参考稿的三个 `@media` 断点是**重排**；uGUI 无流式布局 ⇒ 非 16:9 档按锚点等比拉伸（表现差异）。
+- 按钮 `hover` / `focus` 视觉态不做（本工程既有控件一律不做）。
+- **三项统计的口径限制（面向用户验收，必须讲清）**：`PracticeResultView.OnExport` 目前以
+  `AppendToHistory(string.Empty, record)` 写入 ⇒ 磁盘历史**最多只留最近一次导出**
+  ⇒ 首页的 `SHOTS / POCKETED / RACKS` 反映的是"**已导出的那一次**"，
+  **不是累计的"俱乐部记录"（不是累计账）**。
+  首页侧读的是**真存储**（`PracticeSessionStore.ReadHistoryFromDisk()` 逐条累加，与参考实现
+  `home-ui.js` 的 `sum(history)` 同语义）、**没有伪造数字**；把 `OnExport` 改成累加口径
+  ⇒ **35-B**（改完这三项才真正成为累计记录）。
+
+### 9.5 本轮离线核验（**没跑 Unity**；Unity 侧跑批由 team-lead 按顺序放行）
+
+| 项 | 结果 |
+| --- | --- |
+| 离线编译（Runtime / Editor / Tests 三链，`dotnet build -t:Rebuild`） | **0 error**（Editor 0 warning；Tests 5 个 warning 全是既有文件里的 `CS0162`） |
+| 新类型进产物 | `HomeView` / `HomeLayout` / `SetChromeVisible` / `ReadHistoryFromDisk` / `ClubCrest` 等均在 `Billiards.Runtime-verify.dll` 元数据中命中 |
+| `T124 ④` 零颜色字面量（脚本复演） | `HomeView.cs` 0 处 `new Color(32)?(`、0 处十六进制色串（三个视图文件同判） |
+| `T97 (c)` 字符覆盖（脚本复演 5 个 TTF 的 `cmap`） | **PASS**：新增文案的非 ASCII 字符只有 `·`（U+00B7），5 个字体全覆盖 |
+| 首页几何自检 | 全部元素落在 1920×1080 内、无越界；菜单列底 754 与统计行顶 984 不重叠 |
+| 改动边界 | `git status` 只有 `.cs` + 新增 PNG；`.meta` / `.prefab` / `.unity` / `.asset` **零内容改动**；行尾全 LF |
+
+**仍需 Unity 才能验（未验）**：首页的真实渲染与观感与**对比度**（需截图）、按钮点击链路、
+`T124 ⑤`（19 槽精灵在场景里的接线）、`T127 ②`（`Home` 宿主在 Main 场景里）、
+场景重生成与幂等（`T128`）、**徽章 PNG 的首次 Sprite 导入**、全量 EditMode、
+**两档冒烟 + 与基线（6.944 ms / 144 fps / 掉帧 0）的重测比对**（见 §9.3）。
+
+### 9.6 本轮新增的坑（写给下一个接手的人）
+
+- **`*.csproj` 是 Unity 生成的本地物（不在仓库里），但它是显式的 Compile 列表** ⇒
+  **新增 `.cs` 不在列表里**时，离线编译会报"找不到名称/类型"，而**Unity 真实编译不受影响**
+  （Unity 自己会收录）。本轮因此踩了两次同类坑，两次都是"**新文件只进了一半**"：
+  · `HomeView.cs` 进了、`HomeLayout.cs` 没进 ⇒ 30+ 处 `CS0103 名称"HomeLayout"`（看起来像代码缺陷，其实是收录缺口）；
+  · 环境那路 `MaterialVisualSetup.cs` / `TableVisualBuilder.cs` 引用了 `RoomEnvironmentSetup`，
+    但 `RoomEnvironmentSetup.cs` 没进 `Billiards.Editor.csproj` ⇒ 3 处 `CS0103`。
+  ⇒ **诊断口令**：`CS0103/CS0246 指向的正好是你新加的名字` ⇒ 先查 Compile 列表，**别先怀疑代码**。
+  ⇒ **做整仓离线编译前**，先把两边的新文件都补进各自链的 Compile 列表（补完两链 **0 error / 0 warning**）。
+- **`RuntimeInitializeLoadType` 的时序会决定"抑制类改动"是否真的生效**：启动门（开始界面）在
+  `Awake` 里读事实 ⇒ 事实必须由 **`BeforeSceneLoad`** 置位；用 `AfterSceneLoad` 会**静默失效**
+  （首页已显示出来了）。这类"看起来做了、其实没做"的坑，判据也抓不到（要实跑冒烟看 `homeStartup`）。
+- **并发写同一批脚手架文件会静默丢改动**：本轮 `room-env` 与我在同一分钟内各写了一次
+  `_verify_Billiards.Editor.csproj`（后写者赢）。⇒ **共享的 `_verify_*.csproj` 不要并发改**；
+  各自的验证请各用自己的副本，并在**跑前复核、跑后复跑**。
+
+---
+
+### 9.7 跑批后的**产物流水观测**（离线读产物，非我运行）
+
+> 我的分工不跑 Unity。下列是**读 Unity 跑批留下的产物**得到的观测（读的是文件内容，不是我的推断）。
+> 观测时间：2026-10-16 14:19–14:22。
+
+1. **徽章导入已完成且设置正确** —— `Assets/_Project/UI/Icons/ui-club-crest.png.meta`（新生成，guid `a4d6c2f5…`）：
+   `textureType: 8`（Sprite）、`alphaIsTransparency: 1`、`spritePixelsToUnits: 100`、`spriteBorder` 全 0、
+   `enableMipMap: 0`、`isReadable: 0`、`DefaultTexturePlatform.maxTextureSize: 512`。
+   与既有 `ui-disc.png.meta` **同形**，唯一差异正是本轮有意的那一处（Default 128 → **512**）
+   ⇒ **`UiSpriteImportPostprocessor` 的徽章分支确实生效**。
+2. **两个场景都已按新口径重生成**（`Main.unity` / `PhysicsGreybox.unity` 各自）：
+   · Sprite 引用数 **35** = `uiSprites` **19** + `ballChips` **16**（旧口径是 18+16=34）；
+   · 场景里存在名为 **`Home`** 的宿主对象；
+   · 徽章精灵 guid `a4d6c2f5…` 在场景中出现 **1 次**（= 接进了 `uiSprites` 的第 19 槽）。
+3. **`Home` 宿主的三处接线已填**：`HomeView` 组件块里 `hud:` / `vfxView:` / `poolAudio:` 均为本场景内的
+   fileID，`shownOnStart: 1`。
+   · 交叉印证：`hud: {fileID: 1381200564}` 在场景里出现 **2 次** —— 一次是 `HomeView.hud`，
+     另一次是既有的、已知可用的 `PracticeResultView.hud` ⇒ **两处指向同一个 `PracticeHudView`**（与既有范式一致）。
+   · `HomeView` / `PracticeHudView` / `PoolVfxView` / `PoolAudio` 的脚本 guid 在场景中各出现 **1 次**（无重复/无缺失）。
+4. ⇒ §9.5 里原先列为"待放行"的 **徽章导入** 与 **场景重生成** 两项目前**已在产物中完成**
+   （因此 `T124 ⑤` / `T127 ②` 的产物前提已具备；**判定仍需跑一次 EditMode**）。
+5. **仍未做**：按新口径**重跑两档冒烟**并与基线（6.944 ms / 144 fps / 掉帧 0）比对 —— 需要出包 + 运行，
+   属 team-lead 的跑批顺序。另：`Docs` 之外的两个 TMP 字体 `.asset` 出现"预热落盘"式脏改动
+   （`m_SourceFontFileGUID` 未变，见 §9.3/§9.4 相关登记），需在收口时决定保留或还原。
+6. 新增三个 `.meta`（`HomeView.cs.meta` `16e648ee…` / `HomeLayout.cs.meta` `64915dd7…` /
+   `ui-club-crest.png.meta` `a4d6c2f5…`）**必须一并入库**（否则 Unity 会重新随机生成 guid，
+   场景里已接好的引用会断）。

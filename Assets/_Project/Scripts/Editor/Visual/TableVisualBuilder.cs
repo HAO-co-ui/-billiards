@@ -75,6 +75,10 @@ namespace Billiards.EditorTools
                 renderer.shadowCastingMode = ShadowCastingMode.Off;
             }
 
+            // 球房环境（墙 + 13 件美术道具）：走**唯一实现点** `RoomEnvironmentSetup`。
+            // 落点仍是本方法创建的 `Room`（不新建地面、不移动 Room）⇒ `SCN-01`/`SCN-07` 语义不变。
+            RoomEnvironmentSetup.Attach(room.transform);
+
             return room;
         }
 

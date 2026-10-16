@@ -110,9 +110,9 @@ namespace Billiards.Physics
                 return;
             }
 
-            // **模态让位**：结算卡打开期间不作瞄准 —— 唯一判据点 = `PracticeResultView.IsOpen`。
-            // 否则在卡片上左键拖拽会同时驱动瞄准锁，交互会串。
-            if (Billiards.UI.PracticeResultView.IsOpen)
+            // **模态让位**：结算卡 / 首页打开期间不作瞄准 —— 判据点 = `PracticeResultView.IsOpen`
+            // 或 `HomeView.IsOpen`。否则在卡片或首页上左键拖拽会同时驱动瞄准锁，交互会串。
+            if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen)
             {
                 return;
             }

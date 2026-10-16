@@ -267,6 +267,34 @@ namespace Billiards.UI
         /// <summary>"eyebrow" 小标（腔调标）色 = 黄铜。</summary>
         public static readonly Color32 ResultEyebrow = Accent;
 
+        // ════════════════ 开始界面（首页，`04_UI` 的 `.home-*` 段逐条）═══════════════
+        // 真源 = `Web_Implementation_Reference/style.css` 的 `.home-club-mark` / `.home-menu`
+        // / `.home-records` / `.home-table-label` / `.home-track` 各规则。视图侧不得再写字面量。
+
+        /// <summary>首页俱乐部名 `#e8d4a1`（`.home-club-mark > span`）。</summary>
+        public static readonly Color32 HomeClubName = Rgb(0xE8D4A1);
+
+        /// <summary>首页徽章副标 `#aabab3`（`.home-club-mark small`；右下曲目行的文字同值）。</summary>
+        public static readonly Color32 HomeClubSub = Rgb(0xAABAB3);
+
+        /// <summary>首页提示小字 `#afbbb3`（`.home-table-number` 与 `.home-difficulty > span` 同值）。</summary>
+        public static readonly Color32 HomeHint = Rgb(0xAFBBB3);
+
+        /// <summary>首页标题行细线 `#d4b46c70`（`.home-heading-rule > span:not(.home-table-number)`）。</summary>
+        public static readonly Color32 HomeRule = Alpha(Accent, 0x70);
+
+        /// <summary>首页列表按钮底 `#102025b8`（`.home-secondary{background}`）。</summary>
+        public static readonly Color32 HomeActionFill = Alpha(Ink, 0xB8);
+
+        /// <summary>首页列表按钮描边 `#d4b46c75`（`.home-secondary{border-color}`）。</summary>
+        public static readonly Color32 HomeActionEdge = Alpha(Accent, 0x75);
+
+        /// <summary>首页统计标签 `#aebdb5`（`.home-records span`）。</summary>
+        public static readonly Color32 HomeStatLabel = Rgb(0xAEBDB5);
+
+        /// <summary>首页右下 `HOUSE TABLE 01` 的色 `#d4b46cb0`（`.home-table-label{color}`）。</summary>
+        public static readonly Color32 HomeHouseTint = Alpha(Accent, 0xB0);
+
         // ════════════════ 语义色族登记（供 `T125` 守"不得借色"）═════════════════
 
         /// <summary>酒红族：**只允许**出现在犯规与失败两处。</summary>
@@ -428,6 +456,25 @@ namespace Billiards.UI
         /// <summary>结算标题 `38px` Barlow Condensed。</summary>
         public const float FontResultTitle = 38f;
 
+        // ── 开始界面（首页）字号（`style.css` 的 `.home-*` 段逐条）──────────────
+        // ⚠ 首页里 8 / 10 / 11 / 12 px 四档**不另立常量**：与既有 `FontMicro` / `FontSmall` /
+        //   `FontBodySmall` / `FontBody` 逐值相同 ⇒ 复用既有令牌，避免"同一数值两个名字"。
+
+        /// <summary>首页俱乐部名 `18px` Barlow Condensed（`.home-club-mark > span`）。</summary>
+        public const float FontHomeClubName = 18f;
+
+        /// <summary>首页大标题 `76px` Barlow Condensed（`.home-menu h1`）。</summary>
+        public const float FontHomeTitle = 76f;
+
+        /// <summary>首页列表按钮 `23px` Barlow Condensed（`.home-action`）。</summary>
+        public const float FontHomeAction = 23f;
+
+        /// <summary>首页统计数字 `25px` Barlow Condensed（`.home-records strong`）。</summary>
+        public const float FontHomeStatValue = 25f;
+
+        /// <summary>首页右下台号 `28px` Barlow Condensed（`.home-table-label strong`）。</summary>
+        public const float FontHomeHouseNumber = 28f;
+
         /// <summary>主按钮字重 `700`、次按钮 `400`。</summary>
         public const int WeightBold = 700;
         public const int WeightSemiBold = 600;
@@ -509,6 +556,14 @@ namespace Billiards.UI
             (nameof(ResultMatchIconFill), ResultMatchIconFill),
             (nameof(ResultMatchLoseIconFill), ResultMatchLoseIconFill),
             (nameof(ResultScore), ResultScore),
+            (nameof(HomeClubName), HomeClubName),
+            (nameof(HomeClubSub), HomeClubSub),
+            (nameof(HomeHint), HomeHint),
+            (nameof(HomeRule), HomeRule),
+            (nameof(HomeActionFill), HomeActionFill),
+            (nameof(HomeActionEdge), HomeActionEdge),
+            (nameof(HomeStatLabel), HomeStatLabel),
+            (nameof(HomeHouseTint), HomeHouseTint),
         };
 
         // ════════════════ 小工具 ═══════════════════════════════════════════════
