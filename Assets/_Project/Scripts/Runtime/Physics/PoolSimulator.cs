@@ -512,6 +512,45 @@ namespace Billiards.Physics
         }
 
         /// <summary>
+        /// **纯函数：白球能否放在「头区（kitchen）」内** —— 开球犯规后对手的放球契约（35-C §6-P2）。
+        ///
+        /// **三条基础规则一律"调用"、不得"重写"**：直接调 <see cref="IsPlacementLegal"/>
+        /// （台内 / 不压球 / **不占袋口** —— 后者**不得**用 `throatNormal` 做点积，那是错的量，见该方法的注释）。
+        /// **本方法只额外加一条**：**严格不等式** `position.x &gt; <paramref name="kitchenLineX"/>`
+        /// ⇒ **恰在开球线上 = 不合法**（"不压线"）。
+        ///
+        /// ⚠ **命名陷阱（登记）**：`TableConfig.footSpot` 在本工程是"**白球旧开球位**"、**不是球堆顶点**
+        /// ⇒ **拿它镜像推头线必错**。头线一律用 <see cref="PoolConstants.KitchenLineX"/>（由 `ClothHalfLength` 派生）。
+        ///
+        /// ⚠ 与「出杆方向」**不合并**为同一个返回值：**放置只在 ball-in-hand 态用**、
+        /// **出杆方向只在开球态用**，**两者适用时机不同** ⇒ 分成两个纯函数（见 <see cref="IsBreakShotForwardEnough"/>）。
+        /// </summary>
+        public static bool IsPlacementLegalInKitchen(Vector2 position, IReadOnlyList<Vector2> occupiedCenters,
+            IReadOnlyList<Billiards.Table.Pocket> pockets, float halfLength, float halfWidth, float kitchenLineX)
+        {
+            // ⚠ 三条基础规则**调用**既有单点实现（**不得**在此重写台内/压球/袋口）
+            if (!IsPlacementLegal(position, occupiedCenters, pockets, halfLength, halfWidth))
+            {
+                return false;
+            }
+
+            // 头区：**严格**在开球线之后（恰在线上 ⇒ 不合法）
+            return position.x > kitchenLineX;
+        }
+
+        /// <summary>
+        /// **纯函数：开球那一杆是否"往前"打够** —— 开球犯规后对手的**出杆方向**契约（35-C §6-P2）。
+        ///
+        /// **头端 = `+x`、脚端 = `−x` ⇒ "前方" = `−x`** ⇒ 判据 `cueVelocity.x ≤ −<paramref name="minForwardComponent"/>`
+        /// （**恰好等于** `minForwardComponent` 算**合法**；`minForwardComponent` 必须为正，由调用方给）。
+        /// ⚠ **本函数与放置无关**（见 <see cref="IsPlacementLegalInKitchen"/> 的注释：两者适用时机不同，故意不合并）。
+        /// </summary>
+        public static bool IsBreakShotForwardEnough(Vector2 cueVelocity, float minForwardComponent)
+        {
+            return cueVelocity.x <= -minForwardComponent;
+        }
+
+        /// <summary>
         /// **纯函数：把一颗球放到 <paramref name="position"/> 是否合法**（**全场自由球**的落点校验，**单一实现**）。
         ///
         /// 三条同时成立：

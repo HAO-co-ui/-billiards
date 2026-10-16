@@ -204,6 +204,12 @@ public static bool IsBreakShotForwardEnough(Vector2 cueVelocity, float minForwar
 |---|---|---|
 | **P0** | 内核加法：`ContactEvent` 加球号（4 个记录点）+ 本杆事件快照 | ① 事件里能拿到球号（逐位对已知场景）② **`DrainContactEvents` 语义未变**（音频判据全绿）③ 注入：不填球号 ⇒ 必红 |
 | **P1** | 球号与摆球：**下标即球号** + `EightBallRackPositions`（15 颗、**黑 8 在第三排中间**、两角一实一花） | ① 15 颗位置与几何单源一致 ② 8 号位居中 ③ **既有 3 颗夹具保留**（见 §7 风险） |
+
+> ⚠ **P1 未接线登记（2026-10-16，主理人裁定）**：`EightBallRackPositions(Vector2, int seed)` **已就绪且已有判据**
+> （折进既有 `T65`），但**尚未接入 `PhysicsTestDrive.BuildRack()`** ⇒ **运行期"开球随机 + 8 居中"还没生效**。
+> **接线点 = 对局开局阶段**，届时一并决定：**运行期种子来源**（谁在什么时机给种子）与**判据注入方式**。
+> 依据：全仓现有 `RackPositions` 调用点**全是 3 颗**（`PhysicsTuningTools.cs:154`、`GreyboxSceneSetup.cs:906`、`PhysicsValidator.cs:293`）
+> ⇒ 接线是**纯增量**，但**时机属于开局设计**（不属 P1）。
 | **P2** | 头线 + `IsPlacementLegalInKitchen` | ① 球心在线后 ✓、压线/越线 ✗ ② 与 `IsPlacementLegal` 三条同源（单点实现）③ 注入 ⇒ 红 |
 | **P3** | 规则层：`RuleFacts` + `Judge` 纯函数 + `RuleState` | **每条规则一条判据**（含开放球局定组、有效开球、碰库原则、黑 8 三种判负）＋ 每条**负路径** |
 | **P4** | AI 层：候选生成 → 整杆推演 → 评分 → 难度注入 → 合法性过滤 | ① 三档参数可断言字面量 ② 同台面下 Casual < Club < Expert 的**可观测差异**（如成功率）③ 性能：**单帧 ≤1 次推演**、每回合 ≤64 次、超时收尾 ④ 注入：去掉合法性过滤 ⇒ 必红（AI 会打出犯规杆） |

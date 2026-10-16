@@ -55,6 +55,16 @@ namespace Billiards.Core
         /// <summary>台面长轴半长，1.27 m。</summary>
         public const float ClothHalfLength = 1.27f;
 
+        /// <summary>
+        /// **开球线（头线）在长轴上的 x 坐标**（规范米）—— **由 <see cref="ClothHalfLength"/> 派生**
+        /// （`= ClothHalfLength / 2` ⇒ 当前 `0.635`）⇒ ⚠ **改台长即改线**（**不得**再写字面量，铁律 16）。
+        ///
+        /// **哪一端是头端**：本工程 **`+x` = 头端、`−x` = 脚端**（依据 `PhysicsTestDrive` 的自陈：
+        /// "白球在**头区**、球堆在**脚点** ⇒ 相距 ≈ 半个台长"；球堆顶点 `RackApexX = -0.30` 在 `−x` 侧）。
+        /// **头区（kitchen）= `x > 本值` 的台内区域**（开球犯规后对手只能把白球放在这里、且只能往 `−x` 方向击球）。
+        /// </summary>
+        public const float KitchenLineX = ClothHalfLength / 2f;
+
         /// <summary>台面短轴半宽，0.6350544330872985 m（= ClothInnerWidth / 2）。</summary>
         public const float ClothHalfWidth = 0.6350544330872985f;
 

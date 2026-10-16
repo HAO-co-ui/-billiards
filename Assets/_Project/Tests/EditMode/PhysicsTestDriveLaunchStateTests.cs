@@ -91,6 +91,22 @@ namespace Billiards.Tests
             return sb.ToString();
         }
 
+        /// <summary>`PoolSimulator.cs` 源码路径（`P2` 白盒守卫用）。</summary>
+        private const string PoolSimulatorSourcePath = "Assets/_Project/Scripts/Runtime/Physics/PoolSimulator.cs";
+
+        /// <summary>逐行剥掉 `//` 之后注释（`P2` 守卫用；命名带后缀避免与既有重名）。</summary>
+        private static string StripCommentsP2(string source)
+        {
+            var sb = new System.Text.StringBuilder(source.Length);
+            foreach (string line in source.Split('\n'))
+            {
+                int cut = line.IndexOf("//", System.StringComparison.Ordinal);
+                sb.Append(cut >= 0 ? line.Substring(0, cut) : line).Append('\n');
+            }
+
+            return sb.ToString();
+        }
+
         private static string RVec(Vector2 v)
             => v.x.ToString("R", CultureInfo.InvariantCulture) + ";"
              + v.y.ToString("R", CultureInfo.InvariantCulture);
@@ -831,6 +847,86 @@ namespace Billiards.Tests
                 "T140⑨（c）：**正对中袋**应非法（两版都必须拒）。");
             Chk140(PoolSimulator.IsPlacementLegal(new Vector2(-0.6f, 0.55f), null, pockets, t.halfLength, t.halfWidth),
                 "T140⑩（d）：对照点，两版都合法。");
+            // ── **35-C P2：开球线（kitchen）放置契约 + 前向出杆**（折进 T140 ⇒ 计数不变）──────────────
+            // **怎么打死它**：① 把严格 `>` 改成 `>=` ⇒ (P2-②) 必红；② 去掉 kitchen 线判定（恒 true）⇒ (P2-②③) 必红。
+            var p2Failures = new List<string>();
+            float kitchenLineX = PoolConstants.KitchenLineX;
+
+            if (!(Mathf.Abs(kitchenLineX - PoolConstants.ClothHalfLength / 2f) <= 1e-6f))
+            {
+                p2Failures.Add($"(P2-0) `KitchenLineX` 必须**由 `ClothHalfLength` 派生**"
+                               + $"（期望 {PoolConstants.ClothHalfLength / 2f:R}），实测 {kitchenLineX:R}。");
+            }
+
+            // 六例边界（y = 0；规范米）
+            bool k1 = PoolSimulator.IsPlacementLegalInKitchen(new Vector2(0.97f, 0f), null, pockets, t.halfLength, t.halfWidth, kitchenLineX);
+            bool k2 = PoolSimulator.IsPlacementLegalInKitchen(new Vector2(0.635f, 0f), null, pockets, t.halfLength, t.halfWidth, kitchenLineX);
+            bool k3 = PoolSimulator.IsPlacementLegalInKitchen(new Vector2(0.30f, 0f), null, pockets, t.halfLength, t.halfWidth, kitchenLineX);
+            bool k4 = PoolSimulator.IsPlacementLegalInKitchen(new Vector2(1.24f, 0f), null, pockets, t.halfLength, t.halfWidth, kitchenLineX);
+            var occupiedKitchen = new List<Vector2> { new Vector2(0.97f, 0.02f) };
+            bool k5 = PoolSimulator.IsPlacementLegalInKitchen(new Vector2(0.97f, 0f), occupiedKitchen, pockets, t.halfLength, t.halfWidth, kitchenLineX);
+            var cornerProbe = new Vector2(t.halfLength - PoolConstants.BallRadius, t.halfWidth - PoolConstants.BallRadius);
+            bool k6 = PoolSimulator.IsPlacementLegalInKitchen(cornerProbe, null, pockets, t.halfLength, t.halfWidth, kitchenLineX);
+
+            if (!k1)
+            {
+                p2Failures.Add("(P2-①) `(0.97, 0)`（= 白球开球位）应**合法**。");
+            }
+
+            if (k2)
+            {
+                p2Failures.Add("(P2-②) `(0.635, 0)`（**恰在开球线上**）应**不合法**（严格不等式）。");
+            }
+
+            if (k3)
+            {
+                p2Failures.Add("(P2-③) `(0.30, 0)`（**在线后 = 脚区**）应**不合法**。");
+            }
+
+            if (!k4)
+            {
+                p2Failures.Add("(P2-④) `(1.24, 0)`（**贴头库、仍在台内**）应**合法**。");
+            }
+
+            if (k5)
+            {
+                p2Failures.Add("(P2-⑤) `(0.97, 0)` 但 occupied 含 `(0.97, 0.02)` ⇒ **压球**应**不合法**。");
+            }
+
+            if (k6)
+            {
+                p2Failures.Add($"(P2-⑥) 角袋口附近 `{RVec(cornerProbe)}`（**占袋口**）应**不合法**。");
+            }
+
+            // **单点实现守**（白盒：**调用形态**，不是方法名 —— 判方法名会命中**定义**⇒恒红）
+            string poolSource = StripCommentsP2(
+                System.IO.File.ReadAllText(System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(UnityEngine.Application.dataPath), PoolSimulatorSourcePath)));
+            if (!poolSource.Contains("IsPlacementLegal(position, occupiedCenters, pockets, halfLength, halfWidth)"))
+            {
+                p2Failures.Add("(P2-⑦) `IsPlacementLegalInKitchen` 必须**调用**既有单点实现 "
+                               + "`IsPlacementLegal(position, occupiedCenters, pockets, halfLength, halfWidth)`（不得重写三条规则）。");
+            }
+
+            // **前向出杆**（头端 +x ⇒ 前方 = −x）
+            const float minForward = 1.0f;
+            if (!PoolSimulator.IsBreakShotForwardEnough(new Vector2(-minForward, 0f), minForward))
+            {
+                p2Failures.Add("(P2-⑧) 前向分量**恰好等于** `minForwardComponent` 应**合法**（判据是 `<=`）。");
+            }
+
+            if (PoolSimulator.IsBreakShotForwardEnough(new Vector2(-minForward * 0.99f, 0f), minForward))
+            {
+                p2Failures.Add("(P2-⑨) 前向分量**略小**于 `minForwardComponent` 应**不合法**。");
+            }
+
+            if (PoolSimulator.IsBreakShotForwardEnough(new Vector2(minForward, 0f), minForward))
+            {
+                p2Failures.Add("(P2-⑩) **反方向（+x）**应**不合法**（前方 = −x = 脚端方向）。");
+            }
+
+            Assert.IsEmpty(p2Failures, "T140 P2（kitchen/前向）失败项（**收集全部**）：\n" + string.Join("\n", p2Failures));
+
             Assert.IsEmpty(t140Failures, "T140⑦–⑩ 失败项（**收集全部**，不在首个失败处中止）：\n"
                 + string.Join("\n", t140Failures));
 
