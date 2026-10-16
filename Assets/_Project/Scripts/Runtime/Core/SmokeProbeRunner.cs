@@ -61,12 +61,32 @@ namespace Billiards.Core
         /// <summary>场景里可被脚本化驱动瞄准的目标（拖动负载用）；无 ⇒ <c>null</c>（不驱动）。</summary>
         private ISmokeAimSweepTarget _aimTarget;
 
+        /// <summary>是否在采样期**主动触发一次 首页→打球 转场**（转场负载探针）。见 <see cref="SmokeProbe.TransitionSwitch"/>。</summary>
+        private bool _transition;
+
+        /// <summary>转场是否已触发（只触发一次）。</summary>
+        private bool _transitionTriggered;
+
+        /// <summary>可被脚本化触发转场的宿主（首页）；无 ⇒ <c>null</c>（探针退化为普通静置并告警）。</summary>
+        private ISmokeTransitionTrigger _transitionTarget;
+
+        // 转场探针的**分段逐帧耗时**（三段分开统计 ⇒ "转场窗口 vs 稳态"的 p95 对比）。
+        private readonly List<float> _preSteadyMs = new List<float>(SmokeProbe.TransitionTriggerFrame);
+        private readonly List<float> _transitionWindowMs = new List<float>(SmokeProbe.TransitionWindowFrames + 8);
+        private readonly List<float> _postSteadyMs = new List<float>(256);
+
+        /// <summary>采样期最慢帧（序号 / 阶段 / 耗时）。</summary>
+        private int _slowestIndex = -1;
+        private float _slowestMs;
+        private SmokeProbe.LoadPhase _slowestPhase;
+
         /// <summary>由 <see cref="SmokeProbe.Bootstrap"/> 调用；也可被判据/探针直接调用。</summary>
-        public void Begin(int frames, string outputPath, bool aimSweep = false)
+        public void Begin(int frames, string outputPath, bool aimSweep = false, bool transition = false)
         {
             _frames = frames;
             _outputPath = string.IsNullOrEmpty(outputPath)
-                ? Path.Combine(Application.persistentDataPath, SmokeProbe.DefaultOutputFileName)
+                ? Path.Combine(Application.persistentDataPath,
+                    transition ? SmokeProbe.DefaultTransitionOutputFileName : SmokeProbe.DefaultOutputFileName)
                 : outputPath;
             _frameMs.Clear();
             _rounds.Clear();
@@ -77,26 +97,43 @@ namespace Billiards.Core
             _maxMaterials = 0;
             _aimSweep = aimSweep;
             _aimTarget = null;
+            _transition = transition;
+            _transitionTriggered = false;
+            _transitionTarget = null;
+            _preSteadyMs.Clear();
+            _transitionWindowMs.Clear();
+            _postSteadyMs.Clear();
+            _slowestIndex = -1;
+            _slowestMs = 0f;
+            _slowestPhase = SmokeProbe.LoadPhase.PreSteady;
 
-            if (!_aimSweep)
+            if (_aimSweep || _transition)
             {
-                return;
-            }
-
-            // 一次查找即可（场景在 AfterSceneLoad 时已加载）。
-            MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
-            for (int i = 0; i < behaviours.Length; i++)
-            {
-                if (behaviours[i] is ISmokeAimSweepTarget target)
+                // 一次查找即可（场景在 AfterSceneLoad 时已加载）。
+                MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+                for (int i = 0; i < behaviours.Length; i++)
                 {
-                    _aimTarget = target;
-                    break;
+                    if (_aimSweep && _aimTarget == null && behaviours[i] is ISmokeAimSweepTarget t)
+                    {
+                        _aimTarget = t;
+                    }
+
+                    if (_transition && _transitionTarget == null && behaviours[i] is ISmokeTransitionTrigger tt)
+                    {
+                        _transitionTarget = tt;
+                    }
                 }
             }
 
-            if (_aimTarget == null)
+            if (_aimSweep && _aimTarget == null)
             {
                 Debug.LogWarning("[SMOKE] 已请求拖动瞄准负载，但场景里没有 ISmokeAimSweepTarget ⇒ 本项退化为静置。");
+            }
+
+            if (_transition && _transitionTarget == null)
+            {
+                Debug.LogWarning("[SMOKE] 已请求转场负载，但场景里没有 ISmokeTransitionTrigger（首页缺失？）"
+                                 + " ⇒ 本项退化为静置，转场数字无意义。");
             }
         }
 
@@ -120,11 +157,47 @@ namespace Billiards.Core
                 _aimTarget.ApplySmokeAimDegrees(SmokeProbe.AimSweepDegrees(_sampled));
             }
 
+            // **转场负载探针**：在触发帧的**测时之前**走真实路径关闭首页
+            // ⇒ 本帧的 `ms` 就包含"点开始那一刻"的一次性尖峰（HUD 懒构建 / SetActive / SetChromeVisible）。
+            if (_transition && !_transitionTriggered && _sampled == SmokeProbe.TransitionTriggerFrame)
+            {
+                _transitionTriggered = true;
+                if (_transitionTarget != null)
+                {
+                    _transitionTarget.TriggerSmokeTransition();
+                }
+            }
+
             float ms = Time.unscaledDeltaTime * 1000f;
             _frameMs.Add(ms);
             if (_roundMin <= 0f || ms < _roundMin)
             {
                 _roundMin = ms;
+            }
+
+            // 转场探针：把逐帧耗时**按阶段**分开记（转场窗口 vs 前/后稳态），并跟踪最慢帧。
+            if (_transition)
+            {
+                SmokeProbe.LoadPhase phase = SmokeProbe.PhaseOf(_sampled);
+                if (phase == SmokeProbe.LoadPhase.PreSteady)
+                {
+                    _preSteadyMs.Add(ms);
+                }
+                else if (phase == SmokeProbe.LoadPhase.TransitionWindow)
+                {
+                    _transitionWindowMs.Add(ms);
+                }
+                else
+                {
+                    _postSteadyMs.Add(ms);
+                }
+
+                if (_slowestIndex < 0 || ms > _slowestMs)
+                {
+                    _slowestIndex = _sampled;
+                    _slowestMs = ms;
+                    _slowestPhase = phase;
+                }
             }
 
             SampleScenePeaks();
@@ -141,7 +214,9 @@ namespace Billiards.Core
             _frameMs.Clear();
             _roundMin = 0f;
 
-            if (_rounds.Count < SmokeProbe.Rounds)
+            // 转场探针**只跑一轮**：转场是**一次性**事件，多轮里只有第一轮有它 ⇒ 多轮会把尖峰摊平/藏住。
+            int wantedRounds = _transition ? 1 : SmokeProbe.Rounds;
+            if (_rounds.Count < wantedRounds)
             {
                 return;
             }
@@ -211,6 +286,11 @@ namespace Billiards.Core
                 ? means[means.Count / 2]
                 : 0.5f * (means[means.Count / 2 - 1] + means[means.Count / 2]);
 
+            // ── 转场探针：分段统计（**核心产出 = 转场窗口 p95 vs 稳态 p95**）──
+            SmokeProbe.ComputeStats(_preSteadyMs, out float preMean, out float preP95, out _, out _);
+            SmokeProbe.ComputeStats(_transitionWindowMs, out float trMean, out float trP95, out _, out _);
+            SmokeProbe.ComputeStats(_postSteadyMs, out float postMean, out float postP95, out _, out _);
+
             var result = new SmokeResult
             {
                 unityVersion = Application.unityVersion,
@@ -238,10 +318,23 @@ namespace Billiards.Core
                 predictionComputeCount = SmokeProbe.PredictComputeReported,
                 totalPredictSteps = SmokeProbe.PredictStepsReported,
                 aimSweep = _aimSweep,
+                // 转场负载探针（`-billiards-smoke-transition`）；非探针 ⇒ 这些字段不写进 JSON。
+                transitionProbe = _transition,
+                transitionTriggerFrame = SmokeProbe.TransitionTriggerFrame,
+                transitionWindowFrames = SmokeProbe.TransitionWindowFrames,
+                slowestFrameIndex = _slowestIndex,
+                slowestFramePhase = SmokeProbe.PhaseName(_slowestPhase),
+                slowestFrameMs = _slowestMs,
+                preSteadyMeanMs = preMean,
+                transitionMeanMs = trMean,
+                postSteadyMeanMs = postMean,
+                preSteadyP95Ms = preP95,
+                transitionP95Ms = trP95,
+                postSteadyP95Ms = postP95,
                 // 启动门（开始界面）的实际走向 —— **"冒烟确实抑制了首页"的可验证证据**。
                 // 冒烟态下若读到 `unreported` 或 `shown`，就说明这次采样量的不是纯玩法负载。
                 homeStartup = SmokeProbe.HomeStartupReport,
-                gate = _aimSweep ? "drag" : "static",
+                gate = _transition ? "transition" : (_aimSweep ? "drag" : "static"),
                 frameGateOk = frameGateOk,
                 sceneBudgetOk = sceneBudgetOk,
                 // **环境不洁 ⇒ 不出具判定**（`passed` 不成立，退出码另给 3）
@@ -260,10 +353,23 @@ namespace Billiards.Core
                 File.WriteAllText(_outputPath, json);
                 // `homeStartup` 必须打在这一行里：只写 JSON 不进日志时，肉眼看日志的人**看不出**
                 // 这次到底测的是玩法还是开始界面（"注释不算证明"同样适用于日志）。
-                if (result.homeStartup != SmokeProbe.HomeStartupSuppressed)
+                //
+                // ⚠ **期望值按档位不同**（这一点是缺陷修法，不是可选项）：
+                //   · 常规 / 拖动档 ⇒ 期望 `suppressed`（首页必须让位，否则采的是菜单）；
+                //   · **转场档 ⇒ 期望 `shown`**（首页**必须显示**，否则没有"首页→打球"可切），
+                //     若这里仍按 `suppressed` 判，就会**每次跑转场档都打一条与事实相反的 ⚠**，
+                //     把那一档的证据读起来像"有问题"。
+                //   · `unreported` 在任何档都是缺陷（= 场景里没有首页宿主，抑制/转场都没被证明）。
+                string expectedHome = _transition
+                    ? SmokeProbe.HomeStartupShown
+                    : SmokeProbe.HomeStartupSuppressed;
+                if (result.homeStartup != expectedHome)
                 {
-                    Debug.LogWarning($"[SMOKE] ⚠ 首页启动显示未被抑制（homeStartup={result.homeStartup}）"
-                                     + " ⇒ 本次采样量的可能不是纯玩法负载。");
+                    Debug.LogWarning($"[SMOKE] ⚠ 首页启动显示**与档位期望不符**"
+                                     + $"（homeStartup={result.homeStartup}，本档期望 {expectedHome}）"
+                                     + (result.homeStartup == SmokeProbe.HomeStartupUnreported
+                                         ? " ⇒ 无首页宿主上报：抑制/转场**都没有被证明**。"
+                                         : " ⇒ 本档采样的对象可能不是它要量的那一个。"));
                 }
 
                 Debug.Log($"[SMOKE] 写入 {_outputPath}：{result.frames}×{result.rounds} 帧 "

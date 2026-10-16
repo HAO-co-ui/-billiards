@@ -146,6 +146,9 @@ namespace Billiards.UI
             _progressSeconds = 0f;
             IsTransitioning = true;
 
+            // **发布"转场中"** ⇒ 瞄准线/幽灵球/球杆读到它就整体让位（用户反馈"转场中瞄准线乱转"）。
+            CameraTransition.Publish(true);
+
             // 立刻按 t≈0 施加一次（与起点一致），避免"起帧仍停在旧姿态"的观感跳变
             CameraPresets.ApplyPose(targetCamera, _fromPosition, _fromLookTarget, _fromFovDeg);
         }
@@ -203,6 +206,32 @@ namespace Billiards.UI
             _applied = preset;
             _hasApplied = true;
             IsTransitioning = false;
+
+            // 落终态的这一刻才**放开**瞄准表现的门（早放会让最后几帧又闪一下）。
+            CameraTransition.Publish(false);
+        }
+
+        /// <summary>
+        /// **放开转场门**（兜底路径）—— `OnDisable` 调它，保证"**门**"这个静态状态**不会漏到下一个场景**
+        /// （否则下一场景里瞄准线会一直不显示）。
+        ///
+        /// ⚠ **为什么单独抽成一个公开方法**（不是为了测试而开口子，是因为**判据在本环境够不到 `OnDisable`**）：
+        /// **实测：EditMode 测试**不触发** `OnDisable`** —— `DestroyImmediate(GameObject)` 与 `enabled = false`
+        /// **两种方式都不触发**（`T137④` 的两版写法都因此红过）。
+        /// ⇒ 为了"兜底这件事**有人守**"，把行为抽到这里，由 `T137④` 做**两段断言**：
+        ///   ① **功能**：直接调本方法 ⇒ 门必须放开；② **接线**（白盒文本断言，与 `T72b` 读内核源码同法）：
+        ///      `OnDisable` 的方法体里**必须出现** `ReleaseTransitionGate()` ⇒ **删掉那行调用 ⇒ 判据必红**。
+        /// </summary>
+        public void ReleaseTransitionGate()
+        {
+            IsTransitioning = false;
+            CameraTransition.Publish(false);
+        }
+
+        /// <summary>组件被关掉时兜底放开**门**（否则瞄准线会一直不显示）。</summary>
+        private void OnDisable()
+        {
+            ReleaseTransitionGate();
         }
 
         /// <summary>取当前**适配器基准**（= 该用的基准 fov；没有适配器就用相机 fov）。</summary>

@@ -19,11 +19,35 @@ namespace Billiards.Core
     /// </summary>
     public static class CameraTransition
     {
-        /// <summary>过渡时长（秒）—— **默认档**。0.45 s：约 27 帧 @60 fps。</summary>
-        public const float DefaultSeconds = 0.45f;
+        /// <summary>过渡时长（秒）—— **默认档**。0.9 s：约 54 帧 @60 fps。</summary>
+        /// <remarks>
+        /// ⚠ **用户实机反馈"太快"⇒ 0.45 → 0.9**（原 0.45 s 只是我按"不突兀"选的经验值，用户实机觉得太仓促）。
+        /// 键帧表已按新时长重算（见 `Docs/35-A_球房环境_spec.md` §13.1）。
+        /// </remarks>
+        public const float DefaultSeconds = 0.9f;
 
-        /// <summary>过渡时长（秒）—— **备选档**。0.55 s：更"慢镜头"一点，约 33 帧 @60 fps。</summary>
+        /// <summary>过渡时长（秒）—— **备选档**。0.55 s：更利落一点，约 33 帧 @60 fps。</summary>
         public const float AlternativeSeconds = 0.55f;
+
+        /// <summary>
+        /// **"转场正在进行"的中性状态** —— 由**相机侧发布**（`Billiards.UI.PlayViewCamera` 是唯一写入者）、
+        /// 由**瞄准/球杆侧读取**（照 <see cref="Billiards.UI.HomeView.IsOpen"/> 的既有范式：**同程序集、单向**）。
+        ///
+        /// **为什么需要它**（用户实机反馈："转场过程中**瞄准线会出来乱转**"）：
+        /// 瞄准线/幽灵球/球杆都是**相机相关的投影**，相机在转场中会扫过一段路径 ⇒
+        /// 这些表现若不门控，就会跟着扫（用户看到的"乱转"）。根因是**同一个**（相机在动），
+        /// 所以读它的地方要一起门控（`AimAssistController` / `PointerAimController` / `CueStickController`）。
+        ///
+        /// ⚠ **门必须在 `t ≥ 1` 才放开**（`PlayViewCamera` 在**落终态**那一刻才置 `false`），
+        /// 否则最后几帧又会闪一下（"提前恢复"是这类门最典型的漏法）。
+        /// </summary>
+        public static bool IsActive { get; private set; }
+
+        /// <summary>发布"转场是否进行中"。**唯一写入者 = <see cref="Billiards.UI.PlayViewCamera"/>**（不要在别处写）。</summary>
+        public static void Publish(bool active)
+        {
+            IsActive = active;
+        }
 
         /// <summary>**纯函数**：进度 `t`（0..1，越界会被 clamp）⇒ 插值权重。smoothstep：两端速度为 0。</summary>
         public static float Weight(float t)

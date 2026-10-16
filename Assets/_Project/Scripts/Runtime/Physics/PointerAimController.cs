@@ -112,7 +112,10 @@ namespace Billiards.Physics
 
             // **模态让位**：结算卡 / 首页打开期间不作瞄准 —— 判据点 = `PracticeResultView.IsOpen`
             // 或 `HomeView.IsOpen`。否则在卡片或首页上左键拖拽会同时驱动瞄准锁，交互会串。
-            if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen)
+            // **取景转场让位**（第三个判据点，同类的"相机在动"根因）：转场期间相机在扫，
+            // 拖拽瞄准既看不见（瞄准线已被 `AimAssistController` 门控）又容易串味 ⇒ 一并让位。
+            if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen
+                || Billiards.Core.CameraTransition.IsActive)
             {
                 return;
             }

@@ -192,6 +192,21 @@ print('results mtime = ' + time.strftime('%H:%M:%S', time.localtime(os.path.getm
     echo "smoke-aim rc=$?  evidence=$LOG_DIR/smoke-aim.json"
     ;;
 
+  smoke-transition)
+    # **转场负载探针**：采样期**主动触发一次 首页→打球 转场**，把"转场窗口逐帧耗时"与"前后稳态"分开记。
+    # ⚠ 与既有两档**不是一个口径**：既有两档（`smoke`/`smoke-aim`）**故意不播转场**（首页被抑制 ⇒ from==to
+    #   ⇒ 一次过渡都不起）⇒ 它们**永远测不到**"点开始那一刻的卡顿"。本档**必须让首页显示**才能切。
+    #   ⇒ 本档的 `homeStartup` 预期是 `shown`（不是 `suppressed`），这是**预期**、也是"确实播了转场"的前提证据。
+    # 帧数 = 60（转场前稳态）+ 90（转场窗口，覆盖 0.9 s@60fps = 54 帧并留余量）+ 若干帧收尾稳态。
+    exe="$PROJECT/Build/Windows/Idea35PoolRoom.exe"
+    if [[ ! -f "$exe" ]]; then
+      echo "找不到出包：$exe（先跑 build）" >&2
+      exit 1
+    fi
+    "$exe" -billiards-smoke 260 -billiards-smoke-transition -billiards-smoke-out "$LOG_DIR/smoke-transition.json"
+    echo "smoke-transition rc=$?  evidence=$LOG_DIR/smoke-transition.json"
+    ;;
+
   *)
     sed -n '2,30p' "${BASH_SOURCE[0]}"
     exit 2

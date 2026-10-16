@@ -106,11 +106,15 @@ namespace Billiards.Physics
         ///    若不判这一条，线会从**袋口那个残留位置**画出来（用户实测截图：一条白线从顶袋射向台面）。
         ///  · `modalOpen == false` —— **模态让位**：结算卡或**首页**打开期间整体让位
         ///    （两者都是"台面还没轮到你"的状态；判据由 <see cref="ShouldShow"/> 合并后传入）。
+        ///  · `transitionActive == false` —— **取景转场让位**（**用户实机反馈**："转场过程中**瞄准线会出来乱转**"）。
+        ///    根因：瞄准线/幽灵球是**相机相关的投影**，而转场期间相机在扫过一段路径 ⇒ 不门控就会跟着扫。
+        ///    ⚠ 门必须在转场**落终态（`t ≥ 1`）那一刻**才放开（`PlayViewCamera` 就是这么做的），
+        ///    否则最后几帧又会闪一下。判据 `T137` 守这条。
         /// </summary>
         public static bool ShouldShowAimAssist(bool predictionEnabled, bool tableAtRest, bool cueBallInPlay,
-                                               bool modalOpen)
+                                               bool modalOpen, bool transitionActive)
         {
-            return predictionEnabled && tableAtRest && cueBallInPlay && !modalOpen;
+            return predictionEnabled && tableAtRest && cueBallInPlay && !modalOpen && !transitionActive;
         }
 
         /// <summary>本组件当前是否应当绘制（把实时状态喂给 <see cref="ShouldShowAimAssist"/>）。</summary>
@@ -124,7 +128,9 @@ namespace Billiards.Physics
                     sim != null && sim.TableAtRest,
                     sim != null && sim.IsBallInPlay(0),
                     // 两个模态判据点：结算卡（`PracticeResultView`）与首页（`HomeView`）。
-                    Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen);
+                    Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen,
+                    // 取景转场（相机侧发布的中性状态；转场落终态才放开）
+                    Billiards.Core.CameraTransition.IsActive);
             }
         }
 

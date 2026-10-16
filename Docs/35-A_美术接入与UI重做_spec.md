@@ -240,7 +240,7 @@ Technical_Issues / Delivery_Checklist / TA_Handoff / Blender 审计 / 历史证�
 | `ClubUiSprites.cs` | 加：`UiSprite.ClubCrest = 18`（**只在末尾追加**，未插中间） |
 | `UiSpriteImportPostprocessor.cs` | 加：徽章（彩色成品位图）单独放宽 `maxTextureSize` 至 512 |
 | `PracticeHudState.cs` | 加：首页 12 条文案常量；全部并入 `AllDisplayCopy()` |
-| `PracticeHudView.cs` | 加：`SetChromeVisible(bool)`（首页打开时隐藏三块 HUD 分区） |
+| `PracticeHudView.cs` | 加：`SetChromeVisible(bool)`（首页打开时让三块 HUD 分区**不可见**：`CanvasGroup.alpha=0` + 断射线/交互 + 顺手预热）与 `WarmUpChromeText()`（转场首帧开销的修法，见 §9.8） |
 | `PointerAimController.cs` / `PointerPowerController.cs` / `AimAssistController.cs` | 改：让位判据由"仅结算卡"扩为"结算卡 **或** 首页" |
 | `PracticeSessionStore.cs` | 加：`ReadHistoryFromDisk()`（首页三项统计的真源；缺失/坏文件 ⇒ 空列表，不抛） |
 | `GreyboxSceneSetup.cs` | 加：`HomeObjectName = "Home"` 宿主 + 接线（`BuildGameplayHosts` 是唯一构建点） |
@@ -288,14 +288,16 @@ Technical_Issues / Delivery_Checklist / TA_Handoff / Blender 审计 / 历史证�
   · **依赖方向**：UI → Core（`HomeView` 读 Core 的中性事实）。反向（Core 去引用 `Billiards.UI.HomeView`）会形成反向依赖，禁止。
 - **可验证证据（不许只写注释）**：`smoke.json` 新增字段 **`homeStartup`**，取值三态：
 
-  | 取值 | 含义 | 冒烟时应为 |
-  | --- | --- | --- |
-  | `suppressed` | 首页被冒烟态抑制（`HomeView.Awake` 上报） | ✅ **期望值** |
-  | `shown` | 首页确实显示了（非冒烟态的常规启动） | ❌ 冒烟里出现即"测到了菜单" |
-  | `unreported` | **没有任何一方上报**（场景里没有首页宿主 / 接线缺失） | ❌ 出现即"抑制这件事没人证明" |
+  | 取值 | 含义 | 常规 / 拖动档 | **转场档**（`-billiards-smoke-transition`） |
+  | --- | --- | --- | --- |
+  | `suppressed` | 首页被冒烟态抑制（`HomeView.Awake` 上报） | ✅ **期望值** | ❌（抑制掉就没有转场可切） |
+  | `shown` | 首页确实显示了 | ❌（"测到了菜单"） | ✅ **期望值**（转场的前提） |
+  | `unreported` | **没有任何一方上报**（场景里没有首页宿主 / 接线缺失） | ❌ | ❌ |
 
-  同时冒烟日志末尾打 `home=<取值>`，且当取值 **不是** `suppressed` 时额外打一条 `[SMOKE] ⚠` 警告。
-  该字段**不参与判定**（与 `passed` 无关）。
+  ⚠ **期望值按档位不同，告警也必须按档位判**（这是修出来的缺陷，不是可选润色）：
+  原先告警只认 `suppressed` ⇒ **每次跑转场档都会打一条与事实相反的 ⚠**（转场档里"首页显示了"恰恰是**正确且必需**的），
+  会把那一档的证据读起来像"有问题"。现已改为**按档位取期望值**，`unreported` 在任何档都告警。
+  冒烟日志末尾仍打 `home=<取值>`。该字段**不参与判定**（与 `passed` 无关）。
 - **待实测**：现有闸门基线（静置/拖动 **6.944 ms / 144 fps / 掉帧 0**）是"启动即进游戏"下测的
   ⇒ 抑制后**必须重测一次**，与基线**同量级**才能称"口径逐位一致"；**若变了要如实报**（这一步需 Unity，属待放行项）。
 
@@ -380,3 +382,31 @@ Technical_Issues / Delivery_Checklist / TA_Handoff / Blender 审计 / 历史证�
 6. 新增三个 `.meta`（`HomeView.cs.meta` `16e648ee…` / `HomeLayout.cs.meta` `64915dd7…` /
    `ui-club-crest.png.meta` `a4d6c2f5…`）**必须一并入库**（否则 Unity 会重新随机生成 guid，
    场景里已接好的引用会断）。
+
+### 9.8 转场首帧一次性开销（用户实机反馈"转场有点卡顿"）—— 修法 (A) 的落点
+
+**实测（转场负载探针 `-billiards-smoke-transition`，由 room-env 提供）**
+- 转场窗口 p95 **6.9515 ms** vs 前后稳态 **6.9508 / 6.9510 ms** ⇒ "转场期间每帧都慢"**不成立**；
+- **触发后第 1 帧 20.834 ms**（基线 ≈6.94，≈3×，超 16.67 ms 预算）⇒ **一次性开销**。
+
+**机制（指到具体一行）**：`HomeView.Hide()` → `PracticeHudView.SetChromeVisible(true)` **首次让三块分区可见的那一帧**，
+TMP 才第一次为那 ~30 个文本生成网格并往 **Dynamic 图集**补字形；`SetActive(false)` 期间这部分被**推迟**到了这一帧。
+
+**修法 (A)：把这次性开销挪到首页期**（静态菜单，无人察觉）。两条路径**并行保留**：
+1. `PracticeHudView.WarmUpChromeText()` —— 对三块分区下的全部 TMP 走一次
+   `ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true)` ⇒ 覆盖**网格 / 图集**（不依赖可见性）；
+2. `SetChromeVisible(false)` 改为 **`CanvasGroup.alpha = 0` + `blocksRaycasts = false` + `interactable = false`**
+   （三块**保持 `active`**）⇒ 覆盖**材质 / 着色器首次使用**（这一项**只有真的绘制才可能被预热**，故不能只留 1）。
+   ⚠ **`blocksRaycasts = false` 是必须项**：否则首页期那两个 38×38 的 VFX / SFX 开关会变成**隐形但可点**
+   —— 为修卡顿换来"看不见的可点区域"是不可接受的。
+
+**为什么不是"先显示一帧再隐藏"**：那会在首页上**闪一下** —— 把卡顿换成可见瑕疵，不算修。
+**为什么不能只留一条**：`ForceMeshUpdate` 不覆盖"首次真正绘制"；只留 2 又不保证 TMP 的解析/布局路径被走完。
+**为什么不污染已实测基线**：常规 / 拖动两档里首页被抑制 ⇒ `SetChromeVisible` **根本不会被调用**
+⇒ 三块照旧 `active`、连 `CanvasGroup` 都不会被创建 ⇒ `56/60 渲染器、30/30 材质、6.9373/6.9441 ms、0 掉帧`
+**逐位不变**（`_chromeGroups` **刻意不序列化** ⇒ 不改场景、不需要重生成场景）。
+
+**可证伪验收（由 room-env 跑转场档复测）**：看 `transitionLoad` 的**转场窗口 max** 是否从 20.834 ms 落到稳态量级（≈7 ms）。
+- **落地** ⇒ (A) 成立。
+- **落不下去** ⇒ 残留是**着色器变体首次编译**（`Shader.CreateGPUProgram`）而不是 TMP 网格，(A) 治不了
+  ⇒ 按 team-lead 裁定回到 **(B) 如实接受一次掉帧**并**先去问用户体感**；**(C) 遮罩不选**（遮罩只是把问题藏起来）。

@@ -348,6 +348,11 @@ namespace Billiards.Physics
                 lr.SetPosition(0, MarkerWorldPoint(playfieldRoot, segments[i].a));
                 lr.SetPosition(1, MarkerWorldPoint(playfieldRoot, segments[i].b));
             }
+
+            // **只读诊断上报**（本轮取证用，不参与判定）：虚线池大小 + **本帧实际启用**的线段数
+            // ⇒ 判定"可渲染物变少"是 (i) 瞄准表现被隐藏（真回归）还是 (ii) 预测路径变短、线仍在画。
+            // ⚠ 依赖方向 **Physics → Core**（与 `SmokeProbe.PhysicsStepsReported` 同规，不得反向）。
+            SmokeProbe.ReportAimDash(_dashPool.Count, segments != null ? segments.Count : 0);
         }
 
         /// <summary>

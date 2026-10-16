@@ -1,5 +1,6 @@
 using System.IO;
 using Billiards.Core;
+using Billiards.Physics;
 using Billiards.UI;
 using NUnit.Framework;
 using UnityEditor.SceneManagement;
@@ -296,6 +297,176 @@ namespace Billiards.Tests
             {
                 Object.DestroyImmediate(go);
             }
+        }
+
+        /// <summary>
+        /// **`T137`：转场期间不许出现瞄准表现（瞄准线 / 幽灵球 / 球杆）** —— 用户实机反馈"转场过程中瞄准线会出来乱转"。
+        ///
+        /// 根因：瞄准线/幽灵球/球杆都是**相机相关的投影**，而转场期间相机在扫过一段路径
+        /// ⇒ 只要不门控，它们就会跟着扫。三处**同一个根因** ⇒ 走**同一个**门
+        /// （`Billiards.Core.CameraTransition.IsActive`，由相机侧 `PlayViewCamera` 发布、单向）。
+        ///
+        /// 断言四组：
+        ///  ① **瞄准门**（纯函数）：转场中 ⇒ 不显示；转场结束 ⇒ 恢复；
+        ///  ② **球杆门**（纯函数，同形）：同上，且原有两条（流程口径 / 白球在场上）不受影响；
+        ///  ③ **生命周期**：起转场 ⇒ 门**立刻**关上；推进到**半程**（`t < 1`）**仍关着**
+        ///     （"没到 `t ≥ 1` 不许恢复"，否则最后几帧又会闪一下）；推满 ⇒ 放开**且**相机逐位落在预设；
+        ///  ④ **不误伤稳态 + 兜底真的被考到**：首帧硬切后门是**开**的（否则正常打球时瞄准线会一直不显示）；
+        ///     并且**在"门还开着"的时刻**考 `OnDisable` 的兜底 —— 分两段：
+        ///     **① 功能**：起转场到半程（门确实关着）后调 `ReleaseTransitionGate()` ⇒ 门必须放开；
+        ///     **② 接线**（白盒文本断言，与 `T72b` 读内核源码同法）：`OnDisable` 体里**必须出现该调用**。
+        ///     ⚠ **修法登记（复核方查出旧写法恒真）**：旧写法在 `Apply(DefaultSeconds)` **之后**销毁，
+        ///     而那一刻门**已被 `ApplyPreset` 放开** ⇒ 断言 `IsActive == false` **必然成立**、**与兜底无关**
+        ///     ⇒ 删掉 `OnDisable` 里那行**也不会红**（"绿而空"的无判据守卫）。
+        ///     ⚠ **实测坑（本判据前两版都踩了）**：**EditMode 不触发 `OnDisable`** ——
+        ///     `DestroyImmediate(GameObject)` 与 `enabled = false` **两种方式都不触发**
+        ///     （甚至**带着正确兜底也红**：`IsTransitioning` 仍为 true）⇒ **纯运行期断言在本环境守不住 `OnDisable`**。
+        ///     ⇒ 故"接线"这一半必须用**白盒文本断言**（这是**环境限制**，不是放松：
+        ///     删掉那行调用，②**必红**）。
+        ///
+        /// **怎么打死它**：删掉 `ShouldShowAimAssist` 的 `!transitionActive` 项 ⇒ ① 红；
+        /// 删掉 `ShouldShowStick` 的同项 ⇒ ② 红；把 `PlayViewCamera` 的 `Publish(false)` 从落终态挪到半程
+        /// ⇒ ③ 的"半程仍关着"红；把 `Publish(true)` 去掉 ⇒ ③ 的"起转场立刻关上"红；
+        /// 把 `ReleaseTransitionGate()` 的**实现**改成 no-op ⇒ ④① 红；
+        /// **删掉 `OnDisable` 里的 `ReleaseTransitionGate()` 调用 ⇒ ④② 红**（待按此**实测注入**验证）。
+        /// </summary>
+        [Test]
+        public void T137_Transition_HidesAimVisuals_UntilLanded()
+        {
+            // ── ① 瞄准门（纯函数）──
+            Assert.IsFalse(AimAssistController.ShouldShowAimAssist(true, true, true, false, true),
+                "T137①：**转场中**必须不显示瞄准辅助（否则线会跟着相机扫 —— 用户实机反馈的\"乱转\"）。");
+            Assert.IsTrue(AimAssistController.ShouldShowAimAssist(true, true, true, false, false),
+                "T137①：**转场结束**（门放开）后应恢复显示（四条原本都成立）。");
+            Assert.IsFalse(AimAssistController.ShouldShowAimAssist(false, true, true, false, false),
+                "T137①：转场门前**原有的四条**不得被削弱（预测开关关闭仍应为 false）。");
+            Assert.IsFalse(AimAssistController.ShouldShowAimAssist(true, true, true, true, false),
+                "T137①：模态让位那条也不得被削弱（结算卡/首页打开仍应为 false）。");
+
+            // ── ② 球杆门（纯函数，与瞄准门同形）──
+            Assert.IsFalse(CueStickController.ShouldShowStick(true, true, true),
+                "T137②：**转场中**球杆也必须隐藏（同一个根因，不能只堵瞄准线一个洞）。");
+            Assert.IsTrue(CueStickController.ShouldShowStick(true, true, false),
+                "T137②：转场结束后球杆恢复（流程口径与白球在场两条都成立）。");
+            Assert.IsFalse(CueStickController.ShouldShowStick(false, true, false),
+                "T137②：流程口径（Moving/Settle 隐藏）不得被削弱。");
+            Assert.IsFalse(CueStickController.ShouldShowStick(true, false, false),
+                "T137②：白球不在场上 ⇒ 杆仍须隐藏（否则会停在袋口残留位置）。");
+
+            // ── ③ / ④ 生命周期（真组件）──
+            var go = new GameObject("T137PlayViewCamera");
+            try
+            {
+                Camera cam = go.AddComponent<Camera>();
+                var view = go.AddComponent<PlayViewCamera>();
+                view.targetCamera = cam;
+                view.transitionSeconds = CameraTransition.DefaultSeconds;
+
+                bool homeOpen = true;                 // 从首页开始（相机在 home）
+                view.homeOpenSource = () => homeOpen;
+
+                view.Apply(0f);                        // 首帧：硬切到 home
+                Assert.IsFalse(CameraTransition.IsActive,
+                    "T137④：首帧硬切**不是**转场 ⇒ 门必须是开的（否则正常打球时瞄准线一直不显示）。");
+
+                homeOpen = false;                      // 点开始 ⇒ 开始转场
+                view.Apply(0f);
+                Assert.IsTrue(CameraTransition.IsActive,
+                    "T137③：起转场必须**立刻**把关上（否则转场最初几帧线还在画）。");
+
+                // 半程：仍必须**关着**（"没到 t≥1 不许恢复"）
+                view.Apply(CameraTransition.DefaultSeconds * 0.5f);
+                Assert.IsTrue(view.IsTransitioning, "T137③：半程应仍在转场中。");
+                Assert.IsTrue(CameraTransition.IsActive,
+                    "T137③：**半程仍须关着** —— 提前恢复会让最后几帧又闪一下（这是这类门最典型的漏法）。");
+
+                // 推满：放开 + 相机逐位落在预设
+                view.Apply(CameraTransition.DefaultSeconds);
+                Assert.IsFalse(view.IsTransitioning, "T137③：推满时长后转场应结束。");
+                Assert.IsFalse(CameraTransition.IsActive,
+                    "T137③：**落终态那一刻**才放松门（`PlayViewCamera.ApplyPreset` 里 `Publish(false)`）。");
+                Assert.IsTrue(Exact(cam.transform.position, CameraPresets.PlayPosition),
+                    $"T137③：落终态后相机应逐位等于 play 预设（实测 {cam.transform.position}）。");
+
+                // ── ④ 兜底（`OnDisable` 那条）**必须有人守**，但 EditMode **够不到它** ─────────────
+                // ⚠ **修法登记（复核方查出旧写法恒真）**：旧写法在 `Apply(DefaultSeconds)` **之后**销毁，
+                //   而那一刻门**已被 `ApplyPreset` 放开** ⇒ 断言 `IsActive == false` **必然成立**、**与兜底无关**
+                //   ⇒ 删掉兜底那行**也不会红**（"绿而空"的无判据守卫）。
+                // ⚠ **实测坑（本判据前两版都因此红）**：EditMode **不触发 `OnDisable`** ——
+                //   `DestroyImmediate(GameObject)` 与 `enabled = false` **两种方式都不触发**
+                //   （甚至**带着正确兜底也红**）⇒ **纯运行期断言在本环境不可能守住 `OnDisable`**。
+                // ⇒ 最终改法 = **① 功能断言**（直接调 `ReleaseTransitionGate()`，且**门此刻确实关着** ⇒ 不恒真）
+                //   **+ ② 白盒文本断言**（`OnDisable` 的方法体里必须出现该调用；与 `T72b` 读内核源码同法）
+                //   ⇒ **删掉那行调用，本条必红**（这正是复核方注入 (ii) 要打的那一行）。
+                var go2 = new GameObject("T137PlayViewCameraTeardown");
+                try
+                {
+                    Camera cam2 = go2.AddComponent<Camera>();
+                    var view2 = go2.AddComponent<PlayViewCamera>();
+                    view2.targetCamera = cam2;
+                    view2.transitionSeconds = CameraTransition.DefaultSeconds;
+
+                    bool open2 = true;
+                    view2.homeOpenSource = () => open2;
+
+                    view2.Apply(0f);                                        // 首帧硬切到 home（门是开的）
+                    open2 = false;
+                    view2.Apply(0f);                                        // 起转场 ⇒ 门关上
+                    view2.Apply(CameraTransition.DefaultSeconds * 0.5f);    // 半程 ⇒ 门**仍关着**
+                    Assert.IsTrue(view2.IsTransitioning, "T137④：前提 —— 应仍在转场中。");
+                    Assert.IsTrue(CameraTransition.IsActive,
+                        "T137④：前提 —— 此时门应仍**关着**（否则下面的断言又会变成恒真）。");
+
+                    view2.ReleaseTransitionGate();                          // ① 功能：兜底动作必须开门
+                    Assert.IsFalse(CameraTransition.IsActive,
+                        "T137④①：`ReleaseTransitionGate()` 必须把门放开 —— 否则静态状态会漏到下一个场景、"
+                        + "瞄准线从此再也不显示。");
+                }
+                finally
+                {
+                    if (go2 != null)
+                    {
+                        Object.DestroyImmediate(go2);
+                    }
+                }
+
+                // ② 接线（白盒文本断言，与 `T72b` 读内核源码同法）：`OnDisable` 必须调用兜底
+                string viewSrc = File.ReadAllText(Path.Combine(ProjectRoot, PlayViewCameraSourcePath));
+                string stripped = StripLineComments(viewSrc);
+                int odIdx = stripped.IndexOf("private void OnDisable()");
+                Assert.Greater(odIdx, 0, "T137④②：`PlayViewCamera` 里找不到 `OnDisable` 方法。");
+                int ob = stripped.IndexOf('{', odIdx);
+                int oe = stripped.IndexOf('}', ob);
+                Assert.Greater(oe, ob, "T137④②：`OnDisable` 方法体解析失败。");
+                string odBody = stripped.Substring(ob, oe - ob + 1);
+                string odOneLine = odBody.Replace("\r", " ").Replace("\n", " ").Trim();
+                Assert.IsTrue(odBody.Contains("ReleaseTransitionGate()"),
+                    "T137④②：`OnDisable` **必须**调用 `ReleaseTransitionGate()` —— 删掉它 ⇒ 兜底无人守 ⇒ 本条必红。"
+                    + $"（实测 `OnDisable` 体：{odOneLine}）");
+            }
+            finally
+            {
+                if (go != null)
+                {
+                    Object.DestroyImmediate(go);
+                }
+            }
+        }
+
+        /// <summary>`PlayViewCamera` 的源码路径（`T137④②` 白盒文本断言用）。</summary>
+        private const string PlayViewCameraSourcePath = "Assets/_Project/Scripts/Runtime/UI/PlayViewCamera.cs";
+
+        /// <summary>逐行剥掉 `//` 之后的注释（与 `T72b` 的"读源码剔注释"同法）。</summary>
+        private static string StripLineComments(string source)
+        {
+            var sb = new System.Text.StringBuilder(source.Length);
+            foreach (string line in source.Split('\n'))
+            {
+                int cut = line.IndexOf("//", System.StringComparison.Ordinal);
+                sb.Append(cut >= 0 ? line.Substring(0, cut) : line).Append('\n');
+            }
+
+            return sb.ToString();
         }
 
         /// <summary>逐位相等（浮点用 `R` 往返串比较，避免 `Vector3.==` 的近似语义）。</summary>

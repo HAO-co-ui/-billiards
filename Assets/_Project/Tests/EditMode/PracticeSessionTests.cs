@@ -510,13 +510,14 @@ namespace Billiards.Tests
                 }
             }
 
-            Check("(a) 四条全真", AimAssistController.ShouldShowAimAssist(true, true, true, false), true);
-            Check("(a) 预测开关关闭", AimAssistController.ShouldShowAimAssist(false, true, true, false), false);
-            Check("(a) **球在运动**（线不得停在原地）", AimAssistController.ShouldShowAimAssist(true, false, true, false), false);
+            // ⚠ 第五个实参 = `transitionActive`（取景转场让位，`T137` 守）；本判据只覆盖前四条 ⇒ 一律传 `false`。
+            Check("(a) 四条全真", AimAssistController.ShouldShowAimAssist(true, true, true, false, false), true);
+            Check("(a) 预测开关关闭", AimAssistController.ShouldShowAimAssist(false, true, true, false, false), false);
+            Check("(a) **球在运动**（线不得停在原地）", AimAssistController.ShouldShowAimAssist(true, false, true, false, false), false);
             Check("(a) **白球不在场上**（不得从袋口残留位置画线）",
-                AimAssistController.ShouldShowAimAssist(true, true, false, false), false);
-            Check("(a) 结算卡打开（模态让位）", AimAssistController.ShouldShowAimAssist(true, true, true, true), false);
-            Check("(a) 四条全否", AimAssistController.ShouldShowAimAssist(false, false, false, true), false);
+                AimAssistController.ShouldShowAimAssist(true, true, false, false, false), false);
+            Check("(a) 结算卡打开（模态让位）", AimAssistController.ShouldShowAimAssist(true, true, true, true, false), false);
+            Check("(a) 四条全否", AimAssistController.ShouldShowAimAssist(false, false, false, true, false), false);
 
             // (e) 杆身两条相反反馈的形式化：**从库边上方过**（不穿模）且**杆长不随蓄力变化**（不嵌入、不变短）
             //     ⚠ 姿态取"球在右端库附近、杆必须越库"—— 这正是用户截图里的情形。

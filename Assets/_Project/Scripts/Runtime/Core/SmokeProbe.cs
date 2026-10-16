@@ -48,6 +48,69 @@ namespace Billiards.Core
         /// </summary>
         public const string AimSweepSwitch = "-billiards-smoke-aim";
 
+        /// <summary>
+        /// **转场负载探针开关**（无值标志）—— 采样期**主动触发一次"首页 → 打球"转场**，
+        /// 并把**转场窗口内的逐帧耗时**与**前后稳态**分开记（见 <see cref="PhaseOf"/>）。
+        ///
+        /// **为什么要另开一档**（用户实机反馈"转场有点卡顿"）：既有两档冒烟**故意不播转场**
+        /// （首页被抑制 ⇒ `from == to` ⇒ `ShouldAnimate == false`）⇒ 它们**永远测不到**这个问题。
+        /// ⇒ 新探针**不改**既有两档的开关与口径（它们的 `smoke.json` 形状与判定**逐字节不变**）。
+        ///
+        /// ⚠ **本探针只测、不判定**：它输出逐帧数据供归因（"最慢帧是第几帧 / 哪个阶段 + p95 对比"），
+        /// **不参与**帧时闸门（转场是**一次性**事件，混进稳态闸门没有意义）。
+        /// </summary>
+        public const string TransitionSwitch = "-billiards-smoke-transition";
+
+        /// <summary>转场探针的默认输出文件名（与既有两档分开，互不覆盖）。</summary>
+        public const string DefaultTransitionOutputFileName = "smoke-transition.json";
+
+        /// <summary>转场探针：**触发转场前**先采样的稳态帧数（= 转场前 p95 的样本）。</summary>
+        public const int TransitionTriggerFrame = 60;
+
+        /// <summary>
+        /// 转场探针：**转场窗口**帧数。0.9 s @60 fps = 54 帧 ⇒ 取 **90**（留余量，覆盖整段转场 + 落终态那一帧）。
+        /// </summary>
+        public const int TransitionWindowFrames = 90;
+
+        /// <summary>转场探针的阶段（用于把逐帧耗时分开归因）。</summary>
+        public enum LoadPhase
+        {
+            /// <summary>触发前的稳态（首页静止）。</summary>
+            PreSteady = 0,
+
+            /// <summary>转场窗口（触发那一帧起 <see cref="TransitionWindowFrames"/> 帧）。</summary>
+            TransitionWindow = 1,
+
+            /// <summary>转场结束后的稳态（打球静止）。</summary>
+            PostSteady = 2,
+        }
+
+        /// <summary>
+        /// **纯函数**：采样帧序号 ⇒ 阶段。判据/报告都直接驱动它，不依赖渲染。
+        /// </summary>
+        public static LoadPhase PhaseOf(int sampledFrame)
+        {
+            if (sampledFrame < TransitionTriggerFrame)
+            {
+                return LoadPhase.PreSteady;
+            }
+
+            return sampledFrame < TransitionTriggerFrame + TransitionWindowFrames
+                ? LoadPhase.TransitionWindow
+                : LoadPhase.PostSteady;
+        }
+
+        /// <summary>阶段的稳定字符串名（写进 JSON / 日志，判据可断言）。</summary>
+        public static string PhaseName(LoadPhase phase)
+        {
+            switch (phase)
+            {
+                case LoadPhase.PreSteady: return "preSteady";
+                case LoadPhase.TransitionWindow: return "transitionWindow";
+                default: return "postSteady";
+            }
+        }
+
         /// <summary>拖动瞄准时每帧推进的瞄准角（度）。4.5°/帧 ⇒ 60 fps 下 270°/s（快速连续拖动）。</summary>
         public const float AimSweepDegreesPerFrame = 4.5f;
 
@@ -70,6 +133,16 @@ namespace Billiards.Core
         /// 启动门（开始界面）在 `Awake` 里读它 ⇒ 必须在场景加载**之前**就有值。
         /// </summary>
         public static bool IsSmokeMode { get; private set; }
+
+        /// <summary>
+        /// 本次是否**转场负载探针**（<see cref="TransitionSwitch"/>）。**在 `BeforeSceneLoad` 置位**（时序同
+        /// <see cref="IsSmokeMode"/>）。
+        ///
+        /// ⚠ **唯一的语义差别**：本探针**必须让首页正常显示**（否则没有"首页→打球"可切，探针测不到东西）。
+        /// 故 `HomeView.Awake` 的抑制条件是 `IsSmokeMode &amp;&amp; !IsTransitionProbe`
+        /// ⇒ 本探针的 `homeStartup` 会是 **`shown`**（这是**预期**，也是"探针确实播了转场"的前提证据）。
+        /// </summary>
+        public static bool IsTransitionProbe { get; private set; }
 
         /// <summary>`homeStartup` 字段：首页**确实显示**了（非冒烟态的常规启动）。</summary>
         public const string HomeStartupShown = "shown";
@@ -153,9 +226,21 @@ namespace Billiards.Core
         /// </summary>
         public static bool TryParse(string[] args, out int frames, out string outputPath, out bool aimSweep)
         {
+            return TryParse(args, out frames, out outputPath, out aimSweep, out _);
+        }
+
+        /// <summary>
+        /// **解析命令行**（纯函数，含拖动瞄准 + **转场负载**两个无值标志）。
+        /// <paramref name="transition"/> = 命令里出现过 <see cref="TransitionSwitch"/>。
+        /// ⚠ 两个标志**互斥地**决定负载类型；同时给 ⇒ 以转场探针优先（拖动扫掠在转场期间已被门控）。
+        /// </summary>
+        public static bool TryParse(string[] args, out int frames, out string outputPath, out bool aimSweep,
+            out bool transition)
+        {
             frames = 0;
             outputPath = null;
             aimSweep = false;
+            transition = false;
             if (args == null)
             {
                 return false;
@@ -167,6 +252,16 @@ namespace Billiards.Core
                 {
                     aimSweep = true;
                 }
+
+                if (args[i] == TransitionSwitch)
+                {
+                    transition = true;
+                }
+            }
+
+            if (transition)
+            {
+                aimSweep = false;
             }
 
             for (int i = 0; i < args.Length; i++)
@@ -315,6 +410,38 @@ namespace Billiards.Core
         /// <summary>采样轮数（`best-of-3`）。</summary>
         public const int Rounds = 3;
 
+        /// <summary>
+        /// 最近一次由 <c>AimAssistView</c> 上报的**虚线池大小 / 本帧线段数**（只读诊断，不参与判定）。
+        ///
+        /// **为什么加**（本轮取证）：静态档冒烟的可渲染物由 **56 → 41** 变化，而帧时与 `passed` 逐位不变。
+        /// 两种可能**处置相反**：(i) 瞄准表现被隐藏/停用 = **用户可见的功能回归**；(ii) 只是预测路径变短、
+        /// 线仍在画（无观感后果）。⇒ 用「池大小 + 本帧线段数」两个数即可判定：
+        /// **线段数 &gt; 0 ⇒ 线在画（(ii)）；恒 0 ⇒ 线没画（(i)）**。
+        /// </summary>
+        public static int AimDashPoolSizeReported { get; private set; }
+
+        /// <summary>见 <see cref="AimDashPoolSizeReported"/>：本帧实际铺的线段数（0 = 当前没画线）。</summary>
+        public static int AimDashSegmentsReported { get; private set; }
+
+        /// <summary>由 `AimAssistView` 每帧上报（依赖方向 **Physics → Core**，与 `PhysicsStepsReported` 同规）。</summary>
+        public static void ReportAimDash(int poolSize, int segments)
+        {
+            AimDashPoolSizeReported = poolSize;
+            AimDashSegmentsReported = segments;
+        }
+
+        /// <summary>
+        /// **按需诊断块开关**（环境变量 `BILLIARDS_SMOKE_DIAG=1`）。
+        ///
+        /// 用途：取证时需要在**任意档**（尤其 `static`）读到"瞄准表现是否在画 / 转场门是否放开"这类运行时事实，
+        /// 但**又不能让两份既有 JSON 的默认形状变化**（形状变化会移动别人的锚点）。
+        /// ⇒ 默认**关**（不写 `diagnostics` 块）；只有显式要诊断时才开。
+        /// </summary>
+        public const string DiagnosticEnvVar = "BILLIARDS_SMOKE_DIAG";
+
+        /// <summary>见 <see cref="DiagnosticEnvVar"/>：本次是否要往 JSON 里写 `diagnostics` 块。</summary>
+        public static bool DiagnosticEmit { get; private set; }
+
         /// <summary>把一次冒烟采样的结果序列化为 JSON（纯函数，字段顺序固定，数字用不变文化）。</summary>
         public static string ToJson(SmokeResult result)
         {
@@ -349,10 +476,47 @@ namespace Billiards.Core
             sb.Append("  \"predictionComputeCount\": ").Append(result.predictionComputeCount).Append(",\n");
             sb.Append("  \"totalPredictSteps\": ").Append(result.totalPredictSteps).Append(",\n");
             sb.Append("  \"aimSweep\": ").Append(result.aimSweep ? "true" : "false").Append(",\n");
+
+            // 转场负载块：**仅在探针模式下写** ⇒ 既有两档 JSON 的形状逐字节不变。
+            if (result.transitionProbe)
+            {
+                sb.Append("  \"transitionLoad\": {\n");
+                sb.Append("    \"triggerFrame\": ").Append(result.transitionTriggerFrame).Append(",\n");
+                sb.Append("    \"windowFrames\": ").Append(result.transitionWindowFrames).Append(",\n");
+                sb.Append("    \"slowestFrameIndex\": ").Append(result.slowestFrameIndex).Append(",\n");
+                sb.Append("    \"slowestFramePhase\": \"").Append(result.slowestFramePhase).Append("\",\n");
+                sb.Append("    \"slowestFrameMs\": ").Append(F(result.slowestFrameMs)).Append(",\n");
+                sb.Append("    \"preSteadyMeanMs\": ").Append(F(result.preSteadyMeanMs)).Append(",\n");
+                sb.Append("    \"transitionMeanMs\": ").Append(F(result.transitionMeanMs)).Append(",\n");
+                sb.Append("    \"postSteadyMeanMs\": ").Append(F(result.postSteadyMeanMs)).Append(",\n");
+                sb.Append("    \"preSteadyP95Ms\": ").Append(F(result.preSteadyP95Ms)).Append(",\n");
+                sb.Append("    \"transitionP95Ms\": ").Append(F(result.transitionP95Ms)).Append(",\n");
+                sb.Append("    \"postSteadyP95Ms\": ").Append(F(result.postSteadyP95Ms)).Append(",\n");
+                // ── 只读诊断（**只写在本块内** ⇒ 既有两档 JSON 的形状逐字节不变）─────────────
+                // 用途：判定"可渲染物变少"属 (i) 瞄准表现被隐藏（真回归）还是 (ii) 预测变短但线仍在画。
+                sb.Append("    \"cameraTransitionActive\": ").Append(CameraTransition.IsActive ? "true" : "false").Append(",\n");
+                sb.Append("    \"aimDashPoolSize\": ").Append(AimDashPoolSizeReported).Append(",\n");
+                sb.Append("    \"aimDashSegments\": ").Append(AimDashSegmentsReported).Append("\n");
+                sb.Append("  },\n");
+            }
             sb.Append("  \"homeStartup\": \"")
                 .Append(string.IsNullOrEmpty(result.homeStartup) ? HomeStartupUnreported : result.homeStartup)
                 .Append("\",\n");
             sb.Append("  \"gate\": \"").Append(result.gate).Append("\",\n");
+
+            // 按需诊断块（`BILLIARDS_SMOKE_DIAG=1` 才写）⇒ **默认不出现** ⇒ 两份既有 JSON 形状不变 ✓
+            // 用途：判定"可渲染物变少"属 (i) 瞄准表现被隐藏（真回归）还是 (ii) 预测变短但线仍在画。
+            if (DiagnosticEmit)
+            {
+                sb.Append("  \"diagnostics\": {\n");
+                sb.Append("    \"cameraTransitionActive\": ").Append(CameraTransition.IsActive ? "true" : "false").Append(",\n");
+                sb.Append("    \"aimDashPoolSize\": ").Append(AimDashPoolSizeReported).Append(",\n");
+                sb.Append("    \"aimDashSegments\": ").Append(AimDashSegmentsReported).Append(",\n");
+                sb.Append("    \"rendererCount\": ").Append(result.rendererCount).Append(",\n");
+                sb.Append("    \"predictionComputeCount\": ").Append(result.predictionComputeCount).Append(",\n");
+                sb.Append("    \"totalPredictSteps\": ").Append(result.totalPredictSteps).Append("\n");
+                sb.Append("  },\n");
+            }
             sb.Append("  \"frameGateOk\": ").Append(result.frameGateOk ? "true" : "false").Append(",\n");
             sb.Append("  \"sceneBudgetOk\": ").Append(result.sceneBudgetOk ? "true" : "false").Append(",\n");
             sb.Append("  \"passed\": ").Append(result.passed ? "true" : "false").Append("\n");
@@ -407,9 +571,13 @@ namespace Billiards.Core
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void ParseEarly()
         {
-            if (TryParse(System.Environment.GetCommandLineArgs(), out _, out _, out _))
+            DiagnosticEmit = System.Environment.GetEnvironmentVariable(DiagnosticEnvVar) == "1";
+
+            if (TryParse(System.Environment.GetCommandLineArgs(), out _, out _, out _,
+                    out bool transition))
             {
                 IsSmokeMode = true;
+                IsTransitionProbe = transition;
             }
         }
 
@@ -417,14 +585,14 @@ namespace Billiards.Core
         private static void Bootstrap()
         {
             if (!TryParse(System.Environment.GetCommandLineArgs(), out int frames, out string outputPath,
-                    out bool aimSweep))
+                    out bool aimSweep, out bool transition))
             {
                 return;
             }
 
             var go = new GameObject("SmokeProbe");
             Object.DontDestroyOnLoad(go);
-            go.AddComponent<SmokeProbeRunner>().Begin(frames, outputPath, aimSweep);
+            go.AddComponent<SmokeProbeRunner>().Begin(frames, outputPath, aimSweep, transition);
         }
     }
 
@@ -440,6 +608,23 @@ namespace Billiards.Core
     {
         /// <summary>把瞄准角（度）设为 <paramref name="degrees"/>（供冒烟模式脚本化拖动）。</summary>
         void ApplySmokeAimDegrees(float degrees);
+    }
+
+    /// <summary>
+    /// **冒烟模式下"可被脚本化触发一次 首页→打球 转场"的宿主接口**（转场负载探针用）。
+    ///
+    /// <para>**为什么是 Core 里的接口**（与 <see cref="ISmokeAimSweepTarget"/> 同因）：冒烟执行体
+    /// （<see cref="SmokeProbeRunner"/>）位于 Core，而首页（`Billiards.UI.HomeView`）位于 UI ——
+    /// Core **不得**反向依赖 UI。故由 **Core 定义接口、UI 实现**，运行时用 `is` 匹配。</para>
+    ///
+    /// <para>**为什么要求"真实路径"**：探针要抓的是一次性尖峰（HUD 懒构建 / 首页层 `SetActive(false)` /
+    /// `SetChromeVisible(true)`）。若绕过真实关闭路径（例如直接改状态或走测试接缝），**尖峰就抓不到**
+    /// ⇒ 探针会给出"转场很便宜"的**假阴性**。实现方**必须**调与"点 Practice"完全相同的那个方法。</para>
+    /// </summary>
+    public interface ISmokeTransitionTrigger
+    {
+        /// <summary>走**与"点 `Practice`"完全相同**的路径关闭首页（从而触发一次 首页→打球 转场）。</summary>
+        void TriggerSmokeTransition();
     }
 
     /// <summary>一次冒烟采样的结果（JSON 字段见 <see cref="SmokeProbe.ToJson"/>）。</summary>
@@ -493,6 +678,32 @@ namespace Billiards.Core
         public long totalPredictSteps;
 
         public bool aimSweep;
+
+        // ── 转场负载探针（`-billiards-smoke-transition`）──────────────────────
+        // ⚠ `transitionProbe == false` ⇒ `ToJson` **不写** `transitionLoad` 块
+        //   ⇒ 既有"静置 / 拖动"两档的 JSON **形状逐字节不变**（口径不受本探针影响）。
+
+        /// <summary>本次是否为**转场负载探针**。</summary>
+        public bool transitionProbe;
+
+        /// <summary>触发转场的那一帧序号 / 转场窗口帧数（写进证据，便于复现）。</summary>
+        public int transitionTriggerFrame;
+        public int transitionWindowFrames;
+
+        /// <summary>采样期**最慢帧**的序号（0 起，预热后的采样帧）与它落在哪个阶段（<see cref="SmokeProbe.PhaseName"/>）。</summary>
+        public int slowestFrameIndex;
+        public string slowestFramePhase;
+        public float slowestFrameMs;
+
+        /// <summary>三段各自的 p95（**转场窗口 vs 稳态**的对比 = 本探针的核心产出）。</summary>
+        public float preSteadyP95Ms;
+        public float transitionP95Ms;
+        public float postSteadyP95Ms;
+
+        /// <summary>三段各自的均值（与 p95 并列看：均值不动而 p95 抬 ⇒ 是一次性尖峰而非整体变慢）。</summary>
+        public float preSteadyMeanMs;
+        public float transitionMeanMs;
+        public float postSteadyMeanMs;
 
         /// <summary>
         /// 启动门（开始界面）的实际走向：<see cref="SmokeProbe.HomeStartupSuppressed"/>（冒烟应有的取值）/

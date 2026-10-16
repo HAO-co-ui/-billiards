@@ -76,7 +76,7 @@ namespace Billiards.UI
     /// · 按钮的 `hover` / `focus` 视觉态不做（本工程既有控件一律不做，uGUI 侧无统一实现）。
     /// </summary>
     [AddComponentMenu("Billiards/Home View")]
-    public sealed class HomeView : MonoBehaviour
+    public sealed class HomeView : MonoBehaviour, Billiards.Core.ISmokeTransitionTrigger
     {
         /// <summary>
         /// 首页是否正显示 —— **交互层让位的第二个判据点**（第一个是
@@ -117,7 +117,10 @@ namespace Billiards.UI
             // ⇒ 预测路径根本不执行 ⇒ `-billiards-smoke-aim` 会测到"**没有预测的帧**"
             // （那是**测错了对象**，不是"数字偏乐观"）—— 这正是必须抑制、且必须**可验证**的理由。
             // 故把实际走向上报给 <see cref="SmokeProbe"/>，落进 `smoke.json` 的 `homeStartup` 字段。
-            if (SmokeProbe.IsSmokeMode)
+            // ⚠ **例外：转场负载探针**（`-billiards-smoke-transition`）**必须让首页显示** ——
+            //   它要的就是"首页 → 打球"这一次切换；抑制掉首页就**没有转场可测**（探针会给假阴性）。
+            //   ⇒ 抑制条件 = `IsSmokeMode && !IsTransitionProbe`；该探针的 `homeStartup` 会是 `shown`（预期）。
+            if (SmokeProbe.IsSmokeMode && !SmokeProbe.IsTransitionProbe)
             {
                 SmokeProbe.ReportHomeStartup(SmokeProbe.HomeStartupSuppressed);
                 Debug.Log("[HOME] 冒烟模式：抑制首页启动显示（本次采样量的是玩法负载）。");
@@ -510,6 +513,9 @@ namespace Billiards.UI
 
             if (hud != null)
             {
+                // ⚠ **不在这里单独调预热**：预热（`WarmUpChromeText` + `CanvasGroup.alpha=0` 那条）已收进
+                // `PracticeHudView.SetChromeVisible(false)` **内部** ⇒ **单一调用点**（同一动作不留两份）。
+                // 本轮实测依据见 `PracticeHudView.WarmUpChromeText` 的注释与规格 §13.5.1。
                 hud.SetChromeVisible(false);
             }
         }
@@ -534,6 +540,17 @@ namespace Billiards.UI
         public void OnStartPractice()
         {
             Hide();
+        }
+
+        /// <summary>
+        /// **转场负载探针**（`-billiards-smoke-transition`）的触发口 —— 走**与"点 `Practice`"完全相同**的路径
+        /// （就是上面那个 `OnStartPractice()`），因为探针要抓的正是**真实路径上的**一次性尖峰
+        /// （HUD 懒构建 / 首页层 `SetActive(false)` / `SetChromeVisible(true)`）。
+        /// ⚠ **不得**在这里另走捷径（例如只改状态）—— 那会让探针给出"转场很便宜"的假阴性。
+        /// </summary>
+        void Billiards.Core.ISmokeTransitionTrigger.TriggerSmokeTransition()
+        {
+            OnStartPractice();
         }
 
         /// <summary>VFX 开关：写宿主上的既有 bool，不新建偏好状态。</summary>

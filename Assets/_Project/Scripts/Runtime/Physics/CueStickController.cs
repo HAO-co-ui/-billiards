@@ -124,6 +124,23 @@ namespace Billiards.Physics
             SyncStick();
         }
 
+        /// <summary>
+        /// **球杆是否显示**（**纯函数** —— 与 <see cref="AimAssistController.ShouldShowAimAssist"/> 同形，
+        /// 判据 `T137` 直接驱动它，不必起场景）。
+        ///
+        /// 三条同时成立才显示：
+        ///  · `flowVisible` —— 流程口径（`Moving`/`Settle` 隐藏）；
+        ///  · `cueBallInPlay` —— **白球必须在场上**（否则相位回到 `Aim` 时杆会停在**袋口残留位置**，
+        ///    看起来像杆插在袋里；用户实测截图）；
+        ///  · `transitionActive == false` —— **取景转场让位**（用户实机反馈"转场中瞄准表现会乱扫"）：
+        ///    杆与瞄准线**同根因**（都是相机相关的投影，而相机在转场中在动）⇒ 走**同一个**门
+        ///    （`Billiards.Core.CameraTransition.IsActive`），且该门到转场**落终态**才放开。
+        /// </summary>
+        public static bool ShouldShowStick(bool flowVisible, bool cueBallInPlay, bool transitionActive)
+        {
+            return flowVisible && cueBallInPlay && !transitionActive;
+        }
+
         private void SyncStick()
         {
             EnsureStick();
@@ -135,8 +152,12 @@ namespace Billiards.Physics
             // 杆可见性 = 流程口径（Moving/Settle 隐藏；与旧指示物同走渲染器口径，不动激活语义）
             // **白球不在场上 ⇒ 杆也隐藏**（用户实测要求"发射白球出去后瞄准线和球杆都暂时消失"）。
             // 否则白球落袋后相位回到 `Aim`，杆会停在**袋口那个残留位置**，看起来像杆插在袋里。
+            // **取景转场期间也隐藏**（用户实机反馈"转场中瞄准表现会乱扫"）：杆与瞄准线同根因
+            // （都是相机相关的投影，而相机在转场中在动）⇒ 走**同一个**门（`CameraTransition.IsActive`），
+            // 且该门在转场**落终态**才放开 ⇒ 不会在最后几帧闪回来。
             bool cueBallInPlay = drive.Simulator != null && drive.Simulator.IsBallInPlay(0);
-            bool visible = _flow.IsStickVisible && cueBallInPlay;
+            bool visible = ShouldShowStick(_flow.IsStickVisible, cueBallInPlay,
+                Billiards.Core.CameraTransition.IsActive);
             if (_stickRenderer != null && _stickRenderer.enabled != visible)
             {
                 _stickRenderer.enabled = visible;

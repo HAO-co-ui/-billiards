@@ -129,6 +129,12 @@ namespace Billiards.UI
         private bool _built;
 
         /// <summary>
+        /// 首页期"不可见让位"用的画布组（三块分区各一个；首次 <see cref="SetChromeVisible"/> 时建）。
+        /// **刻意不序列化**（无 `[SerializeField]`）⇒ 不改场景、不需要重生成场景。
+        /// </summary>
+        private CanvasGroup[] _chromeGroups;
+
+        /// <summary>
         /// HUD 画布的根 `RectTransform`。**结算卡挂这里而不是自建第二个画布** ——
         /// 同一画布 = 同一个 `CanvasScaler` 口径（不存在两份画布缩放），且只有一个 `sortingOrder` 要维护。
         /// </summary>
@@ -157,19 +163,103 @@ namespace Billiards.UI
         {
             EnsureBuilt();
 
-            if (_counters != null)
+            CanvasGroup[] groups = EnsureChromeGroups();
+            for (int i = 0; i < groups.Length; i++)
             {
-                _counters.gameObject.SetActive(visible);
+                if (groups[i] == null)
+                {
+                    continue;
+                }
+
+                // 不可见 = `alpha 0`（视觉上等价于设计稿 `body.home-active` 的 `display:none`）；
+                // ⚠ **必须同时断射线与交互**：否则首页期那两个 38×38 的 VFX / SFX 开关会变成
+                //   **隐形但可点** —— 那是"为了修卡顿换来一个看不见的可点区域"，不能接受。
+                groups[i].alpha = visible ? 1f : 0f;
+                groups[i].blocksRaycasts = visible;
+                groups[i].interactable = visible;
             }
 
-            if (_status != null)
+            if (!visible)
             {
-                _status.gameObject.SetActive(visible);
+                // 让位的同时把"首次出图"的开销**当场付掉**（动机与实测见 `WarmUpChromeText` 的注释）。
+                WarmUpChromeText();
+            }
+        }
+
+        /// <summary>
+        /// 首页期"不可见让位"用的画布组（三块分区各一个；**首次调用时建**，不进序列化 ⇒ 不改场景）。
+        ///
+        /// ── 为什么用 `CanvasGroup.alpha = 0` 而不是 `SetActive(false)` ──────────────────
+        /// 两者**视觉上等价**（都看不见），但**开销时机不同**：`SetActive(false)` 会把三块的首次
+        /// 网格/材质/绘制开销**推迟到"点开始那一刻"**（转场探针实测单帧 **20.834 ms**，基线 ≈6.94 —— 见
+        /// `WarmUpChromeText` 的注释）；保持 `active` + `alpha 0` 则让这部分开销落在**首页期**（静态菜单，
+        /// 无人察觉）。两条路径**并行保留**（`WarmUpChromeText` 覆盖 TMP 网格/图集；
+        /// 真正画出一次覆盖"材质/着色器首次使用"）—— 后者**只有真的绘制才可能被预热**，
+        /// 故不能只留 `ForceMeshUpdate`。
+        /// </summary>
+        private CanvasGroup[] EnsureChromeGroups()
+        {
+            if (_chromeGroups != null)
+            {
+                return _chromeGroups;
             }
 
-            if (_power != null)
+            RectTransform[] zones = { _counters, _status, _power };
+            _chromeGroups = new CanvasGroup[zones.Length];
+            for (int i = 0; i < zones.Length; i++)
             {
-                _power.gameObject.SetActive(visible);
+                _chromeGroups[i] = zones[i] == null ? null : zones[i].gameObject.AddComponent<CanvasGroup>();
+            }
+
+            return _chromeGroups;
+        }
+
+        /// <summary>
+        /// **不可见预热**：把三个分区的 TMP **网格 / 字体图集**在**分区物体保持 `inactive`（= 不可见）**的前提下
+        /// 先出一次，把"首次激活时的一次性开销"从"点开始那一刻"挪到**没人看的时候**。
+        ///
+        /// ── 为什么需要它（实测依据，不是猜测）────────────────────────────────────────
+        /// 用户实机反馈"转场有点卡顿"。**转场负载探针**实测（`-billiards-smoke-transition`）：
+        /// · 转场窗口 p95 **6.9515 ms** vs 前后稳态 **6.9508 / 6.9510 ms** ⇒ **转场期间每帧都慢不成立**；
+        /// · 但**触发后第 1 帧单帧 20.834 ms**（基线 ≈6.94，**≈3×**、超 16.67 ms 预算）
+        /// ⇒ 结论 = **"点开始那一刻的一次性开销"**（`SetChromeVisible(true)` 首次激活三个分区时
+        /// TMP 首次出网格/图集），**不是转场本身的问题** ⇒ 正确修法是**把这次性开销预热掉**。
+        ///
+        /// ── 为什么**不能**"先显示一帧再隐藏" ────────────────────────────────────────
+        /// 那会在首页上**闪一下界面** —— 把"卡顿"换成"可见瑕疵"，等于没修（**主理人硬约束**）。
+        /// 故本方法**全程不改变激活状态**（分区始终 `inactive`），只借
+        /// <c>ForceMeshUpdate(ignoreActiveState: true, …)</c> 在**不可见状态下**把网格/图集先算出来。
+        ///
+        /// ⚠ **失败方向**：若某版 TMP 在 `inactive` 下拒绝出图（`ForceMeshUpdate` 变空操作），
+        /// 本方法**不报错**、只是白做 —— 届时**尖峰不会消失**，由探针的"最慢帧"数字**如实暴露**
+        /// （见规格 §13.5：验收标准就是"最慢帧回落到基线量级"）。
+        /// </summary>
+        /// <param name="forceTextReparsing">
+        /// 是否强制重新解析文本。**首次预热传 `true`**（保证走完整条解析/布局/出图路径，不留半成品状态）。
+        /// </param>
+        public void WarmUpChromeText(bool forceTextReparsing = true)
+        {
+            EnsureBuilt();
+
+            WarmUpZone(_counters, forceTextReparsing);
+            WarmUpZone(_status, forceTextReparsing);
+            WarmUpZone(_power, forceTextReparsing);
+        }
+
+        /// <summary>对一个分区下的**全部** TMP 文本做一次不可见出图（含 `inactive` 子树）。</summary>
+        private static void WarmUpZone(RectTransform zone, bool forceTextReparsing)
+        {
+            if (zone == null)
+            {
+                return;
+            }
+
+            // ⚠ `includeInactive: true` —— 预热时分区**本来就是 inactive**（这正是"不可见"的来源）。
+            TextMeshProUGUI[] texts = zone.GetComponentsInChildren<TextMeshProUGUI>(true);
+            for (int i = 0; i < texts.Length; i++)
+            {
+                // `ignoreActiveState: true` = 即使物体 inactive 也照样出图（这是"不可见预热"能成立的关键）。
+                texts[i].ForceMeshUpdate(true, forceTextReparsing);
             }
         }
 
