@@ -119,10 +119,37 @@ namespace Billiards.Physics
         /// </summary>
         public const int RestStableFrames = 8;
 
+        /// <summary>
+        /// **球-段扫描的包围盒预筛余量 ε**（米）。
+        ///
+        /// **它的作用 = 保证不漏掉任何"可能重叠 / 可能接触"的对**（**不是容差、更不是近似**）：
+        ///  · **数学事实（精确成立）**：若球心到线段的距离 `≤ r`（最近点 `q`，且 `q` 必落在段两端点的 AABB 内），
+        ///    则 `|p.x − q.x| ≤ r` 且 `|p.y − q.y| ≤ r` ⇒ `p.x ∈ [minX − r, maxX + r]`、`p.y ∈ [minY − r, maxY + r]`。
+        ///    "球在 `[0, remaining]` 内扫出的 AABB 与线段接触"由**同一推理**给出："扫出 AABB 与 段AABB ⊕ r 相交"。
+        ///  · 我们把预筛盒建成 **线段 AABB ⊕ (r + ε)** ⇒ 上述蕴含**严格保留** ⇒ 被跳过的对**必然不重叠 / 不接触**。
+        ///  · **与浮点精度无关**：ε 只吸收"构造预筛盒那几步加减"的舍入（尺寸 ~1 m 时约 1e-7）；
+        ///    取 **1e-6** 已大于该界的 2 倍 ⇒ 即便按浮点最坏情况取值，也不可能把"距离 ≤ r"的对判成"必不重叠"
+        ///    ⇒ **该结论跨运行时（Mono / CoreCLR）同样成立**。
+        ///  ⚠ **禁止**改成"严格比较、不留余量"：那样等价性就依赖浮点细节、跨运行时**不成立**。
+        /// </summary>
+        public const float SegmentScreenMargin = 1e-6f;
+
         // ── 只读几何缓存（构造时摊平，顺序 = 资源顺序）──────────────────────
 
         private readonly Vector2[] _segA;
         private readonly Vector2[] _segB;
+
+        /// <summary>
+        /// **逐段的包围盒预筛缓存**：段 `j` 的 AABB（两端点的 `min/max`）**外扩 `BallRadius + SegmentScreenMargin`**。
+        /// 构造时算一次（段是只读几何）；热路径只需 **4 次比较**即可排除"必不重叠"的对。
+        ///
+        /// 为什么缓存**外扩后**的盒：预筛判据就是 `球心 ∈ 段AABB ⊕ (r+ε)` ⇒ 把外扩并进缓存，
+        /// 热路径**没有额外加减法**，也**不可能忘掉外扩**（外扩只在这里出现一次）。
+        /// </summary>
+        private readonly float[] _segBoxMinX;
+        private readonly float[] _segBoxMaxX;
+        private readonly float[] _segBoxMinY;
+        private readonly float[] _segBoxMaxY;
         private readonly Vector2[] _pocketThroatCenter;
         private readonly Vector2[] _pocketThroatNormal;
 
@@ -224,6 +251,12 @@ namespace Billiards.Physics
 
         /// <summary>全部接触解算次数（段接触 + 球-球接触），诊断量。</summary>
         public int TotalContactCount { get; private set; }
+
+        /// <summary>
+        /// **只读诊断**：球-段扫描被**包围盒预筛**跳过的对数（累计；<see cref="ResetDiagnostics"/> 归零）。
+        /// 用途 = **证明预筛非空转**（"跳过 0 对"会让"单步变快"无从解释）。**不参与任何判定**，也不影响物理结果。
+        /// </summary>
+        public long SegmentScreenSkips { get; private set; }
 
         /// <summary>TOI 循环超过 <see cref="MaxToiIterations"/> 的次数（每次意味着该子步被截断）。</summary>
         public int ToiIterationGuardTrips { get; private set; }
@@ -404,11 +437,22 @@ namespace Billiards.Physics
             int segCount = table.SegmentCount;
             _segA = new Vector2[segCount];
             _segB = new Vector2[segCount];
+            _segBoxMinX = new float[segCount];
+            _segBoxMaxX = new float[segCount];
+            _segBoxMinY = new float[segCount];
+            _segBoxMaxY = new float[segCount];
+            float screenPad = PoolConstants.BallRadius + SegmentScreenMargin;
             for (int i = 0; i < segCount; i++)
             {
                 CushionSegment s = table.segments[i];
                 _segA[i] = s.a;
                 _segB[i] = s.b;
+
+                // 逐段预筛盒（段 AABB ⊕ (r + ε)）——**唯一**的构造点（热路径只读）。
+                _segBoxMinX[i] = Mathf.Min(s.a.x, s.b.x) - screenPad;
+                _segBoxMaxX[i] = Mathf.Max(s.a.x, s.b.x) + screenPad;
+                _segBoxMinY[i] = Mathf.Min(s.a.y, s.b.y) - screenPad;
+                _segBoxMaxY[i] = Mathf.Max(s.a.y, s.b.y) + screenPad;
             }
 
             int pocketCount = table.PocketCount;
@@ -556,6 +600,7 @@ namespace Billiards.Physics
         public void ResetDiagnostics()
         {
             TotalContactCount = 0;
+            SegmentScreenSkips = 0;
             ToiIterationGuardTrips = 0;
             EnergyGainViolations = 0;
             PocketProximityEvents = 0;
@@ -938,8 +983,25 @@ namespace Billiards.Physics
                 Vector2 p = _balls[i].position;
                 Vector2 v = _vAvg[i];
 
+                // 球在本子步内扫出的 AABB（端点 = 起点 `p` 与 `p + v·remaining`）；`p` / `v` 在 j 循环内**不变**。
+                Vector2 sweepEnd = p + v * remaining;
+                float sweepMinX = Mathf.Min(p.x, sweepEnd.x);
+                float sweepMaxX = Mathf.Max(p.x, sweepEnd.x);
+                float sweepMinY = Mathf.Min(p.y, sweepEnd.y);
+                float sweepMaxY = Mathf.Max(p.y, sweepEnd.y);
+
                 for (int j = 0; j < _segA.Length; j++)
                 {
+                    // ── 保守包围盒预筛（等价性论证见 `SegmentScreenMargin`）────────────────
+                    // 扫出 AABB 与「段 AABB ⊕ (r + ε)」不相交 ⇒ 整段行程都不可能接触 ⇒ 跳过。
+                    // （"接触 ⇒ 扫出 AABB 与 段AABB ⊕ r 相交"由与 RDO 同一推理给出。）
+                    if (sweepMaxX < _segBoxMinX[j] || sweepMinX > _segBoxMaxX[j]
+                        || sweepMaxY < _segBoxMinY[j] || sweepMinY > _segBoxMaxY[j])
+                    {
+                        SegmentScreenSkips++;
+                        continue;
+                    }
+
                     float t = SolveToi(p, v, _segA[j], _segB[j], r);
                     if (t < 0f || t > remaining)
                     {
@@ -1448,10 +1510,22 @@ namespace Billiards.Physics
                     continue;
                 }
 
+                // ⚠ 球位在本层循环内会被**位置修正**（下面那行赋值）改写 ⇒ 预筛必须用**当前**位置：
+                //    每次修正后刷新 `pi`，语义与"逐段重读 `_balls[i].position`"**完全一致**（逐位等价）。
+                Vector2 pi = _balls[i].position;
                 for (int j = 0; j < _segA.Length; j++)
                 {
-                    Vector2 q = ClosestPointOnSegment(_balls[i].position, _segA[j], _segB[j]);
-                    Vector2 diff = _balls[i].position - q;
+                    // ── 保守包围盒预筛（等价性论证见 `SegmentScreenMargin`）────────────────
+                    // 段盒已含 `⊕ (r + ε)`；这 4 次比较为真 ⇒ 球心不可能落在段上某点的 r 之内 ⇒ **必不重叠**。
+                    if (pi.x < _segBoxMinX[j] || pi.x > _segBoxMaxX[j]
+                        || pi.y < _segBoxMinY[j] || pi.y > _segBoxMaxY[j])
+                    {
+                        SegmentScreenSkips++;
+                        continue;
+                    }
+
+                    Vector2 q = ClosestPointOnSegment(pi, _segA[j], _segB[j]);
+                    Vector2 diff = pi - q;
                     float d2 = diff.x * diff.x + diff.y * diff.y;
                     if (d2 >= r * r || d2 < 1e-18f)
                     {
@@ -1461,6 +1535,7 @@ namespace Billiards.Physics
                     float dist = PoolMath.Sqrt(d2);
                     _balls[i].position = q + r * (diff / dist);
                     ResolveSegmentContact(i, j);
+                    pi = _balls[i].position;   // 位置已变 ⇒ 后续段的预筛用新位置
                 }
             }
 

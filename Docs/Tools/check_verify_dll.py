@@ -32,6 +32,20 @@ CHECKS = [
         "UnreachableStates",        # PracticeHudState 的不可达登记
         "PlayAgainButtonLocal",     # PracticeResultLayout 的卡内矩形
         "StatsTopLineY",            # PracticeResultLayout 的统计区上边线
+        # 本轮（35-B 起步 + 瞄准性能）
+        "ShouldRecompute",          # AimAssistController 的节流纯函数
+        "minRecomputeIntervalSeconds",   # 节流间隔字段
+        "ProbeRestFrames",          # ShotPredictionWorkspace 的缓存键字段
+        "AimSweepDegreesPerFrame",  # SmokeProbe 的拖动步长常量
+        "AimSweepDegrees",          # SmokeProbe 的角函数
+        "ApplySmokeAimDegrees",     # PhysicsTestDrive 的拖动注入入口
+        "showDebugOverlay",         # PhysicsTestDrive 的调试叠加层开关
+        # 批次 C：球-段扫描的保守包围盒预筛
+        "SegmentScreenMargin",      # 预筛余量 ε（具名常量）
+        "_segBoxMinX",              # 逐段预筛盒字段（私有字段名在元数据里逐字出现）
+        # ⚠ `SegmentScreenSkips` 是**自动属性** ⇒ 元数据里是 `<…>k__BackingField` 与 `get_/set_` 形态，
+        #    **不以裸名出现**；本检查是"**精确 run 匹配**"（非子串）⇒ 列它会恒假红。它的"非空转"证据
+        #    改由**行为**提供（T119 单步 µs 对照 + 预筛计数在规格里登记）。
     ]),
     (r"Temp\bin\Verify\Billiards.Editor-verify.dll", [
         "UiSpriteImportPostprocessor",
@@ -39,6 +53,13 @@ CHECKS = [
         "PanelBorder",
         "LoadUiSpritesOrThrow",
         "LoadBallChipsOrThrow",
+        # 本轮：Main 入口生成
+        "AttachMainGameplayLayer",
+        "MainHasGameplayLayer",
+        "BuildGameplayHosts",
+        "MainGameplayRootName",
+        "RebuildMainScene",
+        "BuildScenePath",
     ]),
     (r"Temp\bin\Verify\Billiards.Tests.EditMode-verify.dll", [
         "T124_DesignTokens_AndSprites_SingleSource",
@@ -48,6 +69,12 @@ CHECKS = [
         "T123_CueModel_MatchesTipOriginConvention",
         "CheckBallChipPixels",
         "IsNeutralLight",
+        # 本轮
+        "T127_MainScene_IsPlayableEntry_NotShell",
+        "T128_MainGameplayLayer_ApplyIsIdempotent",
+        "T129_DebugOverlay_DefaultOff_HotkeyGate",
+        "T130_AimRecomputeThrottle_TrailingEdgeGuarantee",
+        "T131_SmokeAimSweep_PureLogic",
     ]),
 ]
 

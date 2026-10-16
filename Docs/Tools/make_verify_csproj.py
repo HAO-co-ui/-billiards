@@ -34,21 +34,26 @@ REFERENCE_MAP = {
 }
 
 # (原 csproj, 验证用 AssemblyName, 追加的 Compile Include 列表)
+#
+# ⚠ 只追加**本轮新增的 .cs**（不是目录通配符）：Unity 生成的 csproj 是**显式列表**且通常是
+# **当前的** ⇒ 对已列入的文件再追一条会变成**重复 Compile 项**（MSBuild 报错）。
 TARGETS = [
     (
         "Billiards.Runtime.csproj",
         "Billiards.Runtime-verify",
-        [r"Assets\_Project\Scripts\Runtime\UI\**\*.cs"],
+        [r"Assets\_Project\Scripts\Runtime\Physics\ShotPredictionWorkspace.cs"],
     ),
     (
         "Billiards.Editor.csproj",
         "Billiards.Editor-verify",
-        [r"Assets\_Project\Scripts\Editor\Visual\UiSpriteImportPostprocessor.cs"],
+        [],
     ),
     (
         "Billiards.Tests.EditMode.csproj",
         "Billiards.Tests.EditMode-verify",
-        [r"Assets\_Project\Tests\EditMode\**\*.cs"],
+        [r"Assets\_Project\Tests\EditMode\MainSceneTests.cs",
+         r"Assets\_Project\Tests\EditMode\DebugOverlayTests.cs",
+         r"Assets\_Project\Tests\EditMode\AimPredictionThrottleTests.cs"],
     ),
 ]
 
@@ -85,13 +90,24 @@ def build(source: str, name: str, extra: list[str]) -> str:
     text = rewrite_references(text)
 
     lines = "".join(f'    <Compile Include="{item}" />\n' for item in extra if item.endswith(".cs"))
+    lines_added = sum(1 for item in extra if item.endswith(".cs"))
+    # ⚠ **幂等**：Unity 会重生成 csproj；若它**已经**把本轮新文件列进去了，再追加会变成
+    # **重复 Compile 项**（MSBuild 报 `CS2002 源文件指定了多次`）⇒ 只追加**尚未列出**的。
+    if lines:
+        present = [item for item in extra if item.endswith(".cs") and f'Include="{item}"' in text]
+        if present:
+            print(f"  （已在上游列表，跳过追加：{present}）")
+            lines = "".join(f'    <Compile Include="{item}" />\n'
+                            for item in extra if item.endswith(".cs") and item not in present)
+            lines_added -= len(present)
     index = text.rfind("<Compile Include=")
     end = text.find("\n", text.find("/>", index) + 2) + 1
-    text = text[:end] + lines + text[end:]
+    if lines:
+        text = text[:end] + lines + text[end:]
 
     out = os.path.join(ROOT, "_verify_" + source)
     io.open(out, "w", encoding="utf-8-sig").write(text)
-    print(f"generated _verify_{source}（追加 {len([x for x in extra if x.endswith('.cs')])} 条通配/文件）")
+    print(f"generated _verify_{source}（追加 {lines_added} 条）")
     return out
 
 

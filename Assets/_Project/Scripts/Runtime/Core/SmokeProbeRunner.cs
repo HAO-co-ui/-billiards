@@ -26,8 +26,17 @@ namespace Billiards.Core
         private string _outputPath;
         private int _warmupLeft;
 
+        /// <summary>是否在采样期间连续改变瞄准角（拖动瞄准负载）。见 <see cref="SmokeProbe.AimSweepSwitch"/>。</summary>
+        private bool _aimSweep;
+
+        /// <summary>已采样的帧计数（= 冒烟角函数的输入）。</summary>
+        private int _sampled;
+
+        /// <summary>场景里可被脚本化驱动瞄准的目标（拖动负载用）；无 ⇒ <c>null</c>（不驱动）。</summary>
+        private ISmokeAimSweepTarget _aimTarget;
+
         /// <summary>由 <see cref="SmokeProbe.Bootstrap"/> 调用；也可被判据/探针直接调用。</summary>
-        public void Begin(int frames, string outputPath)
+        public void Begin(int frames, string outputPath, bool aimSweep = false)
         {
             _frames = frames;
             _outputPath = string.IsNullOrEmpty(outputPath)
@@ -35,6 +44,30 @@ namespace Billiards.Core
                 : outputPath;
             _frameMs.Clear();
             _warmupLeft = WarmupFrames;
+            _sampled = 0;
+            _aimSweep = aimSweep;
+            _aimTarget = null;
+
+            if (!_aimSweep)
+            {
+                return;
+            }
+
+            // 一次查找即可（场景在 AfterSceneLoad 时已加载）。
+            MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+            for (int i = 0; i < behaviours.Length; i++)
+            {
+                if (behaviours[i] is ISmokeAimSweepTarget target)
+                {
+                    _aimTarget = target;
+                    break;
+                }
+            }
+
+            if (_aimTarget == null)
+            {
+                Debug.LogWarning("[SMOKE] 已请求拖动瞄准负载，但场景里没有 ISmokeAimSweepTarget ⇒ 本项退化为静置。");
+            }
         }
 
         private void Update()
@@ -50,7 +83,15 @@ namespace Billiards.Core
                 return;
             }
 
+            // **拖动瞄准负载**：采样帧内每帧推进瞄准角（逼出"预测重算"这条最坏路径）。
+            // 注意放在**采样帧**（预热之后）：静置 60 帧预热不计入统计。
+            if (_aimSweep && _aimTarget != null)
+            {
+                _aimTarget.ApplySmokeAimDegrees(SmokeProbe.AimSweepDegrees(_sampled));
+            }
+
             _frameMs.Add(Time.unscaledDeltaTime * 1000f);
+            _sampled++;
             if (_frameMs.Count < _frames)
             {
                 return;
@@ -62,7 +103,11 @@ namespace Billiards.Core
         private void Finish()
         {
             SmokeProbe.ComputeStats(_frameMs, out float mean, out float p95, out float max, out int dropped);
-            bool passed = SmokeProbe.MeetsTarget(mean, dropped, _frameMs.Count);
+            // **两套判定口径**：静置冒烟用严格闸门（60 fps、掉帧 ≤ 2%）；拖动瞄准用**宽松闸门**
+            // （只拦量级失控 —— 该路径的单位重算成本是内核固有的 ~240 步预测，见 `SmokeProbe` 的说明）。
+            bool passed = _aimSweep
+                ? SmokeProbe.MeetsDragTarget(mean, dropped, _frameMs.Count)
+                : SmokeProbe.MeetsTarget(mean, dropped, _frameMs.Count);
 
             Renderer[] renderers = FindObjectsByType<Renderer>(FindObjectsSortMode.None);
             var materials = new HashSet<Material>();
@@ -92,6 +137,8 @@ namespace Billiards.Core
                 rendererCount = renderers.Length,
                 distinctMaterialCount = materials.Count,
                 physicsSteps = SmokeProbe.PhysicsStepsReported,
+                aimSweep = _aimSweep,
+                gate = _aimSweep ? "drag" : "static",
                 passed = passed,
             };
 

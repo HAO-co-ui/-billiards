@@ -83,3 +83,15 @@ Thumbs.db
 
 # Windows 构建产物（Unity 出包目录；上百 MB，不入库）
 /Build/
+
+# ---- 离线核验探针的构建产物（源码入库、二进制不入库）----
+# 为什么：`Docs/Tools/aimcost_probe/` 是"物理结果逐位不变"这条判据的仪器 ——
+# **源码必须入库**（否则那次等价性验证无法复现），但它的**预编译 DLL 与 bin/obj 不入库**：
+# ① `control/`、`patched/` 是从 Unity 产物拷来的程序集副本（可随时重建）；
+# ② 二进制入库会让每次跑探针都脏 `git status`，而本工程"冻结锚点"依赖工作区干净。
+# ⇒ 源码入库 + 构建产物忽略，是本工程对"可复现但不污染"的一贯口径。
+/Docs/Tools/aimcost_probe/control/
+/Docs/Tools/aimcost_probe/patched/
+/Docs/Tools/aimcost_probe/**/bin/
+/Docs/Tools/aimcost_probe/**/obj/
+

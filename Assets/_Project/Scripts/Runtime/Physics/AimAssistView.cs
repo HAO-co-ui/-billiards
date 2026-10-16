@@ -76,6 +76,19 @@ namespace Billiards.Physics
         private static readonly Color CueDeflectColor = new Color(0.55f, 0.85f, 1.00f, 0.80f);
 
         private readonly List<LineRenderer> _dashPool = new List<LineRenderer>();
+
+        /// <summary>
+        /// **每帧复用的虚线段缓冲**（消除 `LateUpdate` / `OnDrawGizmos` 里"每帧 `new List` + 线段再分配"）。
+        /// 绘制时先 `Clear` 再追加（见 <see cref="AppendDashSegments"/>）；循环结束即消费完，无别名风险。
+        /// </summary>
+        private readonly List<(Vector2 a, Vector2 b)> _segmentBuffer = new List<(Vector2 a, Vector2 b)>(512);
+
+        /// <summary>上一次**重绘**时的预测版本（= `AimAssistController.PredictionComputeCount`）；未绘制过 ⇒ -1。</summary>
+        private int _lastDrawnVersion = -1;
+
+        /// <summary>当前是否处于"线已清空"状态（避免每帧重复清空，并保证重新显示时强制重绘一次）。</summary>
+        private bool _linesCleared;
+
         private LineRenderer _ghostCircle;
         private LineRenderer _targetLine;
         private LineRenderer _cueDeflectLine;
@@ -84,24 +97,47 @@ namespace Billiards.Physics
         // ── 纯几何 / 单点（判据直接驱动，不必真画）────────────────────────────────
 
         /// <summary>
-        /// **把一条线段切成虚线**：段数 `n = max(1, ceil(L / (dashLength + gapLength)))`；
-        /// 每段长度 `≤ dashLength`，除**末段**外每段**恰为** `dashLength`。
-        /// `from` / `to` / 两个长度参数**同空间**（本工程用规范米）。
+        /// **把一条线段切成虚线**（便利重载，返回新建的列表）。热路径/循环请用
+        /// <see cref="BuildDashSegments(Vector2, Vector2, float, float, List{(Vector2 a, Vector2 b)})"/> 复用缓冲。
         /// </summary>
         public static IReadOnlyList<(Vector2 a, Vector2 b)> BuildDashSegments(
             Vector2 from, Vector2 to, float dashLength, float gapLength)
         {
             var segments = new List<(Vector2 a, Vector2 b)>();
+            AppendDashSegments(from, to, dashLength, gapLength, segments);
+            return segments;
+        }
+
+        /// <summary>
+        /// **把一条线段切成虚线**（复用缓冲版）：**先 `Clear` 再填** ⇒ 结果与便利重载逐元素相同，
+        /// 但**不分配**（供每帧绘制路径复用同一列表）。
+        /// </summary>
+        public static IReadOnlyList<(Vector2 a, Vector2 b)> BuildDashSegments(
+            Vector2 from, Vector2 to, float dashLength, float gapLength, List<(Vector2 a, Vector2 b)> buffer)
+        {
+            buffer.Clear();
+            AppendDashSegments(from, to, dashLength, gapLength, buffer);
+            return buffer;
+        }
+
+        /// <summary>
+        /// **把一条线段切成虚线并追加到缓冲**（不清空 ⇒ 可把多条线段拼成同一批）。
+        /// 段数 `n = max(1, ceil(L / (dashLength + gapLength)))`；每段长度 `≤ dashLength`，除**末段**外每段**恰为** `dashLength`。
+        /// `from` / `to` / 两个长度参数**同空间**（本工程用规范米）。
+        /// </summary>
+        public static void AppendDashSegments(
+            Vector2 from, Vector2 to, float dashLength, float gapLength, List<(Vector2 a, Vector2 b)> buffer)
+        {
             if (!(dashLength > 0f))
             {
-                return segments;
+                return;
             }
 
             Vector2 delta = to - from;
             float length = delta.magnitude;
             if (!(length > 0f))
             {
-                return segments;
+                return;
             }
 
             float gap = gapLength > 0f ? gapLength : 0f;
@@ -113,11 +149,9 @@ namespace Billiards.Physics
             {
                 float a = cursor;
                 float b = Mathf.Min(cursor + dashLength, length);
-                segments.Add((from + dir * a, from + dir * b));
+                buffer.Add((from + dir * a, from + dir * b));
                 cursor += dashLength + gap;
             }
-
-            return segments;
         }
 
         /// <summary>**规范世界点 → 绘制用（显示世界）点**：委托 <see cref="CushionGizmo.DisplayPoint"/>（唯一落点）。</summary>
@@ -166,16 +200,13 @@ namespace Billiards.Physics
             if (path != null && path.Count >= 2)
             {
                 Gizmos.color = PathColor;
-                for (int i = 0; i + 1 < path.Count; i++)
+                AppendPolylineDashSegments(path, PredictionDashLength, PredictionGapLength, _segmentBuffer);
+                for (int s = 0; s < _segmentBuffer.Count; s++)
                 {
-                    Vector2 a = path[i];
-                    Vector2 b = path[i + 1];
-                    foreach ((Vector2 sa, Vector2 sb) in BuildDashSegments(a, b, PredictionDashLength, PredictionGapLength))
-                    {
-                        Gizmos.DrawLine(
-                            DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(sa)),
-                            DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(sb)));
-                    }
+                    (Vector2 sa, Vector2 sb) = _segmentBuffer[s];
+                    Gizmos.DrawLine(
+                        DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(sa)),
+                        DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(sb)));
                 }
             }
 
@@ -216,28 +247,43 @@ namespace Billiards.Physics
 
             if (!controller.ShouldShow)
             {
-                // 球在滚 / 开关关闭 / 结算卡打开 ⇒ **清空所有线**。
+                // 球在滚 / 开关关闭 / 结算卡打开 ⇒ **清空所有线**（只清一次，之后保持空）。
                 // ⚠ 必须清空而不是"什么都不做"：`controller.Prediction` 在球运动期间**不重算**，
                 // 里存的是**上一杆的旧结果**；不复位就会看到"瞄准线停在原地不动"（用户实测反馈）。
-                SyncRenderers(System.Array.Empty<(Vector2 a, Vector2 b)>());
-                SyncContactMarkers(default);
+                if (!_linesCleared)
+                {
+                    SyncRenderers(System.Array.Empty<(Vector2 a, Vector2 b)>());
+                    SyncContactMarkers(default);
+                    _linesCleared = true;
+                    _lastDrawnVersion = -1;
+                }
+
+                return;
+            }
+
+            // **只在预测真的重算过（版本变化）时重绘**：拖动瞄准时预测被节流到 ~30 Hz，
+            // 而渲染帧是 60–144 Hz ⇒ 若每帧都重铺/重写全部 `LineRenderer`，就把节流省下的算力又花回去。
+            // 预测未变 ⇒ 线已是当前值（顶点全在显示世界，不随帧漂移）⇒ 跳过。
+            int version = controller.PredictionComputeCount;
+            if (!_linesCleared && version == _lastDrawnVersion)
+            {
                 return;
             }
 
             ShotPrediction prediction = controller.Prediction;
             IReadOnlyList<Vector2> path = prediction.CueWorldPath;
 
-            var segments = new List<(Vector2 a, Vector2 b)>();
+            // **复用缓冲 + 按弧长铺虚线**（先 Clear 再追加；段数 ≈ 路径总长 / (dash + gap)）。
+            _segmentBuffer.Clear();
             if (path != null && path.Count >= 2)
             {
-                for (int i = 0; i + 1 < path.Count; i++)
-                {
-                    segments.AddRange(BuildDashSegments(path[i], path[i + 1], PredictionDashLength, PredictionGapLength));
-                }
+                AppendPolylineDashSegments(path, PredictionDashLength, PredictionGapLength, _segmentBuffer);
             }
 
-            SyncRenderers(segments);
+            SyncRenderers(_segmentBuffer);
             SyncContactMarkers(prediction);
+            _lastDrawnVersion = version;
+            _linesCleared = false;
         }
 
         /// <summary>
@@ -367,6 +413,82 @@ namespace Billiards.Physics
                 _cueDeflectLine.SetPosition(0, ghostWorld);
                 _cueDeflectLine.SetPosition(1, ghostWorld + WorldDirection(prediction.CueOutgoingDirection) * (CueDeflectLineLength * scale));
             }
+        }
+
+        /// <summary>
+        /// **沿折线按弧长铺虚线**（唯一的"沿整条路径"虚线实现）：从起点起，每 `dashLength + gapLength` 的
+        /// 弧长铺一段 `dashLength`（末段截到路径末端）。
+        ///
+        /// <para>⚠ **这是拖动性能的关键**：预测路径按 `Step` 取样（每步约 20 mm），若**逐段**铺虚线
+        /// （<see cref="AppendDashSegments"/> 的语义：每段至少 1 段），~240 个取样点 ⇒ ~240 个
+        /// `LineRenderer`（实测拖动冒烟 `rendererCount` 67 → 260、帧率掉到 38 fps）。
+        /// 按**弧长**铺则段数只由**路径总长**决定（数米 ⇒ 约 20 段），观感几乎不变（间隙仍 2 mm），
+        /// 渲染器数量降一个数量级。</para>
+        /// </summary>
+        public static void AppendPolylineDashSegments(IReadOnlyList<Vector2> path, float dashLength, float gapLength,
+            List<(Vector2 a, Vector2 b)> buffer)
+        {
+            if (path == null || path.Count < 2 || !(dashLength > 0f))
+            {
+                return;
+            }
+
+            float total = 0f;
+            for (int i = 0; i + 1 < path.Count; i++)
+            {
+                total += (path[i + 1] - path[i]).magnitude;
+            }
+
+            if (!(total > 0f))
+            {
+                return;
+            }
+
+            float gap = gapLength > 0f ? gapLength : 0f;
+            float period = dashLength + gap;
+            int count = Mathf.Max(1, Mathf.CeilToInt(total / period));
+
+            for (int k = 0; k < count; k++)
+            {
+                float s0 = k * period;
+                float s1 = Mathf.Min(s0 + dashLength, total);
+                if (!(s1 > s0))
+                {
+                    break;
+                }
+
+                buffer.Add((PointAlongPath(path, s0), PointAlongPath(path, s1)));
+            }
+        }
+
+        /// <summary>折线上累计弧长 <paramref name="s"/> 处的点（`s ≤ 0` ⇒ 起点；超长 ⇒ 终点）。</summary>
+        private static Vector2 PointAlongPath(IReadOnlyList<Vector2> path, float s)
+        {
+            if (s <= 0f)
+            {
+                return path[0];
+            }
+
+            float acc = 0f;
+            for (int i = 0; i + 1 < path.Count; i++)
+            {
+                Vector2 a = path[i];
+                Vector2 b = path[i + 1];
+                float segmentLength = (b - a).magnitude;
+                if (segmentLength <= 0f)
+                {
+                    continue;
+                }
+
+                if (acc + segmentLength >= s)
+                {
+                    return a + (b - a) * ((s - acc) / segmentLength);
+                }
+
+                acc += segmentLength;
+            }
+
+            return path[path.Count - 1];
         }
 
         /// <summary>创建一条挂在可视野根下的标记线（局部坐标 = 规范坐标；颜色/宽度见常量与调用方）。</summary>

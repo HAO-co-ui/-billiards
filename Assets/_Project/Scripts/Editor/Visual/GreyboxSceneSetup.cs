@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using Billiards.Core;
@@ -15,35 +16,55 @@ using UnityEngine.SceneManagement;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// 灰盒物理场景的**幂等**构建器（配置即代码，与工程配置/数据导入/材质视觉同一哲学）。
+    /// 场景的**幂等**构建器（配置即代码，与工程配置/数据导入/材质视觉同一哲学）。承担**两个场景**：
     ///
-    /// 产出 <c>Assets/_Project/Scenes/PhysicsGreybox.unity</c>：
-    ///  · <c>CushionGizmo</c> 宿主（引用 <c>TableConfig.asset</c>，绘制 82 段库边）
-    ///  · <c>PhysicsTestDrive</c> 宿主（累加器驱动 <c>PoolSimulator</c> + 键盘冒烟发射）
-    ///  · 白球（放在 <c>TableConfig.footSpot</c>）
-    ///  · 俯视相机 + 主平行光（便于肉眼查看灰盒）
+    /// <list type="number">
+    /// <item><b>灰盒诊断场景</b> <c>Assets/_Project/Scenes/PhysicsGreybox.unity</c>（<see cref="BuildScene"/>）：
+    /// 从空场景**全量生成** —— 球桌 + 球 + 杆 + 全部玩法宿主 + 相机 + 光。保留为**诊断场景**
+    /// （`Gizmo` / 调试叠加层 / 直接看内核行为），**不再是出包入口**。</item>
+    /// <item><b>正式游戏入口</b> <c>Assets/_Project/Scenes/Main.unity</c>（<see cref="AttachMainGameplayLayer"/>）：
+    /// 在**既有的** <c>Main.unity</c>（材质视觉场景：桌 / 地面 / 相机 / 光）之上**叠加玩法层** ——
+    /// 复用既有 <c>PlayfieldRoot</c> / 相机 / 光（**不重建它们、不新增第二台相机或第二个 AudioListener**），
+    /// 只补"玩得起来"所需的宿主与球可视物。</item>
+    /// </list>
     ///
-    /// ── 两条明文禁令（spec §8 H-6 / §10.3）─────────────────────────────────
-    ///  1. **提交态的 build list 里不含本场景**（`EditorBuildSettings.asset` 只列 `Main.unity`）。
-    ///     理由：工程配置验收项 `SCN-02`（Day1）与 `D4-BLD-01`（Day4）都断言**提交态**的 build list
-    ///     **恰好**只有 `Main.unity`；一旦把本场景提交进去，两份已入库证据立即作废。
+    /// ── 口径变更（**旧说法已作废**，勿再引用）──────────────────────────────────
+    /// 本类原先写有"提交态 build list 不含本场景 + 出包入口三重保护"两条 —— 那是在
+    /// **"`Main.unity` 是空壳"**这一前提下成立的旧口径。**该前提已被证伪**：`Main.unity` 现在
+    /// 是带完整玩法层的**正式入口** ⇒
+    ///  · 出包入口（<see cref="PerformanceSetup"/> / <see cref="BuildWindows"/>）指向 **`Main.unity`**；
+    ///  · `SCN-02`（工程配置）与 `D4-BLD-01`（物理验收）断言的 build list `== [Main.unity]`
+    ///    因此**变成真正正确**，不再与出包口径互斥（互斥的根因就是"Main 是空壳"，已消除）。
+    /// （铁律 17：结论被证伪后必须清除**所有**引用处，含代码注释。）
     ///
-    ///     ⚠ **但"出包必须不是黑屏"这条要求仍然成立**（`Main.unity` 是空壳 ⇒ 用它打包 = 黑屏死包）。
-    ///     本工程的做法**不是**改持久列表，而是让**出包入口自带保证**：`BuildWindows.BuildFromCommandLine`
-    ///     ① 先跑 `PerformanceSetup.Apply()`（把列表临时写成本场景）→ ② 列表不对就**拒绝出包**
-    ///     → ③ `BuildPlayerOptions.scenes` **显式**指定本场景（出包内容与持久列表无关）。
-    ///     ⇒ 两条口径因此可以并存：**验收看持久态、出包看出包入口**。
-    ///     （将来若把 `Main.unity` 做成真正的游戏入口，应把 `T120 ③` 改为断言"首个 build 场景不是空壳"。）
-    ///  2. **严禁**修改 <c>Assets/_Project/Scenes/Main.unity</c>（已被材质视觉验收 22/22 冻结）。
+    /// ── Main 与灰盒的两处**刻意不同**（登记）──────────────────────────────────
+    ///  1. **可视缩放**：`Main.unity` 的 `PlayfieldRoot.localScale` 保持 **1**（材质视觉验收 `SCN-02`
+    ///     钉死为 1，且 `SCN-04` 的世界包围盒按规范尺度比对）⇒ Main 里**不应用** `PlayfieldVisualScale`
+    ///     （1.2），游戏以规范尺度渲染；灰盒才用 1.2。**不得**为"看起来一样"把 Main 的根缩放改成 1.2
+    ///     （那会同时打红 `SCN-02` 与 `SCN-04`）。
+    ///  2. **相机**：`Main.unity` **复用既有相机**（`Main Camera`，位置/FOV 由材质视觉验收 `CAM-01` 钉死），
+    ///     而非灰盒那台（fov 52 的俯视相机）—— 避免出现两台相机 / 两个 `AudioListener`。
     ///
-    /// 另：本文件只生成、**不校验**（生成/校验入口分离，R2）；校验见 <see cref="PhysicsValidator"/>。
-    /// 场景内**不得出现任何碰撞体/刚体**（自研物理铁律 R5-1，场景内白球由
-    /// <c>GameObject.CreatePrimitive</c> 生成后立即移除其自带的碰撞体）。
+    /// 另：本文件只生成、**不校验**（生成/校验入口分离，R2）；校验见 <see cref="PhysicsValidator"/> /
+    /// <see cref="MaterialVisualValidator"/>。场景内**不得出现任何碰撞体/刚体**（自研物理铁律 R5-1，
+    /// 白球由 <c>GameObject.CreatePrimitive</c> 生成后立即移除其自带的碰撞体）。
     /// </summary>
     public static class GreyboxSceneSetup
     {
         public const string ScenePath = "Assets/_Project/Scenes/PhysicsGreybox.unity";
         public const string ScenesDir = "Assets/_Project/Scenes";
+
+        /// <summary>**正式游戏入口场景**（材质视觉场景 + 玩法层）。出包入口与 build list 都指向它。</summary>
+        public const string MainScenePath = "Assets/_Project/Scenes/Main.unity";
+
+        /// <summary>
+        /// `Main.unity` 里**玩法层根**的对象名。同时充当**幂等标记**：场景里已有该对象 ⇒
+        /// 认为玩法层已就位，<see cref="ApplyMainScene"/> 直接跳过（不重写、不重复添加宿主）。
+        /// </summary>
+        public const string MainGameplayRootName = "GameplayLayer";
+
+        /// <summary>球堆可视球的名字前缀（`RackBall_i`）；重建时按前缀回收旧球。</summary>
+        public const string RackBallObjectName = "RackBall_";
         public const string TableConfigPath = "Assets/_Project/Data/TableConfig.asset";
         public const string CueBallMaterialPath = "Assets/_Project/Materials/Balls/Ball_00.mat";
 
@@ -165,6 +186,25 @@ namespace Billiards.EditorTools
                 "灰盒物理场景已**强制重建**（覆盖）：\n\n" + ScenePath, "OK");
         }
 
+        [MenuItem("Billiards/Visual/Attach Gameplay Layer To Main Scene", false, 404)]
+        public static void ApplyMainInteractive()
+        {
+            ApplyMainScene();
+            Debug.Log("Main 场景玩法层可用：" + MainScenePath);
+            EditorUtility.DisplayDialog("Billiards Main Scene Gameplay Layer",
+                "正式入口 Main.unity 的玩法层已就绪（幂等：已存在则不重写）：\n\n" + MainScenePath
+                + "\n\n本场景是**出包入口**（build list 与 BuildWindows 都指向它）。", "OK");
+        }
+
+        [MenuItem("Billiards/Visual/Rebuild Main Scene Gameplay Layer (force overwrite)", false, 405)]
+        public static void RebuildMainInteractive()
+        {
+            RebuildMainScene();
+            Debug.Log("Main 场景玩法层已强制重建：" + MainScenePath);
+            EditorUtility.DisplayDialog("Billiards Main Scene Gameplay Layer",
+                "正式入口 Main.unity 的玩法层已**强制重建**（覆盖）：\n\n" + MainScenePath, "OK");
+        }
+
         /// <summary>
         /// **幂等**构建：产物已存在则**不重写**（no-op）。
         ///
@@ -202,26 +242,92 @@ namespace Billiards.EditorTools
         /// <summary>供 <c>-executeMethod</c> 使用（幂等路径）；退出码 0 = 成功。</summary>
         public static void BuildFromCommandLine()
         {
-            RunFromCommandLine(Apply);
+            RunFromCommandLine(Apply, ScenePath);
         }
 
         /// <summary>供 <c>-executeMethod</c> 使用（强制重建路径）；退出码 0 = 成功。</summary>
         public static void RebuildFromCommandLine()
         {
-            RunFromCommandLine(Rebuild);
+            RunFromCommandLine(Rebuild, ScenePath);
         }
 
-        private static void RunFromCommandLine(Action build)
+        /// <summary>供 <c>-executeMethod</c> 使用（Main 玩法层，幂等路径）；退出码 0 = 成功。</summary>
+        public static void ApplyMainFromCommandLine()
+        {
+            RunFromCommandLine(ApplyMainScene, MainScenePath);
+        }
+
+        /// <summary>供 <c>-executeMethod</c> 使用（Main 玩法层，强制重建路径）；退出码 0 = 成功。</summary>
+        public static void RebuildMainFromCommandLine()
+        {
+            RunFromCommandLine(RebuildMainScene, MainScenePath);
+        }
+
+        /// <summary>
+        /// **幂等**给 `Main.unity` 叠加玩法层：场景里已有玩法层根（<see cref="MainGameplayRootName"/>）⇒
+        /// **早退、不写盘**（重复执行 sha1 不变 —— 本工程既有硬要求）。
+        /// </summary>
+        public static void ApplyMainScene()
+        {
+            AssetDatabase.Refresh();
+
+            if (MainHasGameplayLayer())
+            {
+                Debug.Log("MAIN_SETUP_SKIP（幂等：玩法层已存在，不重写）scene=" + MainScenePath);
+                return;
+            }
+
+            RebuildMainScene();
+        }
+
+        /// <summary>
+        /// **强制重建** Main 的玩法层：打开既有 `Main.unity` → 回收旧的玩法层（根对象 + 球可视物）→
+        /// 重新叠加 → 保存。**保留** Main 既有的桌 / 地面 / 相机 / 光（不重建它们）。
+        /// </summary>
+        public static void RebuildMainScene()
+        {
+            AssetDatabase.Refresh();
+
+            if (!ProjectPaths.Exists(MainScenePath))
+            {
+                throw new InvalidOperationException(
+                    "找不到 Main 场景：" + MainScenePath + "（应由 MaterialVisualSetup 生成基础视觉场景）。");
+            }
+
+            Scene scene = EditorSceneManager.OpenScene(MainScenePath, OpenSceneMode.Single);
+            AttachMainGameplayLayer(scene);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+        }
+
+        /// <summary>
+        /// 场景文件文本里是否已含**玩法层根**（=<see cref="MainGameplayRootName"/> 的 `m_Name`）。
+        /// 读盘（不是内存场景）⇒ 与 `-batchmode` 幂等判据同口径。
+        /// </summary>
+        public static bool MainHasGameplayLayer()
+        {
+            if (!ProjectPaths.Exists(MainScenePath))
+            {
+                return false;
+            }
+
+            string text = File.ReadAllText(ProjectPaths.ToFullPath(MainScenePath));
+            return text.Contains("m_Name: " + MainGameplayRootName);
+        }
+
+        private static void RunFromCommandLine(Action build, string scenePath)
         {
             int exitCode = 0;
             try
             {
                 build();
-                Debug.Log("DAY4_SETUP_OK scene=" + ScenePath);
+                Debug.Log("DAY4_SETUP_OK scene=" + scenePath);
             }
             catch (Exception ex)
             {
-                Debug.LogError("灰盒场景构建失败：" + ex);
+                Debug.LogError("场景构建失败（" + scenePath + "）：" + ex);
                 exitCode = 1;
             }
 
@@ -273,57 +379,84 @@ namespace Billiards.EditorTools
             cueBall.transform.SetParent(playfieldRoot.transform, false);
             cueBall.transform.localPosition = PoolGeometry.PhysicsBallToUnity(config.footSpot);
 
-            // 2) CushionGizmo 宿主
+            // 2) 俯视相机（含视口适配器）+ 主平行光（灰盒可见即可；不引入任何物理组件）
+            //    ⚠ **在玩法层之前建**：瞄准辅助 / 拉杆需要相机引用（与 Main 的叠加口径一致）。
+            Camera cam = BuildCamera(root);
+            BuildLight(root);
+
+            // 3) **球堆可见性** —— 按 `RackPositions` 生成同数量的球体并接上 `ballVisuals`，
+            //     使 Game 视图能看见散球（`D7-T02` 阻塞项 ②）；**纯可视，无任何物理组件**。
+            //     球与白球同挂**缩放根**下（见 `BuildRackVisuals`）。
+            Transform[] ballVisuals = BuildRackVisuals(playfieldRoot, config, cueBall);
+
+            // 4) **玩法层**（CushionGizmo / 驱动器 / 交互 / 音频 / 特效 / HUD / 结算 / 瞄准辅助）。
+            //    ⚠ 与 `Main.unity` 的叠加走**同一个** `BuildGameplayHosts`（唯一实现点，铁律 16）——
+            //    两个场景各写一份宿主接线必然分叉。
+            //    灰盒是**诊断场景** ⇒ 调试叠加层**开**（`showDebugOverlay = true`）。
+            BuildGameplayHosts(root, cam, playfieldRoot.transform, config, cueBall, ballVisuals,
+                PhysicsTestDrive.RackBallCount, debugOverlay: true);
+
+            EditorSceneManager.SaveScene(scene, ScenePath);
+        }
+
+        /// <summary>
+        /// **玩法层宿主的唯一构建点**（`PhysicsGreybox` 与 `Main.unity` 共用）。
+        ///
+        /// 在 <paramref name="root"/> 下逐层创建：`CushionGizmo` → `PhysicsTestDrive`（接线 tableConfig /
+        /// tuning / 球可视物）→ `PointerAimController` / `PointerPowerController` / `CueStick` →
+        /// `PoolAudio` / `PoolVfx` / `PracticeHud` / `PracticeResult` / `EventSystem` / `AimAssist`。
+        ///
+        /// <para><b>调用方负责</b>：<paramref name="playfieldRoot"/>（可视缩放根）、<paramref name="cueBall"/>、
+        /// <paramref name="ballVisuals"/> 已经建好并挂在该根下 —— 因为两个场景的"基础可视层"来源不同
+        /// （灰盒全量生成；Main 复用既有的桌 / 相机 / 光）。</para>
+        ///
+        /// <param name="debugOverlay">是否让驱动器默认绘制调试叠加层：灰盒 = <c>true</c>（诊断），Main = <c>false</c>（正式）。</param>
+        /// </summary>
+        private static void BuildGameplayHosts(GameObject root, Camera cam, Transform playfieldRoot, TableConfig config,
+            GameObject cueBall, Transform[] ballVisuals, int rackBallCount, bool debugOverlay)
+        {
+            // ─ CushionGizmo 宿主（引用 TableConfig 绘制 82 段库边；绘制坐标过显示层）──
             var gizmoGo = new GameObject(GizmoObjectName);
             gizmoGo.transform.SetParent(root.transform, false);
             CushionGizmo gizmo = gizmoGo.AddComponent<CushionGizmo>();
             gizmo.tableConfig = config;
             // Gizmo 宿主本身不进缩放根（`Gizmos.*` 用世界坐标，父节点缩放对它无效），
             // 但**绘制坐标**必须过显示层 ⇒ 接线 `playfieldRoot` 让 CushionGizmo 走 `PlayfieldView` 映射。
-            gizmo.playfieldRoot = playfieldRoot.transform;
+            gizmo.playfieldRoot = playfieldRoot;
 
-            // 3) PhysicsTestDrive 宿主
+            // ─ PhysicsTestDrive 宿主 ──
             var driveGo = new GameObject(DriveObjectName);
             driveGo.transform.SetParent(root.transform, false);
             PhysicsTestDrive drive = driveGo.AddComponent<PhysicsTestDrive>();
             drive.tableConfig = config;
             drive.cushionGizmo = gizmo;
             drive.ballVisual = cueBall.transform;
+            drive.ballVisuals = ballVisuals;
+            drive.rackBallCount = rackBallCount;
+            drive.showDebugOverlay = debugOverlay;
 
-            // 3a) **把 `PhysicsTuning` 资产接进场景** —— 让"唯一可调入口"名副其实；
-            //     否则运行时恒为 null ⇒ 灰盒走回落路径 ⇒ 用户不知道自己在测哪套参数（`D7-T02` 阻塞项 ①）。
-            //     `T41` 守这条接线（把 tuning 置空 ⇒ FAIL）。
+            // **把 `PhysicsTuning` 资产接进场景** —— 让"唯一可调入口"名副其实；
+            // 否则运行时恒为 null ⇒ 走回落路径 ⇒ 用户不知道自己在测哪套参数（`D7-T02` 阻塞项 ①）。
+            // `T41` 守这条接线（把 tuning 置空 ⇒ FAIL）。
             drive.tuning = AssetDatabase.LoadAssetAtPath<PhysicsTuning>(PhysicsTuningSetup.AssetPath);
 
-            // 3b) **球堆可见性** —— 按 `RackPositions` 生成同数量的球体并接上 `ballVisuals`，
-            //     使 Game 视图能看见散球（`D7-T02` 阻塞项 ②）；**纯可视，无任何物理组件**。
-            //     球与白球同挂**缩放根**下（见 `BuildRackVisuals`）。
-            drive.ballVisuals = BuildRackVisuals(playfieldRoot, config, cueBall);
-
-            // 4) 俯视相机（含视口适配器）+ 主平行光（灰盒可见即可；不引入任何物理组件）
-            Camera cam = BuildCamera(root);
-            BuildLight(root);
-
-            // 5) **指针瞄准控制器** —— 交互胶水：读输入 → 纯状态机 → **只写** `drive.aimDegrees`。
-            //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。
+            // ─ 指针瞄准控制器（读输入 → 纯状态机 → 只写 drive.aimDegrees）──
             var aimGo = new GameObject(PointerAimControllerObjectName);
             aimGo.transform.SetParent(root.transform, false);
             var aimController = aimGo.AddComponent<PointerAimController>();
             aimController.aimCamera = cam;
-            aimController.playfieldRoot = playfieldRoot.transform;
+            aimController.playfieldRoot = playfieldRoot;
             aimController.drive = drive;
 
-            // 5b) **拉杆力度控制器** —— 交互胶水：按住右键拖 = 蓄力（拖距与力度 1:1、无惯性）、松手 = 出杆。
-            //     与驱动器同层（根下、不进缩放根）；右键原"取消瞄准"职责已移交 Esc。
+            // ─ 拉杆力度控制器（右键拖 = 蓄力 1:1、松手 = 出杆）──
             var powerGo = new GameObject(PointerPowerControllerObjectName);
             powerGo.transform.SetParent(root.transform, false);
             var powerController = powerGo.AddComponent<PointerPowerController>();
             powerController.drive = drive;
             powerController.aimCamera = cam;
-            powerController.playfieldRoot = playfieldRoot.transform;
+            powerController.playfieldRoot = playfieldRoot;
 
-            // 5c) **球杆控制器** —— 击球流程状态机的唯一驱动者 + 杆程序动画（前推到位帧击球恰一次）。
-            //     拉杆松手 ⇒ 事件锁存 ⇒ 球杆前推 ⇒ 命中帧出杆；与指示物同层（根下、不进缩放根）。
+            // ─ 球杆控制器（击球流程状态机的唯一驱动者 + 杆程序动画）──
             var cueStickGo = new GameObject(CueStickControllerObjectName);
             cueStickGo.transform.SetParent(root.transform, false);
             var cueStick = cueStickGo.AddComponent<CueStickController>();
@@ -331,11 +464,11 @@ namespace Billiards.EditorTools
             cueStick.pull = powerController;
             powerController.cueStick = cueStick;
 
-            // 5c-1) **杆用美术包真模型**（杆尖=局部原点、杆身 +Z、长 1.4 m ⇒ 与控制器约定逐字一致）：
-            //       直接挂为控制器的子物体、位姿全交给控制器；模型缺失则留空 ⇒ 控制器自建基元兜底。
+            // 杆用美术包真模型（杆尖=局部原点、杆身 +Z、长 1.4 m ⇒ 与控制器约定逐字一致）；
+            // 直接挂为控制器的子物体、位姿全交给控制器；模型缺失则留空 ⇒ 控制器自建基元兜底。
             cueStick.stickInstance = BuildCueModel(cueStickGo.transform);
 
-            // 5d) **音频层** —— 内核接触事件流 → 撞声；strike 轮询出杆计数；纯函数调制 + 限流。
+            // ─ 音频层（内核接触事件流 → 撞声；strike 轮询出杆计数；纯函数调制 + 限流）──
             var audioGo = new GameObject(PoolAudioObjectName);
             audioGo.transform.SetParent(root.transform, false);
             var poolAudio = audioGo.AddComponent<PoolAudio>();
@@ -346,18 +479,15 @@ namespace Billiards.EditorTools
             poolAudio.pocketClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/SFX/pocket.wav");
             poolAudio.bgmClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/_Project/Audio/BGM/late-set.wav");
 
-            // 5e) **特效层** —— 计数增量门 + 状态推导生成 4 类程序化特效（池化、可开关；不消费接触事件流）。
+            // ─ 特效层（计数增量门 + 状态推导；池化、可开关；不消费接触事件流）──
             var vfxGo = new GameObject(PoolVfxObjectName);
             vfxGo.transform.SetParent(root.transform, false);
             var vfxView = vfxGo.AddComponent<PoolVfxView>();
             vfxView.drive = drive;
             vfxView.tableConfig = config;
-            vfxView.playfieldRoot = playfieldRoot.transform;
+            vfxView.playfieldRoot = playfieldRoot;
 
-            // 5f) **最小 HUD** —— 三块（计数组 / 状态条 / 力度 + Shoot）。
-            //     几何唯一来源 = `PracticeHudLayout.Resolve()`（落成 uGUI 锚点比例 ⇒ 与判据同源、无第二份数字）；
-            //     数据全部取自既有只读出口（`CueStickController.Flow` / `drive.power` / `drive.LaunchCount` / 内核球表）。
-            //     字体按分工指派：标题族 = Barlow Condensed SemiBold、正文族 = Inter Regular（`T97` 钉住这两个资产路径）。
+            // ─ 最小 HUD（几何唯一来源 = `PracticeHudLayout.Resolve()`；数据全取自既有只读出口）──
             var hudGo = new GameObject(PracticeHudObjectName);
             hudGo.transform.SetParent(root.transform, false);
             var hud = hudGo.AddComponent<PracticeHudView>();
@@ -366,20 +496,15 @@ namespace Billiards.EditorTools
             hud.titleFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.TitleFontAssetPath);
             hud.bodyFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(HudAssetBuilder.BodyFontAssetPath);
 
-            // 5f-1) **美术资源接线**（用户反馈"美术资源你也没给我用上"的正面回应）：
-            //       · 界面精灵（13 图标 + 5 形状）与 16 个球号贴片 —— **必须全部在场**，
-            //         任一缺失就在这里抛（构建期拦截 > 运行期看见空白，铁律 18）；
-            //       · 两个开关写的是**已存在的宿主**（VFX / 音频），不新建任何偏好状态。
+            // 美术资源接线：界面精灵（13 图标 + 5 形状）与 16 个球号贴片 —— **必须全部在场**，
+            // 任一缺失就在这里抛（构建期拦截 > 运行期看见空白，铁律 18）；两个开关写**已存在的宿主**。
             hud.uiSprites = LoadUiSpritesOrThrow();
             hud.ballChips = LoadBallChipsOrThrow();
             hud.vfxView = vfxView;
             hud.poolAudio = poolAudio;
 
-            // 5g) **练习结算卡**（排期「练习结算与埋点」）+ 模态交互所需的最小 UI 基础设施。
-            //     `EventSystem` + `StandaloneInputModule`（**旧输入**）—— 与本工程既有输入口径一致：
-            //     `PointerAimController` / `PointerPowerController` 一律用 `Input.GetMouseButton` / `KeyCode`，
-            //     且 `ProjectSettings.activeInputHandler = 2`（新旧都开）⇒ 无需引入 `InputSystemUIInputModule`
-            //     与额外的 InputAction 资产。
+            // ─ 结算卡 + 模态交互所需的最小 UI 基础设施 ──
+            // `EventSystem` + `StandaloneInputModule`（**旧输入**）—— 与本工程既有输入口径一致。
             var eventSystemGo = new GameObject(EventSystemObjectName);
             eventSystemGo.transform.SetParent(root.transform, false);
             eventSystemGo.AddComponent<EventSystem>();
@@ -391,20 +516,135 @@ namespace Billiards.EditorTools
             resultView.drive = drive;
             resultView.hud = hud;
 
-            // 6) **瞄准辅助**（预测线）：控制器（胶水：只读内核 + 读驱动器开关）+ 视图（绘制：过显示层单点）。
-            //    与驱动器同层（`PhysicsGreybox` 根下，不进缩放根）；不引入任何物理组件。
+            // ─ 瞄准辅助（预测线）：控制器（胶水）+ 视图（绘制过显示层单点）──
             var assistGo = new GameObject(AimAssistObjectName);
             assistGo.transform.SetParent(root.transform, false);
             var assistController = assistGo.AddComponent<AimAssistController>();
             assistController.drive = drive;
             assistController.aimCamera = cam;
-            assistController.playfieldRoot = playfieldRoot.transform;
+            assistController.playfieldRoot = playfieldRoot;
 
             var assistView = assistGo.AddComponent<AimAssistView>();
             assistView.controller = assistController;
-            assistView.playfieldRoot = playfieldRoot.transform;
+            assistView.playfieldRoot = playfieldRoot;
+        }
 
-            EditorSceneManager.SaveScene(scene, ScenePath);
+        // ── Main 场景：把玩法层叠加到既有视觉场景上 ──────────────────────────
+
+        /// <summary>
+        /// **把玩法层叠加到 `Main.unity`**（既有桌 / 地面 / 相机 / 光**原样复用**，不重建它们）。
+        ///
+        /// 调用方须已把 <paramref name="scene"/> 载入为当前活动场景（`OpenScene(Single)` 或 `NewScene`）。
+        /// 本方法依次：① 复用既有 `PlayfieldRoot` 与人形相机；② 给相机**缺失才补** `AudioListener` /
+        /// `CameraViewportFitter`（**绝不新增第二台相机 / 第二个监听器**）；③ 回收并重建球可视物
+        /// （挂既有 `PlayfieldRoot` 下）；④ 在 <see cref="MainGameplayRootName"/> 根下建玩法宿主
+        /// （调试叠加层**关**，正式入口不显示诊断文本）。
+        /// </summary>
+        public static void AttachMainGameplayLayer(Scene scene)
+        {
+            TableConfig config = AssetDatabase.LoadAssetAtPath<TableConfig>(TableConfigPath);
+            if (config == null)
+            {
+                throw new InvalidOperationException("找不到 TableConfig 资产：" + TableConfigPath);
+            }
+
+            GameObject playfieldRootGo = FindRoot(scene, PlayfieldRootObjectName);
+            if (playfieldRootGo == null)
+            {
+                throw new InvalidOperationException(
+                    "Main 场景缺 " + PlayfieldRootObjectName + "（应由 MaterialVisualSetup 生成基础视觉场景）。");
+            }
+
+            GameObject camGo = FindRoot(scene, "Main Camera");
+            Camera cam = camGo != null ? camGo.GetComponent<Camera>() : null;
+            if (cam == null)
+            {
+                throw new InvalidOperationException("Main 场景缺主相机（名为「Main Camera」的 Camera 组件）。");
+            }
+
+            // 回收旧玩法层（幂等重建）：先删玩法层根，再删旧球可视物。**不动桌 / 地面 / 相机 / 光**。
+            DestroyImmediateIfExists(FindRoot(scene, MainGameplayRootName));
+            RemovePlayfieldBallChildren(playfieldRootGo.transform);
+
+            // **场景唯一 AudioListener**：复用相机上已有的监听器；缺失才补（不得出现两个 ⇒ `T91` 同族）。
+            if (camGo.GetComponent<AudioListener>() == null)
+            {
+                camGo.AddComponent<AudioListener>();
+            }
+
+            // **视口适配器**（与灰盒同一口径）：缺失才补；`baseVerticalFovDeg` 取**序列化 FOV** ⇒ 二者不漂移。
+            CameraViewportFitter fitter = camGo.GetComponent<CameraViewportFitter>();
+            if (fitter == null)
+            {
+                fitter = camGo.AddComponent<CameraViewportFitter>();
+                fitter.targetCamera = cam;
+                fitter.baseVerticalFovDeg = cam.fieldOfView;
+            }
+
+            // 白球 + 球堆可视物：挂**既有 PlayfieldRoot** 下（写入**局部规范坐标**；该根在 Main 里 scale = 1）。
+            GameObject cueBall = BuildCueBall();
+            cueBall.transform.SetParent(playfieldRootGo.transform, false);
+            cueBall.transform.localPosition = PoolGeometry.PhysicsBallToUnity(config.footSpot);
+            Transform[] ballVisuals = BuildRackVisuals(playfieldRootGo, config, cueBall);
+
+            var root = new GameObject(MainGameplayRootName);
+            MoveToScene(root, scene);
+            root.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            root.transform.localScale = Vector3.one;
+
+            BuildGameplayHosts(root, cam, playfieldRootGo.transform, config, cueBall, ballVisuals,
+                PhysicsTestDrive.RackBallCount, debugOverlay: false);
+        }
+
+        /// <summary>在场景**根**对象里按名查对象（不做递归，Main 的桌 / 相机 / 光都是根对象）。</summary>
+        private static GameObject FindRoot(Scene scene, string name)
+        {
+            foreach (GameObject go in scene.GetRootGameObjects())
+            {
+                if (go.name == name)
+                {
+                    return go;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>把对象移入指定场景（若已在其中则 no-op）。保证"叠加层落在 Main 里"而非偶然的活动场景。</summary>
+        private static void MoveToScene(GameObject go, Scene scene)
+        {
+            if (go.scene != scene)
+            {
+                SceneManager.MoveGameObjectToScene(go, scene);
+            }
+        }
+
+        private static void DestroyImmediateIfExists(GameObject go)
+        {
+            if (go != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>回收既有 `PlayfieldRoot` 下的**球可视物**（白球 + `RackBall_*`），供重建；**不动桌 / 地面**。</summary>
+        private static void RemovePlayfieldBallChildren(Transform playfieldRoot)
+        {
+            var doomed = new List<GameObject>();
+            for (int i = playfieldRoot.childCount - 1; i >= 0; i--)
+            {
+                Transform child = playfieldRoot.GetChild(i);
+                if (child.name == CueBallObjectName
+                    || child.name.StartsWith(RackBallObjectName, StringComparison.Ordinal))
+                {
+                    doomed.Add(child.gameObject);
+                }
+            }
+
+            for (int i = 0; i < doomed.Count; i++)
+            {
+                UnityEngine.Object.DestroyImmediate(doomed[i]);
+            }
         }
 
         /// <summary>白球（0 号）：美术包模型 + `Ball_00.mat`。</summary>
@@ -625,7 +865,7 @@ namespace Billiards.EditorTools
 
             for (int i = 1; i < positions.Length; i++)
             {
-                GameObject ball = BuildBallObject("RackBall_" + i.ToString(), i);
+                GameObject ball = BuildBallObject(RackBallObjectName + i.ToString(), i);
                 ball.transform.SetParent(playfieldRoot.transform, false);
                 ball.transform.localPosition = PoolGeometry.PhysicsBallToUnity(positions[i]);
                 visuals[i] = ball.transform;

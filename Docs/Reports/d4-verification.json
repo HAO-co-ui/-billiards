@@ -1,6 +1,6 @@
 {
     "schema": "billiards.day4-verification.v1",
-    "generatedAtUtc": "2026-10-14T09:20:37.1369143Z",
+    "generatedAtUtc": "2026-10-16T03:30:22.0591645Z",
     "unityVersion": "6000.0.49f1",
     "activeBuildTarget": "StandaloneWindows64",
     "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
@@ -30,7 +30,7 @@
             "id": "D4-PHY-01",
             "title": "Runtime/Physics/ 源码无 Rigidbody/Collider 名字（含字符串字面量，只跳注释行）",
             "expected": "scanned > 0 且 hits == 0",
-            "actual": "scanned=7 file(s), commentLinesSkipped=562 → hits=0",
+            "actual": "scanned=21 file(s), commentLinesSkipped=2226 → hits=0",
             "status": "PASS",
             "detail": ""
         },

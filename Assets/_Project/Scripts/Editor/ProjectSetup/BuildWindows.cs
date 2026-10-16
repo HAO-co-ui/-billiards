@@ -7,11 +7,11 @@ using UnityEngine;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// **Windows 桌面构建入口**（Day 16 任务③）：`-executeMethod Billiards.EditorTools.BuildWindows.BuildFromCommandLine`。
+    /// **Windows 桌面构建入口**：`-executeMethod Billiards.EditorTools.BuildWindows.BuildFromCommandLine`。
     ///
     /// 验收要求是"**构建包可脱离编辑器独立运行**" ⇒ 本入口必须做到三件事：
-    /// 1. **先应用性能与构建配置**（<see cref="PerformanceSetup"/>，幂等），再**断言**构建场景恰为灰盒场景
-    ///    （原列表指向空壳 `Main.unity` ⇒ 会打出黑屏死包，见该类的说明）；
+    /// 1. **先应用性能与构建配置**（<see cref="PerformanceSetup"/>，幂等），再**断言**构建场景恰为
+    ///    **正式游戏入口** <c>Main.unity</c>（带完整玩法层；不含任何空壳场景 —— 那会打出黑屏死包）；
     /// 2. 用 `BuildPipeline.BuildPlayer` 出包到 <see cref="OutputRelativePath"/>；
     /// 3. **自检产物齐备**（exe + `_Data/` + `UnityPlayer.dll`）并落一份构建报告 JSON，用**退出码**表达成败。
     ///
@@ -41,17 +41,17 @@ namespace Billiards.EditorTools
             }
 
             EditorBuildSettingsScene[] scenes = EditorBuildSettings.scenes;
-            if (scenes.Length != 1 || scenes[0].path != PerformanceSetup.GreyboxScenePath || !scenes[0].enabled)
+            if (scenes.Length != 1 || scenes[0].path != PerformanceSetup.BuildScenePath || !scenes[0].enabled)
             {
-                Debug.LogError("[BUILD] 构建场景列表不是「恰含并启用灰盒场景」⇒ 拒绝出包"
-                               + "（否则会打出没有任何逻辑的空包）。");
+                Debug.LogError("[BUILD] 构建场景列表不是「恰含并启用正式入口 Main.unity」⇒ 拒绝出包"
+                               + "（否则会打出没有逻辑的空包）。");
                 EditorApplication.Exit(2);
                 return;
             }
 
             var options = new BuildPlayerOptions
             {
-                scenes = new[] { PerformanceSetup.GreyboxScenePath },
+                scenes = new[] { PerformanceSetup.BuildScenePath },
                 locationPathName = OutputRelativePath,
                 target = BuildTarget.StandaloneWindows64,
                 options = BuildOptions.None,
@@ -78,7 +78,7 @@ namespace Billiards.EditorTools
             sb.Append("{\n");
             sb.Append("  \"result\": \"").Append(summary.result).Append("\",\n");
             sb.Append("  \"target\": \"StandaloneWindows64\",\n");
-            sb.Append("  \"scene\": \"").Append(PerformanceSetup.GreyboxScenePath).Append("\",\n");
+            sb.Append("  \"scene\": \"").Append(PerformanceSetup.BuildScenePath).Append("\",\n");
             sb.Append("  \"outputPath\": \"").Append(exeFull.Replace("\\", "/")).Append("\",\n");
             sb.Append("  \"exeBytes\": ").Append(exeBytes).Append(",\n");
             sb.Append("  \"totalBytes\": ").Append(summary.totalSize).Append(",\n");

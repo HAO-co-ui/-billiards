@@ -19,8 +19,7 @@ namespace Billiards.Tests
     ///
     /// · **`T119` 物理单步预算**：拦"量级失控"（历史上出现过单子步 199 次接触那种爆炸），**不声称 fps**；
     /// · **`T120` 性能与构建配置一致性**：阴影收敛 / 帧率策略 / **出包入口不打出黑屏死包**三项
-    ///   （前两项比对代码常量与资产实际值；第三项断言**出包入口的三重保护** + 灰盒场景非空壳 ——
-    ///   口径变更的原因见 `T120` 方法内注释：持久 build list 与 `SCN-02` / `D4-BLD-01` **互斥**）；
+    ///   （前两项比对代码常量与资产实际值；第三项断言**出包入口的三重保护** + **正式入口 `Main.unity` 非空壳**）；
     /// · **`T121` 冒烟纯逻辑**：`SmokeProbe` 的命令行解析、帧时统计、达标判定（全纯函数、无随机）。
     ///
     /// **为什么 `T119` 是"宽松闸门"而不是精确基线**：计时受机器负载影响，写死数字会变成假红；
@@ -90,6 +89,7 @@ namespace Billiards.Tests
             }
 
             const int busySteps = 600;
+            long skipsBeforeBusy = busy.SegmentScreenSkips;   // 批次 C：预筛诊断计数（仅报告，不作断言）
             var sw = Stopwatch.StartNew();
             for (int i = 0; i < busySteps; i++)
             {
@@ -98,6 +98,7 @@ namespace Billiards.Tests
 
             sw.Stop();
             double busyUs = sw.Elapsed.TotalMilliseconds * 1000.0 / busySteps;
+            long busySkips = busy.SegmentScreenSkips - skipsBeforeBusy;
 
             // ② 整盘静止空转
             var idle = new PoolSimulator(table, ShipParams());
@@ -152,9 +153,29 @@ namespace Billiards.Tests
             Assert.IsTrue(idle.TableAtRest, "T119：静止场景应真的达到整盘静止（空转）。");
             Assert.Greater(single.Balls[0].position.x, 0f, "T119：单球应真的移动（空转）。");
 
-            TestContext.WriteLine(report.ToString());
+            // ── 批次 C 预筛的**稳健下限**（防"预筛被静默禁用"）──────────────────────────
+            // ⚠ 它**不是性能判据** —— 跳过率会随表 / 球数漂移，不适合当硬阈值；
+            //    它只是一条**下限**：若有人把预筛改没了（例如把 ε 改成极大值使预筛永不命中，
+            //    或把预筛调用删掉），**不会有任何其它判据喊** ⇒ 由这条来喊。**不改变任何既有期望值。**
+            Assert.Greater(busySkips, 0L,
+                "T119：忙期预筛**一对都没跳过** ⇒ 预筛被静默禁用（或 ε 被改成使预筛恒不命中的值）。");
 
-            string Line(string tag, double us, float frameBudgetMs) =>
+            // ── 批次 C 预筛的**非空转证据**（仅报告，不作断言 ⇒ 期望值零改动）──────────────────
+            // ⚠ **"逐位哈希相等"只能证明"没改坏"，不能证明"预筛真的跳过很多对"** ——
+            //    一个"从不跳过任何对"的预筛同样能过哈希。故把**诊断计数**连同理论对数报出来自证。
+            // 理论对数/步 = 球数 × 段数 × 子步数（`ResolveDeepOverlaps` 与 `EarliestSegmentToi` **各扫一遍** ⇒ ×2）。
+            long pairsPerStepPerLoop = (long)rack.Length * table.SegmentCount * busy.SubSteps;
+            long pairsPerStepBothLoops = pairsPerStepPerLoop * 2;
+            double skipRate = pairsPerStepBothLoops > 0
+                ? busySkips / (double)busySteps / pairsPerStepBothLoops
+                : 0.0;
+            report.Append(string.Format(CultureInfo.InvariantCulture,
+                "  预筛（批次 C）：忙期 600 步累计跳过 **{0}** 对 ⇒ {1:F0} 对/步；"
+                + "理论对数/步 = 球 {2} × 段 {3} × 子步 {4} = {5}（RDO+TOI 各一遍 ⇒ {6}）⇒ 跳过率 ≈ {7:F1}%\n",
+                busySkips, busySkips / (double)busySteps, rack.Length, table.SegmentCount, busy.SubSteps,
+                pairsPerStepPerLoop, pairsPerStepBothLoops, skipRate * 100.0));
+
+            TestContext.WriteLine(report.ToString());            string Line(string tag, double us, float frameBudgetMs) =>
                 $"  {tag}：{us.ToString("F1", CultureInfo.InvariantCulture)} µs/步"
                 + $"（占 60 fps 帧预算 {frameBudgetMs.ToString("F2", CultureInfo.InvariantCulture)} ms 的 "
                 + $"{us / (frameBudgetMs * 1000.0) * 100.0:F3}%）\n";
@@ -169,10 +190,11 @@ namespace Billiards.Tests
         ///    （原值 50 / 4 / 2048：用 4 次 2048² 的 pass 覆盖 50 m，而场景只有一张 2.54 m 的桌子）。
         /// ② **帧率策略**：调 `FrameRateSettings.Apply()` 后**读实际值**（`QualitySettings.vSyncCount` /
         ///    `Application.targetFrameRate`）—— **不是**读源码文本（文本级守卫会两向失真），读完**还原**编辑器原值。
-        /// ③ **构建场景列表**：`EditorBuildSettings.scenes` 恰含并启用灰盒场景
-        ///    （原列表指向空壳 `Main.unity` ⇒ 会打出黑屏死包；这条是本判据最值钱的一格）。
+        /// ③ **构建场景列表 / 出包入口**：`BuildWindows` 三重保护（先应用 `PerformanceSetup` /
+        ///    列表不对就拒绝出包 / `BuildPlayerOptions.scenes` 显式指定）+ **`Main.unity` 不是空壳**
+        ///    （含驱动器 / HUD / 瞄准辅助等玩法宿主 ⇒ 不会打出黑屏死包；这条是本判据最值钱的一格）。
         ///
-        /// **注入负对照（实测）**：把级联改回 4 ⇒ ① 红；把场景列表改回 `Main.unity` ⇒ ③ 红。
+        /// **注入负对照（实测）**：把级联改回 4 ⇒ ① 红；把出包入口的场景指回空壳场景 ⇒ ③ 红。
         /// **盲带**：只锁"设置值"，**不**证明渲染结果（阴影实际观感、合批是否真的发生）—— 那要构建产物实测。
         /// </summary>
         [Test]
@@ -225,63 +247,65 @@ namespace Billiards.Tests
                 Application.targetFrameRate = oldTarget;
             }
 
-            // ③ 出包不得是黑屏死包 —— **判据的对象是"出包入口的保证"，不是 `EditorBuildSettings.asset` 的持久值**。
+            // ③ 出包不得是黑屏死包 —— **判据 = "出包入口指向正式入口 + 正式入口不是空壳"**。
             //
-            // ── 为什么改了口径（实测冲突，必须写下来，否则会被重复"修"回去）──────────────
+            // ── 口径现状（旧口径已作废，勿再引回）────────────────────────────────
             // · `SCN-02`（Day1 工程配置验收）与 `D4-BLD-01`（Day4 物理验收）**都**断言**提交态**的
-            //   build list **恰好**是 `[Main.unity]`；而 `BilliardsProjectSetup` 的 Apply 每次会把它
-            //   写回 `Main.unity` ⇒ 两个验收各自自洽（我实测 26/33/22/7 全绿）。
-            // · Day16 修"黑屏死包"的做法是让**构建入口**改用灰盒场景 ⇒ 与上面那条**互斥**：
-            //   谁后跑谁生效。**不能**靠"把持久值改成灰盒"来同时满足两边 ——
-            //   那会让 `SCN-02` 变 25/26、`D4-BLD-01` 直接 FAIL、两份已入库证据作废。
-            // · 实测：出包入口 `BuildWindows.BuildFromCommandLine` **自带三重保护** ——
-            //   ① 先跑 `PerformanceSetup.Apply()`（把列表写成灰盒场景）→ ② 断言列表不是灰盒就**拒绝出包**
-            //   → ③ `BuildPlayerOptions.scenes` **显式**指定场景（出包内容与持久列表无关）。
-            //   ⇒ 出包正确性由这三条保证，**不依赖** `EditorBuildSettings.asset` 存着什么。
-            // ⇒ 故本项断言"那三重保护真的在"，而不是断言一个与另一验收口径互斥的持久值。
-            // （若将来把 `Main.unity` 做成真正的游戏入口，本项应改为断言"首个 build 场景不是空壳"。）
+            //   build list **恰好**是 `[Main.unity]`。
+            // · 旧口径下 `Main.unity` 是**空壳**（0 个 MonoBehaviour）⇒ "出包不得黑屏"与上面那条**互斥**：
+            //   谁后跑谁生效。当时的临时处置是让**出包入口**改用灰盒场景（自带三重保护），
+            //   本判据因而写成"断言那三重保护 + 灰盒场景非空壳"。
+            // · **现在 `Main.unity` 是正式游戏入口**（带完整玩法层）⇒ 出包入口与 build list **都指向它**，
+            //   互斥的根因（"Main 是空壳"）已消除 ⇒ 本判据改回**断言正式入口本身**：
+            //   ① 出包入口先应用 `PerformanceSetup`（把列表写成 `Main.unity`）；
+            //   ② 列表不对就**拒绝出包**；
+            //   ③ `BuildPlayerOptions.scenes` **显式**指定 `Main.unity`；
+            //   ④ `Main.unity` **不是空壳**（含驱动器 / HUD / 瞄准辅助等玩法宿主）。
             const string buildEntryPath = "Assets/_Project/Scripts/Editor/ProjectSetup/BuildWindows.cs";
             string projectRoot = Path.GetDirectoryName(Application.dataPath) ?? ".";
             string buildSource = File.ReadAllText(Path.Combine(projectRoot, buildEntryPath), Encoding.UTF8);
 
             if (!Regex.IsMatch(buildSource, @"PerformanceSetup\.Apply\s*\("))
             {
-                failures.Add("③ 出包入口没有先应用 `PerformanceSetup`（构建场景列表不会被写成灰盒场景）。");
+                failures.Add("③ 出包入口没有先应用 `PerformanceSetup`（构建场景列表不会被写成正式入口）。");
             }
 
-            if (!Regex.IsMatch(buildSource, @"scenes\[0\]\.path\s*!=\s*PerformanceSetup\.GreyboxScenePath"))
+            if (!Regex.IsMatch(buildSource, @"scenes\[0\]\.path\s*!=\s*PerformanceSetup\.BuildScenePath"))
             {
                 failures.Add("③ 出包入口没有「列表不对就拒绝出包」的闸门（会静默打出黑屏死包）。");
             }
 
-            if (!Regex.IsMatch(buildSource, @"scenes\s*=\s*new\[\]\s*\{\s*PerformanceSetup\.GreyboxScenePath\s*\}"))
+            if (!Regex.IsMatch(buildSource, @"scenes\s*=\s*new\[\]\s*\{\s*PerformanceSetup\.BuildScenePath\s*\}"))
             {
                 failures.Add("③ 出包入口没有在 `BuildPlayerOptions` 里显式指定场景"
                              + "（那样出包内容会随持久列表漂移）。");
             }
 
-            // 灰盒场景**必须不是空壳**：空壳场景编不出任何逻辑（黑屏的真因）。
-            var greyboxScene = AssetDatabase.LoadAssetAtPath<SceneAsset>(PerformanceSetup.GreyboxScenePath);
-            if (greyboxScene == null)
+            // 正式入口**必须不是空壳**：空壳场景编不出任何逻辑（黑屏的真因）。
+            var mainScene = AssetDatabase.LoadAssetAtPath<SceneAsset>(PerformanceSetup.BuildScenePath);
+            if (mainScene == null)
             {
-                failures.Add($"③ 灰盒场景资产不存在：{PerformanceSetup.GreyboxScenePath}。");
+                failures.Add($"③ 正式入口场景资产不存在：{PerformanceSetup.BuildScenePath}。");
             }
             else
             {
                 string sceneText = File.ReadAllText(
-                    Path.Combine(projectRoot, PerformanceSetup.GreyboxScenePath), Encoding.UTF8);
+                    Path.Combine(projectRoot, PerformanceSetup.BuildScenePath), Encoding.UTF8);
                 if (!sceneText.Contains(GreyboxSceneSetup.DriveObjectName)
-                    || !sceneText.Contains(GreyboxSceneSetup.PracticeHudObjectName))
+                    || !sceneText.Contains(GreyboxSceneSetup.PracticeHudObjectName)
+                    || !sceneText.Contains(GreyboxSceneSetup.AimAssistObjectName))
                 {
-                    failures.Add($"③ 灰盒场景里找不到 `{GreyboxSceneSetup.DriveObjectName}` / "
-                                 + $"`{GreyboxSceneSetup.PracticeHudObjectName}` ⇒ 它是空壳，出包即黑屏。");
+                    failures.Add($"③ 正式入口 `{PerformanceSetup.BuildScenePath}` 里找不到 "
+                                 + $"`{GreyboxSceneSetup.DriveObjectName}` / "
+                                 + $"`{GreyboxSceneSetup.PracticeHudObjectName}` / "
+                                 + $"`{GreyboxSceneSetup.AimAssistObjectName}` ⇒ 它是空壳，出包即黑屏。");
                 }
             }
 
             Assert.IsEmpty(failures, "T120 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine(string.Format(CultureInfo.InvariantCulture,
                 "T120: 阴影 {0}m/级联 {1}/图 {2}²；帧率 vSync={3}/target={4}；"
-                + "出包入口三重保护（应用配置/拒绝闸门/显式场景）✓；灰盒场景非空壳 ✓",
+                + "出包入口三重保护（应用配置/拒绝闸门/显式场景）✓；正式入口 Main.unity 非空壳 ✓",
                 shadowDistance, cascades, resolution, FrameRateSettings.VSyncCount, FrameRateSettings.TargetFrameRate));
         }
 
@@ -431,6 +455,135 @@ namespace Billiards.Tests
             {
                 failures.Add($"① [{tag}] 输出路径应为 {expectPath ?? "(null)"}，实测 {path ?? "(null)"}。");
             }
+        }
+
+        // ── T131 ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// **`T131`：拖动瞄准冒烟的纯逻辑**（`-billiards-smoke-aim`）。
+        ///
+        /// 动机：原来的冒烟只测**静置** 600 帧 ⇒ **击球 / 拖动瞄准的峰值从未被测过**（既有登记盲带）。
+        /// 本判据锁"拖动负载"这条新增路径的纯逻辑：
+        /// ① **解析**：带 `-billiards-smoke-aim` ⇒ `aimSweep = true`（**无值标志**，位置任意，可在帧数开关前后）；
+        ///    不带 ⇒ `false`；只有 aim 开关而无帧数 ⇒ **不进入**冒烟模式（防"参数写错静默不进冒烟"）。
+        /// ② **角函数闭式**：`AimSweepDegrees` 第 0 帧 = 0°、逐帧增量恒为 `AimSweepDegreesPerFrame`（模 360 回绕后仍单调）、
+        ///    80 帧恰覆盖整圈 360° 并回到起点。
+        /// ③ **JSON**：字段含 `"aimSweep"` 与 `"gate"`（判定口径名）。
+        /// ④ **拖动闸门**（`MeetsDragTarget`，**宽松**：均值 ≤ `DragFrameBudgetMs`、掉帧 ≤ `DragMaxDroppedFraction`）：
+        ///    只拦"量级失控"，**不声称 60 fps** —— 拖动路径的单位重算成本是内核固有的 ~240 步预测（见规格 §盲带）。
+        ///
+        /// **盲带**：只锁纯逻辑；**不证明**构建产物真的按此拖动（那要真跑一次 exe，见规格 §4）。
+        /// </summary>
+        [Test]
+        public void T131_SmokeAimSweep_PureLogic()
+        {
+            var failures = new List<string>();
+
+            // ① 解析
+            bool ok1 = SmokeProbe.TryParse(new[] { "-billiards-smoke", "600", "-billiards-smoke-aim" },
+                out int f1, out _, out bool s1);
+            if (!ok1 || !s1 || f1 != 600)
+            {
+                failures.Add($"① 带 aim 开关应解析成功且 aimSweep=true/600，实测 ok={ok1} sweep={s1} frames={f1}。");
+            }
+
+            bool ok2 = SmokeProbe.TryParse(new[] { "-billiards-smoke-aim", "-billiards-smoke", "300" },
+                out int f2, out _, out bool s2);
+            if (!ok2 || !s2 || f2 != 300)
+            {
+                failures.Add($"① aim 开关在帧数开关**之前**也应生效，实测 ok={ok2} sweep={s2} frames={f2}。");
+            }
+
+            bool ok3 = SmokeProbe.TryParse(new[] { "-billiards-smoke", "600" }, out _, out _, out bool s3);
+            if (!ok3 || s3)
+            {
+                failures.Add($"① 不带 aim 开关：应进入冒烟且 aimSweep=false，实测 ok={ok3} sweep={s3}。");
+            }
+
+            if (SmokeProbe.TryParse(new[] { "-billiards-smoke-aim" }, out _, out _, out _))
+            {
+                failures.Add("① 只有 aim 开关、没有帧数 ⇒ 不应进入冒烟模式（否则会静默不跑证据）。");
+            }
+
+            // ② 角函数闭式
+            if (Mathf.Abs(SmokeProbe.AimSweepDegrees(0) - 0f) > 1e-4f)
+            {
+                failures.Add($"② 第 0 帧应为 0°，实测 {SmokeProbe.AimSweepDegrees(0):R}°。");
+            }
+
+            float prev = SmokeProbe.AimSweepDegrees(0);
+            float total = 0f;
+            for (int n = 1; n <= 80; n++)
+            {
+                float cur = SmokeProbe.AimSweepDegrees(n);
+                float delta = cur - prev;
+                if (delta <= 0f)
+                {
+                    delta += 360f;   // 跨 360 回绕
+                }
+
+                if (Mathf.Abs(delta - SmokeProbe.AimSweepDegreesPerFrame) > 1e-3f)
+                {
+                    failures.Add($"② 第 {n} 帧角增量应为 {SmokeProbe.AimSweepDegreesPerFrame}°，实测 {delta}°"
+                                 + "（非连续 / 非单调）。");
+                }
+
+                total += delta;
+                prev = cur;
+            }
+
+            if (Mathf.Abs(total - 360f) > 1e-2f)
+            {
+                failures.Add($"② 80 帧应覆盖整圈 360°，实测 {total}°（步长 {SmokeProbe.AimSweepDegreesPerFrame}°）。");
+            }
+
+            if (SmokeProbe.AimSweepDegrees(80) != SmokeProbe.AimSweepDegrees(0))
+            {
+                failures.Add("② 80 帧后应回到起点角（整圈）⇒ 指纹每帧都变，拖动路径被真正触发。");
+            }
+
+            // ③ JSON 字段
+            string json = SmokeProbe.ToJson(new SmokeResult { aimSweep = true, passed = true });
+            if (!json.Contains("\"aimSweep\""))
+            {
+                failures.Add("③ JSON 缺字段 \"aimSweep\"。");
+            }
+
+            if (!json.Contains("\"gate\""))
+            {
+                failures.Add("③ JSON 缺字段 \"gate\"（判定口径名）。");
+            }
+
+            // ④ 拖动闸门（**宽松**，只拦量级失控）：边界与静置闸门同构，但阈值不同
+            if (!SmokeProbe.MeetsDragTarget(24f, 100, 600))
+            {
+                failures.Add("④ 均值 24 ms / 掉帧 16.7% 应通过（宽松闸门）。");
+            }
+
+            if (SmokeProbe.MeetsDragTarget(60f, 0, 600))
+            {
+                failures.Add("④ 均值 60 ms 超上限 不应通过。");
+            }
+
+            if (SmokeProbe.MeetsDragTarget(24f, 300, 600))
+            {
+                failures.Add("④ 掉帧 50% 超上限 不应通过。");
+            }
+
+            if (!SmokeProbe.MeetsDragTarget(24f, 240, 600))
+            {
+                failures.Add("④ 掉帧恰 40%（= 上限）应通过（口径是 `≤`）。");
+            }
+
+            if (SmokeProbe.MeetsDragTarget(10f, 0, 0))
+            {
+                failures.Add("④ frames = 0 不应通过。");
+            }
+
+            Assert.IsEmpty(failures, "T131 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine($"T131: 解析 4 例 + 角函数（步 {SmokeProbe.AimSweepDegreesPerFrame}°，80 帧整圈）"
+                                  + $"+ JSON（aimSweep/gate）+ 拖动闸门 5 例（均值 ≤ {SmokeProbe.DragFrameBudgetMs} ms、"
+                                  + $"掉帧 ≤ {SmokeProbe.DragMaxDroppedFraction:P0}）✓");
         }
     }
 }

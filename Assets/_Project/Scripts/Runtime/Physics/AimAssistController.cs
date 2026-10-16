@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text;
 using UnityEngine;
 
 namespace Billiards.Physics
@@ -13,20 +11,29 @@ namespace Billiards.Physics
     /// · **表现** <see cref="AimAssistView"/>：纯几何 + 绘制（过 `PlayfieldView` 单点）。
     ///
     /// ── 三条契约（可被源码 `grep` 与状态快照双重覆盖）──────────────────────────
-    ///  1. **零扰动**：本类**不得**调用 `drive.Simulator` 的 `Step` / `PlaceBall` / `LoadBalls` /
-    ///     `ResetDiagnostics`（预测只读；在跑内核的扰动由 `T72` 与 `T82` 的源码守卫共同覆盖）。
+    ///  1. **零扰动**：本类**不得**调用 `drive.Simulator` 的推进 / 装载 / 重摆 / 归零入口
+    ///     （预测只读；在跑内核的扰动由 `T72` 与 `T82` 的源码守卫共同覆盖）。
     ///  2. **关闭即不算**：<see cref="RefreshPrediction"/> 首行判 `drive.PredictionEnabled` ⇒ 关闭期间
-    ///     **不调用** `Predict`（<see cref="PredictionComputeCount"/> 逐位不变）。
+    ///     不调用 `Predict`（<see cref="PredictionComputeCount"/> 逐位不变）。
     ///  3. **开关不另存副本**：唯一读点是 `drive.PredictionEnabled`（→ `PhysicsTestDrive.enableShotPrediction`）。
     ///
-    /// ── 刷新时机（脏标记）────────────────────────────────────────────────────
-    /// 仅当 `TableAtRest`（球运动期间预测无意义、且与 `AimIndicator` 的隐藏口径一致）**且**
-    /// `(aimDegrees, power, 在场上球的位置/速度指纹)` 变化时才重算 ⇒ 静止瞄准时**不每帧重算**。
+    /// ── 刷新时机（脏标记 + 节流，**拖动性能**的核心）────────────────────────────
+    /// 仅当 `TableAtRest` 且 `(aimDegrees, power, 在场上球的位置/速度指纹)` 变化时才重算。
+    /// 指纹为**数值**（64 位哈希，见 <see cref="Fingerprint"/>）—— 旧实现每帧对 17 颗球 × 4 个 float
+    /// 走 `ToString("R") + StringBuilder`，拖动时每秒数百次字符串格式化与分配。
+    ///
+    /// 拖动期间指纹**每帧都变** ⇒ 若不节流，就是"每帧一次 240 步 × 17 球 × 82 段"的预测（用户实测卡顿）。
+    /// 本类加**前后沿节流**（<see cref="ShouldRecompute"/>）：
+    /// · **前沿**：距上次重算 ≥ <see cref="minRecomputeIntervalSeconds"/> 才重算（限制拖动期间的频率）；
+    /// · **尾沿（硬约束）**：当本帧指纹与**上一帧**相同（= 输入已停止变化）⇒ **无条件重算**
+    ///   ⇒ **停止拖动后的下一帧必定是最新预测**，瞄准线不会停在旧值上。
+    /// 预测与绘制路径的缓冲由 <see cref="ShotPredictionWorkspace"/> 复用（消除每帧分配）。
+    ///
     /// ⚠ 关闭期间把脏缓存**置空**（重新开启必重算），但**不改** <see cref="Prediction"/>。
     ///
     /// ── 盲带 ─────────────────────────────────────────────────────────────────
     /// · 输入设备级触发（真鼠标/键盘）不在 EditMode 覆盖范围（Manual / PlayMode）。
-    /// · 真实帧率不判（无 CI / 无固定机型）。
+    /// · 真实帧率不判（无 CI / 无固定机型）—— 拖动帧时由构建产物的冒烟模式（`-billiards-smoke-aim`）取证。
     /// </summary>
     [AddComponentMenu("Billiards/Aim Assist Controller")]
     public sealed class AimAssistController : MonoBehaviour
@@ -39,6 +46,15 @@ namespace Billiards.Physics
         /// </summary>
         [Tooltip("预测步数上限（Step 数）。待实测定值。")]
         public int maxPredictSteps = 240;
+
+        /// <summary>
+        /// **拖动瞄准时两次重算之间的最小间隔（秒）**（前沿节流）。默认 <c>1/30</c>（约 30 Hz）——
+        /// 远高于观感需求（瞄准线 30 Hz 已连续），又比"每帧一次"省下大半预测开销。
+        /// <c>≤ 0</c> ⇒ **关闭节流**（每帧重算，退回旧行为，用于判据与对照）。
+        /// ⚠ 尾沿（停止变化时）不受本值约束 ⇒ 不会让瞄准线停在旧值。
+        /// </summary>
+        [Tooltip("拖动时两次重算的最小间隔（秒）。≤ 0 ⇒ 关闭节流（每帧重算）。")]
+        public float minRecomputeIntervalSeconds = 1f / 30f;
 
         /// <summary>被观察的驱动器（**只读**它的 `Simulator` / `PredictionEnabled`）。</summary>
         [Tooltip("被观察的 PhysicsTestDrive。为空 ⇒ 本组件不生效。")]
@@ -53,8 +69,26 @@ namespace Billiards.Physics
         public Transform playfieldRoot;
 
         private ShotPrediction _prediction;
-        private string _lastFingerprint;
+
+        /// <summary>上一次**重算**所用状态的数值指纹（64 位哈希）。</summary>
+        private long _lastFingerprint;
+
+        /// <summary>上一帧的指纹（用于尾沿判定"输入是否已停止变化"）。</summary>
+        private long _prevFrameFingerprint;
+
         private bool _hasPrediction;
+
+        /// <summary>是否已有可用的"上一帧指纹"。</summary>
+        private bool _hasPrevFrameFingerprint;
+
+        /// <summary>缓存是否已被作废（关闭开关时置位）⇒ 重开后的第一次必重算（不受节流影响）。</summary>
+        private bool _cacheInvalidated;
+
+        /// <summary>上一次重算的时刻（`Time.unscaledTime`）；未算过 ⇒ 负无穷（⇒ 首算不受节流）。</summary>
+        private float _lastRecomputeTime = float.NegativeInfinity;
+
+        /// <summary>复用的预测工作区（探测内核 + 快照/路径缓冲）。</summary>
+        private readonly ShotPredictionWorkspace _workspace = new ShotPredictionWorkspace();
 
         /// <summary>当前预测结果（只读出口）。关闭或未静止时为上一次结果或 <c>default</c>。</summary>
         public ShotPrediction Prediction => _prediction;
@@ -62,7 +96,7 @@ namespace Billiards.Physics
         /// <summary>
         /// **是否应当绘制瞄准辅助**（**纯函数**，唯一判据点；`ShouldShow` 与判据 `T104` 共用）。
         ///
-        /// 三条同时成立才画：
+        /// 四条同时成立才画：
         ///  · `predictionEnabled` —— 设置开关；
         ///  · `tableAtRest` —— **球运动期间不画**。预测的语义是"未出杆时的一次前向模拟"，
         ///    球在滚时它是**上一杆的旧结果**；继续画就会表现为"瞄准线停在原地不动"
@@ -96,6 +130,39 @@ namespace Billiards.Physics
         public int PredictionComputeCount { get; private set; }
 
         /// <summary>
+        /// **节流决策**（**纯函数**，判据直接驱动，不依赖计时）：
+        /// · 状态没变 ⇒ 不算（脏标记优先）；
+        /// · 尚无预测（首算 / 缓存被作废）⇒ 必算；
+        /// · 输入已停止变化（`settledSinceLastFrame`）⇒ **必算**（尾沿；保证"停拖后下一帧是最新预测"）；
+        /// · 否则 ⇒ 距上次重算 ≥ 间隔才算（前沿节流；间隔 ≤ 0 ⇒ 不节流）。
+        /// </summary>
+        public static bool ShouldRecompute(bool hasPrediction, bool stateChanged, bool settledSinceLastFrame,
+                                           float secondsSinceLastRecompute, float minIntervalSeconds)
+        {
+            if (!stateChanged)
+            {
+                return false;
+            }
+
+            if (!hasPrediction)
+            {
+                return true;
+            }
+
+            if (settledSinceLastFrame)
+            {
+                return true;
+            }
+
+            if (!(minIntervalSeconds > 0f))
+            {
+                return true;
+            }
+
+            return secondsSinceLastRecompute >= minIntervalSeconds;
+        }
+
+        /// <summary>
         /// **纯逻辑入口**（`LateUpdate` 与判据共用同一条路径）。
         /// </summary>
         /// <returns>本帧**是否发生了重算**（`true` ⇒ <see cref="PredictionComputeCount"/> 自增 1）。</returns>
@@ -104,29 +171,40 @@ namespace Billiards.Physics
             if (drive == null || !drive.PredictionEnabled)
             {
                 // 关闭 ⇒ 不重算、不绘制；把脏缓存作废（重新开启必重算），但**不动** `_prediction`。
-                _lastFingerprint = null;
+                InvalidateCache();
                 return false;
             }
 
             PoolSimulator sim = drive.Simulator;
             if (sim == null || !sim.TableAtRest)
             {
+                // 球在动 / 未初始化 ⇒ 不重算。注意不更新"上一帧指纹"：恢复静止后首帧不算"已稳定"。
+                _hasPrevFrameFingerprint = false;
                 return false;
             }
 
-            string fingerprint = Fingerprint(sim);
-            if (_hasPrediction && fingerprint == _lastFingerprint)
+            long fingerprint = Fingerprint(sim);
+            bool stateChanged = _cacheInvalidated || !_hasPrediction || fingerprint != _lastFingerprint;
+            bool settled = _hasPrevFrameFingerprint && fingerprint == _prevFrameFingerprint;
+            _prevFrameFingerprint = fingerprint;
+            _hasPrevFrameFingerprint = true;
+
+            bool due = ShouldRecompute(_hasPrediction, stateChanged, settled,
+                Time.unscaledTime - _lastRecomputeTime, minRecomputeIntervalSeconds);
+            if (!due)
             {
-                return false;   // 脏标记未变 ⇒ 不重算
+                return false;
             }
 
             float rad = drive.aimDegrees * Mathf.Deg2Rad;
             var direction = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
             float speed = Mathf.Lerp(drive.minLaunchSpeed, drive.maxLaunchSpeed, Mathf.Clamp01(drive.power));
 
-            _prediction = ShotPredictor.Predict(drive.tableConfig, sim, direction * speed, maxPredictSteps);
+            _prediction = ShotPredictor.Predict(drive.tableConfig, sim, direction * speed, maxPredictSteps, _workspace);
             _lastFingerprint = fingerprint;
             _hasPrediction = true;
+            _cacheInvalidated = false;
+            _lastRecomputeTime = Time.unscaledTime;
             PredictionComputeCount++;
             return true;
         }
@@ -136,15 +214,37 @@ namespace Billiards.Physics
             RefreshPrediction();
         }
 
-        /// <summary>
-        /// 在场上球的**位置 / 速度指纹**（`ToString("R")`，与既有逐位快照同口径）＋ 瞄准角 / 力度。
-        /// 只读 `Balls` / `IsBallInPlay`，不碰任何内核写入口。
-        /// </summary>
-        private string Fingerprint(PoolSimulator sim)
+        /// <summary>作废脏缓存（不动 <see cref="Prediction"/>）；重开后的第一次必重算（`_lastRecomputeTime` 归负无穷）。</summary>
+        private void InvalidateCache()
         {
-            var sb = new StringBuilder(128);
-            sb.Append(drive.aimDegrees.ToString("R", CultureInfo.InvariantCulture)).Append('|')
-              .Append(drive.power.ToString("R", CultureInfo.InvariantCulture)).Append('|');
+            _lastFingerprint = 0L;
+            _prevFrameFingerprint = 0L;
+            _hasPrevFrameFingerprint = false;
+            _cacheInvalidated = true;
+            _lastRecomputeTime = float.NegativeInfinity;
+        }
+
+        /// <summary>
+        /// 在场上球的**位置 / 速度指纹** + 瞄准角 / 力度的 **64 位 FNV-1a 哈希**。
+        ///
+        /// ── 为什么从"字符串指纹"改成"数值哈希"（性能）────────────────────────
+        /// 旧实现每帧对 17 颗球 × 4 个 float 调 `ToString("R")` 并 `StringBuilder.Append`、最后拼成 string
+        /// ⇒ 拖动瞄准时每帧数十次格式化 + 一次字符串分配。数值哈希**零分配**，
+        /// 判别力足够（`2^64` 空间，单帧碰撞概率 ~1e-19）—— 它只承担"脏标记"，
+        /// 不承担"逐位快照"（那由 `T72b` 的显式逐位基线负责）。
+        ///
+        /// ⚠ 哈希是**有损**的：极端情况下两次不同状态可能同哈希（漏一次重算，只影响一帧观感，不影响出杆）。
+        /// 这是"脏标记"可接受的代价，已在此显式登记（不声称它在所有输入下都是完美判别器）。
+        /// </summary>
+        private long Fingerprint(PoolSimulator sim)
+        {
+            // FNV-1a 64 位：偏移基址 + 质数（与任何标准库无关，纯算术，确定性）。
+            const ulong offsetBasis = 14695981039346656037UL;
+            const ulong prime = 1099511628211UL;
+
+            ulong hash = offsetBasis;
+            hash = Mix(hash, unchecked((uint)System.BitConverter.SingleToInt32Bits(drive.aimDegrees)), prime);
+            hash = Mix(hash, unchecked((uint)System.BitConverter.SingleToInt32Bits(drive.power)), prime);
 
             var balls = sim.Balls;
             for (int i = 0; i < balls.Count; i++)
@@ -154,14 +254,20 @@ namespace Billiards.Physics
                     continue;
                 }
 
-                sb.Append(i).Append(':')
-                  .Append(balls[i].position.x.ToString("R", CultureInfo.InvariantCulture)).Append(',')
-                  .Append(balls[i].position.y.ToString("R", CultureInfo.InvariantCulture)).Append(',')
-                  .Append(balls[i].velocity.x.ToString("R", CultureInfo.InvariantCulture)).Append(',')
-                  .Append(balls[i].velocity.y.ToString("R", CultureInfo.InvariantCulture)).Append(';');
+                hash = Mix(hash, unchecked((uint)i), prime);
+                hash = Mix(hash, unchecked((uint)System.BitConverter.SingleToInt32Bits(balls[i].position.x)), prime);
+                hash = Mix(hash, unchecked((uint)System.BitConverter.SingleToInt32Bits(balls[i].position.y)), prime);
+                hash = Mix(hash, unchecked((uint)System.BitConverter.SingleToInt32Bits(balls[i].velocity.x)), prime);
+                hash = Mix(hash, unchecked((uint)System.BitConverter.SingleToInt32Bits(balls[i].velocity.y)), prime);
             }
 
-            return sb.ToString();
+            return unchecked((long)hash);
+        }
+
+        private static ulong Mix(ulong hash, uint value, ulong prime)
+        {
+            hash ^= value;
+            return hash * prime;
         }
     }
 }

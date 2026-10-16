@@ -17,13 +17,18 @@ namespace Billiards.EditorTools
     ///  · 桌体材质（URP Lit / Opaque）  · 袋网材质（URP Lit / Alpha Clipping, cutoff 0.5, 双面）
     ///  · 房间地面材质（最小布景，用 PoolConstants.TableLegBottomY 对齐桌腿底）
     ///  · 16 个球材质 + 16 个球 Prefab（含 BallPrefab 基座） · 球杆材质 + 球杆 Prefab
-    ///  · Main.unity：PlayfieldRoot（scale=1）→ 球桌；Room→Floor；主平行光；俯视带俯角相机
+    ///  · Main.unity：PlayfieldRoot（**scale = `PoolConstants.PlayfieldVisualScale`**）→ 球桌 + 地面；
+    ///    Room→Floor；主平行光；**玩法取景相机**（位姿 / FOV 引用 `GreyboxSceneSetup` 的既有常量）
+    ///  · Main.unity 末尾再叠加**玩法层**（<see cref="GreyboxSceneSetup.AttachMainGameplayLayer"/>）
     ///
     /// 硬约束遵守：
     ///  · 唯一坐标转换点 = <see cref="PoolGeometry"/>，本类**不做任何轴/手性/缩放转换**；
     ///    球桌模型不再叠加手动旋转（模型侧修正已由导入与 PoolGeometry 承担）。
-    ///  · `PlayfieldVisualScale`（1.2）**本类不应用**，仅预留 scale=1 的 PlayfieldRoot 供后续视觉缩放层挂载；
-    ///    应用时只能作用于该视觉 root，物理保持规范米制。
+    ///  · **`PlayfieldVisualScale`（1.2）只作用于 `PlayfieldRoot` 这一个视觉根**，物理保持规范米制。
+    ///    ⚠ 口径变更：本类**先前**把 `PlayfieldRoot` 留成 scale=1（"预留视觉缩放层"）。现在 `Main.unity`
+    ///    是**正式游戏入口**，玩法口径就是 1.2（与灰盒一致）⇒ 本类**应用** 1.2，
+    ///    且**地面必须与桌同挂该根**（否则根变 1.2 后地面不缩放、桌子浮起 0.2× 桌腿高）。
+    ///    相机常量收敛到 `GreyboxSceneSetup` 一处（铁律 16：同一不变量只有一处实现）。
     ///  · 不手改 ProjectSettings/*.asset；场景/材质全部走官方 API。
     /// </summary>
     public static class MaterialVisualSetup
@@ -55,10 +60,14 @@ namespace Billiards.EditorTools
 
         public const int BallCount = 16;
 
-        // 相机与灯光参数（MaterialVisualValidator 会读回核对）
-        public static readonly Vector3 CameraPosition = new Vector3(0f, 3.05f, -0.88f);
-        public static readonly Vector3 CameraTarget = new Vector3(0f, 0f, 0f);
-        public const float CameraFov = 37f;
+        // 灯光参数（MaterialVisualValidator 会读回核对）
+        //
+        // ⚠ **相机参数已从这里删除**（口径收敛，铁律 16）：本类先前自己持有一份
+        // `CameraPosition` / `CameraTarget` / `CameraFov(=37°)`，而 `GreyboxSceneSetup` 另有一份
+        // （pos `(0,2.10,−0.75)` / look `(0,0.02,0.06)` / fov `52`）—— **同一不变量两处实现**。
+        // `Main.unity` 现在是**正式游戏入口**、取景必须与玩法口径一致 ⇒
+        // **唯一真源 = `GreyboxSceneSetup`**（`CameraPosition` / `CameraLookTarget` / `CameraBaseVerticalFovDeg`），
+        // 生成侧与验收器（`CAM-01`）都引用它。
         public const float CameraNear = 0.05f;
         public const float CameraFar = 60f;
 
@@ -85,6 +94,35 @@ namespace Billiards.EditorTools
             BuildPrefabs();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+        }
+
+        /// <summary>
+        /// **只重建场景**（不重写材料 / 预制件）—— `Main.unity` 生成侧改动的复现与批处理入口。
+        /// 与 <see cref="Apply"/> 的区别：不调 `BuildMaterials` / `BuildPrefabs`
+        /// （那会重写一批与本次改动无关的资产、制造 git 噪声）。场景本身会随后接上玩法层
+        /// （<see cref="GreyboxSceneSetup.AttachMainGameplayLayer"/>，见 <see cref="BuildScene"/> 末尾）。
+        /// </summary>
+        public static void BuildSceneFromCommandLine()
+        {
+            int exitCode = 0;
+            try
+            {
+                AssetDatabase.Refresh();
+                BuildScene();
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+                Debug.Log("MAIN_SCENE_BUILD_OK scene=" + MainScenePath);
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError("Main 场景重建失败：" + ex);
+                exitCode = 1;
+            }
+
+            if (Application.isBatchMode)
+            {
+                EditorApplication.Exit(exitCode);
+            }
         }
 
         // ── 材质 ───────────────────────────────────────────────────────────
@@ -235,16 +273,25 @@ namespace Billiards.EditorTools
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // 1) 视觉根（scale=1 预留；后续才把 1.2 挂到这里，且只影响视觉）
+            // 1) 视觉根（**表现层 1.2**）：物理仍是规范米制，只有"看得见的东西"放大。
+            //    唯一真源 = `PoolConstants.PlayfieldVisualScale`；显示↔规范映射的唯一函数是 `PlayfieldView`。
             var playfield = new GameObject("PlayfieldRoot");
             playfield.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
-            playfield.transform.localScale = Vector3.one;
+            playfield.transform.localScale = Vector3.one * PoolConstants.PlayfieldVisualScale;
 
             // 球桌可视物走**唯一实现点**（与物理灰盒共用；各写一份必然分叉，见 `TableVisualBuilder` 的类注释）。
             TableVisualBuilder.AttachTable(playfield.transform);
 
             // 2) 最小布景：地面（与桌腿底对齐）—— 同样走唯一实现点。
-            TableVisualBuilder.AttachRoom(playfield.transform.parent);
+            //    ⚠ **本轮修的真缺陷（"改一个数、坏另一处"的典型）**：
+            //    旧实现挂 `playfield.transform.parent`，而 `playfield` 是**场景根** ⇒ 实参是 `null` ⇒
+            //    `AttachRoom` 把 Room 落在**场景根**（`AttachRoom` 自己注释也这么写）。地面用的是
+            //    `localPosition = (0, TableLegBottomY, 0)` ⇒ **地面世界 y = 父链 y 缩放 × TableLegBottomY**。
+            //    根为 1 时看不出；**根改成 1.2 后**地面仍是 1×（−0.8635）、桌腿底是 1.2×（−1.0362）
+            //    ⇒ **桌子浮起 0.1727 m**。灰盒本来就是对的（`AttachRoom(playfieldRoot)`）。
+            //    ⇒ 与灰盒统一为**同一形态**：桌与地面**同挂缩放根**。该不变量由 day3 的 `SCN-07` 守
+            //    （`|地面世界 y − 桌子世界 AABB min.y|`，两边都取**实测对象** ⇒ 非恒真）。
+            TableVisualBuilder.AttachRoom(playfield.transform);
 
             // 3) 灯光
             var sunGo = new GameObject("Directional Light");
@@ -265,18 +312,24 @@ namespace Billiards.EditorTools
             RenderSettings.ambientIntensity = 1f;
             RenderSettings.fog = false;
 
-            // 4) 相机（俯视带俯角）
+            // 4) 相机 = **玩法取景**（位姿 / FOV 引用 `GreyboxSceneSetup` 的既有常量 ⇒ 单一真源）
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
             Camera cam = camGo.AddComponent<Camera>();
-            camGo.transform.position = CameraPosition;
-            camGo.transform.rotation = Quaternion.LookRotation(CameraTarget - CameraPosition, Vector3.up);
-            cam.fieldOfView = CameraFov;
+            camGo.transform.position = GreyboxSceneSetup.CameraPosition;
+            camGo.transform.rotation = Quaternion.LookRotation(
+                GreyboxSceneSetup.CameraLookTarget - GreyboxSceneSetup.CameraPosition, Vector3.up);
+            cam.fieldOfView = GreyboxSceneSetup.CameraBaseVerticalFovDeg;
             cam.nearClipPlane = CameraNear;
             cam.farClipPlane = CameraFar;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.055f, 0.052f, 0.06f, 1f);
             cam.allowHDR = true;
+
+            // **叠加玩法层**：`Main.unity` 现在是**正式游戏入口**（出包入口 / build list 都指向它）⇒
+            // 本生成器（基础视觉：桌 / 地面 / 相机 / 光）必须**继续产出完整 Main**，否则会把玩法层"洗掉"。
+            // 接线走 `GreyboxSceneSetup.AttachMainGameplayLayer` 这个**唯一实现点**（与灰盒共用宿主构建，铁律 16）。
+            GreyboxSceneSetup.AttachMainGameplayLayer(scene);
 
             EditorSceneManager.SaveScene(scene, MainScenePath);
         }

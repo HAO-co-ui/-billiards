@@ -40,21 +40,67 @@ namespace Billiards.Physics
         /// <param name="source">在跑内核（**只读**；本方法不改它任何状态）。</param>
         /// <param name="cueVelocity">白球初速（规范物理平面，m/s）。</param>
         /// <param name="maxSteps">步数上限（≥1）。达到上限仍无首次接触 ⇒ <see cref="ShotPrediction.HasFirstContact"/> 为 false。</param>
+        /// <remarks>
+        /// **便利重载**：内部新建一个一次性工作区 ⇒ 输出与重载前**逐位相同**，但会分配。
+        /// 热路径（每帧预测）请用带 <see cref="ShotPredictionWorkspace"/> 的重载以复用缓冲。
+        /// </remarks>
         public static ShotPrediction Predict(TableConfig table, PoolSimulator source, Vector2 cueVelocity, int maxSteps)
         {
-            var result = new ShotPrediction { CueWorldPath = new List<Vector2>() };
+            return Predict(table, source, cueVelocity, maxSteps, new ShotPredictionWorkspace());
+        }
+
+        /// <inheritdoc cref="Predict(TableConfig, PoolSimulator, Vector2, int)"/>
+        /// <param name="workspace">
+        /// 可复用工作区（持有探测内核 + 快照/路径缓冲）。**调用方须为单消费者** ——
+        /// 返回结果的 <see cref="ShotPrediction.CueWorldPath"/> 会**引用**该工作区的路径缓冲，
+        /// 下一次用同一工作区调用本方法时会被改写（见 <see cref="ShotPredictionWorkspace"/> 的别名语义）。
+        /// 传 <c>null</c> ⇒ 内部新建一个（等价便利重载）。
+        /// </param>
+        public static ShotPrediction Predict(TableConfig table, PoolSimulator source, Vector2 cueVelocity,
+            int maxSteps, ShotPredictionWorkspace workspace)
+        {
+            if (workspace == null)
+            {
+                workspace = new ShotPredictionWorkspace();
+            }
+
+            var result = new ShotPrediction { CueWorldPath = workspace.Path };
+            workspace.Path.Clear();
             if (table == null || source == null || maxSteps <= 0)
             {
                 return result;
             }
 
             // ── ① 独立探测内核：参数 / 步长 / 终止 / 袋口乘子**逐字段取自只读出口** ──
-            var probe = new PoolSimulator(table, source.Params, source.PocketCaptureRadiusScaleValue,
-                source.RestSpeedThresholdValue, source.RestStableFramesValue);
+            //   **复用**：缓存键（桌 / 参数 / 三个标量）任一不符即重建，保证与"新建"路径等价。
+            PoolSimulator probe = workspace.Probe;
+            if (probe == null
+                || !ReferenceEquals(workspace.ProbeTable, table)
+                || !workspace.ProbeParams.Equals(source.Params)
+                || workspace.ProbePocketScale != source.PocketCaptureRadiusScaleValue
+                || workspace.ProbeRestSpeed != source.RestSpeedThresholdValue
+                || workspace.ProbeRestFrames != source.RestStableFramesValue)
+            {
+                probe = new PoolSimulator(table, source.Params, source.PocketCaptureRadiusScaleValue,
+                    source.RestSpeedThresholdValue, source.RestStableFramesValue);
+                workspace.Probe = probe;
+                workspace.ProbeTable = table;
+                workspace.ProbeParams = source.Params;
+                workspace.ProbePocketScale = source.PocketCaptureRadiusScaleValue;
+                workspace.ProbeRestSpeed = source.RestSpeedThresholdValue;
+                workspace.ProbeRestFrames = source.RestStableFramesValue;
+            }
+            else
+            {
+                // 复用：`LoadBalls` **不清每杆计数** ⇒ 必须显式归零，否则接触计数会跨次累积。
+                // （新建路径的归零发生在构造函数里 ⇒ 补这一步后两条路径状态等价。）
+                probe.ResetDiagnostics();
+            }
 
             // ── ② 快照：只装在场上球（白球离台时补一颗在 footSpot） ──
             IReadOnlyList<BallState> srcBalls = source.Balls;
-            var snapshot = new List<BallState>(srcBalls.Count + 1);
+            List<BallState> snapshot = workspace.Snapshot;
+            snapshot.Clear();
             int cueLocalIndex = -1;
 
             if (!source.IsBallInPlay(0))
@@ -92,7 +138,9 @@ namespace Billiards.Physics
             Vector2 cueStart = snapshot[cueLocalIndex].position;
             probe.PlaceBall(cueLocalIndex, cueStart, cueVelocity);
 
-            var path = new List<Vector2> { cueStart };
+            // 路径缓冲**复用**（`workspace.Path`，已在开头 Clear）；`result.CueWorldPath` 已引用它。
+            List<Vector2> path = workspace.Path;
+            path.Add(cueStart);
 
             // ── ④ 步进到首接触（首接触**即停**：不跑到整盘静止） ──
             int steps = 0;

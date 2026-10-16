@@ -11,11 +11,14 @@
 #
 # 用法：
 #   bash Docs/Tools/unity_batch.sh sprites         # 重新生成界面精灵与球号贴片
-#   bash Docs/Tools/unity_batch.sh rebuild-scene
+#   bash Docs/Tools/unity_batch.sh rebuild-scene   # 全量重建灰盒诊断场景 PhysicsGreybox.unity
+#   bash Docs/Tools/unity_batch.sh rebuild-main    # 给正式入口 Main.unity 叠加/重建玩法层
+#   bash Docs/Tools/unity_batch.sh rebuild-main-base  # 只重建 Main 的基础视觉场景（生成侧改动）
 #   bash Docs/Tools/unity_batch.sh tests
 #   bash Docs/Tools/unity_batch.sh validators
 #   bash Docs/Tools/unity_batch.sh build
-#   bash Docs/Tools/unity_batch.sh smoke
+#   bash Docs/Tools/unity_batch.sh smoke            # 静置 600 帧冒烟
+#   bash Docs/Tools/unity_batch.sh smoke-aim        # 连续拖动瞄准 600 帧冒烟（峰值帧时）
 set -uo pipefail
 
 PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -64,6 +67,22 @@ case "$step" in
       -executeMethod Billiards.EditorTools.GreyboxSceneSetup.RebuildFromCommandLine
     ;;
 
+  rebuild-main)
+    # 把**正式游戏入口** Main.unity 的玩法层叠加/重建（保留既有桌 / 地面 / 相机 / 光）。
+    # ⚠ 出包入口与 build list 都指向 Main.unity ⇒ 这是"正式入口"的生成器路径。
+    "$UNITY" -batchmode -nographics -projectPath "$PROJECT" \
+      -logFile "$LOG_DIR/rebuild_main.log" \
+      -executeMethod Billiards.EditorTools.GreyboxSceneSetup.RebuildMainFromCommandLine
+    ;;
+
+  rebuild-main-base)
+    # **只重建 Main 的基础视觉场景**（桌 / 地面 / 光 / 相机 由 MaterialVisualSetup 生成 + 末尾自动叠玩法层）。
+    # 用于"生成侧改动"（如 PlayfieldRoot 缩放 / 相机取景）的复现；不重写材料与预制件。
+    "$UNITY" -batchmode -nographics -projectPath "$PROJECT" \
+      -logFile "$LOG_DIR/rebuild_main_base.log" \
+      -executeMethod Billiards.EditorTools.MaterialVisualSetup.BuildSceneFromCommandLine
+    ;;
+
   fonts)
     "$UNITY" -batchmode -nographics -projectPath "$PROJECT" \
       -logFile "$LOG_DIR/fonts.log" \
@@ -104,12 +123,44 @@ print('results mtime = ' + time.strftime('%H:%M:%S', time.localtime(os.path.getm
                  Billiards.EditorTools.PhysicsValidator.ValidateFromCommandLine \
                  Billiards.EditorTools.MaterialVisualValidator.ValidateFromCommandLine \
                  Billiards.EditorTools.TableIntegrityValidator.ValidateFromCommandLine; do
-      echo "--- $entry"
-      "$UNITY" -batchmode -nographics -projectPath "$PROJECT" \
+      # ⚠ **渲染证据必须有 GPU**：`-batchmode -nographics` 下 `cam.Render()` / `ReadPixels` 拿不到内容
+      #   ⇒ 产出**纯灰空图**（本工程实测事故：day3 四张图逐字节相同、distinctColors=1，
+      #      而 RND-01 只数文件、NAB-01 硬编码 Ok ⇒ **两条绿灯在空证据上亮着**）。
+      #   ⇒ **只有会写渲染证据的那一个验收器**去掉 `-nographics`（其余保留 headless：不需要 GPU、更快）。
+      ng="-nographics"
+      case "$entry" in
+        *MaterialVisualValidator*) ng="" ;;
+      esac
+      echo "--- $entry（$([ -z "$ng" ] && echo '带图形' || echo 'headless')）"
+      "$UNITY" -batchmode $ng -projectPath "$PROJECT" \
         -logFile "$LOG_DIR/validator_$(basename "$entry").log" \
         -executeMethod "$entry"
       echo "    rc=$?"
     done
+
+    # ── 后置守卫：**渲染证据非退化**（与判据内 `RND-01`/`NAB-01` **同判**；离线、不需要 Unity）──
+    # 事前拦截：谁再刷新证据、只要渲染图退化成空图（或 A/B 两版变相同），**当场红**，
+    # 不依赖"人记得去看"。工具自带 `--selftest`（空图 FAIL / 真图 PASS）⇒ 本身不是恒绿摆设。
+    echo "--- 后置守卫：qa_render_evidence_check（渲染证据非退化）"
+    # ⚠ **必须按退出码分流**（工具契约：`0` = 通过 / `1` = 证据退化 / `2` = 环境不洁[缺 Pillow]）。
+    #   绝不可把 `2` 并进 `1` —— 否则"没装 Pillow"会被读成"证据坏了"：**假红，且把后人引向错误的排查方向**。
+    #   另：`127` = 找不到工具文件（例如它没被提交）⇒ 同属**环境**问题，不是证据问题。
+    guard_rc=0
+    "$PY" "$PROJECT/Docs/Tools/qa_render_evidence_check.py" --dir "$PROJECT/Docs/Reports" || guard_rc=$?
+    case "$guard_rc" in
+      0)
+        : ;;   # 通过
+      1)
+        echo "⛔ 渲染证据退化（空图 / A-B 两版相同）⇒ validators 步骤失败" >&2
+        echo "   （注：守卫自身抛异常也会退 1；区别请看上面工具的输出行）" >&2
+        exit 1 ;;
+      2)
+        echo "⚠ 环境不洁：渲染证据守卫**无法运行**（缺 Pillow）⇒ 以**独立退出码 2** 结束（**不是**证据问题）" >&2
+        exit 2 ;;
+      *)
+        echo "⚠ 渲染证据守卫异常退出（rc=$guard_rc，例如 127 = 找不到工具文件）⇒ 以**独立退出码 2** 结束（**不是**证据问题）" >&2
+        exit 2 ;;
+    esac
     ;;
 
   build)
@@ -127,6 +178,18 @@ print('results mtime = ' + time.strftime('%H:%M:%S', time.localtime(os.path.getm
     fi
     "$exe" -billiards-smoke 600 -billiards-smoke-out "$LOG_DIR/smoke.json"
     echo "smoke rc=$?  evidence=$LOG_DIR/smoke.json"
+    ;;
+
+  smoke-aim)
+    # **拖动瞄准负载**冒烟：采样期间每帧连续改变瞄准角 ⇒ 逼出"预测重算"这条最坏路径的帧时。
+    # 与静置冒烟分开跑、分开落证据（静置数据仍是"基准"，拖动数据是"峰值"）。
+    exe="$PROJECT/Build/Windows/Idea35PoolRoom.exe"
+    if [[ ! -f "$exe" ]]; then
+      echo "找不到出包：$exe（先跑 build）" >&2
+      exit 1
+    fi
+    "$exe" -billiards-smoke 600 -billiards-smoke-aim -billiards-smoke-out "$LOG_DIR/smoke-aim.json"
+    echo "smoke-aim rc=$?  evidence=$LOG_DIR/smoke-aim.json"
     ;;
 
   *)

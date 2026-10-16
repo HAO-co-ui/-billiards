@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Billiards.EditorTools
 {
     /// <summary>
-    /// **性能与构建配置的唯一落地入口**（Day 16）。
+    /// **性能与构建配置的唯一落地入口**。
     ///
     /// 走**官方 API / `SerializedObject`**，**绝不手改** `ProjectSettings/*.asset` 或资产 YAML
     /// （手改会被编辑器静默覆盖 —— 本工程既有纪律）。幂等：重复执行结果一致。
@@ -14,13 +14,16 @@ namespace Billiards.EditorTools
     /// 1. **URP 阴影收敛**：`ShadowDistance 50 → 6 m`、`CascadeCount 4 → 1`、阴影图保持 2048²。
     ///    球桌内库只有 2.54 × 1.27 m 且场景仅 1 盏平行光 ⇒ 原来是在用 4 次 2048² 的阴影 pass
     ///    去覆盖 50 m 的世界，桌上那 2.5 m 反而被摊薄。
-    /// 2. **构建场景列表**：设为灰盒场景。⚠ 原列表指向 `Main.unity`，而它是**空壳**
-    ///    （0 个 MonoBehaviour）⇒ 按原状打出来的包是**黑屏死包**。
+    /// 2. **构建场景列表**：设为**正式游戏入口** <c>Main.unity</c>。
+    ///    ⚠ **口径变更（旧说法已作废）**：本项原先把列表指向灰盒场景 —— 那是在"`Main.unity` 是空壳"这一前提下
+    ///    为了"不打出黑屏死包"做的临时处置，代价是**与 `SCN-02` / `D4-BLD-01`（都断言列表恰为 `Main.unity`）互斥**。
+    ///    `Main.unity` 现已是带完整玩法层的正式入口 ⇒ 列表指回 `Main.unity` ⇒ **两条口径不再互斥**
+    ///    （`SCN-02` / `D4-BLD-01` 因此变成真正正确）。
     /// </summary>
     public static class PerformanceSetup
     {
-        /// <summary>有全部接线、判据族一直在守的场景（`T98`/`T103`/`T104`/`T41`/`T43`）。</summary>
-        public const string GreyboxScenePath = "Assets/_Project/Scenes/PhysicsGreybox.unity";
+        /// <summary>**出包的唯一场景 = 正式游戏入口**（材质视觉场景 + 玩法层，含全部宿主 ⇒ 不是空壳）。</summary>
+        public const string BuildScenePath = "Assets/_Project/Scenes/Main.unity";
 
         /// <summary>URP PC 管线资产（阴影设置的真源；`QualitySettings` 的同类字段在 URP 下惰性）。</summary>
         public const string RenderPipelineAssetPath = "Assets/Settings/PC_RPAsset.asset";
@@ -69,7 +72,7 @@ namespace Billiards.EditorTools
 
             EditorBuildSettings.scenes = new[]
             {
-                new EditorBuildSettingsScene(GreyboxScenePath, true),
+                new EditorBuildSettingsScene(BuildScenePath, true),
             };
 
             AssetDatabase.SaveAssets();
@@ -85,7 +88,7 @@ namespace Billiards.EditorTools
                       && backCascades == ShadowCascadeCount
                       && backResolution == MainLightShadowmapResolution
                       && scenes.Length == 1
-                      && scenes[0].path == GreyboxScenePath
+                      && scenes[0].path == BuildScenePath
                       && scenes[0].enabled;
 
             Debug.Log(string.Format(CultureInfo.InvariantCulture,

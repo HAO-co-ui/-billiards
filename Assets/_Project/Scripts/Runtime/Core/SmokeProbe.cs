@@ -37,6 +37,30 @@ namespace Billiards.Core
         /// <summary>JSON 落盘路径开关（可选）。</summary>
         public const string OutputSwitch = "-billiards-smoke-out";
 
+        /// <summary>
+        /// **拖动瞄准负载开关**（无值标志，可选）。带上它 ⇒ 采样期间**每帧连续改变瞄准角**
+        /// （<see cref="AimSweepDegrees"/>）⇒ 逼出"拖动瞄准线"这一路的最坏帧时。
+        ///
+        /// 动机：原来的冒烟只测**静置** 600 帧 ⇒ 击球 / 拖动瞄准的峰值**从未被测过**（既有登记盲带）。
+        /// 瞄准预测线在"每帧都变"时才触发重算（见 <c>AimAssistController</c> 的脏标记），
+        /// 静置帧根本不走那条路径。
+        /// </summary>
+        public const string AimSweepSwitch = "-billiards-smoke-aim";
+
+        /// <summary>拖动瞄准时每帧推进的瞄准角（度）。4.5°/帧 ⇒ 60 fps 下 270°/s（快速连续拖动）。</summary>
+        public const float AimSweepDegreesPerFrame = 4.5f;
+
+        /// <summary>
+        /// **连续拖动瞄准角的纯函数**（判据可直接驱动）：第 <paramref name="frame"/> 帧的瞄准角（度，[0,360)）。
+        /// 逐帧**单调递增**（模 360）⇒ 保证指纹每帧都变 ⇒ 触发预测重算路径。
+        /// </summary>
+        public static float AimSweepDegrees(int frame)
+        {
+            float raw = frame * AimSweepDegreesPerFrame;
+            float wrapped = raw % 360f;
+            return wrapped < 0f ? wrapped + 360f : wrapped;
+        }
+
         /// <summary>60 fps 的单帧预算（ms）。</summary>
         public const float FrameBudgetMs = 1000f / 60f;
 
@@ -61,11 +85,30 @@ namespace Billiards.Core
         /// </summary>
         public static bool TryParse(string[] args, out int frames, out string outputPath)
         {
+            return TryParse(args, out frames, out outputPath, out _);
+        }
+
+        /// <summary>
+        /// **解析命令行**（纯函数，含拖动瞄准开关）。找到 <see cref="FramesSwitch"/> 且其后是一个 **≥ 2** 的整数
+        /// 才进入冒烟模式；缺参数、非整数、≤ 1 ⇒ 返回 <c>false</c>（调用方照常运行游戏）。
+        /// <paramref name="aimSweep"/> = 命令里出现过 <see cref="AimSweepSwitch"/>（无值标志）。
+        /// </summary>
+        public static bool TryParse(string[] args, out int frames, out string outputPath, out bool aimSweep)
+        {
             frames = 0;
             outputPath = null;
+            aimSweep = false;
             if (args == null)
             {
                 return false;
+            }
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == AimSweepSwitch)
+                {
+                    aimSweep = true;
+                }
             }
 
             for (int i = 0; i < args.Length; i++)
@@ -153,6 +196,42 @@ namespace Billiards.Core
                    && droppedOverBudget * DroppedFractionDenominator <= DroppedFractionNumerator * frames;
         }
 
+        // ── 拖动瞄准路径的**宽松闸门** ────────────────────────────────────────
+        //
+        // 为什么单独一条口径（不是"把静置闸门放宽"）：
+        //  · **静置闸门**（`MeetsTarget`：mean ≤ 16.67 ms、掉帧 ≤ 2%）**原样保留**，仍只用于静置冒烟；
+        //  · **拖动瞄准**是本工程**已知最重的每帧路径** —— 每次重算要跑一次**最多 240 步**的预测
+        //    （内核单步 ~0.37 ms ⇒ 单次重算 ~数十毫秒，属内核固有成本）。在这个成本量级上要求
+        //    "60 fps 且掉帧 ≤ 2%"**结构上不可达**（一次同步重算就吃掉数帧）⇒ 若沿用静置闸门，
+        //    得到的只会是**恒红**，等于没有判据。
+        //  · ⇒ 本闸门只拦**量级失控**（回归到"每帧都重算"或"更糟"会被抓住），阈值取实测均值的 ~2 倍余量。
+        //    **它不声称 60 fps** —— 拖动路径的帧率目标需先裁定"是否接受较短的拖动期预测"（见规格 §盲带）。
+
+        /// <summary>拖动瞄准的**均值上界**（ms）。实测均值 ~24 ms ⇒ 取 50 ms（~2 倍余量，只拦量级失控）。</summary>
+        public const float DragFrameBudgetMs = 50f;
+
+        /// <summary>拖动瞄准的**掉帧占比上限分子**（4 ⇒ 40%）。</summary>
+        public const int DragDroppedFractionNumerator = 4;
+
+        /// <summary>拖动瞄准的**掉帧占比上限分母**（10）。</summary>
+        public const int DragDroppedFractionDenominator = 10;
+
+        /// <summary>拖动瞄准的掉帧占比上限（派生展示值；判定一律用整数比较）。</summary>
+        public const float DragMaxDroppedFraction =
+            (float)DragDroppedFractionNumerator / DragDroppedFractionDenominator;
+
+        /// <summary>**拖动瞄准的达标判定**（纯函数，宽松闸门）：均值 ≤ <see cref="DragFrameBudgetMs"/> 且掉帧占比 ≤ 上限。</summary>
+        public static bool MeetsDragTarget(float meanMs, int droppedOverBudget, int frames)
+        {
+            if (frames <= 0)
+            {
+                return false;
+            }
+
+            return meanMs <= DragFrameBudgetMs
+                   && droppedOverBudget * DragDroppedFractionDenominator <= DragDroppedFractionNumerator * frames;
+        }
+
         /// <summary>把一次冒烟采样的结果序列化为 JSON（纯函数，字段顺序固定，数字用不变文化）。</summary>
         public static string ToJson(SmokeResult result)
         {
@@ -174,6 +253,8 @@ namespace Billiards.Core
             sb.Append("  \"rendererCount\": ").Append(result.rendererCount).Append(",\n");
             sb.Append("  \"distinctMaterialCount\": ").Append(result.distinctMaterialCount).Append(",\n");
             sb.Append("  \"physicsSteps\": ").Append(result.physicsSteps).Append(",\n");
+            sb.Append("  \"aimSweep\": ").Append(result.aimSweep ? "true" : "false").Append(",\n");
+            sb.Append("  \"gate\": \"").Append(result.gate).Append("\",\n");
             sb.Append("  \"passed\": ").Append(result.passed ? "true" : "false").Append("\n");
             sb.Append("}\n");
             return sb.ToString();
@@ -196,15 +277,30 @@ namespace Billiards.Core
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
-            if (!TryParse(System.Environment.GetCommandLineArgs(), out int frames, out string outputPath))
+            if (!TryParse(System.Environment.GetCommandLineArgs(), out int frames, out string outputPath,
+                    out bool aimSweep))
             {
                 return;
             }
 
             var go = new GameObject("SmokeProbe");
             Object.DontDestroyOnLoad(go);
-            go.AddComponent<SmokeProbeRunner>().Begin(frames, outputPath);
+            go.AddComponent<SmokeProbeRunner>().Begin(frames, outputPath, aimSweep);
         }
+    }
+
+    /// <summary>
+    /// **冒烟模式下"可被脚本化驱动瞄准角"的宿主接口**。
+    ///
+    /// <para>**为什么是 Core 里的接口**：冒烟执行体（<see cref="SmokeProbeRunner"/>）位于 Core，
+    /// 而驱动器（`PhysicsTestDrive`）位于 Physics —— 依赖方向是 **Physics → Core**（不得反向）。
+    /// 若 Core 直接引用 `PhysicsTestDrive`，就会形成**反向依赖**（违 ADR / 工程标准 R1）。
+    /// 故由 **Core 定义接口、Physics 实现** ⇒ 运行时用 <c>is</c> 匹配即可，无需反射、无类型环。</para>
+    /// </summary>
+    public interface ISmokeAimSweepTarget
+    {
+        /// <summary>把瞄准角（度）设为 <paramref name="degrees"/>（供冒烟模式脚本化拖动）。</summary>
+        void ApplySmokeAimDegrees(float degrees);
     }
 
     /// <summary>一次冒烟采样的结果（JSON 字段见 <see cref="SmokeProbe.ToJson"/>）。</summary>
@@ -225,6 +321,10 @@ namespace Billiards.Core
         public int rendererCount;
         public int distinctMaterialCount;
         public long physicsSteps;
+        public bool aimSweep;
+
+        /// <summary>本次采样适用的判定口径名（`static` / `drag`；见 <see cref="MeetsTarget"/> / <see cref="MeetsDragTarget"/>）。</summary>
+        public string gate;
         public bool passed;
     }
 }

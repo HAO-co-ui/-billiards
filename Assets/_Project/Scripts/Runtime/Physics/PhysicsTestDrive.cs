@@ -18,7 +18,7 @@ namespace Billiards.Physics
     ///  4. 本类是**调试驱动**，不是最终交互：瞄准与力度属交互层，这里只求"能看到球动"。
     /// </summary>
     [AddComponentMenu("Billiards/Physics Test Drive")]
-    public sealed class PhysicsTestDrive : MonoBehaviour
+    public sealed class PhysicsTestDrive : MonoBehaviour, ISmokeAimSweepTarget
     {
         /// <summary>球桌碰撞几何真源。</summary>
         [Tooltip("球桌碰撞几何真源（TableConfig.asset）。")]
@@ -146,6 +146,14 @@ namespace Billiards.Physics
 
         [Tooltip("按住此键 ⇒ 瞄准 / 力度走细粒度（0.2° / 0.005）。")]
         public KeyCode fineKey = KeyCode.LeftShift;
+
+        [Header("调试叠加层（左上角诊断文本）")]
+        [Tooltip("是否绘制左上角的调试叠加层（瞄准角 / 力度 / 接触计数 / 台面静止状态等）。"
+                 + "**默认关闭**（正式入口不显示）；按 F1 可随时切换。诊断场景（灰盒）在场景里置 true。")]
+        public bool showDebugOverlay = false;
+
+        [Tooltip("切换调试叠加层的热键。")]
+        public KeyCode debugOverlayToggleKey = KeyCode.F1;
 
         [Header("键位")]
         public KeyCode aimLeftKey = KeyCode.LeftArrow;
@@ -332,7 +340,6 @@ namespace Billiards.Physics
             {
                 return;
             }
-
             bool fine = Input.GetKey(fineKey);
             // 细调系数**唯一真源**在 `PointerAimController.FineAimStepFactor`（不再于此处另写一个字面量）。
             float aStep = fine ? aimStepDegrees * PointerAimController.FineAimStepFactor : aimStepDegrees;
@@ -346,6 +353,12 @@ namespace Billiards.Physics
             if (Input.GetKeyDown(launchKey))
             {
                 Launch();
+            }
+
+            // 调试叠加层热键（默认关闭；F1 切换）。与既有输入口径一致：`Input.GetKeyDown`。
+            if (Input.GetKeyDown(debugOverlayToggleKey))
+            {
+                showDebugOverlay = !showDebugOverlay;
             }
 
             SyncAimIndicator();
@@ -529,6 +542,16 @@ namespace Billiards.Physics
             }
 
             return positions.ToArray();
+        }
+
+        /// <summary>
+        /// **冒烟模式：脚本化设置瞄准角**（<see cref="ISmokeAimSweepTarget"/> 的唯一实现点）。
+        /// 只在构建产物的拖动瞄准负载冒烟里被调用（`-billiards-smoke-aim`）；正常运行时不涉及。
+        /// 只写 <see cref="aimDegrees"/> 一个字段 ⇒ 与交互层（`PointerAimController`）的写入口径一致。
+        /// </summary>
+        public void ApplySmokeAimDegrees(float degrees)
+        {
+            aimDegrees = degrees;
         }
 
         /// <summary>
@@ -958,6 +981,13 @@ namespace Billiards.Physics
 
         private void OnGUI()
         {
+            // **开关判据（首行）**：调试叠加层默认关闭 ⇒ 正式入口不显示任何诊断文本。
+            // 关闭时直接返回（连 `GUI.Label` 都不调用）⇒ 零绘制成本。诊断场景（PhysicsGreybox）在场景里置 true。
+            if (!showDebugOverlay)
+            {
+                return;
+            }
+
             const int x = 10;
             const int y = 10;
             var rect = new Rect(x, y, 920f, 116f);
