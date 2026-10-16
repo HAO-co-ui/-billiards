@@ -102,6 +102,12 @@ namespace Billiards.UI
         private Image _sfxIcon;
         private TextMeshProUGUI[] _statValues;
 
+        // ── P5-B：赛前屏（模态）────────────────────────────────────────────────
+        private RectTransform _introLayer;
+        private TextMeshProUGUI _introOpponentName;
+        private Image[] _introTierFills;
+        private TextMeshProUGUI[] _introTierLabels;
+
         private void Awake()
         {
             EnsureBuilt();
@@ -181,6 +187,7 @@ namespace Billiards.UI
             BuildHouseLabel();
             BuildTrack();
             BuildTools();
+            BuildMatchIntro();   // P5-B：赛前屏（模态；默认隐藏）
 
             _root.gameObject.SetActive(false);
         }
@@ -236,10 +243,14 @@ namespace Billiards.UI
 
             BuildHeadingRule();
 
-            // 第一行：`AI Match` —— **禁用态**（本工程没有 AI 对手，见类注释偏离①）。
-            BuildActionRow("ActionAiMatch", HomeLayout.ActionAiMatch, PracticeHudState.ModeAiMatch, false, null);
+            // 第一行：`AI Match` —— **真入口**（P5-B：点开赛前屏）。
+            // 参考稿把它画成**黄铜实底的主按钮**（`.home-action`）；本工程曾因"没有 AI 对手"把它压暗并
+            // 登记"Ai 落地时必须恢复上亮下暗"（规格 §9.2）⇒ 本轮落地即**恢复**（`primary: true`）。
+            // ⚠ 界面一旦显示为可点，就必须真的能点开（既有铁律：界面不得留假陈述）。
+            BuildActionRow("ActionAiMatch", HomeLayout.ActionAiMatch, PracticeHudState.ModeAiMatch,
+                true, OnStartMatch, primary: true);
 
-            // 第二行：`Practice` —— **首页唯一真能用的入口**。
+            // 第二行：`Practice` —— 次按钮（深底描边），一直是真入口。
             BuildActionRow("ActionPractice", HomeLayout.ActionPractice, PracticeHudState.ModePractice, true, OnStartPractice);
 
             CreateHomeText("DifficultyLabel", hud.bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.HomeHint,
@@ -287,12 +298,18 @@ namespace Billiards.UI
         /// （"点了没反应"的假可点态是本工程明令禁止的）。
         /// </summary>
         private void BuildActionRow(string name, Rect rect, string label, bool interactive,
-                                    UnityEngine.Events.UnityAction action)
+                                    UnityEngine.Events.UnityAction action, bool primary = false)
         {
-            RectTransform frame = hud.AddFramed(_root, name, Min(rect), Max(rect),
-                ClubUiTokens.HomeActionEdge, ClubUiTokens.HomeActionFill, ClubUiTokens.RadiusButton);
+            // **两行不同款式**（参考稿：`AI Match` = `.home-action` 黄铜实底主按钮；`Practice` = `.home-secondary` 深底描边）
+            // ⇒ 令牌按 `primary` 二选一，**不再写死一套**（这是"恢复上亮下暗"的落点）。
+            Color32 fill = primary ? ClubUiTokens.ButtonFill : ClubUiTokens.HomeActionFill;
+            Color32 edge = primary ? ClubUiTokens.ButtonEdge : ClubUiTokens.HomeActionEdge;
+            Color32 labelColor = primary ? ClubUiTokens.ButtonText : ClubUiTokens.Text;
 
-            PracticeHudView.CreateText(frame, "Label", hud.titleFont, ClubUiTokens.FontHomeAction, ClubUiTokens.Text,
+            RectTransform frame = hud.AddFramed(_root, name, Min(rect), Max(rect),
+                edge, fill, ClubUiTokens.RadiusButton);
+
+            PracticeHudView.CreateText(frame, "Label", hud.titleFont, ClubUiTokens.FontHomeAction, labelColor,
                 TextAlignmentOptions.Left,
                 new Vector2(HomeLayout.ActionPaddingX / HomeLayout.MenuWidth, 0f), new Vector2(0.86f, 1f))
                 .text = label;
@@ -365,6 +382,208 @@ namespace Billiards.UI
             disabled.alpha = ClubUiTokens.DisabledOpacity;
             disabled.interactable = false;
             disabled.blocksRaycasts = false;
+        }
+
+        // ════════════════ P5-B：赛前屏（模态）════════════════════════════════
+        //
+        // 参考稿把它做成**居中模态**（`style.css:167` `#match-intro-dialog`）⇒ 本视图**不换页**，
+        // 只在首页之上**叠一层**（`_introLayer`）。两个理由：
+        //  · 换页要重排整棵首页树（`AllRects()` 自检、`T124`/`T98` 的口径都要动）——代价不成比例；
+        //  · 叠加层**顺带保住了输入让位**：首页期间 `HomeView.IsOpen` 恒为 `true`，四个输入控制器读的就是它
+        //    ⇒ 赛前屏打开时右键拖拽**不会**去蓄力出杆（这正是本项目吃过的坑，见类注释"输入让位"）。
+        // 代价：模态打开时底下的"俱乐部"画面仍在（参考稿的 `dialog` 同样压在 `body.home-active` 上）✓
+
+        private void BuildMatchIntro()
+        {
+            Rect card = HomeLayout.MatchIntroCard;
+
+            _introLayer = PracticeHudView.AddRect(_root, "MatchIntro", Vector2.zero, Vector2.one);
+
+            hud.SetImage(PracticeHudView.AddRect(_introLayer, "Backdrop", Vector2.zero, Vector2.one)
+                .gameObject.AddComponent<Image>(), null, ClubUiTokens.Backdrop);
+
+            RectTransform cardRt = hud.AddFramed(_introLayer, "Card", Min(card), Max(card),
+                ClubUiTokens.LineCardEdge, ClubUiTokens.PanelCard, ClubUiTokens.RadiusDialog);
+
+            // 顶部黄铜边（参考稿 `border-top: 3px solid var(--accent)`）
+            hud.SetImage(PracticeHudView.AddRect(cardRt, "TopEdge",
+                    RelativeMin(card, HomeLayout.MatchIntroCardTopEdge),
+                    RelativeMax(card, HomeLayout.MatchIntroCardTopEdge)).gameObject.AddComponent<Image>(),
+                null, ClubUiTokens.ButtonFill);
+
+            AddIntroText(cardRt, card, "Eyebrow", hud.bodyFont, ClubUiTokens.FontBody, ClubUiTokens.Accent,
+                PracticeHudState.HomeEyebrow, HomeLayout.MatchIntroEyebrow);
+            AddIntroText(cardRt, card, "Title", hud.titleFont, ClubUiTokens.FontResultTitle, ClubUiTokens.Text,
+                PracticeHudState.MatchIntroTitle, HomeLayout.MatchIntroTitle);
+
+            // 对阵行：图标在上、名字在下（参考稿 `.intro-player` 的两列）
+            hud.AddFixed(cardRt, "PlayerIcon", ClubUiSprites.UiSprite.Player, ClubUiTokens.Text,
+                RelativeCenter(card, HomeLayout.MatchIntroPlayerIcon),
+                new Vector2(HomeLayout.MatchIntroAvatarSize, HomeLayout.MatchIntroAvatarSize));
+            AddIntroText(cardRt, card, "PlayerName", hud.bodyFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
+                PracticeHudState.MatchIntroYou, HomeLayout.MatchIntroPlayerName);
+            AddIntroText(cardRt, card, "Versus", hud.titleFont, ClubUiTokens.FontHomeAction, ClubUiTokens.Accent,
+                PracticeHudState.MatchIntroVersus, HomeLayout.MatchIntroVersus);
+            hud.AddFixed(cardRt, "OpponentIcon", ClubUiSprites.UiSprite.Robot, ClubUiTokens.Text,
+                RelativeCenter(card, HomeLayout.MatchIntroOpponentIcon),
+                new Vector2(HomeLayout.MatchIntroAvatarSize, HomeLayout.MatchIntroAvatarSize));
+
+            // 对手名 = `<难度> AI`（**动态**：随档位变，见 `RefreshMatchIntro`）
+            _introOpponentName = AddIntroText(cardRt, card, "OpponentName", hud.bodyFont, ClubUiTokens.FontBody,
+                ClubUiTokens.Text, PracticeHudState.OpponentName(MatchSetup.Selected),
+                HomeLayout.MatchIntroOpponentName);
+
+            // 赛制块（上下各一条 1 px 细线，参考稿 `.intro-format`）
+            AddIntroRule(cardRt, card, "FormatRuleTop", HomeLayout.MatchIntroFormatRuleTop);
+            AddIntroText(cardRt, card, "FormatTitle", hud.titleFont, ClubUiTokens.FontHomeAction,
+                ClubUiTokens.HomeClubName, PracticeHudState.MatchIntroFormatTitle,
+                HomeLayout.MatchIntroFormatTitle);
+            AddIntroText(cardRt, card, "FormatDetail", hud.bodyFont, ClubUiTokens.FontSmall,
+                ClubUiTokens.HomeHint, PracticeHudState.MatchIntroFormatDetail,
+                HomeLayout.MatchIntroFormatDetail);
+            AddIntroRule(cardRt, card, "FormatRuleBottom", HomeLayout.MatchIntroFormatRuleBottom);
+
+            AddIntroText(cardRt, card, "TierLabel", hud.bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.HomeHint,
+                PracticeHudState.HomeDifficultyLabel, HomeLayout.MatchIntroTierLabel);
+
+            BuildIntroTierSegment(cardRt, card);
+
+            AddIntroButton(cardRt, card, "StartButton", PracticeHudState.MatchIntroStart,
+                HomeLayout.MatchIntroStartButton, OnBeginMatch, primary: true);
+            AddIntroButton(cardRt, card, "BackButton", PracticeHudState.MatchIntroBack,
+                HomeLayout.MatchIntroBackButton, OnBackToClub, primary: false);
+
+            _introLayer.gameObject.SetActive(false);
+            RefreshMatchIntro();
+        }
+
+        /// <summary>三档分段（**可点**：三格各挂 `Button`；选中态由 `MatchSetup.ActiveIndex` 决定、可刷新）。</summary>
+        private void BuildIntroTierSegment(RectTransform cardRt, Rect card)
+        {
+            Rect rect = HomeLayout.MatchIntroTierSegment;
+            RectTransform segment = hud.AddFramed(cardRt, "TierSegment", RelativeMin(card, rect),
+                RelativeMax(card, rect), ClubUiTokens.Line, ClubUiTokens.PanelSegment, ClubUiTokens.RadiusSegment);
+
+            RectTransform inner = PracticeHudView.AddRect(segment, "Padding", Vector2.zero, Vector2.one);
+            inner.offsetMin = new Vector2(ClubUiTokens.SegmentPadding, ClubUiTokens.SegmentPadding);
+            inner.offsetMax = new Vector2(-ClubUiTokens.SegmentPadding, -ClubUiTokens.SegmentPadding);
+
+            int count = MatchSetup.Tiers.Length;
+            _introTierFills = new Image[count];
+            _introTierLabels = new TextMeshProUGUI[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                string label = PracticeHudState.TierLabel(MatchSetup.Tiers[i]);
+                RectTransform cell = PracticeHudView.AddRect(inner, label,
+                    new Vector2(i / (float)count, 0f), new Vector2((i + 1) / (float)count, 1f));
+
+                // 选中底：**每格都建**、且**始终 enabled** ——
+                // ① 切换时只改 `color`（不动 `enabled`），因为**禁用的 Graphic 收不到射线**，
+                //    若用 `enabled` 表示"未选中"，就只剩选中那格能点（这是最容易踩的坑）；
+                // ② 非选中的颜色取 `PanelSegment`（= 分段自己的底色）⇒ 视觉上就是"没有底"，
+                //    与参考稿 `.club-segment button{background:none}` 等价，**不必新增透明令牌**。
+                var fill = cell.gameObject.AddComponent<Image>();
+                hud.SetImage(fill, ClubUiSprites.PanelForRadius(ClubUiTokens.RadiusSegmentInner),
+                    ClubUiTokens.PanelSegment);
+                fill.raycastTarget = true;   // 三格都要能点
+                _introTierFills[i] = fill;
+
+                _introTierLabels[i] = PracticeHudView.CreateText(cell, "Label", hud.bodyFont,
+                    ClubUiTokens.FontBodySmall, ClubUiTokens.SegmentIdleText, TextAlignmentOptions.Center,
+                    Vector2.zero, Vector2.one);
+                _introTierLabels[i].text = label;
+
+                int captured = i;   // 逐格绑定：闭包必须捕获**当次**下标
+                var button = cell.gameObject.AddComponent<Button>();
+                button.targetGraphic = fill;
+                button.onClick.AddListener(() => OnSelectTier(captured));
+            }
+        }
+
+        /// <summary>按 `MatchSetup` 刷新对手名与三格选中态（**唯一刷新点**）。</summary>
+        private void RefreshMatchIntro()
+        {
+            if (_introOpponentName != null)
+            {
+                _introOpponentName.text = PracticeHudState.OpponentName(MatchSetup.Selected);
+            }
+
+            if (_introTierFills == null)
+            {
+                return;
+            }
+
+            int active = MatchSetup.ActiveIndex;
+            for (int i = 0; i < _introTierFills.Length; i++)
+            {
+                bool on = i == active;
+                if (_introTierFills[i] != null)
+                {
+                    // ⚠ 改 `color` 而不是 `enabled`：禁用的 Graphic **收不到射线**（见 `BuildIntroTierSegment` 的注释）
+                    _introTierFills[i].color = on ? ClubUiTokens.ButtonFill : ClubUiTokens.PanelSegment;
+                }
+
+                if (_introTierLabels[i] != null)
+                {
+                    _introTierLabels[i].color = on ? ClubUiTokens.SegmentActiveText : ClubUiTokens.SegmentIdleText;
+                }
+            }
+        }
+
+        private TextMeshProUGUI AddIntroText(RectTransform parent, Rect card, string name, TMP_FontAsset font,
+                                            float size, Color32 color, string text, Rect rect)
+        {
+            TextMeshProUGUI label = PracticeHudView.CreateText(parent, name, font, size, color,
+                TextAlignmentOptions.Center, RelativeMin(card, rect), RelativeMax(card, rect));
+            label.text = text;
+            return label;
+        }
+
+        private void AddIntroRule(RectTransform parent, Rect card, string name, Rect rect)
+        {
+            hud.SetImage(PracticeHudView.AddRect(parent, name, RelativeMin(card, rect), RelativeMax(card, rect))
+                .gameObject.AddComponent<Image>(), null, ClubUiTokens.LineCardEdge);
+        }
+
+        private void AddIntroButton(RectTransform parent, Rect card, string name, string label, Rect rect,
+                                    UnityEngine.Events.UnityAction action, bool primary)
+        {
+            Color32 fill = primary ? ClubUiTokens.ButtonFill : ClubUiTokens.PanelCard;
+            Color32 edge = primary ? ClubUiTokens.ButtonEdge : ClubUiTokens.ButtonEdgeSecondary;
+            Color32 textColor = primary ? ClubUiTokens.ButtonText : ClubUiTokens.Text;
+
+            RectTransform frame = hud.AddFramed(parent, name, RelativeMin(card, rect), RelativeMax(card, rect),
+                edge, fill, ClubUiTokens.RadiusButton);
+
+            PracticeHudView.CreateText(frame, "Label", hud.titleFont, ClubUiTokens.FontBody, textColor,
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = label;
+
+            var hit = frame.GetComponent<Image>();
+            hit.raycastTarget = true;
+
+            var button = frame.gameObject.AddComponent<Button>();
+            button.targetGraphic = hit;
+            button.onClick.AddListener(action);
+        }
+
+        /// <summary>把一个绝对视口矩形换算成"相对 <paramref name="outer"/>"的锚点（子物体用）。</summary>
+        private static Vector2 RelativeMin(Rect outer, Rect inner)
+        {
+            return new Vector2((inner.xMin - outer.xMin) / outer.width, (inner.yMin - outer.yMin) / outer.height);
+        }
+
+        /// <summary>见 <see cref="RelativeMin"/>。</summary>
+        private static Vector2 RelativeMax(Rect outer, Rect inner)
+        {
+            return new Vector2((inner.xMax - outer.xMin) / outer.width, (inner.yMax - outer.yMin) / outer.height);
+        }
+
+        /// <summary>把一个绝对视口矩形换算成"相对 <paramref name="outer"/>"的中心锚点（定尺寸子物体用）。</summary>
+        private static Vector2 RelativeCenter(Rect outer, Rect inner)
+        {
+            return new Vector2((inner.center.x - outer.xMin) / outer.width,
+                (inner.center.y - outer.yMin) / outer.height);
         }
 
         // ════════════════ 左下：三项统计（数字在上、标签在下）══════════════════
@@ -506,6 +725,7 @@ namespace Billiards.UI
 
             RefreshRecords();
             RefreshToolButtons();
+            HideMatchIntro();   // 每次显示首页都从"首页页"开始（赛前屏不留着上次的状态）
 
             IsOpen = true;
             _root.gameObject.SetActive(true);
@@ -536,10 +756,65 @@ namespace Billiards.UI
             }
         }
 
-        /// <summary>`Practice`：关闭首页、交回玩法（首页唯一有效的入口）。</summary>
+        /// <summary>`Practice`：关闭首页、交回玩法（练习入口）。</summary>
         public void OnStartPractice()
         {
             Hide();
+        }
+
+        // ── P5-B：赛前屏的公开动作（三处绑定：`AI Match` 行 / `Start match` / `Back to club`）──
+
+        /// <summary>`AI Match`：**打开赛前屏**（这就是"点亮入口"的落点：真能点开）。</summary>
+        public void OnStartMatch()
+        {
+            if (_introLayer == null)
+            {
+                Debug.LogWarning("HomeView：赛前屏未建出（`hud` 未接线？）⇒ 无法打开。", this);
+                return;
+            }
+
+            RefreshMatchIntro();   // 每次打开都按当前档位刷新（对手名/选中态）
+            _introLayer.gameObject.SetActive(true);
+            _introLayer.SetAsLastSibling();
+        }
+
+        /// <summary>`Back to club`：关闭赛前屏、回到首页（不改变 `IsOpen`）。</summary>
+        public void OnBackToClub()
+        {
+            HideMatchIntro();
+        }
+
+        /// <summary>
+        /// `Start match`：把选中的档位交给 Runtime 开局。
+        /// ⚠ **未接线时保持赛前屏并告警、不进入对局** —— 界面承诺了"开始一局"就必须真的开始，
+        /// 否则就是**假陈述**（本工程铁律）。`room-env` 侧注册 `MatchSeams.Host` 后本分支自然走通。
+        /// </summary>
+        public void OnBeginMatch()
+        {
+            if (!MatchSeams.TryStartMatch(MatchSetup.Selected))
+            {
+                Debug.LogWarning("HomeView：`Start match` 被点击，但 `MatchSeams.Host` 尚未注册"
+                                 + "（Runtime 侧开局入口未接线）⇒ **不进入对局**（不假装已开局）。", this);
+                return;
+            }
+
+            HideMatchIntro();
+            Hide();
+        }
+
+        /// <summary>档位按钮（三格各自绑 `index`）：写进 `MatchSetup` 并刷新表现。</summary>
+        public void OnSelectTier(int index)
+        {
+            MatchSetup.Select(MatchSetup.TierAt(index));
+            RefreshMatchIntro();
+        }
+
+        private void HideMatchIntro()
+        {
+            if (_introLayer != null)
+            {
+                _introLayer.gameObject.SetActive(false);
+            }
         }
 
         /// <summary>

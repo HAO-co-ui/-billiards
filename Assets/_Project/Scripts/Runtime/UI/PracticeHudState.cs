@@ -1,4 +1,5 @@
 using Billiards.Physics;
+using Billiards.Rules;
 using UnityEngine;
 
 namespace Billiards.UI
@@ -240,6 +241,61 @@ namespace Billiards.UI
         /// <summary>首页右下角曲目名（图标另走 `Volume` 精灵，**不是** `♫` 字符）。</summary>
         public const string HomeTrackTitle = "Late Set";
 
+        // ── P5-B：赛事设置屏（AI 对战）的文案 ───────────────────────────────────
+        //
+        // 全部英文（字体只有 Latin 子集 ⇒ 否则 `T97 (c)` 红），分隔符一律 `·`（U+00B7，5 个源字体实测全覆盖）。
+        // 文案来源：`04_UI/Web_Implementation_Reference/index.html:72-79`（`#match-intro-dialog` 逐字）——
+        // 除一句外全部与参考稿逐字一致：参考稿的 `<h2>Tonight's match</h2>`、`You`、`VS`、
+        // `BEST OF THREE`、`First to two racks`、`Start match`、`Back to club` 都直接采用。
+
+        /// <summary>赛前屏大标题（参考稿 `#match-intro-dialog h2` 逐字）。</summary>
+        public const string MatchIntroTitle = "Tonight's match";
+
+        /// <summary>己方名（参考稿逐字）。</summary>
+        public const string MatchIntroYou = "You";
+
+        /// <summary>对阵分隔（参考稿逐字）。</summary>
+        public const string MatchIntroVersus = "VS";
+
+        /// <summary>赛制标题（参考稿逐字；用户规则 = 现实 8 球 ⇒ 三局两胜）。</summary>
+        public const string MatchIntroFormatTitle = "BEST OF THREE";
+
+        /// <summary>赛制说明（参考稿逐字）。</summary>
+        public const string MatchIntroFormatDetail = "First to two racks";
+
+        /// <summary>开始按钮（参考稿逐字）。</summary>
+        public const string MatchIntroStart = "Start match";
+
+        /// <summary>返回按钮（参考稿逐字）。</summary>
+        public const string MatchIntroBack = "Back to club";
+
+        /// <summary>对手名后缀（参考稿 `Club AI` 的形状 = `<difficulty> AI`）。</summary>
+        public const string OpponentNameSuffix = " AI";
+
+        /// <summary>
+        /// **对手回合点击被拒**时的可见提示（P5-B 用户要求"不许静默"）。
+        /// 与 `AiTurnDetail`（"Opponent is taking its shot"，常驻态说明）**刻意不同**：
+        /// 那句描述**状态**，这句回应**玩家刚刚的那次点击**（"你点了，但现在不是你的回合"）。
+        /// </summary>
+        public const string OpponentBlockedDetail = "Opponent is shooting · you can aim when it's your turn";
+
+        /// <summary>三档难度的显示名 —— **复用首页分段的既有常量**（同一档位在界面上只有一个名字）。</summary>
+        public static string TierLabel(AiDifficulty tier)
+        {
+            switch (tier)
+            {
+                case AiDifficulty.Casual: return HomeDifficultyCasual;
+                case AiDifficulty.Expert: return HomeDifficultyExpert;
+                default: return HomeDifficultyClub;
+            }
+        }
+
+        /// <summary>对手名 = `<档位> AI`（参考稿 `Club AI` 的形状）。</summary>
+        public static string OpponentName(AiDifficulty tier)
+        {
+            return TierLabel(tier) + OpponentNameSuffix;
+        }
+
         // ════════════════ 状态 → 文案 / 配色 / 图标（唯一实现点）═════════════════
 
         /// <summary>`data-state` 契约 token（判据 `T125` 用它把枚举钉在设计契约上）。</summary>
@@ -306,8 +362,16 @@ namespace Billiards.UI
         /// ② **待放球**次之：白球在手上时最该说的是"怎么把它放下"（含 `Esc` 兜底键）。
         /// ③ 其余回落到 `StateDetail(state)`（既有行为**逐字不变**）。
         /// </summary>
-        public static string CaptionLine(HudVisualState state, bool awaitingPlacement, bool placementRefused)
+        public static string CaptionLine(HudVisualState state, bool awaitingPlacement, bool placementRefused,
+                                         bool opponentBlocked = false)
         {
+            // ⚠ 优先级：**对手回合被拒**排在最前 —— 它是玩家**刚刚做了动作、被拒**的即时反馈，
+            //   而其余两句描述的是"当前是什么状态"（状态说明随时都能看到，这一次点击的解释错过就没了）。
+            if (opponentBlocked)
+            {
+                return OpponentBlockedDetail;
+            }
+
             if (placementRefused)
             {
                 return PlacementRefusedDetail;
@@ -535,6 +599,14 @@ namespace Billiards.UI
                 HomeClubName, HomeClubSub, HomeEyebrow, HomeTableNumber,
                 HomeDifficultyLabel, HomeDifficultyCasual, HomeDifficultyClub, HomeDifficultyExpert,
                 HomeStatRacks, HomeHouseLabel, HomeHouseNumber, HomeTrackTitle,
+                // P5-B 赛前屏（AI 对战）文案 + 对手回合被拒的提示
+                MatchIntroTitle, MatchIntroYou, MatchIntroVersus, MatchIntroFormatTitle,
+                MatchIntroFormatDetail, MatchIntroStart, MatchIntroBack, OpponentNameSuffix,
+                OpponentBlockedDetail,
+                // 三档的对手名（`<档位> AI`）—— 由纯函数生成，故逐档列出（否则字符覆盖判据看不到它们）
+                OpponentName(AiDifficulty.Casual),
+                OpponentName(AiDifficulty.Club),
+                OpponentName(AiDifficulty.Expert),
                 // 自由球"待放球"与"落点被拒"两个子情形的说明
                 //（`BallInHandDetail` 已由上面的 `states` 循环覆盖，不重复列举）
                 BallInHandPendingDetail, PlacementRefusedDetail,

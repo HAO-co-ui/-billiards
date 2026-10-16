@@ -38,6 +38,120 @@ namespace Billiards.UI
     public static class HomeLayout
     {
         // ── 画布基准（与 HUD **同一份常量**，不另立数值）──────────────────────
+        // ── P5-B：赛前屏（`AI Match` → 模态）的几何 ───────────────────────────────
+        //
+        // 参考稿把它做成一个**居中模态**（`style.css:167` `#match-intro-dialog{ text-align:center;
+        // padding:32px 30px; border-top:3px solid var(--accent); }`）⇒ 这里同样做成居中卡片 +
+        // 顶部 3 px 黄铜边；不是"换页"（换页要重排整棵首页树，而模态是叠加层，代价小且与参考一致）。
+        // 卡片 560×520 居中：(1920−560)/2 = 680、(1080−520)/2 = 280。
+
+        /// <summary>赛前屏卡片宽（px）。</summary>
+        public const float MatchIntroCardWidth = 560f;
+
+        /// <summary>赛前屏卡片高（px）。</summary>
+        public const float MatchIntroCardHeight = 520f;
+
+        /// <summary>卡片左右内距（参考稿 `padding: 32px 30px` 的横向值，取 40 以对齐首页左栏观感）。</summary>
+        public const float MatchIntroPaddingX = 40f;
+
+        /// <summary>顶部黄铜边厚度（参考稿 `border-top: 3px`）。</summary>
+        public const float MatchIntroTopEdge = 3f;
+
+        /// <summary>对阵行两个头像的边长（参考稿 `.intro-player .avatar{58px}`）。</summary>
+        public const float MatchIntroAvatarSize = 58f;
+
+        /// <summary>档位分段与两个按钮的统一宽度（= 首页菜单列宽，保持同一套视觉语言）。</summary>
+        public const float MatchIntroControlWidth = 356f;
+
+        /// <summary>整屏遮罩（模态底）。</summary>
+        public static readonly Rect MatchIntroBackdrop = Px(0f, 0f, ReferenceWidth, ReferenceHeight);
+
+        /// <summary>赛前屏卡片本体。</summary>
+        public static readonly Rect MatchIntroCard = Px(
+            (ReferenceWidth - MatchIntroCardWidth) * 0.5f, (ReferenceHeight - MatchIntroCardHeight) * 0.5f,
+            MatchIntroCardWidth, MatchIntroCardHeight);
+
+        /// <summary>卡片顶部黄铜边（参考稿 `border-top: 3px solid var(--accent)`）。</summary>
+        public static readonly Rect MatchIntroCardTopEdge = Px(
+            CenterX - MatchIntroCardWidth * 0.5f, CardTop,
+            MatchIntroCardWidth, MatchIntroTopEdge);
+
+        /// <summary>`8-BALL CLUB`（复用首页 eyebrow 文案）。</summary>
+        public static readonly Rect MatchIntroEyebrow = Px(
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX,
+            CardTop + 34f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 12f);
+
+        /// <summary>大标题 `Tonight's match`（参考稿 35 px）。</summary>
+        public static readonly Rect MatchIntroTitle = Px(
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX,
+            CardTop + 52f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 46f);
+
+        /// <summary>己方头像（`You` 一侧）。</summary>
+        public static readonly Rect MatchIntroPlayerIcon = Px(
+            CenterX - 130f - MatchIntroAvatarSize * 0.5f, CardTop + 118f,
+            MatchIntroAvatarSize, MatchIntroAvatarSize);
+
+        /// <summary>己方名（`You`）。</summary>
+        public static readonly Rect MatchIntroPlayerName = Px(
+            CenterX - 130f - 90f, CardTop + 180f, 180f, 18f);
+
+        /// <summary>对阵分隔 `VS`。</summary>
+        public static readonly Rect MatchIntroVersus = Px(CenterX - 30f, CardTop + 118f, 60f, MatchIntroAvatarSize);
+
+        /// <summary>对手头像（机器人）。</summary>
+        public static readonly Rect MatchIntroOpponentIcon = Px(
+            CenterX + 130f - MatchIntroAvatarSize * 0.5f, CardTop + 118f,
+            MatchIntroAvatarSize, MatchIntroAvatarSize);
+
+        /// <summary>对手名（`<难度> AI`，随选中档变化）。</summary>
+        public static readonly Rect MatchIntroOpponentName = Px(CenterX + 130f - 90f, CardTop + 180f, 180f, 18f);
+
+        /// <summary>赛制块上边线（参考稿 `.intro-format` 的上下 1 px）。</summary>
+        public static readonly Rect MatchIntroFormatRuleTop = Px(
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 220f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, ClubUiTokens.Hairline);
+
+        /// <summary>赛制标题 `BEST OF THREE`。</summary>
+        public static readonly Rect MatchIntroFormatTitle = Px(
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 232f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 28f);
+
+        /// <summary>赛制说明 `First to two racks`。</summary>
+        public static readonly Rect MatchIntroFormatDetail = Px(
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 262f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 16f);
+
+        /// <summary>赛制块下边线。</summary>
+        public static readonly Rect MatchIntroFormatRuleBottom = Px(
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 286f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, ClubUiTokens.Hairline);
+
+        /// <summary>`OPPONENT` 小标签。</summary>
+        public static readonly Rect MatchIntroTierLabel = Px(
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 308f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 12f);
+
+        /// <summary>三档难度分段（与本屏同一套令牌；**可点**，非首页那个禁用占位）。</summary>
+        public static readonly Rect MatchIntroTierSegment = Px(
+            CenterX - MatchIntroControlWidth * 0.5f, CardTop + 326f,
+            MatchIntroControlWidth, ClubUiTokens.SegmentHeight);
+
+        /// <summary>`Start match` 主按钮。</summary>
+        public static readonly Rect MatchIntroStartButton = Px(
+            CenterX - MatchIntroControlWidth * 0.5f, CardTop + 382f, MatchIntroControlWidth, 44f);
+
+        /// <summary>`Back to club` 次按钮。</summary>
+        public static readonly Rect MatchIntroBackButton = Px(
+            CenterX - MatchIntroControlWidth * 0.5f, CardTop + 434f, MatchIntroControlWidth, 40f);
+
+        /// <summary>卡片水平中心（设计 px）。</summary>
+        private const float CenterX = ReferenceWidth * 0.5f;
+
+        /// <summary>卡片上边（设计 px）。</summary>
+        private const float CardTop = (ReferenceHeight - MatchIntroCardHeight) * 0.5f;
+
         /// <summary>设计画布宽（= `PracticeHudLayout.ReferenceWidth`）。</summary>
         public const float ReferenceWidth = PracticeHudLayout.ReferenceWidth;
 
@@ -335,6 +449,12 @@ namespace Billiards.UI
                 RecordsValue(0), RecordsValue(1), RecordsValue(2),
                 RecordsLabel(0), RecordsLabel(1), RecordsLabel(2),
                 ToolButton(0), ToolButton(1),
+                // P5-B 赛前屏（模态）
+                MatchIntroBackdrop, MatchIntroCard, MatchIntroCardTopEdge, MatchIntroEyebrow,
+                MatchIntroTitle, MatchIntroPlayerIcon, MatchIntroPlayerName, MatchIntroVersus,
+                MatchIntroOpponentIcon, MatchIntroOpponentName, MatchIntroFormatRuleTop,
+                MatchIntroFormatTitle, MatchIntroFormatDetail, MatchIntroFormatRuleBottom,
+                MatchIntroTierLabel, MatchIntroTierSegment, MatchIntroStartButton, MatchIntroBackButton,
             };
         }
 

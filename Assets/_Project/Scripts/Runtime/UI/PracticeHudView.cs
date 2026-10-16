@@ -135,6 +135,9 @@ namespace Billiards.UI
         /// <summary>落点被拒的提示窗口截止时刻（与 <see cref="_refusedUntil"/> 分开，见 `PlacementRefusedDetail`）。</summary>
         private float _placementRefusedUntil;
 
+        /// <summary>**对手回合点击被拒**的提示窗口截止时刻（P5-B："不许静默"；与上面两个窗口同形）。</summary>
+        private float _opponentBlockedUntil;
+
         private bool _built;
 
         /// <summary>
@@ -664,11 +667,20 @@ namespace Billiards.UI
                     _lastPlacementRefusedSeen = drive.RefusedPlacementCount;
                     _placementRefusedUntil = now + FoulBannerSeconds;
                 }
+
+                // **对手回合点击被拒**（P5-B：用户要求"不许静默"）：
+                // `MatchTurnNotice` 只记账 + 置一个 pending 位，**时间窗在这里开** ——
+                // 与 `ScratchCount` / `RefusedLaunchCount` / `RefusedPlacementCount` 的轮询范式逐字同形。
+                if (MatchTurnNotice.ConsumePending())
+                {
+                    _opponentBlockedUntil = now + FoulBannerSeconds;
+                }
             }
 
             bool foulWindow = now < _foulUntil;
             bool refusedWindow = now < _refusedUntil;
             bool placementRefusedWindow = now < _placementRefusedUntil;
+            bool opponentBlockedWindow = now < _opponentBlockedUntil;
             bool ballInHand = _ballInHandLatch && phase == ShotPhase.Aim;
 
             // **待放球**（"全场自由球"新规则）：白球**不在台上**、玩家尚未放置、轮到玩家、台面已停
@@ -685,13 +697,14 @@ namespace Billiards.UI
             HudVisualState state = PracticeHudState.ResolveVisualState(
                 phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen, awaitingPlacement);
 
-            RefreshStatusBar(state, awaitingPlacement, placementRefusedWindow);
+            RefreshStatusBar(state, awaitingPlacement, placementRefusedWindow, opponentBlockedWindow);
             RefreshPower(phase);
             RefreshCounters();
             RefreshToolButtons();
         }
 
-        private void RefreshStatusBar(HudVisualState state, bool awaitingPlacement, bool placementRefused)
+        private void RefreshStatusBar(HudVisualState state, bool awaitingPlacement, bool placementRefused,
+                                      bool opponentBlocked)
         {
             Color32 symbol = PracticeHudState.SymbolColor(state);
             Color32 edge = PracticeHudState.EdgeColor(state);
@@ -741,7 +754,8 @@ namespace Billiards.UI
                 // 说明行的**文案选择**一律走纯函数 `PracticeHudState.CaptionLine`（判据可直接驱动它）——
                 // 本方法只负责"喂事实"，不自己判"哪句优先"：自由球有三个子情形（待放球 / 已回到台上 /
                 // **落点被拒**）共用同一档状态与配色，优先级必须有个**可被判据钉住**的单一实现点。
-                _stateCaption.text = PracticeHudState.CaptionLine(state, awaitingPlacement, placementRefused);
+                _stateCaption.text = PracticeHudState.CaptionLine(state, awaitingPlacement, placementRefused,
+                    opponentBlocked);
             }
 
             if (_shotInfoValue != null)

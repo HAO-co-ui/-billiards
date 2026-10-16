@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Billiards.EditorTools;
 using Billiards.Physics;
+using Billiards.Rules;
 using Billiards.UI;
 using NUnit.Framework;
 using UnityEditor;
@@ -204,6 +205,9 @@ namespace Billiards.Tests
         /// （"同一个路径写两遍"正是这类白盒断言最易失效的方式）。
         /// </summary>
         private static readonly string PracticeHudViewSourcePath = ViewSourceFiles[0];
+
+        /// <summary>`HomeView` 的源码路径（`T144 ④` 白盒接线断言用）。</summary>
+        private const string HomeViewSourcePath = "Assets/_Project/Scripts/Runtime/UI/HomeView.cs";
 
         private static void CheckSceneSpriteSlots(List<string> failures)
         {
@@ -713,6 +717,181 @@ namespace Billiards.Tests
                                   + "标题/说明/图标互异 ✓；兜底键 Esc 可发现 ✓；酒红仅犯规、亮青仅指定袋 ✓；"
                                   + "优先级 9 例 + 待放球 2 例 ✓；"
                                   + "说明行 3 子情形 + 落点被拒非假陈述 ✓；脉冲 0.8 s ✓");
+        }
+
+        // ════════════════ P5-B：赛前屏（AI 对战入口）═══════════════════════════
+
+        /// <summary>
+        /// **`T144`：赛前屏（P5-B）—— 默认档 / 三档唯一选中 / 对手回合**不许静默** / 入口无假陈述**。
+        ///
+        /// 断言四组：
+        /// ① **默认档 = `Club`**（用户拍板）**且**与 Runtime 侧默认档 `EightBallAi.DefaultDifficulty` **同源**
+        ///    （两处默认值不得漂移）；
+        /// ② **三档可切换 + 选中态唯一**：`Tiers` 次序 = 参考稿 `casual|club|expert` 逐项同序；
+        ///    `Select` 每一档后 `Selected`/`ActiveIndex` 都对，且**恰好一格**命中 `ActiveIndex`；
+        /// ③ **对手回合点击 ⇒ 可见提示**（用户要求"不许静默"）：读**可判定出口**
+        ///    `MatchTurnNotice.BlockedCount` / `LastBlockedReason`（**不读像素**），并断言可见文案
+        ///    走 `CaptionLine(..., opponentBlocked: true)` = `OpponentBlockedDetail`，且**不等于**常驻态说明
+        ///    （否则等于"没提示"）；边沿语义（`ConsumePending` 一次 true、再一次 false）也钉住；
+        /// ④ **无假陈述**：首页/赛前屏上出现的可点控件都必须**真接了动作**（白盒文本断言，读**磁盘文本**）：
+        ///    `AI Match` 行可点 + 有回调、`Start match` 必须走 `MatchSeams.TryStartMatch`
+        ///    （**未接线不得假装开局**）、`Back to club` 有回调、三格各挂 `Button`。
+        ///
+        /// **怎么打死它**：① 把 `MatchSetup.ResetToDefault` 改成 `Casual` ⇒ ① 红；
+        /// ② 把 `Tiers` 的次序调换成 `Club|Casual|Expert` ⇒ ② 红；
+        /// ③ 把 `MatchTurnNotice.RequestBlock` 改成**静默 `return`** ⇒ ③ 红（计数恒 0 = 静默无反馈）；
+        /// ④ 把 `AI Match` 那行的 `primary: true` 去掉 ⇒ ④ 红（那意味着又变回压暗的假入口）。
+        /// </summary>
+        [Test]
+        public void T144_MatchIntro_DefaultTier_TierSwitch_OpponentTurnNotice_AndNoFalseAffordance()
+        {
+            var failures = new List<string>();
+
+            // ── ① 默认档 ──
+            MatchSetup.ResetToDefault();
+            if (MatchSetup.Selected != AiDifficulty.Club)
+            {
+                failures.Add($"T144① 默认档应为 `Club`（用户拍板），实际 {MatchSetup.Selected}。");
+            }
+
+            if (MatchSetup.Selected != EightBallAi.DefaultDifficulty)
+            {
+                failures.Add("T144① UI 默认档必须 = `EightBallAi.DefaultDifficulty` —— 两处默认值不得漂移。");
+            }
+
+            // ── ② 三档可切换 + 选中态唯一（次序 = 参考稿 casual|club|expert）──
+            if (MatchSetup.Tiers.Length != 3
+                || MatchSetup.Tiers[0] != AiDifficulty.Casual
+                || MatchSetup.Tiers[1] != AiDifficulty.Club
+                || MatchSetup.Tiers[2] != AiDifficulty.Expert)
+            {
+                failures.Add("T144② 三档次序必须为 `Casual | Club | Expert`（与参考稿 `data-home-difficulty` 逐项同序）。");
+            }
+
+            for (int i = 0; i < MatchSetup.Tiers.Length; i++)
+            {
+                AiDifficulty tier = MatchSetup.Tiers[i];
+                MatchSetup.Select(tier);
+
+                if (MatchSetup.Selected != tier)
+                {
+                    failures.Add($"T144② 选中 {tier} 后 `Selected` 应为 {tier}，实际 {MatchSetup.Selected}。");
+                }
+
+                if (MatchSetup.ActiveIndex != i)
+                {
+                    failures.Add($"T144② {tier} 的 `ActiveIndex` 应为 {i}，实际 {MatchSetup.ActiveIndex}。");
+                }
+
+                int hits = 0;
+                for (int j = 0; j < MatchSetup.Tiers.Length; j++)
+                {
+                    if (MatchSetup.IndexOf(MatchSetup.Tiers[j]) == MatchSetup.ActiveIndex)
+                    {
+                        hits++;
+                    }
+                }
+
+                if (hits != 1)
+                {
+                    failures.Add($"T144② 选中态必须**唯一**，实测 {hits} 格命中 `ActiveIndex`。");
+                }
+            }
+
+            // 档位名与对手名：与参考稿逐字（`Club` / `Club AI`）
+            if (PracticeHudState.TierLabel(AiDifficulty.Club) != PracticeHudState.HomeDifficultyClub
+                || PracticeHudState.OpponentName(AiDifficulty.Club) != PracticeHudState.HomeDifficultyClub
+                                                                       + PracticeHudState.OpponentNameSuffix)
+            {
+                failures.Add("T144② 档位名/对手名必须复用同一套文案（`Club` / `Club AI`）。");
+            }
+
+            MatchSetup.ResetToDefault();
+
+            // ── ③ 对手回合点击 ⇒ 可见提示（读可判定出口，不读像素）──
+            MatchTurnNotice.Reset();
+            if (MatchTurnNotice.HasFeedback)
+            {
+                failures.Add("T144③ 起点不应有反馈（`Reset` 后计数应为 0）。");
+            }
+
+            MatchTurnNotice.RequestBlock(MatchTurnNotice.ReasonOpponentTurn);
+
+            if (MatchTurnNotice.BlockedCount != 1)
+            {
+                failures.Add("T144③ **不许静默**：被拒一次后 `BlockedCount` 应为 1"
+                             + $"（实测 {MatchTurnNotice.BlockedCount} —— 静默实现会让它恒为 0）。");
+            }
+
+            if (MatchTurnNotice.LastBlockedReason != MatchTurnNotice.ReasonOpponentTurn)
+            {
+                failures.Add($"T144③ `LastBlockedReason` 应为 {MatchTurnNotice.ReasonOpponentTurn}，"
+                             + $"实际 {MatchTurnNotice.LastBlockedReason}。");
+            }
+
+            if (!MatchTurnNotice.HasFeedback)
+            {
+                failures.Add("T144③ 被拒后 `HasFeedback` 应为 true（可判定出口就该能看出\"有反馈\"）。");
+            }
+
+            if (!MatchTurnNotice.ConsumePending())
+            {
+                failures.Add("T144③ 第一次 `ConsumePending()` 应为 true（视图靠它开提示窗）。");
+            }
+
+            if (MatchTurnNotice.ConsumePending())
+            {
+                failures.Add("T144③ 第二次 `ConsumePending()` 应为 false（**边沿**语义：重复帧不得重复弹）。");
+            }
+
+            string blockedCaption = PracticeHudState.CaptionLine(HudVisualState.AiTurn, false, false,
+                opponentBlocked: true);
+            if (blockedCaption != PracticeHudState.OpponentBlockedDetail)
+            {
+                failures.Add($"T144③ 被拒时的可见文案应为 `{PracticeHudState.OpponentBlockedDetail}`，"
+                             + $"实际 `{blockedCaption}`。");
+            }
+
+            if (blockedCaption == PracticeHudState.StateDetail(HudVisualState.AiTurn))
+            {
+                failures.Add("T144③ 被拒提示**不得等于**常驻态说明（`AiTurnDetail`）—— 那等于\"没有新提示\"。");
+            }
+
+            MatchTurnNotice.Reset();
+
+            // ── ④ 无假陈述：可点控件必须真接了动作（白盒文本断言，读磁盘文本）──
+            string homeSource = StripComments(ReadSourceOrNull(HomeViewSourcePath));
+            if (string.IsNullOrEmpty(homeSource))
+            {
+                failures.Add("T144④ 读不到 `HomeView.cs` 的**磁盘文本** ⇒ 白盒接线守卫失效（等于没有守卫）。");
+            }
+            else
+            {
+                foreach (string usage in new[]
+                         {
+                             // `AI Match`：可点 + 有回调 + **主按钮款式**（恢复参考稿的上亮下暗）
+                             "true, OnStartMatch, primary: true",
+                             // `Back to club`：可点 + 有回调
+                             "OnBackToClub, primary: false",
+                             // `Start match`：绑到开局
+                             "HomeLayout.MatchIntroStartButton, OnBeginMatch",
+                             // 三格各挂 `Button`（否则"三档可切换"在真机上点不动 = 假控件）
+                             "button.onClick.AddListener(() => OnSelectTier(captured));",
+                             // 开局必须走接缝（未接线时**不假装开局**）
+                             "MatchSeams.TryStartMatch(MatchSetup.Selected)",
+                         })
+                {
+                    if (!homeSource.Contains(usage))
+                    {
+                        failures.Add($"T144④ 接线缺失：「{usage}」—— 界面显示为可点却没接行为 = **假陈述**。");
+                    }
+                }
+            }
+
+            Assert.IsEmpty(failures, "T144 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine("T144: 默认档 Club（与 Runtime 同源）✓；三档切换且选中唯一 ✓；"
+                                  + "对手回合被拒有可见提示 + 可判定出口（计数/原因/边沿）✓；"
+                                  + "入口接线无假陈述（AI Match 可点、Start match 走接缝、Back 有回调、三格挂 Button）✓");
         }
 
         private static bool InFamily(Color32[] family, Color32 color)
