@@ -34,7 +34,7 @@ case "$TAG" in
   record-overwrite) REL="Assets/_Project/Scripts/Runtime/UI/PracticeSessionStore.cs"
                     BASE="8d702fea291e7008e5b5ab169435486117e8ed8c" ;;
   ai-turn-drop)     REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudState.cs"
-                    BASE="b52c366774eed72ee4b2ae86a6c8d39cc19d5694" ;;
+                    BASE="58499ac9f0de8539ddd1f56fd2a894fc5d505b08" ;;
   callpocket-always) REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
                     BASE="528208bb3bc7250f3421d01bc468afdd253d8b53" ;;
   callpocket-silent) REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
