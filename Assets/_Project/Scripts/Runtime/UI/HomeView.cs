@@ -71,9 +71,13 @@ namespace Billiards.UI
     ///   对比度属**实机观感**问题（与既有 HUD 的登记口径一致），由用户截图验收。
     /// · 参考稿的三个 `@media` 断点是**重排**；uGUI 无流式布局 ⇒ 非 16:9 档按锚点等比拉伸
     ///   （登记为表现差异，见 <see cref="HomeLayout"/> 的类注释）。
-    /// · **"回到首页"没有实现**：参考稿在局内顶栏有一个 `#home` 房子按钮，本工程 HUD 里没有它
-    ///   ⇒ 首页只在**启动时**出现一次。加"局内返回首页"要有暂停/离开语义，属 35-B。
     /// · 按钮的 `hover` / `focus` 视觉态不做（本工程既有控件一律不做，uGUI 侧无统一实现）。
+    ///
+    /// ⚠ **两条已关闭的登记（P6）**：本类注释与结算卡注释里曾写
+    /// 「**"回到首页"没有实现**……首页只在**启动时**出现一次。加"局内返回首页"要有暂停/离开语义，属 35-B」
+    /// 与「参考的 `Back to club` **无处可去**（没有首页/俱乐部场景）」。P6 起这两条**已为假**：
+    /// 本类在 `Awake` 把 `Show` 注册进 <see cref="HomeSeams.Show"/>，结算卡的 `Back to club`
+    /// 因此**真的能回到首页**（未注册时保持卡片并给可见提示，**不假装**）。
     /// </summary>
     [AddComponentMenu("Billiards/Home View")]
     public sealed class HomeView : MonoBehaviour, Billiards.Core.ISmokeTransitionTrigger
@@ -112,6 +116,10 @@ namespace Billiards.UI
         {
             EnsureBuilt();
 
+            // **注册"回到首页"接缝**（P6）：结算卡上的 `Back to club` 经它把首页调回来。
+            // 注册放在 `shownOnStart` 的判断**之前** —— "能不能被叫回来"与"启动时要不要显示"是两件事。
+            HomeSeams.Show = Show;
+
             if (!shownOnStart)
             {
                 return;
@@ -145,6 +153,13 @@ namespace Billiards.UI
         private void OnDisable()
         {
             IsOpen = false;
+
+            // **只注销自己**（照 `PhysicsTestDrive.UnregisterMatchHost` 的既有口径）：
+            // 注册点只有一个，别的东西可能已把它接管过去，无条件置 `null` 会把别人的注册一起抹掉。
+            if (HomeSeams.Show == (System.Action)Show)
+            {
+                HomeSeams.Show = null;
+            }
 
             if (_root != null)
             {

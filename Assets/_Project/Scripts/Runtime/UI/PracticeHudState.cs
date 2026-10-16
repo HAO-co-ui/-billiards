@@ -244,9 +244,10 @@ namespace Billiards.UI
         // ── P5-B：赛事设置屏（AI 对战）的文案 ───────────────────────────────────
         //
         // 全部英文（字体只有 Latin 子集 ⇒ 否则 `T97 (c)` 红），分隔符一律 `·`（U+00B7，5 个源字体实测全覆盖）。
-        // 文案来源：`04_UI/Web_Implementation_Reference/index.html:72-79`（`#match-intro-dialog` 逐字）——
-        // 除一句外全部与参考稿逐字一致：参考稿的 `<h2>Tonight's match</h2>`、`You`、`VS`、
-        // `BEST OF THREE`、`First to two racks`、`Start match`、`Back to club` 都直接采用。
+        // 文案来源：`04_UI/Web_Implementation_Reference/index.html:72-79`（`#match-intro-dialog`）——
+        // 参考稿的 `<h2>Tonight's match</h2>`、`You`、`VS`、`Start match`、`Back to club` 逐字采用。
+        // ⚠ **赛制那两句刻意偏离参考稿**（`BEST OF THREE` / `First to two racks` = 三局两胜）：
+        //   本工程的赛制是**一局定胜负**（35-C D4 已砍掉比赛循环）⇒ 照抄参考稿就是**假陈述**。
 
         /// <summary>赛前屏大标题（参考稿 `#match-intro-dialog h2` 逐字）。</summary>
         public const string MatchIntroTitle = "Tonight's match";
@@ -257,11 +258,16 @@ namespace Billiards.UI
         /// <summary>对阵分隔（参考稿逐字）。</summary>
         public const string MatchIntroVersus = "VS";
 
-        /// <summary>赛制标题（参考稿逐字；用户规则 = 现实 8 球 ⇒ 三局两胜）。</summary>
-        public const string MatchIntroFormatTitle = "BEST OF THREE";
+        /// <summary>
+        /// 赛制标题。⚠ **不是**参考稿的 `BEST OF THREE`（原文照抄会是**假陈述**）：
+        /// 本工程的赛制是**一局定胜负**（35-C D4 已砍掉比赛循环 / 比分）——
+        /// 参考稿的 `Best of three` + `First to two racks` 描述的是**三局两胜**，
+        /// 界面上写着"三局两胜"而实际打一局就结算 = 界面在撒谎（本工程铁律）。
+        /// </summary>
+        public const string MatchIntroFormatTitle = "ONE RACK";
 
-        /// <summary>赛制说明（参考稿逐字）。</summary>
-        public const string MatchIntroFormatDetail = "First to two racks";
+        /// <summary>赛制说明（与 <see cref="MatchIntroFormatTitle"/> 同一口径：一局定胜负）。</summary>
+        public const string MatchIntroFormatDetail = "Win this rack to win the match";
 
         /// <summary>开始按钮（参考稿逐字）。</summary>
         public const string MatchIntroStart = "Start match";
@@ -278,6 +284,22 @@ namespace Billiards.UI
         /// 那句描述**状态**，这句回应**玩家刚刚的那次点击**（"你点了，但现在不是你的回合"）。
         /// </summary>
         public const string OpponentBlockedDetail = "Opponent is shooting · you can aim when it's your turn";
+
+        /// <summary>
+        /// **结算面板打开期间，"对手回合被拒"的可见提示是否允许触发**（P6 第 2 条的**显式优先级**）。
+        ///
+        /// 答案：**不允许**。理由（写成一句话，免得下一个人重排优先级）：
+        ///  · 结算面板打开时**出杆输入已被整体让位**（`PracticeResultView.IsOpen` 是那四个输入判据点的既有单点）
+        ///    ⇒ "因为轮到对手而被拒"这件事**在此刻不可能发生**；
+        ///  · 若仍有 pending（例如面板恰在那一帧弹出），**一律丢弃**、**不排队补弹** ——
+        ///    否则面板关掉后会冒出一条"过期提示"，两套反馈互相打架。
+        ///
+        /// 抽成纯函数是为了让这条**优先级**可被判据直接驱动（不必起场景、不必跑帧）。
+        /// </summary>
+        public static bool OpponentNoticeAllowed(bool settlementOpen)
+        {
+            return !settlementOpen;
+        }
 
         /// <summary>三档难度的显示名 —— **复用首页分段的既有常量**（同一档位在界面上只有一个名字）。</summary>
         public static string TierLabel(AiDifficulty tier)
@@ -610,6 +632,15 @@ namespace Billiards.UI
                 // 自由球"待放球"与"落点被拒"两个子情形的说明
                 //（`BallInHandDetail` 已由上面的 `states` 循环覆盖，不重复列举）
                 BallInHandPendingDetail, PlacementRefusedDetail,
+                // P6：结算卡**两形态**的标题 / 徽章 / 结局原因 + 两个键的文案
+                // （全部由 `MatchResultCopy` 单点持有；`Back to club` 与上面的 `MatchIntroBack` **同值**、
+                //   故不重复列举 —— 重复列举会让"同一句话有两个字面量"）
+                MatchResultCopy.TitleWin, MatchResultCopy.TitleLose,
+                MatchResultCopy.BadgePractice, MatchResultCopy.BadgeWin, MatchResultCopy.BadgeLose,
+                MatchResultCopy.PlayAgainLabel, MatchResultCopy.ExportLabel,
+                MatchResultCopy.ReasonLegalEightBall, MatchResultCopy.ReasonEightBallTooEarly,
+                MatchResultCopy.ReasonEightBallWrongPocket, MatchResultCopy.ReasonEightBallOffTable,
+                MatchResultCopy.ReasonEightBallRespot, MatchResultCopy.ReasonOngoing,
                 PowerLabel(0f), PowerLabel(0.45f), PowerLabel(1f),
                 PocketedLabel(0, 15), PocketedLabel(15, 15),
                 "0123456789");

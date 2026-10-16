@@ -671,7 +671,11 @@ namespace Billiards.UI
                 // **对手回合点击被拒**（P5-B：用户要求"不许静默"）：
                 // `MatchTurnNotice` 只记账 + 置一个 pending 位，**时间窗在这里开** ——
                 // 与 `ScratchCount` / `RefusedLaunchCount` / `RefusedPlacementCount` 的轮询范式逐字同形。
-                if (MatchTurnNotice.ConsumePending())
+                // ⚠ P6：**结算面板期间消费并丢弃**（不排队补弹）——
+                // 优先级见 `PracticeHudState.OpponentNoticeAllowed`（结算 > 对手回合提示）。
+                bool opponentBlockedPending = MatchTurnNotice.ConsumePending();
+                if (opponentBlockedPending
+                    && PracticeHudState.OpponentNoticeAllowed(PracticeResultView.IsOpen))
                 {
                     _opponentBlockedUntil = now + FoulBannerSeconds;
                 }

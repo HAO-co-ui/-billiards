@@ -28,6 +28,16 @@ CHECKS = [
         "_ballInHandLatch",         # PracticeHudView 的私有字段
         "OnToggleVfx",              # PracticeHudView 的开关回调
         "ApplyOutcomeStyle",        # PracticeResultView 的结局配色
+        # 35-C P6（UI 侧：一局定胜负的结算卡）
+        "ShowMatchResult",          # PracticeResultView 的比赛结算展示口
+        "OnSecondaryAction",        # 次键分派（练习 ⇒ 导出 / 比赛 ⇒ 回首页）
+        "RebaselineSession",        # 会话基线重取
+        "_secondaryLabel",          # 形态决定标签的次键文字控件
+        "_wasMatchOver",            # 新一局边界检测（MatchOver 真→假）
+        "FormFor",                  # MatchResultCopy 的胜者 → 形态
+        "IsEndingOutcome",          # MatchResultCopy 的结局归类（穷举）
+        "BadgeEdgeColor",           # MatchResultCopy 的形态 → 配色
+        "TryShow",                  # HomeSeams 的"回到首页"接缝
         "ResolveVisualState",       # PracticeHudState 的状态求解
         "UnreachableStates",        # PracticeHudState 的不可达登记
         "PlayAgainButtonLocal",     # PracticeResultLayout 的卡内矩形
@@ -75,6 +85,11 @@ CHECKS = [
         "T129_DebugOverlay_DefaultOff_HotkeyGate",
         "T130_AimRecomputeThrottle_TrailingEdgeGuarantee",
         "T131_SmokeAimSweep_PureLogic",
+        # 35-C P6（结算卡两形态 + 流程收口）
+        "T146_MatchResult_TwoForms_FlowClosure_AndNoFalseAffordance",
+        "T145_AiShotEntry_PlanLaunchAndDiagnosticPurity",
+        # ⚠ `T144_MatchIntro_…_AndNoFalseAffordance`（78 字符）**不列**：本检查按 `[\x20-\x7e]{3,60}`
+        #    取"可打印 run" ⇒ 超过 60 字符的名字**不以裸名出现**，列它会**恒假红**（同 `SegmentScreenSkips`）。
     ]),
 ]
 

@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Billiards.EditorTools;
 using Billiards.Physics;
 using Billiards.Rules;
+using Billiards.Table;
 using Billiards.UI;
 using NUnit.Framework;
 using UnityEditor;
@@ -1048,6 +1049,439 @@ namespace Billiards.Tests
             TestContext.WriteLine($"T126: 犯规环 {PoolVfxView.FoulRingLayer.Duration:R}s（{ClubUiTokens.ToHexRgb(PoolVfxView.FoulRingColor)}）✓；"
                                   + $"落袋 {PoolVfxView.PocketOuterLayer.Duration:R}s / 黑八+结算 {PoolVfxView.EightBallPocketDurationSeconds:R}s ✓；"
                                   + $"最坏并发 {worst} ≤ {PoolVfxView.SlotCapacity} 槽、顶点上界 {expectVerts} ✓；触发链源码级 ✓");
+        }
+
+        // ════════════════ T146 P6：一局定胜负的胜/负结算 + 流程收口 ══════════════
+
+        /// <summary>`PhysicsTestDrive` 结算出口的驱动夹具要用的资产路径（与 `T145` 同一份）。</summary>
+        private const string DriveTableConfigPath = "Assets/_Project/Data/TableConfig.asset";
+
+        /// <summary>`PracticeResultView` 的源码路径（`T146` 白盒接线断言用；**从 <see cref="ViewSourceFiles"/> 取**，不另写字面量）。</summary>
+        private static readonly string PracticeResultViewSourcePath = ViewSourceFiles[1];
+
+        private const string PointerAimControllerSourcePath =
+            "Assets/_Project/Scripts/Runtime/Physics/PointerAimController.cs";
+
+        private const string PointerPowerControllerSourcePath =
+            "Assets/_Project/Scripts/Runtime/Physics/PointerPowerController.cs";
+
+        /// <summary>
+        /// **`T146`：一局定胜负的结算卡 —— 两形态**必须真的不同**、结算出口**以 Runtime 为准**、
+        /// 三条流程收口**逐条可判定**、界面无假陈述**。
+        ///
+        /// ── 断言六组 ────────────────────────────────────────────────────────────
+        /// **(a) 形态映射**：`ShotTurn.Player ⇒ Win`、`ShotTurn.Ai ⇒ Lose`，且**穷举** `ShotTurn`
+        ///     （新增枚举值不得落到 `None` = 悄悄没有形态）。
+        /// **(b) 两形态的关键差异项真的不同**：标题不同 + 徽章不同（**两处独立文案**）+ 四个配色令牌
+        ///     逐对不同；且**负局那一侧必须落在酒红族**、**胜局那一侧不得借酒红**
+        ///     （设计说明 §一：酒红只用于犯规和失败）。⚠ 这一组是"两形态不是只差一个词"的**机器形态**。
+        /// **(c) "为什么"一行穷举**：逐 `ShotOutcomeKind` 值都要有**非空**且**互不相同**的原因；
+        ///     且"能成为结算原因"的集合**恰好**是那 4 种结局杆（新增枚举值 ⇒ 这里必红）。
+        /// **(d) 三条流程收口**：① 面板打开 ⇒ 出杆输入让位（**复用既有 `IsOpen` 单点**，源码级）；
+        ///     ② 面板打开 ⇒ **"对手回合被拒"提示不得触发**（纯函数 + 视图侧接线）；
+        ///     ③ **关掉卡后不自动进下一局** —— 由 Runtime 的出口**行为**证明：消费掉"待展示"之后
+        ///     `MatchOver` **仍为真**，且**只有显式 `StartMatch`** 才把它清回假。
+        /// **(e) 无假陈述**：`Play again` 真的走 `MatchSeams`、`Back to club` 真的走 `HomeSeams`
+        ///     （未接线时 `TryShow()` 返回 false）、次键标签随形态改写（**显示与行为一致**）、
+        ///     赛前屏不得再写"三局两胜"（本工程是一局定胜负）。
+        /// **(f) "只弹一次"以 Runtime 闸门为准**：白盒断言视图里 `drive.TryConsumeSettlement()` 在场
+        ///     ⇒ "弹一次"这条性质**不靠 UI 自己记状态**（UI 记的状态正是判据守不住的那类东西）。
+        ///
+        /// **怎么打死它（三条注入，均已实测）**：① 把 `MatchResultCopy.FormFor` 的两个返回值**互换**
+        /// ⇒ (a) 红；② 把 `PointerPowerController` 的 `PracticeResultView.IsOpen` 从让位门里**删掉**
+        /// ⇒ (d①) 红；③ 把 `PhysicsTestDrive.TryConsumeSettlement` 的闸门**去掉**（恒返回 true）
+        /// ⇒ (d③)/(f) 红。
+        ///
+        /// ── 盲带（如实）────────────────────────────────────────────────────────
+        /// · **不判"两个面板不会同时出现"** —— 单卡结构下那是**恒真**（同一棵树只有一个 `_card`），
+        ///   写出来等于没有证据；本族把火力放在"**能被改坏的那一刀**"（形态映射 / 让位 / 闸门）。
+        /// · 真实鼠标点击的端到端属手动验收（与 `T102` 同口径）：判据只锁**行为出口**与**白盒接线**。
+        /// </summary>
+        [Test]
+        public void T146_MatchResult_TwoForms_FlowClosure_AndNoFalseAffordance()
+        {
+            var failures = new List<string>();
+
+            // ── (a) 形态映射（穷举）──
+            if (MatchResultCopy.FormFor(ShotTurn.Player) != MatchResultForm.Win)
+            {
+                failures.Add("T146(a) 玩家胜 ⇒ 形态应为 `Win`，实际 "
+                             + $"{MatchResultCopy.FormFor(ShotTurn.Player)}。");
+            }
+
+            if (MatchResultCopy.FormFor(ShotTurn.Ai) != MatchResultForm.Lose)
+            {
+                failures.Add("T146(a) 对手胜 ⇒ 形态应为 `Lose`，实际 "
+                             + $"{MatchResultCopy.FormFor(ShotTurn.Ai)}。");
+            }
+
+            foreach (ShotTurn turn in (ShotTurn[])System.Enum.GetValues(typeof(ShotTurn)))
+            {
+                MatchResultForm form = MatchResultCopy.FormFor(turn);
+                if (form != MatchResultForm.Win && form != MatchResultForm.Lose)
+                {
+                    failures.Add($"T146(a) `ShotTurn.{turn}` 没有对应形态（得到 {form}）"
+                                 + " ⇒ 新增的轮次方在结算卡上没有形态。");
+                }
+            }
+
+            if (!MatchResultCopy.IsWin(MatchResultForm.Win) || MatchResultCopy.IsWin(MatchResultForm.Lose)
+                || MatchResultCopy.IsWin(MatchResultForm.None))
+            {
+                failures.Add("T146(a) `IsWin` 只对 `Win` 为真（`Lose` / `None` 都应为假）。");
+            }
+
+            // ── (b) 两形态的关键差异项真的不同 ──
+            string titleWin = MatchResultCopy.Title(MatchResultForm.Win);
+            string titleLose = MatchResultCopy.Title(MatchResultForm.Lose);
+            string badgeWin = MatchResultCopy.Badge(MatchResultForm.Win);
+            string badgeLose = MatchResultCopy.Badge(MatchResultForm.Lose);
+
+            if (string.IsNullOrWhiteSpace(titleWin) || string.IsNullOrWhiteSpace(titleLose))
+            {
+                failures.Add("T146(b) 两形态的标题都必须非空。");
+            }
+
+            if (titleWin == titleLose)
+            {
+                failures.Add($"T146(b) 两形态的标题相同（\"{titleWin}\"）⇒ 玩家看不出输赢。");
+            }
+
+            if (string.IsNullOrWhiteSpace(badgeWin) || string.IsNullOrWhiteSpace(badgeLose) || badgeWin == badgeLose)
+            {
+                failures.Add($"T146(b) 两形态的徽章必须**非空且不同**，实际 \"{badgeWin}\" / \"{badgeLose}\""
+                             + "（派单：两形态要在**标题 + 配色 + 文案**三处都不同，不是只差一个词）。");
+            }
+
+            // 两形态**都不得**复用练习局的既有句子（否则"比赛结算"与"练习清台"在卡上无法区分）
+            foreach (string practiceCopy in new[]
+                     {
+                         PracticeSession.TitleTableCleared, PracticeSession.TitleRackEnded,
+                         PracticeSession.ReasonTableCleared, PracticeSession.ReasonRackEnded,
+                         MatchResultCopy.BadgePractice,
+                     })
+            {
+                if (titleWin == practiceCopy || titleLose == practiceCopy
+                    || badgeWin == practiceCopy || badgeLose == practiceCopy)
+                {
+                    failures.Add($"T146(b) 比赛结算复用了练习局的文案 \"{practiceCopy}\""
+                                 + " ⇒ 两种来源在卡上分不出来。");
+                }
+            }
+
+            // 四对配色逐对（胜 = 黄铜族；负 = 酒红族且 == 设计稿的那几个值）
+            var colorPairs = new (string Name, Color32 Win, Color32 Lose, Color32 ExpectedWin, Color32 ExpectedLose)[]
+            {
+                ("顶部色条", MatchResultCopy.EdgeColor(true), MatchResultCopy.EdgeColor(false),
+                    ClubUiTokens.ResultWinEdge, ClubUiTokens.ResultLoseEdge),
+                ("徽章图标", MatchResultCopy.IconColor(true), MatchResultCopy.IconColor(false),
+                    ClubUiTokens.Accent, ClubUiTokens.ResultLoseIcon),
+                ("徽章环", MatchResultCopy.IconEdgeColor(true), MatchResultCopy.IconEdgeColor(false),
+                    ClubUiTokens.ResultWinEdge, ClubUiTokens.ResultLoseIconEdge),
+                ("徽章 chip 边线", MatchResultCopy.BadgeEdgeColor(true), MatchResultCopy.BadgeEdgeColor(false),
+                    ClubUiTokens.LineBadge, ClubUiTokens.ResultLoseBadgeEdge),
+            };
+
+            foreach ((string name, Color32 win, Color32 lose, Color32 expectedWin, Color32 expectedLose) in colorPairs)
+            {
+                if (Same(win, lose))
+                {
+                    failures.Add($"T146(b) {name}：两形态用了同一个色 ⇒ 形态只差在文字上。");
+                }
+
+                if (!Same(win, expectedWin))
+                {
+                    failures.Add($"T146(b) {name}：胜局应为 {ClubUiTokens.ToHexRgba(expectedWin)}，"
+                                 + $"实际 {ClubUiTokens.ToHexRgba(win)}。");
+                }
+
+                if (!Same(lose, expectedLose))
+                {
+                    failures.Add($"T146(b) {name}：负局应为 {ClubUiTokens.ToHexRgba(expectedLose)}，"
+                                 + $"实际 {ClubUiTokens.ToHexRgba(lose)}。");
+                }
+
+                if (!InFamily(ClubUiTokens.ClaretFamily, lose))
+                {
+                    failures.Add($"T146(b) {name}：负局必须落在**酒红族**（设计说明 §一：酒红只用于犯规和失败）。");
+                }
+
+                if (InFamily(ClubUiTokens.ClaretFamily, win))
+                {
+                    failures.Add($"T146(b) {name}：胜局借用了酒红 —— 酒红只许给犯规与失败。");
+                }
+            }
+
+            // ── (c) "为什么"一行：穷举、非空、互不相同 ──
+            var endingOutcomes = new List<ShotOutcomeKind>();
+            var reasons = new Dictionary<ShotOutcomeKind, string>();
+
+            foreach (ShotOutcomeKind kind in (ShotOutcomeKind[])System.Enum.GetValues(typeof(ShotOutcomeKind)))
+            {
+                string reason = MatchResultCopy.Reason(kind);
+                if (string.IsNullOrWhiteSpace(reason))
+                {
+                    failures.Add($"T146(c) `ShotOutcomeKind.{kind}` 没有对应的\"为什么\"一行"
+                                 + " ⇒ 新增结局会静默显示空副标题。");
+                }
+
+                reasons[kind] = reason;
+
+                if (MatchResultCopy.IsEndingOutcome(kind))
+                {
+                    endingOutcomes.Add(kind);
+                }
+            }
+
+            var expectedEnding = new HashSet<ShotOutcomeKind>
+            {
+                ShotOutcomeKind.LegalEightBallPotted,
+                ShotOutcomeKind.EightBallPottedTooEarly,
+                ShotOutcomeKind.EightBallWrongPocket,
+                ShotOutcomeKind.EightBallOffTable,
+            };
+
+            if (endingOutcomes.Count != expectedEnding.Count
+                || !expectedEnding.SetEquals(new HashSet<ShotOutcomeKind>(endingOutcomes)))
+            {
+                failures.Add("T146(c) \"能成为结算原因\"的集合应为 "
+                             + $"{string.Join("/", expectedEnding)}，实际 {string.Join("/", endingOutcomes)}。");
+            }
+
+            // 结局原因两两不同（否则两件不同的违规在卡上说同一句 = 玩家分不出为什么输）
+            var seenReasons = new Dictionary<string, ShotOutcomeKind>();
+            foreach (ShotOutcomeKind kind in expectedEnding)
+            {
+                if (seenReasons.TryGetValue(reasons[kind], out ShotOutcomeKind other))
+                {
+                    failures.Add($"T146(c) `{kind}` 与 `{other}` 的\"为什么\"一行相同（\"{reasons[kind]}\"）"
+                                 + " ⇒ 两种不同的输法在卡上无法分辨。");
+                }
+                else
+                {
+                    seenReasons[reasons[kind]] = kind;
+                }
+            }
+
+            // 胜局的唯一原因必须是"合法进黑 8"（规则层的结论与卡上的解释必须同源）
+            if (reasons[ShotOutcomeKind.LegalEightBallPotted] != MatchResultCopy.ReasonLegalEightBall
+                || MatchResultCopy.IsEndingOutcome(ShotOutcomeKind.EightBallRespot)
+                || MatchResultCopy.IsEndingOutcome(ShotOutcomeKind.Ongoing))
+            {
+                failures.Add("T146(c) 结局归类与文案不自洽（合法进黑 8 是唯一的胜因；复位 / 进行中不是结局）。");
+            }
+
+            // ── (d) 三条流程收口 ──
+
+            // ① 面板打开 ⇒ 出杆输入让位（**复用既有单点**：两个输入控制器都读 `PracticeResultView.IsOpen`）
+            foreach (string path in new[] { PointerAimControllerSourcePath, PointerPowerControllerSourcePath })
+            {
+                string gate = StripComments(ReadSourceOrNull(path));
+                if (string.IsNullOrEmpty(gate))
+                {
+                    failures.Add($"T146(d①) 读不到 {Path.GetFileName(path)} 的磁盘文本 ⇒ 输入让位守卫失效。");
+                }
+                else if (!gate.Contains("PracticeResultView.IsOpen"))
+                {
+                    failures.Add($"T146(d①) {Path.GetFileName(path)} 的输入让位门里找不到 `PracticeResultView.IsOpen`"
+                                 + " ⇒ 结算卡打开期间仍能瞄准/蓄力出杆，会把已结束的一局打乱。");
+                }
+            }
+
+            // ② 面板打开 ⇒ "对手回合被拒"提示不得触发（纯函数优先级 + 视图侧接线）
+            if (PracticeHudState.OpponentNoticeAllowed(true))
+            {
+                failures.Add("T146(d②) 结算面板打开时**不得**触发\"对手回合被拒\"提示"
+                             + "（那一刻出杆已被整体让位，两套反馈只会互相打架）。");
+            }
+
+            if (!PracticeHudState.OpponentNoticeAllowed(false))
+            {
+                failures.Add("T146(d②) 面板没开时对手回合提示必须放行 —— 否则 P5-B 的\"不许静默\"被这条优先级吃掉。");
+            }
+
+            string hudSource = StripComments(ReadSourceOrNull(PracticeHudViewSourcePath));
+            if (string.IsNullOrEmpty(hudSource))
+            {
+                failures.Add("T146(d②) 读不到 `PracticeHudView.cs` 的磁盘文本 ⇒ 优先级接线守卫失效。");
+            }
+            else if (!hudSource.Contains("PracticeHudState.OpponentNoticeAllowed(PracticeResultView.IsOpen)"))
+            {
+                failures.Add("T146(d②) `PracticeHudView` 里没有把 `OpponentNoticeAllowed(PracticeResultView.IsOpen)`"
+                             + " 用在消费口上 ⇒ 纯函数只是声明了、没人用（"
+                             + "\"有守卫 ≠ 守卫会跑\"）。");
+            }
+
+            // ③ 关掉卡后不自动进下一局（**行为**：Runtime 出口）
+            PhysicsTestDrive drive = null;
+            GameObject driveGo = null;
+            IMatchHost previousHost = MatchSeams.Host;
+            try
+            {
+                driveGo = new GameObject("T146Drive");
+                drive = driveGo.AddComponent<PhysicsTestDrive>();
+                drive.tableConfig = AssetDatabase.LoadAssetAtPath<TableConfig>(DriveTableConfigPath);
+
+                if (drive.tableConfig == null)
+                {
+                    failures.Add($"T146(d③) 载不到 {DriveTableConfigPath} ⇒ 结算出口无法驱动（判据失效）。");
+                }
+                else
+                {
+                    drive.Initialize();
+                    drive.StartMatch(AiDifficulty.Club);
+
+                    if (drive.MatchOver)
+                    {
+                        failures.Add("T146(d③) 新开一局时 `MatchOver` 必须为 false。");
+                    }
+
+                    if (drive.TryConsumeSettlement())
+                    {
+                        failures.Add("T146(d③) 新开一局不得带着上一局的\"待展示\"（否则新局一开局就弹结算卡）。");
+                    }
+
+                    drive.ApplyVerdict(new RuleVerdict
+                    {
+                        gameOver = true,
+                        winner = ShotTurn.Player,
+                        nextTurn = ShotTurn.Player,
+                        outcome = ShotOutcomeKind.LegalEightBallPotted,
+                    });
+
+                    if (!drive.MatchOver || drive.Winner != ShotTurn.Player
+                        || drive.EndReason != ShotOutcomeKind.LegalEightBallPotted)
+                    {
+                        failures.Add("T146(d③) 结局杆之后 `MatchOver` / `Winner` / `EndReason` 必须由规则层结论"
+                                     + $"原样填上，实测 {drive.MatchOver} / {drive.Winner} / {drive.EndReason}。");
+                    }
+
+                    if (!drive.TryConsumeSettlement())
+                    {
+                        failures.Add("T146(d③) 第一次 `TryConsumeSettlement()` 应为 true（视图靠它弹卡）。");
+                    }
+
+                    if (!drive.MatchOver)
+                    {
+                        failures.Add("T146(d③) 结算被取走后 `MatchOver` 仍须为 true ⇒ 没有任何东西自动开新局；"
+                                     + "要再来一局必须**显式** `StartMatch`（用户已砍掉 BEST OF THREE）。");
+                    }
+
+                    if (drive.TryConsumeSettlement())
+                    {
+                        failures.Add("T146(d③) 消费后不得自动补一次\"待展示\"（否则关掉卡它会自己再弹）。");
+                    }
+
+                    drive.StartMatch(AiDifficulty.Club);
+                    if (drive.MatchOver)
+                    {
+                        failures.Add("T146(d③) `StartMatch` 是唯一能开新局的口 ⇒ 它必须把 `MatchOver` 清回 false。");
+                    }
+                }
+            }
+            finally
+            {
+                if (drive != null)
+                {
+                    drive.UnregisterMatchHost();
+                }
+
+                MatchSeams.Host = previousHost;
+                if (driveGo != null)
+                {
+                    Object.DestroyImmediate(driveGo);
+                }
+            }
+
+            // ── (f) "只弹一次"以 Runtime 闸门为准 + (e)(f) 视图侧白盒接线 ──
+            string resultSource = StripComments(ReadSourceOrNull(PracticeResultViewSourcePath));
+            if (string.IsNullOrEmpty(resultSource))
+            {
+                failures.Add("T146(f) 读不到 `PracticeResultView.cs` 的磁盘文本 ⇒ 白盒接线守卫失效。");
+            }
+            else
+            {
+                foreach ((string Usage, string Why) in new (string, string)[]
+                         {
+                             ("drive.TryConsumeSettlement()",
+                                 "结算的\"只弹一次\"必须以 Runtime 的显式闸门为准（UI 自己记的状态守不住）"),
+                             ("MatchResultCopy.FormFor(drive.Winner)",
+                                 "形态必须由 Runtime 的胜者解出（不许 UI 自己定谁赢）"),
+                             ("drive.EndReason",
+                                 "\"为什么\"一行必须取规则层的结局枚举（不许 UI 从球位反推）"),
+                             ("if (drive.MatchOver)",
+                                 "本局结束后练习局的\"清台/重摆\"判定必须整体让位（否则会自己开下一局）"),
+                             ("MatchResultCopy.EdgeColor(win)",
+                                 "配色只能来自 `MatchResultCopy` 的单点（视图里二选一会让形态配色无人守）"),
+                             ("public static MatchResultForm CurrentForm",
+                                 "必须留下**可判定的形态出口**（判据不许读像素）"),
+                             ("MatchSeams.TryStartMatch(MatchSetup.Selected)",
+                                 "`Play again` 必须**真的**再开一局（未接线时不许假装已开局）"),
+                             ("HomeSeams.TryShow()",
+                                 "`Back to club` 必须**真的**回首页（未接线时不许假装已回去）"),
+                             ("_secondaryLabel.text = form == MatchResultForm.None ? ExportButtonLabel : BackToClubButtonLabel",
+                                 "次键标签必须随形态改写 —— 键上写的必须就是它此刻做的事"),
+                         })
+                {
+                    if (!resultSource.Contains(Usage))
+                    {
+                        failures.Add($"T146(f) 结算卡接线缺失：「{Usage}」—— {Why}。");
+                    }
+                }
+            }
+
+            string homeSource = StripComments(ReadSourceOrNull(HomeViewSourcePath));
+            if (string.IsNullOrEmpty(homeSource))
+            {
+                failures.Add("T146(e) 读不到 `HomeView.cs` 的磁盘文本 ⇒ 回首页接缝守卫失效。");
+            }
+            else if (!homeSource.Contains("HomeSeams.Show = Show"))
+            {
+                failures.Add("T146(e) 首页没有把 `Show` 注册进 `HomeSeams.Show` ⇒ 结算卡上的 `Back to club`"
+                             + "点下去回不去（显示为可点 = 假陈述）。");
+            }
+
+            // `Back to club` 的**行为**：未接线 ⇒ false（不假装）；接线 ⇒ 真的被调到一次
+            HomeSeams.Reset();
+            if (HomeSeams.HasHost)
+            {
+                failures.Add("T146(e) `HomeSeams.Reset()` 之后不应有接线（静态状态会跨用例残留）。");
+            }
+
+            if (HomeSeams.TryShow())
+            {
+                failures.Add("T146(e) 未接线时 `TryShow()` 必须返回 false ⇒ 调用方据此保持卡片并提示，不许假装已回到首页。");
+            }
+
+            int shownCount = 0;
+            HomeSeams.Show = () => shownCount++;
+            if (!HomeSeams.TryShow() || shownCount != 1)
+            {
+                failures.Add($"T146(e) 接线后 `TryShow()` 应返回 true 且**恰好**调到一次，实测 {shownCount} 次。");
+            }
+
+            HomeSeams.Reset();
+
+            // 赛前屏不得再写"三局两胜"（本工程是一局定胜负 ⇒ 那是假陈述）
+            if (PracticeHudState.MatchIntroFormatTitle.Contains("THREE")
+                || PracticeHudState.MatchIntroFormatDetail.ToUpperInvariant().Contains("TWO RACKS"))
+            {
+                failures.Add("T146(e) 赛前屏仍写着\"三局两胜\"（"
+                             + $"{PracticeHudState.MatchIntroFormatTitle} / {PracticeHudState.MatchIntroFormatDetail}"
+                             + "），而本工程是**一局定胜负** ⇒ 假陈述。");
+            }
+
+            Assert.IsEmpty(failures, "T146 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine("T146: 形态映射穷举 ✓；两形态标题/徽章/四配色逐对不同且负局落酒红族 ✓；"
+                                  + $"\"为什么\"穷举 {endingOutcomes.Count} 种结局且互不相同 ✓；"
+                                  + "出杆让位 / 对手回合提示优先级 / 不自动进下一局 三条收口 ✓；"
+                                  + "Play again 走 MatchSeams、Back to club 走 HomeSeams（未接线不假装）✓");
+        }
+
+        /// <summary>两个 `Color32` 是否逐通道相同（判据里比色值，不做浮点容差 —— 令牌是 8 位整数量化值）。</summary>
+        private static bool Same(Color32 a, Color32 b)
+        {
+            return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
         }
     }
 }
