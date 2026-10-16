@@ -671,6 +671,7 @@ namespace Billiards.Physics
             AtRestMouthDrops = 0;
             TableAtRest = false;
             ConsecutiveRestFrameCount = 0;
+            _shotContactEvents.Clear();   // **本杆快照随每杆重置**（与其它每杆诊断同族语义；drain 缓冲不受影响）
 
             // 只读诊断：首次球-球接触与时间口径一并归零（与上面的"每杆计数"同族语义）。
             _hasFirstBallBallContact = false;
@@ -1375,7 +1376,7 @@ namespace Billiards.Physics
             float speedIn = Length(ball.velocity);
 
             // 只读诊断：接触事件（音频层消费；不改任何解算量）。
-            RecordContactEvent(ContactKind.Cushion, speedIn, ball.position);
+            RecordContactEvent(ContactKind.Cushion, speedIn, ball.position, index);
 
             Vector2 vt = v - vn * n;
 
@@ -1464,7 +1465,7 @@ namespace Billiards.Physics
             float vn = Dot(rel, n);
 
             // 只读诊断：接触事件（音频层消费；不改任何解算量——惰性由 T72b 逐位基线验证）。
-            RecordContactEvent(ContactKind.BallBall, Length(rel), (pi + pk) * 0.5f);
+            RecordContactEvent(ContactKind.BallBall, Length(rel), (pi + pk) * 0.5f, i, k);
 
             // ⚠ **计数必须反映"真实解算"**：只在"确实施加了冲量"或"确实做了位置分离"时才计。
             // 否则"保留计数、停止解算"的注入会因计数虚增而**全部通过**（计数与动量交换解耦）。
@@ -1788,7 +1789,7 @@ namespace Billiards.Physics
                 _capturedPocket[index] = p;
 
                 // 只读诊断：接触事件（音频层消费——不改任何解算量）。
-                RecordContactEvent(ContactKind.Pocket, Length(_balls[index].velocity), _balls[index].position);
+                RecordContactEvent(ContactKind.Pocket, Length(_balls[index].velocity), _balls[index].position, index);
 
                 _balls[index].velocity = Vector2.zero;
                 _frozen[index] = true;
@@ -1876,7 +1877,7 @@ namespace Billiards.Physics
                         continue;
                     }
 
-                    RecordContactEvent(ContactKind.Pocket, Length(_balls[i].velocity), c);
+                    RecordContactEvent(ContactKind.Pocket, Length(_balls[i].velocity), c, i);
                     CapturedBallCount++;
                     AtRestMouthDrops++;
                     _capturedPocket[i] = p;
@@ -1938,15 +1939,39 @@ namespace Billiards.Physics
 
         private readonly List<ContactEvent> _contactEvents = new List<ContactEvent>();
 
-        /// <summary>接触事件的**单点记录器**（三条接触路径各调用一次；只读复制，不改任何解算量）。</summary>
-        private void RecordContactEvent(ContactKind kind, float relativeSpeed, Vector2 position)
+        /// <summary>
+        /// **本杆接触事件快照缓冲**（**非破坏式**：只累积、不被读取消费）—— 供**规则层**问"本杆发生了什么"。
+        /// ⚠ **与 `_contactEvents` 各走各的**：后者是 `DrainContactEvents` 的**读即清**缓冲（**音频层独占**，
+        /// 见 `PoolAudio`），**本缓冲永不被 drain**、**只随 <see cref="ResetDiagnostics"/> 归零** ⇒ 可**重复读**。
+        /// </summary>
+        private readonly List<ContactEvent> _shotContactEvents = new List<ContactEvent>();
+
+        /// <summary>
+        /// **本杆接触事件快照（只读、可重复读、非破坏）**：自最近一次 <see cref="ResetDiagnostics"/> 以来的**全部**接触事件。
+        /// 与 <see cref="DrainContactEvents"/>（读即清、音频专用）**并存 ⇒ 两者互不影响**。
+        /// ⚠ 返回的是**内部缓冲的只读视图**（不复制、零分配）⇒ 调用方**不要长期持有**，且**不要**跨杆缓存。
+        /// </summary>
+        public IReadOnlyList<ContactEvent> ShotContactEvents => _shotContactEvents;
+
+        /// <summary>
+        /// 接触事件的**单点记录器**（三条接触路径各调用一次；只读复制，不改任何解算量）。
+        /// ⚠ `ballA`/`ballB` 的语义见 <see cref="ContactEvent"/>：`BallBall` = 两颗球的下标；
+        /// `Cushion`/`Pocket` = 该球下标 + `-1`。
+        /// </summary>
+        private void RecordContactEvent(ContactKind kind, float relativeSpeed, Vector2 position,
+            int ballA, int ballB = -1)
         {
-            _contactEvents.Add(new ContactEvent
+            var ev = new ContactEvent
             {
                 kind = kind,
                 relativeSpeed = relativeSpeed,
                 position = position,
-            });
+                ballA = ballA,
+                ballB = ballB,
+            };
+
+            _contactEvents.Add(ev);        // 音频/既有消费者：drain 语义（**未改**）
+            _shotContactEvents.Add(ev);    // 规则层：非破坏式快照（永不被 drain）
         }
 
         /// <summary>
@@ -1997,7 +2022,24 @@ namespace Billiards.Physics
 
         /// <summary>接触位置（物理平面，米）：球-球 = 两球中点；球-库 / 越喉 = 球心。</summary>
         public Vector2 position;
+
+        /// <summary>
+        /// **第一颗球的下标**（= **球号**，见下方约定）。
+        /// · `BallBall` ⇒ 参与接触的两颗球之一（**母球恒为 0**）；
+        /// · `Cushion` / `Pocket` ⇒ **该球的下标**。
+        /// </summary>
+        public int ballA;
+
+        /// <summary>
+        /// **第二颗球的下标**：仅 `BallBall` 有意义（两颗球的下标）；**`Cushion` / `Pocket` 恒为 `-1`**（没有第二颗球）。
+        /// </summary>
+        public int ballB;
     }
+
+    // ── **球号约定（规格 §2.2；只读约定，不改内核语义）** ─────────────────────────
+    // **下标即球号**：`0` = **白球**，`1..15` = **目标球**（8 球规则下 8 号 = 黑 8）。
+    // 内核**不存"球号"字段**（`BallState` 只有 `position`/`velocity`）⇒ 球号 = 球表下标，
+    // 摆球/材质/可视物映射一律由外层按下标约定处理。
 
     /// <summary>
     /// **首次球-球接触**的一次记录（**只读诊断**，供"击球预测"取幽灵球与出射方向用）。

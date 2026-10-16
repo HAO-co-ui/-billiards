@@ -116,6 +116,68 @@ namespace Billiards.Tests
                 failures.Add($"(d) drain 应读即清：二次 drain 返回 {again}（应为 0）。");
             }
 
+            // ── (e) **球索引在事件里**（P0 新增；规则层靠它判"母球最先碰到哪一颗"/"哪些球碰过库"）──
+            // 球号约定（规格 §2.2）：**下标即球号**，`0` = 白球、`1..15` = 目标球。
+            // **怎么打死它**：把 `ResolveBallBallContact` 那处填参改成不带索引（或填 −1）⇒ 本条(①)必红。
+            ContactEvent firstBallBall = default;
+            bool hasBallBall = false;
+            for (int i = 0; i < events.Count; i++)
+            {
+                if (events[i].kind == ContactKind.BallBall)
+                {
+                    firstBallBall = events[i];
+                    hasBallBall = true;
+                    break;
+                }
+            }
+
+            if (!hasBallBall)
+            {
+                failures.Add("(e①) 前提不成立：正碰场景没有 BallBall 事件（无法核对球索引）。");
+            }
+            else if (firstBallBall.ballA != 0 || firstBallBall.ballB != 1)
+            {
+                failures.Add($"(e①) 正碰（白球下标 0 打 1 号球）的首个 BallBall 事件应带 {{ballA, ballB}} = {{0, 1}}，"
+                             + $"实测 {{{firstBallBall.ballA}, {firstBallBall.ballB}}}。");
+            }
+
+            // 库边/越喉事件：**没有第二颗球** ⇒ `ballB` 恒 −1，`ballA` = 该球下标（≥ 0）
+            for (int i = 0; i < events.Count; i++)
+            {
+                if (events[i].kind == ContactKind.Cushion && events[i].ballB != -1)
+                {
+                    failures.Add($"(e②) Cushion 事件的 ballB 应为 −1（无第二颗球），实测 {events[i].ballB}。");
+                }
+            }
+
+            // ── (f) **本杆事件快照**：非破坏（可重复读）＋ 与 drain **各走各的** ──
+            IReadOnlyList<ContactEvent> snapA = headOn.ShotContactEvents;
+            int snapCountA = snapA.Count;
+            IReadOnlyList<ContactEvent> snapB = headOn.ShotContactEvents;
+            if (snapCountA <= 0)
+            {
+                failures.Add("(f①) 本杆快照应**累积**事件（正碰场景应 > 0 条），实测 0 条。");
+            }
+
+            if (snapB.Count != snapCountA)
+            {
+                failures.Add($"(f①) 本杆快照应**可重复读**（不因读而清）：两次读到 {snapCountA} / {snapB.Count}。");
+            }
+
+            // ⚠ 上面 (d) 已经 drain 过 ⇒ 快照**不该**因此变少（这正是"各走各的"）
+            if (headOn.ShotContactEvents.Count != snapCountA)
+            {
+                failures.Add($"(f②) `DrainContactEvents` **不得**影响本杆快照（drain 后应为 {snapCountA}，"
+                             + $"实测 {headOn.ShotContactEvents.Count}）。");
+            }
+
+            // 随 `ResetDiagnostics()` 归零（每杆语义）
+            headOn.ResetDiagnostics();
+            if (headOn.ShotContactEvents.Count != 0)
+            {
+                failures.Add($"(f③) 本杆快照应随 `ResetDiagnostics()` 归零，实测 {headOn.ShotContactEvents.Count} 条。");
+            }
+
             // ── (b) 撞库：Cushion 事件（球放 (0.6,0) 朝 +x 打短库——沿该线无袋口（中袋在长库中点），必然撞库）──
             var cushionSim = new PoolSimulator(Table(), FactoryParams());
             cushionSim.LoadBalls(new[] { Ball(0.6f, 0f, 3f, 0f) });
