@@ -1203,6 +1203,59 @@ namespace Billiards.Tests
                     "T138④：**白球贴库瞄向该库时，白线不得整条消失** —— 前缀退化为 1 时必须回落到整条"
                     + $"（实测 VisiblePathCount={hugging.VisiblePathCount}）。这是「全场自由球可贴库放球」后的常见姿态。");
 
+                // ── **⑪⑫⑬ 首个接触点 ⇒ 可见末点**（用户 2026-10-16 截图反馈："白线碰到边缘…前面有个圆圈"、"线别断了"）──
+                // 用**收集全部失败**范式（与 ⑦–⑩ 同法）：三条是相互独立的不变，裸 `Assert` 会互相掩盖。
+                var t138EndFailures = new List<string>();
+                const float EndTol = 1e-4f;
+                float rEnd = PoolConstants.BallRadius;
+                float halfWidthEnd = Table().halfWidth;
+
+                // ⑪ 银行球（**先撞长库**）：首个接触 = 库边 ⇒ 可见末点 == 库边接触点（**逐位**）＋ 该点落在**长库线**上（解析式）
+                if (!bank.HasCushionFirstContact)
+                {
+                    t138EndFailures.Add("⑪ 银行球的首个接触应为**库边**（`HasCushionFirstContact` 为真）—— 否则「库边圆」不会画。");
+                }
+                else
+                {
+                    if (RVec(bank.VisiblePathEnd) != RVec(bank.CushionContactPosition))
+                    {
+                        t138EndFailures.Add($"⑪ 可见末点 {RVec(bank.VisiblePathEnd)} ≠ 库边接触点 {RVec(bank.CushionContactPosition)}（逐位）。");
+                    }
+
+                    // ⚠ **判"落在某条库线上"**（不是只判长库）：本几何瞄 172.50° ⇒ 撞的是 **−x 端库**
+                    //   （实测 `|x| = 1.24142647`，恰 = `halfLength − r = 1.27 − 0.028575`）⇒ 只判 `|y|` 会**恒红**（本条第一版就踩了）。
+                    float offEndX = Mathf.Abs(Mathf.Abs(bank.CushionContactPosition.x) - (Table().halfLength - rEnd));
+                    float offEndY = Mathf.Abs(Mathf.Abs(bank.CushionContactPosition.y) - (halfWidthEnd - rEnd));
+                    if (!(offEndX <= EndTol || offEndY <= EndTol))
+                    {
+                        t138EndFailures.Add($"⑪ 库边接触点应落在**某条库线**上（离端库 {offEndX:R}、离长库 {offEndY:R}，均 > {EndTol:R}）。");
+                    }
+                }
+
+                // ⑫ 直击球：首个接触**不是**库边 ⇒ 不画库圆；可见末点 == **幽灵球**（逐位，与 `CueWorldPath` 末点同点）
+                if (direct.HasCushionFirstContact)
+                {
+                    t138EndFailures.Add("⑫ 直击球的首个接触**不应**是库边（否则会多画一个库边圆）。");
+                }
+
+                if (RVec(direct.VisiblePathEnd) != RVec(direct.GhostBall))
+                {
+                    t138EndFailures.Add($"⑫ 直击球可见末点 {RVec(direct.VisiblePathEnd)} ≠ 幽灵球 {RVec(direct.GhostBall)}（逐位）"
+                                        + " —— 球-球首碰的可见末点必须是**幽灵球**（白球球心），不是两球中点。");
+                }
+
+                // ⑬ 贴库瞄库（退化几何）：仍 ≥2 顶点，且**可见末点 == 库边接触点**（逐位）
+                if (!hugging.HasCushionFirstContact)
+                {
+                    t138EndFailures.Add("⑬ 贴库瞄库的首个接触应为库边。");
+                }
+                else if (RVec(hugging.VisiblePathEnd) != RVec(hugging.CushionContactPosition))
+                {
+                    t138EndFailures.Add($"⑬ 贴库瞄库的可见末点 {RVec(hugging.VisiblePathEnd)} ≠ 库边接触点 {RVec(hugging.CushionContactPosition)}（逐位）。");
+                }
+
+                Assert.IsEmpty(t138EndFailures, "T138⑪–⑬ 失败项（**收集全部**）：\n" + string.Join("\n", t138EndFailures));
+
                 TestContext.WriteLine($"T138: 银行球 bounces={bank.CushionBounceCountBeforeContact} "
                                       + $"可见 {bank.VisiblePathCount}/{bank.CueWorldPath.Count} 点；"
                                       + $"直击 bounces=0 可见 {direct.VisiblePathCount}/{direct.CueWorldPath.Count} 点；"

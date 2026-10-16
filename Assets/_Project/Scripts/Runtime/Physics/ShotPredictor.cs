@@ -144,6 +144,12 @@ namespace Billiards.Physics
             path.Add(cueStart);
 
             // ── ④ 步进到首接触（首接触**即停**：不跑到整盘静止） ──
+            // ⚠ **先清空接触事件缓冲**：探测内核是**复用**的 ⇒ 缓冲里可能残留上一次预测的事件
+            //   （drain 语义 = 读即清；这里读出来直接丢掉 ⇒ 保证下面取到的是**本次**的首条事件）。
+            workspace.ContactEvents.Clear();
+            probe.DrainContactEvents(workspace.ContactEvents);
+            workspace.ContactEvents.Clear();
+
             int steps = 0;
             int bounces = 0;
             int visibleBeforeFirstCushion = -1;   // ← **首次库边接触之前的顶点数**（绘制截断用；见 `VisiblePathCount`）
@@ -187,6 +193,7 @@ namespace Billiards.Physics
             {
                 result.CueWorldPath = path;
                 result.VisiblePathCount = visibleBeforeFirstCushion >= 2 ? visibleBeforeFirstCushion : path.Count;
+                FillFirstContact(ref result, path, probe, workspace.ContactEvents, default);
                 return result;
             }
 
@@ -204,6 +211,9 @@ namespace Billiards.Physics
             // **可见路径**止于首次库边接触之前（不画折返）；无库边接触 ⇒ 整条。
             // ⚠ 必须在 `path.Add(ghost)` **之后**算：`path.Count` 此刻才是最终顶点数。
             result.VisiblePathCount = visibleBeforeFirstCushion >= 2 ? visibleBeforeFirstCushion : path.Count;
+
+            // ⚠ 必须在 `ghost` 算出来**之后**调：球-球首碰的可见末点要用**精确幽灵球**（见 `FillFirstContact`）。
+            FillFirstContact(ref result, path, probe, workspace.ContactEvents, ghost);
 
             result.GhostBall = ghost;
             result.TargetBallCenter = targetCenter;
@@ -236,6 +246,45 @@ namespace Billiards.Physics
         private static bool IsDegenerate(Vector2 v)
         {
             return v.x == 0f && v.y == 0f;
+        }
+
+        /// <summary>
+        /// **填充"首个接触"的只读出口 + 可见路径末点**（**单点实现**，`Predict` 的两个出口共用）。
+        ///
+        /// · 从内核事件流 drain 出**本次预测**的全部事件，取**第 0 条**（**时间序首条**）⇒ 类别 + 位置；
+        /// · `VisiblePathEnd` = 有接触 ⇒ **精确接触点**（亚步误差归零）；无接触 ⇒ 路径末点；
+        /// · ⚠ **必须比事件序号**：同一 `Step` 内的子步可能**先记库边、再记球-球** ⇒ 若只看 `HasFirstContact`（球-球）
+        ///   会**漏掉**库边首碰，从而画错圆（该叫"库边圆"却画成幽灵球圆）；
+        /// · ⚠ `buffer` 由调用方（workspace）复用；本方法开头先 `Clear`，语义与 `DrainContactEvents`（读即清）一致。
+        /// </summary>
+        private static void FillFirstContact(ref ShotPrediction result, IReadOnlyList<Vector2> path,
+            PoolSimulator probe, List<ContactEvent> buffer, Vector2 ballBallEnd)
+        {
+            buffer.Clear();
+            int count = probe.DrainContactEvents(buffer);
+
+            if (count > 0)
+            {
+                ContactEvent first = buffer[0];
+                result.HasFirstContactEvent = true;
+                result.FirstContactKind = first.kind;
+                result.FirstContactPosition = first.position;
+                result.HasCushionFirstContact = first.kind == ContactKind.Cushion;
+                if (result.HasCushionFirstContact)
+                {
+                    result.CushionContactPosition = first.position;
+                }
+
+                // ⚠ **球-球首碰**：事件里的 `position` 是**两球中点**，而"白线该停在哪"是**幽灵球**（= 白球球心在接触瞬间的位置）
+                //   ⇒ 用调用方传入的**精确幽灵球**（与 `CueWorldPath` 末点逐位一致）⇒ 线不会多伸进球里半个球径。
+                //   库边首碰：事件里的 `position` **就是球心** ✓ 直接用。
+                result.VisiblePathEnd = first.kind == ContactKind.BallBall ? ballBallEnd : first.position;
+                return;
+            }
+
+            result.HasFirstContactEvent = false;
+            result.HasCushionFirstContact = false;
+            result.VisiblePathEnd = path.Count > 0 ? path[path.Count - 1] : result.CueStart;
         }
     }
 }

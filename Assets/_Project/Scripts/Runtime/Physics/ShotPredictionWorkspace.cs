@@ -37,6 +37,12 @@ namespace Billiards.Physics
         internal float ProbeRestSpeed;
         internal int ProbeRestFrames;
 
+        /// <summary>
+        /// **复用的接触事件缓冲**（给 <see cref="ShotPredictor"/> 取"首个接触事件"，避免每帧分配）。
+        /// ⚠ 探测内核是**复用**的 ⇒ 事件缓冲可能残留**上一次预测**的事件 ⇒ 预测前必须先 drain 清空（见 `ShotPredictor`）。
+        /// </summary>
+        internal readonly List<ContactEvent> ContactEvents = new List<ContactEvent>(64);
+
         /// <summary>复用的在场上球快照缓冲。</summary>
         internal readonly List<BallState> Snapshot = new List<BallState>(20);
 

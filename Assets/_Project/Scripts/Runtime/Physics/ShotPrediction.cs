@@ -60,14 +60,41 @@ namespace Billiards.Physics
         /// `ShotPredictorTests` **逐位钉死**的性质）**一个字节都不改** ⇒ 幽灵球 / 首碰判定 /
         /// <see cref="CushionBounceCountBeforeContact"/> 全部与截断**无关**。
         ///
-        /// ⚠ **亚步误差 ≤ 一步位移**（`MaxBallSpeed 8 m/s ÷ 120 Hz ≈ 6.7 cm`）：库边接触发生在**某一步之内**，
-        /// 而路径顶点是**每步一个**。之所以不追求精确：精确需要**内核**记录接触点，
-        /// 那会牵连物理基线（`eq`/`T37`/`T110`/`T111`）—— **为一个视觉截点不值得**（主理人裁定走 (A)）。
+        /// ⚠ **口径升级（2026-10-16，用户截图反馈）**：**末点 = 精确接触点**（由 <see cref="VisiblePathEnd"/> 给出，
+        /// 数据源 = 内核接触事件流的**首条**）⇒ **亚步误差归零**，白线**画到库边为止**。
+        /// 旧口径（"截到最后一次采样顶点、亚步误差 ≤ 一步位移 ≈ 6.7 cm"）**已作废**并登记
+        /// —— 那正是用户看到的"线在离库边一小段的地方就没了"。
         /// </summary>
         /// <para>⚠ **产生侧保证 ≥ 2**：前缀退化（首次库边接触发生在**第 0 步**，如"白球贴库 + 瞄向该库"）
         /// 时**回落到整条** —— 宁可带折返，也**不能让瞄准线整条消失**（用户会看成"线没了"，而不是"线不折返"）。
         /// ⇒ **不要把 `>= 2` 写回 `> 0`**；`T138` 的退化几何负对照就守这一格。</para>
         public int VisiblePathCount;
+
+        // ── **首个接触事件**（只读；用户 2026-10-16 截图反馈："白线碰到边缘…前面有个圆圈"）──────
+        // 数据源 = 内核的**接触事件流**（`PoolSimulator.DrainContactEvents`，**drain 语义**）：
+        // `position` 对**球-库**就是**球心在接触瞬间的位置** ⇒ 正是"库边幽灵球"的圆心，且**精确**（无亚步误差）。
+        // ⚠ 探测内核（`probe`）是预测专用的**独立仿真器** ⇒ 读它的事件流**不抢**音频层（`PoolAudio`）那条单消费者通道。
+
+        /// <summary>本次预测**是否记录了至少一条接触事件**。</summary>
+        public bool HasFirstContactEvent;
+
+        /// <summary>**首个接触**（按事件**时间序**的第一条）的类别。⚠ 同一 `Step` 内子步可能先记库边再记球-球 ⇒ 必须比**事件序号**。</summary>
+        public ContactKind FirstContactKind;
+
+        /// <summary>首个接触点的位置（物理米）：**球-库/越喉 = 球心**；**球-球 = 两球中点**。</summary>
+        public Vector2 FirstContactPosition;
+
+        /// <summary>首个接触**是不是库边**（⇒ 在接触点画"库边圆"；球-球时**不画**库圆，走原幽灵球行为）。</summary>
+        public bool HasCushionFirstContact;
+
+        /// <summary>库边接触点（= <see cref="FirstContactPosition"/>，仅 <see cref="HasCushionFirstContact"/> 时有意义）。</summary>
+        public Vector2 CushionContactPosition;
+
+        /// <summary>
+        /// **可见路径的末点** —— **有接触 ⇒ = 精确接触点**（`FirstContactPosition`，**亚步误差归零**）；
+        /// **无接触 ⇒ = 路径末点**。绘制层用它把白线**画到接触点为止**（并在库边接触处画圆）。
+        /// </summary>
+        public Vector2 VisiblePathEnd;
 
         /// <summary>**只读诊断出口**：预测结束时探测内核的 `BallBallContactCount`（供成本上界断言；测试不需够到 `Predict` 的局部实例）。</summary>
         public int BallBallContactCount;

@@ -39,7 +39,14 @@ namespace Billiards.Physics
         /// 虚线间隙（**规范米**）。必须 `> 0`（`T80a`：间隙为 0 即实线 = "糊"的可判定反面）。
         /// 世界间隙 = 本值 × <see cref="DrawScale"/>（1.2 根 ⇒ 0.0024 m）≥ <see cref="MinGapWorld"/>。
         /// </summary>
-        public const float PredictionGapLength = 0.002f;
+        /// <summary>
+        /// **段间隙（规范米）—— 现已取 `0` = 实线**（2026-10-16 用户截图反馈："线都断了"）。
+        ///
+        /// ⚠ **绘制层已不再使用本常量**（白线走 <see cref="SyncPathLine"/>：整条折线 = **一个** `LineRenderer`，天然连续）。
+        /// 保留它只为：① `T80(a)` 的**可判定表征**（"实线" ⇔ 本值 = 0）；② 若将来要改回虚线，**只改这一处**。
+        /// 旧值 `0.002`（× `DrawScale 1.2` = 0.0024 m ≈ **1.4 px** @596.04 px/米）当时用于**逼近**连续观感。
+        /// </summary>
+        public const float PredictionGapLength = 0f;
 
         /// <summary>线宽（**规范米**）。世界宽 = 本值 × <see cref="DrawScale"/>。</summary>
         public const float PredictionLineWidth = 0.006f;
@@ -92,6 +99,15 @@ namespace Billiards.Physics
         private LineRenderer _ghostCircle;
         private LineRenderer _targetLine;
         private LineRenderer _cueDeflectLine;
+
+        /// <summary>**白线本体**（实线：整条折线由**一个** `LineRenderer` 承载；见 <see cref="SyncPathLine"/>）。</summary>
+        private LineRenderer _pathLine;
+
+        /// <summary>
+        /// **库边接触圆**（用户 2026-10-16："白线碰到边缘…**前面有个圆圈**"）—— 与幽灵球圆**同口径**
+        /// （同 `GhostCircleSegments` / 同 `PredictionLineWidth` / `loop = true`），圆心 = `CushionContactPosition`（**精确接触点**）。
+        /// </summary>
+        private LineRenderer _cushionCircle;
         private Material _runtimeLineMaterial;
 
         // ── 纯几何 / 单点（判据直接驱动，不必真画）────────────────────────────────
@@ -199,15 +215,26 @@ namespace Billiards.Physics
 
             if (path != null && path.Count >= 2)
             {
+                // **实线**（2026-10-16 用户截图反馈："线都断了" ⇒ 白线改实线，不再按弧长铺虚线）。
+                // 末点 = `VisiblePathEnd`（**精确接触点**）⇒ 线**画到库边为止**（旧口径"止于最后一次采样顶点"已作废）。
                 Gizmos.color = PathColor;
-                AppendPolylineDashSegments(path, PredictionDashLength, PredictionGapLength, _segmentBuffer,
-                    prediction.VisiblePathCount);
-                for (int s = 0; s < _segmentBuffer.Count; s++)
+                int gizUse = VisiblePathVertexCount(prediction, path);
+                for (int s = 0; s + 1 < gizUse; s++)
                 {
-                    (Vector2 sa, Vector2 sb) = _segmentBuffer[s];
                     Gizmos.DrawLine(
-                        DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(sa)),
-                        DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(sb)));
+                        DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(path[s])),
+                        DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(path[s + 1])));
+                }
+
+                if (gizUse >= 1)
+                {
+                    Vector2 lastDrawn = path[gizUse - 1];
+                    if (lastDrawn != prediction.VisiblePathEnd)
+                    {
+                        Gizmos.DrawLine(
+                            DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(lastDrawn)),
+                            DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(prediction.VisiblePathEnd)));
+                    }
                 }
             }
 
@@ -274,15 +301,9 @@ namespace Billiards.Physics
             ShotPrediction prediction = controller.Prediction;
             IReadOnlyList<Vector2> path = prediction.CueWorldPath;
 
-            // **复用缓冲 + 按弧长铺虚线**（先 Clear 再追加；段数 ≈ 路径总长 / (dash + gap)）。
-            _segmentBuffer.Clear();
-            if (path != null && path.Count >= 2)
-            {
-                AppendPolylineDashSegments(path, PredictionDashLength, PredictionGapLength, _segmentBuffer,
-                    prediction.VisiblePathCount);
-            }
-
-            SyncRenderers(_segmentBuffer);
+            // **实线**（2026-10-16 用户反馈"线都断了"）：整条白线 = **一个** `LineRenderer`（不是每段一个）
+            // ⇒ 既保证视觉连续，又把渲染器数从"路径长 ÷ dash"（16 m ÷ 0.25 = 64，**超预算 60**）降到 **1** ✓
+            SyncPathLine(prediction, path);
             SyncContactMarkers(prediction);
             _lastDrawnVersion = version;
             _linesCleared = false;
@@ -395,6 +416,35 @@ namespace Billiards.Physics
                 }
             }
 
+            // ── **库边接触圆**（用户："像喷到球一样**前面有个圆圈**"）──
+            // ⚠ 与幽灵球圆**同口径**（同段数/同线宽/`loop`），只是圆心 = **库边接触点**、且**首个接触是库边时**才画。
+            // ⚠ 球-球首碰时**不画**库圆（那种情形本来就画幽灵球圆）⇒ 两圆互斥，不会叠。
+            if (_cushionCircle == null)
+            {
+                _cushionCircle = CreateMarkerLine("AimAssistCushionCircle", PathColor, GhostCircleSegments);
+                _cushionCircle.loop = true;
+            }
+
+            if (_cushionCircle.positionCount != GhostCircleSegments)
+            {
+                _cushionCircle.positionCount = GhostCircleSegments;
+            }
+
+            bool hasCushionCircle = prediction.HasCushionFirstContact;
+            _cushionCircle.gameObject.SetActive(hasCushionCircle);
+            if (hasCushionCircle)
+            {
+                Vector3 cushionWorld = DrawPoint(playfieldRoot,
+                    PoolGeometry.PhysicsBallToUnity(prediction.CushionContactPosition));
+                float cushionRadius = PoolConstants.BallRadius * scale;
+                for (int i = 0; i < GhostCircleSegments; i++)
+                {
+                    float angle = i * Mathf.PI * 2f / GhostCircleSegments;
+                    _cushionCircle.SetPosition(i,
+                        cushionWorld + new Vector3(Mathf.Cos(angle) * cushionRadius, 0f, Mathf.Sin(angle) * cushionRadius));
+                }
+            }
+
             bool hasTarget = hasContact && prediction.TargetOutgoingDirection != Vector2.zero;
             if (_targetLine == null)
             {
@@ -420,6 +470,59 @@ namespace Billiards.Physics
                 _cueDeflectLine.SetPosition(0, ghostWorld);
                 _cueDeflectLine.SetPosition(1, ghostWorld + WorldDirection(prediction.CueOutgoingDirection) * (CueDeflectLineLength * scale));
             }
+        }
+
+        /// <summary>
+        /// **可见路径的顶点数**（绘制口径，**Gizmos 与运行时共用** = 单点实现）：
+        /// `path[0 .. VisiblePathCount-1]` 是**接触前**的采样前缀；其后由 `VisiblePathEnd`（**精确接触点**）收尾。
+        /// ⚠ 非法/越界一律夹到 `[0, path.Count]`。
+        /// </summary>
+        private static int VisiblePathVertexCount(in ShotPrediction prediction, IReadOnlyList<Vector2> path)
+        {
+            if (path == null || path.Count == 0)
+            {
+                return 0;
+            }
+
+            int use = prediction.VisiblePathCount <= 0 ? path.Count : Mathf.Min(prediction.VisiblePathCount, path.Count);
+            return Mathf.Max(use, 1);
+        }
+
+        /// <summary>
+        /// **把白线画成实线**（单个 `LineRenderer` 承载整条折线）：顶点 = 可见前缀 + **精确接触点**（`VisiblePathEnd`）。
+        /// ⚠ 为何不用"每段一个 `LineRenderer`"：段数 = 路径长 ÷ `PredictionDashLength`（16 m ÷ 0.25 = **64**）
+        /// ⇒ 会**撞穿渲染器预算 60**；整条折线一个渲染器则是 **1** ✓。
+        /// </summary>
+        private void SyncPathLine(in ShotPrediction prediction, IReadOnlyList<Vector2> path)
+        {
+            if (_pathLine == null)
+            {
+                _pathLine = CreateMarkerLine("AimAssistPathLine", PathColor, 2);
+            }
+
+            int use = VisiblePathVertexCount(prediction, path);
+            if (use == 0)
+            {
+                _pathLine.gameObject.SetActive(false);
+                return;
+            }
+
+            Vector2 end = prediction.VisiblePathEnd;
+            bool extraEnd = path[use - 1] != end;
+            int count = use + (extraEnd ? 1 : 0);
+
+            _pathLine.positionCount = count;
+            for (int i = 0; i < use; i++)
+            {
+                _pathLine.SetPosition(i, DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(path[i])));
+            }
+
+            if (extraEnd)
+            {
+                _pathLine.SetPosition(use, DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(end)));
+            }
+
+            _pathLine.gameObject.SetActive(true);
         }
 
         /// <summary>

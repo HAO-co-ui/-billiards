@@ -32,6 +32,19 @@ namespace Billiards.Tests
         private const string ViewSourcePath = "Assets/_Project/Scripts/Runtime/Physics/AimAssistView.cs";
         private const string ControllerSourcePath = "Assets/_Project/Scripts/Runtime/Physics/AimAssistController.cs";
 
+        /// <summary>逐行剥掉 `//` 之后注释（`T80(a2)` 白盒守卫用；命名带后缀避免与既有助手重名）。</summary>
+        private static string StripLineCommentsT80(string source)
+        {
+            var sb = new System.Text.StringBuilder(source.Length);
+            foreach (string line in source.Split('\n'))
+            {
+                int cut = line.IndexOf("//", System.StringComparison.Ordinal);
+                sb.Append(cut >= 0 ? line.Substring(0, cut) : line).Append('\n');
+            }
+
+            return sb.ToString();
+        }
+
         private static Transform FindByName(Scene scene, string name)
         {
             foreach (GameObject go in scene.GetRootGameObjects())
@@ -203,10 +216,42 @@ namespace Billiards.Tests
         {
             var failures = new List<string>();
 
-            // (a) 间隙非零（= 不是实线，"糊"的可判定反面）
-            if (!(AimAssistView.PredictionGapLength > 0f))
+            // (a) **实线口径**（2026-10-16 用户截图反馈："线都断了" ⇒ 白线改实线）
+            //   ① **新口径**：白线走**实线**（整条折线 = **一个** `LineRenderer`，见 `AimAssistView.SyncPathLine`）
+            //      ⇒ 间隙**不再参与**；`PredictionGapLength` 取 **0** 作为"实线"的**可判定表征**。
+            //   ② **旧口径的设计意图（保留可读）**：`gap > 0` 守的是"**别把线画成一坨糊**" ——
+            //      当时是**亚像素间隙逼近连续**（`0.002 × DrawScale 1.2 = 0.0024 m ≈ 1.4 px` @596.04 px/米），
+            //      即"接近连续瞄准线"，**不是**"必须看到虚线段"。⇒ 用户这次要求走到**极限情形 = 实线**。
+            //   ③ **若将来要改回虚线 ⇒ 只改这一处**：`AimAssistView.PredictionGapLength`（取 > 0）
+            //      ＋ 绘制路径从 `SyncPathLine`（单折线）回到按弧长铺段（`AppendPolylineDashSegments`）。
+            if (!(AimAssistView.PredictionGapLength == 0f))
             {
-                failures.Add($"(a) 间隙 {AimAssistView.PredictionGapLength:R} 不为正 ⇒ 拼成实线（\"糊\"）。");
+                failures.Add($"(a) 实线口径：`PredictionGapLength` 应为 0（实测 {AimAssistView.PredictionGapLength:R}）。见本条注释 ①②③。");
+            }
+
+            // (a2) **白盒实线守卫**（读磁盘文本 + 剥注释；与 `⑤'''`/④' 同法）：
+            //   白线的绘制路径**必须**是"整条折线"那条（`SyncPathLine(`），且**不得**再走按弧长铺段的旧路径。
+            //   **怎么打死它**：把绘制改回 `AppendPolylineDashSegments(...)` ⇒ 本条红。
+            string viewSrc = StripLineCommentsT80(
+                System.IO.File.ReadAllText(System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(UnityEngine.Application.dataPath), ViewSourcePath)));
+            if (!viewSrc.Contains("SyncPathLine(prediction, path)"))
+            {
+                failures.Add("(a2) 白线未走实线路径：源码里找不到 `SyncPathLine(prediction, path)` 调用。");
+            }
+
+            // ⚠⚠ **本条第一版踩了一个"已记录教训的复发"（如实记录）**：它判的是**方法名**
+            //   `Contains("AppendPolylineDashSegments(")` ⇒ **命中的是方法定义**（那个公开纯函数本轮**刻意保留**、
+            //   且 `T80(b)` 直接测它）⇒ **恒红**（基线也红 ⇒ 一度把 INJ-A 的红名单污染成 2 条）。
+            //   同族上一处 = **批次 B 的 `T133` 空转守卫**（`Contains("SampleScenePeaks(")` 命中**定义**、
+            //   `Contains("TotalPredictSteps")` 命中**属性声明**）⇒ 结论早已是"**源码级守卫必须写使用/调用形态**"，
+            //   而**它在规格里、却在新地方又犯一次** ⇒ 故本处补**机械化对策**（见规格 §12.3 ⑥）。
+            // ⚠ 判**旧调用点**（`path, PredictionDashLength`），**不是**判方法名 ——
+            //   公开纯函数 `AppendPolylineDashSegments` / `BuildDashSegments` 仍保留（`T80(b)` 直接测它们），
+            //   它们的方法**定义**里也含这个名字 ⇒ 只判名字会**恒红**（本条第一版就踩了这个坑，已修）。
+            if (viewSrc.Contains("AppendPolylineDashSegments(path, PredictionDashLength"))
+            {
+                failures.Add("(a2) 白线仍走按弧长铺段的旧路径（旧调用点 `AppendPolylineDashSegments(path, PredictionDashLength…` 仍在）⇒ 实线口径未生效。");
             }
 
             float dash = AimAssistView.PredictionDashLength;
@@ -255,6 +300,19 @@ namespace Billiards.Tests
                     }
                 }
 
+                // (b2) **实线（gap = 0）⇒ 相邻段必须首尾相接**（逐位）⇒ 视觉连续（这是"实线"的正面表征）
+                if (gap == 0f)
+                {
+                    for (int i = 0; i + 1 < segs.Count; i++)
+                    {
+                        if (segs[i].b != segs[i + 1].a)
+                        {
+                            failures.Add($"(b2) L={L:R}：间隙为 0 但第 {i} 段末点 ≠ 第 {i + 1} 段起点 ⇒ 线不连续。");
+                            break;
+                        }
+                    }
+                }
+
                 float lastEnd = Vector2.Dot(segs[segs.Count - 1].b - from, (to - from).normalized);
                 if (!(lastEnd <= L + 1e-6f))
                 {
@@ -291,15 +349,25 @@ namespace Billiards.Tests
                     }
                 }
 
-                // (d) 屏幕可辨下限
+                // (d) 屏幕可辨下限 —— ⚠ **实线口径下不适用**（无间隙）：仅当 `gap > 0`（将来改回虚线）时才判。
+                //   历史：该条守的是"如果画虚线，间隙至少 1 px（不然看不出是虚线、只见抖动）"。
                 float worldGap = gap * drawScale;
-                if (!(worldGap >= AimAssistView.MinGapWorld))
+                if (gap > 0f)
                 {
-                    failures.Add($"(d) 世界间隙 {worldGap:R} m < MinGapWorld {AimAssistView.MinGapWorld:R} m（屏幕 <1 px）。");
+                    if (!(worldGap >= AimAssistView.MinGapWorld))
+                    {
+                        failures.Add($"(d) 世界间隙 {worldGap:R} m < MinGapWorld {AimAssistView.MinGapWorld:R} m（屏幕 <1 px）。");
+                    }
+                }
+                else
+                {
+                    detail.Add("实线⇒(d) 世界间隙不适用（无间隙）");
                 }
 
-                TestContext.WriteLine($"T80: gap={gap:R} > 0；{string.Join(" ", detail)}；DrawScale={drawScale:R}；"
-                                      + $"世界间隙 {worldGap:R} m ≥ MinGapWorld {AimAssistView.MinGapWorld:R} m ✓");
+                string gapNote = gap > 0f
+                    ? $"gap={gap:R} > 0、世界间隙 {worldGap:R} m ≥ MinGapWorld {AimAssistView.MinGapWorld:R} m"
+                    : "**gap=0 ⇒ 实线口径**（(d) 世界间隙不适用；(a2) 白盒守卫：白线走 SyncPathLine）";
+                TestContext.WriteLine($"T80: {gapNote}；{string.Join(" ", detail)}；DrawScale={drawScale:R} ✓");
             }
             finally
             {

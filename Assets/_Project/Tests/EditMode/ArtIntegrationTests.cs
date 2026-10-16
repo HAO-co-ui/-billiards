@@ -187,6 +187,19 @@ namespace Billiards.Tests
                                  + "（网格长轴是 Y，不修正则杆装反/横躺）。");
                 }
 
+                // ── **杆链 MeshRenderer 计数必须 == 1**（`home-ui` 交付时报的覆盖边界，转为可判定）──────────
+                // **守什么**：三道可见门（流程门 / 转场门 / 首页门）都只切**一个** renderer
+                // （`CueStickController._stickRenderer = stickInstance.GetComponentInChildren<MeshRenderer>(true)`）。
+                // 杆链若出现 **>1** 个 `MeshRenderer`，首页视角下球杆**只会被切掉一部分（仍然可见）** ⇒ 用户会再报一次。
+                // ⚠ **升级路径（写在注释里，供将来）**：若本条变红（球杆模型换成多 mesh 资源）⇒
+                //   **把三道门统一改为"遍历整链"**（不再只取第一个 renderer）。
+                int stickRendererCount = stick.stickInstance.GetComponentsInChildren<MeshRenderer>(true).Length;
+                if (stickRendererCount != 1)
+                {
+                    failures.Add($"①b 杆链 `MeshRenderer` 数 = {stickRendererCount}（应为 **1**）—— 可见门只切第一个 ⇒"
+                                 + "首页视角下球杆只会被切掉一部分；按本判据注释的升级路径：把三道门统一改为遍历整链。");
+                }
+
                 var renderer = modelTransform.GetComponentInChildren<MeshRenderer>(true);
                 Assert.IsNotNull(renderer, "T123：杆模型没有渲染器。");
 

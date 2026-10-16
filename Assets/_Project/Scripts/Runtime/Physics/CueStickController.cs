@@ -128,17 +128,27 @@ namespace Billiards.Physics
         /// **球杆是否显示**（**纯函数** —— 与 <see cref="AimAssistController.ShouldShowAimAssist"/> 同形，
         /// 判据 `T137` 直接驱动它，不必起场景）。
         ///
-        /// 三条同时成立才显示：
+        /// 四条同时成立才显示：
         ///  · `flowVisible` —— 流程口径（`Moving`/`Settle` 隐藏）；
         ///  · `cueBallInPlay` —— **白球必须在场上**（否则相位回到 `Aim` 时杆会停在**袋口残留位置**，
         ///    看起来像杆插在袋里；用户实测截图）；
         ///  · `transitionActive == false` —— **取景转场让位**（用户实机反馈"转场中瞄准表现会乱扫"）：
         ///    杆与瞄准线**同根因**（都是相机相关的投影，而相机在转场中在动）⇒ 走**同一个**门
-        ///    （`Billiards.Core.CameraTransition.IsActive`），且该门到转场**落终态**才放开。
+        ///    （`Billiards.Core.CameraTransition.IsActive`），且该门到转场**落终态**才放开；
+        ///  · `homeViewOpen == false` —— **首页观景视角让位**（用户实机截图反馈②："主页的球杆不要这样
+        ///    浮空在球桌上"）：首页那个"观景"取景下，杆**横躺在台面上、杆尾悬空** ⇒ 从该视角看就是"浮在桌上"。
+        ///    处置选**隐藏**（用户给的两选项之一），而**不是**把场景里的杆对象删掉 —— 删对象会让
+        ///    35-A 的球杆判据与整条场景重建链一起动，代价远大于收益。
+        ///    > "立在椅子旁边"是用户给的**另一个**选项，属**新摆放工作**（要先给椅子定锚点、再摆一个"靠椅"
+        ///    > 姿态），已登记为**可选后续**，本卡不做。
+        ///
+        /// ⚠ `homeViewOpen` **带默认值 `false`**：既有 4 条断言（`T137②`）与生产调用点之外的调用者
+        ///   一律**行为逐位不变**（这正是"不误伤"那一半的守）。生产侧**显式**传 `HomeView.IsOpen`。
         /// </summary>
-        public static bool ShouldShowStick(bool flowVisible, bool cueBallInPlay, bool transitionActive)
+        public static bool ShouldShowStick(bool flowVisible, bool cueBallInPlay, bool transitionActive,
+                                          bool homeViewOpen = false)
         {
-            return flowVisible && cueBallInPlay && !transitionActive;
+            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen;
         }
 
         private void SyncStick()
@@ -155,9 +165,12 @@ namespace Billiards.Physics
             // **取景转场期间也隐藏**（用户实机反馈"转场中瞄准表现会乱扫"）：杆与瞄准线同根因
             // （都是相机相关的投影，而相机在转场中在动）⇒ 走**同一个**门（`CameraTransition.IsActive`），
             // 且该门在转场**落终态**才放开 ⇒ 不会在最后几帧闪回来。
+            // **首页观景视角期间同样隐藏**（用户实机截图反馈②："主页的球杆不要这样浮空在球桌上"）：
+            // 首页那个取景下杆看着像浮在桌面 ⇒ 让位。读 `HomeView.IsOpen` 与 `AimAssistController`
+            // 的模态门**同一范式**（同程序集、单向 UI→Physics 只读静态属性）⇒ **不引入新的依赖方向**。
             bool cueBallInPlay = drive.Simulator != null && drive.Simulator.IsBallInPlay(0);
             bool visible = ShouldShowStick(_flow.IsStickVisible, cueBallInPlay,
-                Billiards.Core.CameraTransition.IsActive);
+                Billiards.Core.CameraTransition.IsActive, Billiards.UI.HomeView.IsOpen);
             if (_stickRenderer != null && _stickRenderer.enabled != visible)
             {
                 _stickRenderer.enabled = visible;

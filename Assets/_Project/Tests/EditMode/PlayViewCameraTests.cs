@@ -309,6 +309,8 @@ namespace Billiards.Tests
         /// 断言四组：
         ///  ① **瞄准门**（纯函数）：转场中 ⇒ 不显示；转场结束 ⇒ 恢复；
         ///  ② **球杆门**（纯函数，同形）：同上，且原有两条（流程口径 / 白球在场上）不受影响；
+        ///  ②'' **首页观景视角门**（同组内追加）：`homeViewOpen` ⇒ 必须隐藏（用户实机截图反馈②
+        ///     "主页的球杆不要这样浮空在球桌上"）；且 `homeViewOpen=false` 时与改动前**逐位一致**；
         ///  ③ **生命周期**：起转场 ⇒ 门**立刻**关上；推进到**半程**（`t < 1`）**仍关着**
         ///     （"没到 `t ≥ 1` 不许恢复"，否则最后几帧又会闪一下）；推满 ⇒ 放开**且**相机逐位落在预设；
         ///  ④ **不误伤稳态 + 兜底真的被考到**：首帧硬切后门是**开**的（否则正常打球时瞄准线会一直不显示）；
@@ -325,7 +327,8 @@ namespace Billiards.Tests
         ///     删掉那行调用，②**必红**）。
         ///
         /// **怎么打死它**：删掉 `ShouldShowAimAssist` 的 `!transitionActive` 项 ⇒ ① 红；
-        /// 删掉 `ShouldShowStick` 的同项 ⇒ ② 红；把 `PlayViewCamera` 的 `Publish(false)` 从落终态挪到半程
+        /// 删掉 `ShouldShowStick` 的同项 ⇒ ② 红；
+        /// **删掉 `ShouldShowStick` 的 `!homeViewOpen` 项 ⇒ ②'' 红**（首页期球杆又会浮在桌上）；把 `PlayViewCamera` 的 `Publish(false)` 从落终态挪到半程
         /// ⇒ ③ 的"半程仍关着"红；把 `Publish(true)` 去掉 ⇒ ③ 的"起转场立刻关上"红；
         /// 把 `ReleaseTransitionGate()` 的**实现**改成 no-op ⇒ ④① 红；
         /// **删掉 `OnDisable` 里的 `ReleaseTransitionGate()` 调用 ⇒ ④② 红**（待按此**实测注入**验证）。
@@ -352,6 +355,25 @@ namespace Billiards.Tests
                 "T137②：流程口径（Moving/Settle 隐藏）不得被削弱。");
             Assert.IsFalse(CueStickController.ShouldShowStick(true, false, false),
                 "T137②：白球不在场上 ⇒ 杆仍须隐藏（否则会停在袋口残留位置）。");
+
+            // ── ②'' 首页观景视角门（用户实机截图反馈②："主页的球杆不要这样浮空在球桌上"）──
+            // ⚠ 为什么**复用本组**而不是新开 `[Test]`：`ShouldShowStick` 的**全部既有断言就在本组**
+            //   （上面 4 条），放这里语义最连贯；且**塞进已有 `[Test]` 不改测试数** ⇒ **台账不动**
+            //   （新开 `[Test]` 会改 231 这个数 ⇒ 要同批改 `Docs/测试数基线台账.md`）。本批**选前者**。
+            // ⚠ 前 4 条走的是**带默认值**的三参调用 ⇒ 它们同时就是 `homeViewOpen=false` 时
+            //   "**行为与改动前逐位一致**"的证据（"不误伤"那一半的守）。
+            // **注入负对照**：把 `&& !homeViewOpen` 去掉（或让该分支恒 false）⇒ 下面第 1 条**必红**。
+            //   **真执行级验证已过**（`home-ui` 的本地 harness **真加载编译产物并调用** `ShouldShowStick`，
+            //     **打印被执行 DLL 的路径 + mtime**（避免"跑的是旧拷贝"这种假证）；基线 **6/6 PASS**、
+            //     注入后**恰好 1 FAIL 且消息指对**（`home open => must hide`）、还原 sha1 `2038db62…` **逐位一致**、
+            //     还原态复跑 **6/6 PASS**）。
+            //   ⚠ 它**不是 NUnit 跑本条 `[Test]`**；**NUnit 级实跑红名单由 `room-env` 在全链里补入**（本批统一跑）。
+            //   （档位口径：**写低与写高同属"与事实不符"** —— 写低会让下一个人以为只有复演级证据而**重复劳动**。）
+            Assert.IsFalse(CueStickController.ShouldShowStick(true, true, false, homeViewOpen: true),
+                "T137②''：**首页打开期间**球杆必须隐藏 —— 否则在首页观景视角下它横躺在台面上、杆尾悬空"
+                + "（用户实机截图原话：\"浮空在球桌上\"）。");
+            Assert.IsTrue(CueStickController.ShouldShowStick(true, true, false, homeViewOpen: false),
+                "T137②''：首页**未**打开时行为必须与改动前**逐位一致**（不误伤那一半的守）。");
 
             // ── ③ / ④ 生命周期（真组件）──
             var go = new GameObject("T137PlayViewCamera");
