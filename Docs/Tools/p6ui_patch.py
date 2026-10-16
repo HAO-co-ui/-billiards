@@ -61,6 +61,42 @@ PATCHES = {
             ),
         ],
     ),
+    # ④ **去掉"结算边界"的记录**：结算发生了但**不记历史** ⇒ 首页三项统计不涨（AI 对局尤其明显）
+    "record-drop": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeResultView.cs",
+        [
+            (
+                "            RecordRackAtSettlement(form);\n",
+                "",
+            ),
+        ],
+    ),
+    # ⑤ **把记录口改成"从空历史起算"**（复现旧口径的**覆盖**缺陷）
+    #    ⇒ 每局都把文件覆盖成单条历史 ⇒ 首页 `RACKS` 永远最多 1（统计静默做死）
+    "record-overwrite": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeSessionStore.cs",
+        [
+            (
+                "            string merged = AppendToHistory(ToHistoryJson(ReadHistoryFromDisk()), record);",
+                "            string merged = AppendToHistory(string.Empty, record);",
+            ),
+        ],
+    ),
+    # ⑥ **删掉 `ai-turn` 那一支**：登记里仍说它可达，但状态求解**产不出它**
+    #    ⇒ 对手回合期间状态条回落成 `aim`（假陈述"轮到你了"）
+    "ai-turn-drop": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudState.cs",
+        [
+            (
+                "            if (aiTurn)\n"
+                "            {\n"
+                "                return HudVisualState.AiTurn;\n"
+                "            }\n"
+                "\n",
+                "",
+            ),
+        ],
+    ),
 }
 
 

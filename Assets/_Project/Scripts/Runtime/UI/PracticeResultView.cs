@@ -39,11 +39,17 @@ namespace Billiards.UI
     /// · 主键 `Play again`：**练习** ⇒ 重摆开新局；**比赛** ⇒ 走 `MatchSeams.TryStartMatch`
     ///   **真的再开一局**（未接线 ⇒ 保持卡片并提示，**不假装已开局**）。
     /// · 次键：**比赛形态** ⇒ `Back to club`（回首页，走 `HomeSeams.TryShow`）；
-    ///   **练习形态** ⇒ `Export data`（既有功能，它同时是 `PracticeSessionStore` 历史
-    ///   = 首页三项统计真源的**唯一运行期写入口**，删掉它首页统计会恒 0）。
+    ///   **练习形态** ⇒ `Export data`（把磁盘上已有的历史写出，**幂等、不新增记录**）。
     ///   ⚠ 当年把参考稿的 `Back to club` 换成 `Export data` 的**唯一理由**是"本工程没有首页"
     ///   —— **首页已落地 ⇒ 该理由已为假**；比赛形态因此按参考稿恢复 `Back to club`。
     ///   两种形态各自的标签都**如实描述自己的动作**（不存在"显示 A 实际做 B"）。
+    ///
+    /// ── "记一局"与"导出文件"是两件事（P6 起拆开）─────────────────────────────────
+    /// **记录**（`PracticeSessionStore.TryAppendRecordToDisk`）挂在**结算边界**（`Present()` ⇒
+    /// <see cref="RecordRackAtSettlement"/>）：**一次结算恰好一条**，两种来源都记 ⇒ 首页三项统计
+    /// 记的是"你打了多少局"。**导出文件**只是把已有历史原样写出（`TryExportHistory`）。
+    /// 旧口径把两者绑在 `Export data` 按钮上、且从空历史起算 ⇒ 既**覆盖**累积历史，又让
+    /// **不点按钮的局**（含全部 AI 对战）**不被记录** —— 首页统计会静默做死。
     ///
     /// ── 输入让位（关键）─────────────────────────────────────────────────────
     /// 卡片打开期间 <see cref="IsOpen"/> 为真，`PointerAimController` / `PointerPowerController`
@@ -441,6 +447,12 @@ namespace Billiards.UI
 
             ApplyOutcomeStyle(win);
 
+            // **结算边界**：本局在这里**恰好记一次**（两种来源都记）。
+            // ⚠ 一次结算**只**记一条 —— `Present()` 是**唯一落笔点**，而它每次结算只被调一次
+            //   （练习：`Show()` 由 `_tracker.Outcome` 触发且紧接着 `IsOpen` 挡住重入；
+            //     比赛：`ShowMatchResult()` 由 Runtime 的 `TryConsumeSettlement()` 闸门保证只来一次）。
+            RecordRackAtSettlement(form);
+
             IsOpen = true;
             _backdrop.gameObject.SetActive(true);
             _card.gameObject.SetActive(true);
@@ -514,6 +526,36 @@ namespace Billiards.UI
             _started = true;
         }
 
+        /// <summary>
+        /// **结算边界（唯一）：把本局记进历史。**
+        ///
+        /// ── 为什么在这里、而不是在按钮上（P6 的裁定）────────────────────────────────
+        /// 记录必须与"玩家点了哪个键"**无关**：`Play again` / `Back to club` / `Export data` 三个出口里
+        /// 只有一个是导出，若把记录挂在它上面，**比赛形态（次键是 `Back to club`）就永远不会记**
+        /// ⇒ 打完一局 AI 对战，首页三项统计**不涨**（与"统计恒 0"是同一个病）。
+        /// ⇒ 记录挪到**结算边界**：**结算发生就记**，两种来源都记，一次结算**恰好一条**。
+        ///
+        /// ── `racks` 为什么用 `Max(1, …)` ──────────────────────────────────────────
+        /// "一局打完"这个事实是**结算出口**给的，不是 tracker 给的：比赛形态下 `_tracker` **从不 resolve**
+        /// （`MatchOver` 之后 `Update()` 提前返回、`Observe` 不再跑）⇒ 它的 `racks` 恒 0，而事实是**打完了 1 局**。
+        /// `Max` 同时保住练习形态的既有值（那里的 `racks` 本来就是 1）。
+        /// </summary>
+        private void RecordRackAtSettlement(MatchResultForm form)
+        {
+            PracticeSessionSnapshot snapshot = _tracker.Snapshot();
+            snapshot.racks = Mathf.Max(1, snapshot.racks);
+
+            string mode = form == MatchResultForm.None
+                ? PracticeSessionStore.ModePractice
+                : PracticeSessionStore.ModeMatch;
+
+            PracticeSessionRecord record = PracticeSessionStore.NewRecord(snapshot, mode);
+            if (!PracticeSessionStore.TryAppendRecordToDisk(record, out string error))
+            {
+                Debug.LogWarning($"PracticeResultView：本局记录写盘失败 {error}", this);
+            }
+        }
+
         // ════════════════ 两个键的回调 ════════════════════════════════════════════
 
         /// <summary>
@@ -575,13 +617,15 @@ namespace Billiards.UI
             RebaselineSession();   // 回首页 = 本局收口 ⇒ 下一局从此刻的出杆数起算
         }
 
-        /// <summary>`Export data`：把当前会话并入历史并一键导出（失败不抛，只在卡上提示）。</summary>
+        /// <summary>
+        /// `Export data`：把**磁盘上已有的历史原样写出**（幂等）。
+        /// ⚠ **不新增记录** —— 记录由 <see cref="RecordRackAtSettlement"/> 在**结算边界**做
+        /// ⇒ "记一局"与"导出文件"解耦，不存在"结算记一次 + 导出又记一次"的**双记**
+        /// （旧口径从空历史起算，会把累积的历史**覆盖成单条**，那正是首页统计静默做死的根因）。
+        /// </summary>
         public void OnExport()
         {
-            PracticeSessionRecord record = PracticeSessionStore.NewRecord(_tracker.Snapshot());
-            string history = PracticeSessionStore.AppendToHistory(string.Empty, record);
-
-            if (PracticeSessionStore.TryWriteExport(history, out string error))
+            if (PracticeSessionStore.TryExportHistory(out string error))
             {
                 ShowToast($"Exported to {PracticeSessionStore.ExportPath}");
             }

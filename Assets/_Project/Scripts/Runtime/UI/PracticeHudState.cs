@@ -13,19 +13,19 @@ namespace Billiards.UI
     /// **边线色与指示色**（<see cref="PracticeHudState.EdgeColor"/> / <see cref="PracticeHudState.SymbolColor"/>）、
     /// **文案**（<see cref="PracticeHudState.StateTitle"/> / <see cref="PracticeHudState.StateDetail"/>）。
     ///
-    /// ── 本卡可达 5 态、契约先行 3 态（如实登记）───────────────────────────────
-    /// 35-A 是**单机练习卡**：没有 AI、没有规则引擎、没有暂停菜单 ⇒ `ai-turn` / `call-pocket` / `paused`
-    /// **无法在本卡被触发**。它们仍然在枚举、配色、图标、文案里**全部定义齐全** ——
-    /// 这样 35-B 接入 AI/规则/暂停时**不需要改这里**（也就不会出现"新增状态没人管配色"的半成品）。
-    /// 不可达的三个在 <see cref="UnreachableStates"/> 里显式登记，判据 `T125` 据此断言
-    /// "不可达集合既没被偷偷扩大、也没被偷偷缩小"。
+    /// ── 本卡可达 6 态、契约先行 2 态（P6 按事实重钉；如实登记）──────────────────
+    /// `ai-turn` 在 P6 **已接线可达**（对手回合显示"Opponent"，不再假报 `Aim`）；
+    /// 仍不可触发的是 `call-pocket`（**运行期出口已存在，缺 UI 选袋交互**）与 `paused`（**本卡无暂停系统**）。
+    /// 它们仍然在枚举、配色、图标、文案里**全部定义齐全** —— 接入时**不需要改这里**。
+    /// 不可达的两条在 <see cref="UnreachableStates"/> 里显式登记，判据 `T125②` 据此断言
+    /// "不可达集合既没被偷偷扩大、也没被偷偷缩小"，并且**用参数穷举反证**"登记为可达的态真的能被产出"。
     /// </summary>
     public enum HudVisualState
     {
         /// <summary>`aim` —— 轮到玩家、可以出杆。</summary>
         Aim = 0,
 
-        /// <summary>`ai-turn` —— 对手回合。**35-A 不可达**。</summary>
+        /// <summary>`ai-turn` —— 对手回合。**P6 起可达**（真值源 `PhysicsTestDrive.IsAiTurn`）。</summary>
         AiTurn = 1,
 
         /// <summary>`moving` —— 球在动 / 台面未静止（含"出杆被拒"）。</summary>
@@ -34,13 +34,13 @@ namespace Billiards.UI
         /// <summary>`ball-in-hand` —— 白球已归位、等你出杆。</summary>
         BallInHand = 3,
 
-        /// <summary>`call-pocket` —— 指定球袋。**35-A 不可达**。</summary>
+        /// <summary>`call-pocket` —— 指定球袋。**仍不可达**：运行期出口已存在，缺 UI 选袋交互。</summary>
         CallPocket = 4,
 
         /// <summary>`foul` —— 犯规（本工程唯一的可观测犯规 = 白球落袋）。</summary>
         Foul = 5,
 
-        /// <summary>`paused` —— 比赛冻结。**35-A 不可达**。</summary>
+        /// <summary>`paused` —— 比赛冻结。**仍不可达**（本卡没有暂停系统）。</summary>
         Paused = 6,
 
         /// <summary>`result` —— 结算卡已弹出。</summary>
@@ -447,12 +447,24 @@ namespace Billiards.UI
             return state == HudVisualState.Foul ? ClubUiTokens.FoulFill : ClubUiTokens.PanelStatus;
         }
 
-        /// <summary>本卡**无法触发**的状态（显式登记，防"悄悄少做/悄悄多做"）。</summary>
+        /// <summary>
+        /// 本卡**无法触发**的状态（显式登记，防"悄悄少做/悄悄多做"）。
+        ///
+        /// ── ⚠ **P6 重钉（按事实，不是删掉）**───────────────────────────────────────
+        /// · **`ai-turn` 已移出本集合 —— 它现在真的可达**：真值源 =
+        ///   `Billiards.Physics.PhysicsTestDrive.IsAiTurn`（`= CurrentTurn == ShotTurn.Ai`），
+        ///   施加口 = `SetTurn(ShotTurn)` / `ApplyVerdict(in RuleVerdict)`（取规则层 `nextTurn`），
+        ///   状态条出口 = <see cref="ResolveVisualState"/> 的 `aiTurn` 入参（由 `PracticeHudView` 喂）。
+        ///   旧理由「本卡无 AI」**已是假陈述**（AI 与规则引擎都已落地）—— 见 `T125②`。
+        /// · **`call-pocket` 仍不可达，但理由不是"没有引擎"**：运行期出口**已存在**
+        ///   （`PhysicsTestDrive.TryCallPocket(int)` / `CalledPocket` / `RefusedCallPocketCount`，
+        ///   规则层 `RuleState.calledPocket` 已参与"进错袋判负"）⇒ 缺的是 **UI 侧的选袋交互**（下一段增量）。
+        /// · **`paused` 仍不可达**：本卡**确实没有**暂停系统（没有任何暂停入口或状态真源）。
+        /// </summary>
         public static readonly HudVisualState[] UnreachableStates =
         {
-            HudVisualState.AiTurn,     // 35-B：AI 回合
-            HudVisualState.CallPocket, // 35-B：规则引擎的指定球袋
-            HudVisualState.Paused,     // 本卡无暂停菜单
+            HudVisualState.CallPocket, // UI 选袋交互未做（运行期出口已存在，见上）
+            HudVisualState.Paused,     // 本卡没有暂停系统
         };
 
         /// <summary>
@@ -516,9 +528,21 @@ namespace Billiards.UI
         /// 由既有只读出口 `PoolSimulator.IsBallInPlay(0)` 直接给出，**不需要物理侧新增任何状态**。
         /// 默认 `false` ⇒ 既有调用点（含判据 `T96` / `T125` 的优先级表）**行为逐位不变**。
         /// </param>
+        /// <param name="aiTurn">
+        /// **轮到对手**（P6 新接线）：真值源 = `Billiards.Physics.PhysicsTestDrive.IsAiTurn`
+        /// （`= CurrentTurn == ShotTurn.Ai`；施加口是 `SetTurn` / `ApplyVerdict`）。
+        /// 默认 `false` ⇒ 既有调用点与判据**行为逐位不变**。
+        ///
+        /// ── 优先级为什么排在**残余窗口之后、相位回落之前**（唯一一处，别重排）──────────
+        /// `被拒` / `犯规` / `自由球` 三族是**残余窗口**：它们解释的是"玩家刚做的那一下"
+        /// （犯规窗口 1.6 s，**经常正好跨过换手那一刻**）。若把 `ai-turn` 排到它们前面，
+        /// 玩家犯规后换手 ⇒ 犯规反馈会被**吞掉**（那是既有判据 `T126` / `T104` 守住的行为）。
+        /// 而"相位回落"那一层（`Aim` / `Moving`）才是**"现在轮到谁"的常态显示** ——
+        /// `ai-turn` 只替换这一层：**对手在打的时候，状态条不许再说 `Aim`**（那是假陈述）。
+        /// </param>
         public static HudVisualState ResolveVisualState(ShotPhase phase, bool foulWindow, bool refusedWindow,
                                                         bool ballInHand, bool resultOpen,
-                                                        bool awaitingPlacement = false)
+                                                        bool awaitingPlacement = false, bool aiTurn = false)
         {
             if (resultOpen)
             {
@@ -538,6 +562,11 @@ namespace Billiards.UI
             if (ballInHand || awaitingPlacement)
             {
                 return HudVisualState.BallInHand;
+            }
+
+            if (aiTurn)
+            {
+                return HudVisualState.AiTurn;
             }
 
             return IsPlayerTurn(phase) ? HudVisualState.Aim : HudVisualState.Moving;

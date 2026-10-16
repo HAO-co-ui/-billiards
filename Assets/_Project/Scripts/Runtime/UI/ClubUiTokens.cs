@@ -211,7 +211,7 @@ namespace Billiards.UI
         public static readonly Color32 AimEdge = LineMid;
         public static readonly Color32 AimSymbol = Green;
 
-        /// <summary>`ai-turn`：机器人图标 + 浅青边线。**35-A 无 AI ⇒ 不可达**（见 <see cref="UnreachableStates"/>）。</summary>
+        /// <summary>`ai-turn`：机器人图标 + 浅青边线。**P6 起可达**（真值源 `PhysicsTestDrive.IsAiTurn`）。</summary>
         public static readonly Color32 AiTurnEdge = Alpha(Rgb(0x73B6BB), 0x70);
         public static readonly Color32 AiTurnSymbol = Rgb(0x8AC8CD);
 
@@ -223,7 +223,7 @@ namespace Billiards.UI
         public static readonly Color32 BallInHandEdge = Alpha(Accent, 0xA0);
         public static readonly Color32 BallInHandSymbol = Rgb(0xE5CD8E);
 
-        /// <summary>`call-pocket`：旗帜图标 + 亮青边线。**35-A 无规则引擎 ⇒ 不可达**。</summary>
+        /// <summary>`call-pocket`：旗帜图标 + 亮青边线。**仍不可达**：运行期出口已存在，缺 UI 选袋交互。</summary>
         public static readonly Color32 CallPocketEdge = Alpha(Rgb(0x7FCFD2), 0xA0);
         public static readonly Color32 CallPocketSymbol = Rgb(0x97DEDD);
 
@@ -232,7 +232,7 @@ namespace Billiards.UI
         public static readonly Color32 FoulSymbol = Rgb(0xE59BA5);
         public static readonly Color32 FoulFill = Alpha(Rgb(0x30252B), 0xF2);
 
-        /// <summary>`paused`：暂停图标 + 静音灰。**35-A 无暂停系统 ⇒ 不可达**。</summary>
+        /// <summary>`paused`：暂停图标 + 静音灰。**仍不可达**（本卡没有暂停系统）。</summary>
         public static readonly Color32 PausedEdge = LineMid;
         public static readonly Color32 PausedSymbol = Rgb(0xA8B7B1);
 

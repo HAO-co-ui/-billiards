@@ -21,14 +21,20 @@ PY="${PY:-C:/Users/hp/.workbuddy/binaries/python/envs/default/Scripts/python.exe
 TAG="${1:?用法：p6ui_injections.sh <form-swap|input-gate|one-pop>}"
 OUT="${TEMP:-/tmp}/homeui_p6/inj_$TAG"
 
-# 三条注入各自的目标文件与**基线 sha1**（跑批前实测记录；apply 前必须逐字节一致）
+# 各条注入的目标文件与**基线 sha1**（跑批前实测记录；apply 前必须逐字节一致）
 case "$TAG" in
-  form-swap)  REL="Assets/_Project/Scripts/Runtime/UI/MatchResultCopy.cs"
-              BASE="938c94018b1eebcc0c67bb9c5fbf115faecbeec0" ;;
-  input-gate) REL="Assets/_Project/Scripts/Runtime/Physics/PointerPowerController.cs"
-              BASE="423c33b20da101472ab14eaa78d302186650c624" ;;
-  one-pop)    REL="Assets/_Project/Scripts/Runtime/UI/PracticeResultView.cs"
-              BASE="39a71b5806ba7d169f76eb7463ee08e9f85e0add" ;;
+  form-swap)        REL="Assets/_Project/Scripts/Runtime/UI/MatchResultCopy.cs"
+                    BASE="938c94018b1eebcc0c67bb9c5fbf115faecbeec0" ;;
+  input-gate)       REL="Assets/_Project/Scripts/Runtime/Physics/PointerPowerController.cs"
+                    BASE="423c33b20da101472ab14eaa78d302186650c624" ;;
+  one-pop)          REL="Assets/_Project/Scripts/Runtime/UI/PracticeResultView.cs"
+                    BASE="c58a90a415bcd66b14ee41184baddc76bf8c128c" ;;
+  record-drop)      REL="Assets/_Project/Scripts/Runtime/UI/PracticeResultView.cs"
+                    BASE="c58a90a415bcd66b14ee41184baddc76bf8c128c" ;;
+  record-overwrite) REL="Assets/_Project/Scripts/Runtime/UI/PracticeSessionStore.cs"
+                    BASE="8d702fea291e7008e5b5ab169435486117e8ed8c" ;;
+  ai-turn-drop)     REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudState.cs"
+                    BASE="8baf2e2a056edd60bfbd02b2aabb4e0c1b507072" ;;
   *) echo "未登记的 tag：$TAG" >&2; exit 2 ;;
 esac
 

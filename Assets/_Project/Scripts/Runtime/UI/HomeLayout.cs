@@ -113,12 +113,12 @@ namespace Billiards.UI
             CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 220f,
             MatchIntroCardWidth - MatchIntroPaddingX * 2f, ClubUiTokens.Hairline);
 
-        /// <summary>赛制标题 `BEST OF THREE`。</summary>
+        /// <summary>赛制标题行的位置（文案见 `PracticeHudState.MatchIntroFormatTitle` —— **不再抄文案**）。</summary>
         public static readonly Rect MatchIntroFormatTitle = Px(
             CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 232f,
             MatchIntroCardWidth - MatchIntroPaddingX * 2f, 28f);
 
-        /// <summary>赛制说明 `First to two racks`。</summary>
+        /// <summary>赛制说明行的位置（文案见 `PracticeHudState.MatchIntroFormatDetail` —— **不再抄文案**）。</summary>
         public static readonly Rect MatchIntroFormatDetail = Px(
             CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 262f,
             MatchIntroCardWidth - MatchIntroPaddingX * 2f, 16f);

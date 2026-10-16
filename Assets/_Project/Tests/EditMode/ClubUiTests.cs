@@ -404,7 +404,9 @@ namespace Billiards.Tests
         /// 过去**一行都没被跑到**（"有守卫 ≠ 守卫会跑"）。
         ///
         /// **注入负对照**：把 `CallPocketSymbol` 改成黄铜 ⇒ ④ 红；
-        /// 把 `AiTurn` 从 `UnreachableStates` 删掉 ⇒ ② 红；把两个状态的标题改成一样 ⇒ ③ 红；
+        /// **把 `AiTurn` 加回 `UnreachableStates`**（P6 重钉后的反向）⇒ ② 红；
+        /// **把 `ResolveVisualState` 的 `aiTurn` 那一支删掉** ⇒ **②' 红**（登记为可达却产出不了）；
+        /// 把两个状态的标题改成一样 ⇒ ③ 红；
         /// 把"待放球"文案里的 `Esc` 删掉 ⇒ ③' 红（兜底键不可发现）；
         /// 把 `ResolveVisualState` 的 `|| awaitingPlacement` 去掉 ⇒ ⑤' 用例 1 红；
         /// 把 `resultOpen` 那一段挪到 `awaitingPlacement` 之后 ⇒ ⑤' 用例 2 红（优先级被越级）；
@@ -456,18 +458,25 @@ namespace Billiards.Tests
                 }
             }
 
-            // ② 不可达集合恰好三项
+            // ② 不可达集合恰好两项（**P6 按事实重钉**）
+            //    ⚠ 旧断言是三项（`{ai-turn, call-pocket, paused}`），理由写的是
+            //    「35-A 没有 AI / 规则引擎 / 暂停」—— **AI 与规则引擎都已落地 ⇒ 那句已是假陈述**。
+            //    重钉依据（不是删掉）：`ai-turn` 现在**真的可达** —— 真值源
+            //    `PhysicsTestDrive.IsAiTurn`，施加口 `SetTurn` / `ApplyVerdict`，状态条出口
+            //    `ResolveVisualState(..., aiTurn)`（由 `PracticeHudView` 喂）；剩余两项各自的**事实**见
+            //    `PracticeHudState.UnreachableStates` 的注释（`call-pocket` 缺 UI 选袋、`paused` 无暂停系统）。
             var unreachable = new HashSet<HudVisualState>(PracticeHudState.UnreachableStates);
             var expectedUnreachable = new HashSet<HudVisualState>
             {
-                HudVisualState.AiTurn, HudVisualState.CallPocket, HudVisualState.Paused,
+                HudVisualState.CallPocket, HudVisualState.Paused,
             };
 
             foreach (HudVisualState state in expectedUnreachable)
             {
                 if (!unreachable.Contains(state))
                 {
-                    failures.Add($"② {state} 应当登记为\"本卡不可达\"（35-A 没有 AI / 规则引擎 / 暂停）。");
+                    failures.Add($"② {state} 应当登记为\"本卡不可达\""
+                                 + "（`call-pocket`：UI 选袋交互未做；`paused`：本卡没有暂停系统）。");
                 }
             }
 
@@ -475,7 +484,57 @@ namespace Billiards.Tests
             {
                 if (!expectedUnreachable.Contains(state))
                 {
-                    failures.Add($"② {state} 被登记成不可达，但它在本卡是可触发的 ⇒ 登记与实际不符。");
+                    failures.Add($"② {state} 被登记成不可达，但它在本卡是可触发的 ⇒ 登记与实际不符"
+                                 + "（P6 起 `ai-turn` 已可达，不得再被登记成不可达）。");
+                }
+            }
+
+            // ②' **反证**：把 `ResolveVisualState` 的**参数空间穷举**一遍，收集**实际产出**的状态集合，
+            //     断言 `产出 ∪ 不可达 == 八态` 且 `产出 ∩ 不可达 == ∅`。
+            //     ⇒ 两向都会红：**登记为可达却产出不了**（漏接线）与**登记为不可达却真能产出**（登记过期）。
+            //     ⚠ 这一条是"能把 `ai-turn` 那一支删掉就打红"的**机器形态** —— 只断集合相等的话，
+            //       删掉 `aiTurn` 分支不会让集合断言变红（集合还是那两项），判据就**真空**了。
+            var phases = (ShotPhase[])System.Enum.GetValues(typeof(ShotPhase));
+            var produced = new HashSet<HudVisualState>();
+            foreach (ShotPhase phase in phases)
+            {
+                foreach (bool foul in new[] { false, true })
+                {
+                    foreach (bool refused in new[] { false, true })
+                    {
+                        foreach (bool hand in new[] { false, true })
+                        {
+                            foreach (bool resultOpen in new[] { false, true })
+                            {
+                                foreach (bool placement in new[] { false, true })
+                                {
+                                    foreach (bool aiTurn in new[] { false, true })
+                                    {
+                                        produced.Add(PracticeHudState.ResolveVisualState(
+                                            phase, foul, refused, hand, resultOpen, placement, aiTurn));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            foreach (HudVisualState state in states)
+            {
+                bool declaredReachable = !unreachable.Contains(state);
+                bool actuallyProduced = produced.Contains(state);
+
+                if (declaredReachable && !actuallyProduced)
+                {
+                    failures.Add($"②' {state} 被登记为**可达**，但 `ResolveVisualState` 的参数穷举"
+                                 + "**产出不了它** ⇒ 登记里那句\"可达\"是空话（接线漏了）。");
+                }
+
+                if (!declaredReachable && actuallyProduced)
+                {
+                    failures.Add($"②' {state} 被登记为**不可达**，但参数穷举**真的产出了它**"
+                                 + " ⇒ 登记过期（不可达集合必须按事实缩小）。");
                 }
             }
 
@@ -1084,13 +1143,20 @@ namespace Billiards.Tests
         /// **(e) 无假陈述**：`Play again` 真的走 `MatchSeams`、`Back to club` 真的走 `HomeSeams`
         ///     （未接线时 `TryShow()` 返回 false）、次键标签随形态改写（**显示与行为一致**）、
         ///     赛前屏不得再写"三局两胜"（本工程是一局定胜负）。
-        /// **(f) "只弹一次"以 Runtime 闸门为准**：白盒断言视图里 `drive.TryConsumeSettlement()` 在场
-        ///     ⇒ "弹一次"这条性质**不靠 UI 自己记状态**（UI 记的状态正是判据守不住的那类东西）。
+        /// **(f) "只弹一次"以 Runtime 闸门为准 + 结算卡的白盒接线**：`drive.TryConsumeSettlement()`、
+        ///     `MatchResultCopy.FormFor(drive.Winner)`、`drive.EndReason`、次键标签改写、`CurrentForm` 出口。
+        /// **(g) 结算边界记一局**：记录与"导出按钮"**解耦** —— 历史 **+1 且只 +1 且累积**
+        ///     （旧口径把两者绑在按钮上、且从空历史起算 ⇒ **AI 对局永不写历史 + 会把累积历史覆盖成单条**
+        ///     = 首页三项统计静默做死）；"一次结算恰好一条"由**记录口在结算卡里只出现 2 次**（声明 1 + 调用 1）钉住。
+        /// **(h) `ai-turn` 真接线**：`PracticeHudView` 必须把 `drive.IsAiTurn` 喂给状态求解
+        ///     （少了它，对手回合期间状态条回落成 `aim` ⇒ 嘴上说"轮到你了" = 假陈述）。
         ///
-        /// **怎么打死它（三条注入，均已实测）**：① 把 `MatchResultCopy.FormFor` 的两个返回值**互换**
-        /// ⇒ (a) 红；② 把 `PointerPowerController` 的 `PracticeResultView.IsOpen` 从让位门里**删掉**
-        /// ⇒ (d①) 红；③ 把 `PhysicsTestDrive.TryConsumeSettlement` 的闸门**去掉**（恒返回 true）
-        /// ⇒ (d③)/(f) 红。
+        /// **怎么打死它（注入，均已实测）**：① 把 `MatchResultCopy.FormFor` 的两个返回值**互换** ⇒ (a) 红；
+        /// ② 把 `PointerPowerController` 的 `PracticeResultView.IsOpen` 从让位门里**删掉** ⇒ (d①) 红；
+        /// ③ 把结算卡的"弹一次"闸门**去掉**（不再问 `TryConsumeSettlement`）⇒ (f) 红；
+        /// ④ 把**结算边界的记录调用删掉** ⇒ (f)(g) 红；
+        /// ⑤ 把记录口改成"从空历史起算"（复现覆盖缺陷）⇒ (g) 红（累积那条）；
+        /// ⑥ 把 `ResolveVisualState` 的 `aiTurn` 那一支删掉 ⇒ `T125②'` 红（登记为可达却产出不了）。
         ///
         /// ── 盲带（如实）────────────────────────────────────────────────────────
         /// · **不判"两个面板不会同时出现"** —— 单卡结构下那是**恒真**（同一棵树只有一个 `_card`），
@@ -1305,11 +1371,22 @@ namespace Billiards.Tests
             {
                 failures.Add("T146(d②) 读不到 `PracticeHudView.cs` 的磁盘文本 ⇒ 优先级接线守卫失效。");
             }
-            else if (!hudSource.Contains("PracticeHudState.OpponentNoticeAllowed(PracticeResultView.IsOpen)"))
+            else
             {
-                failures.Add("T146(d②) `PracticeHudView` 里没有把 `OpponentNoticeAllowed(PracticeResultView.IsOpen)`"
-                             + " 用在消费口上 ⇒ 纯函数只是声明了、没人用（"
-                             + "\"有守卫 ≠ 守卫会跑\"）。");
+                if (!hudSource.Contains("PracticeHudState.OpponentNoticeAllowed(PracticeResultView.IsOpen)"))
+                {
+                    failures.Add("T146(d②) `PracticeHudView` 里没有把 `OpponentNoticeAllowed(PracticeResultView.IsOpen)`"
+                                 + " 用在消费口上 ⇒ 纯函数只是声明了、没人用（"
+                                 + "\"有守卫 ≠ 守卫会跑\"）。");
+                }
+
+                // (h) `ai-turn` 的**真接线**：喂的是 `PhysicsTestDrive.IsAiTurn`，不是从球位/相位反推。
+                //     ⇒ 少了这一参，对手回合期间状态条会回落成 `aim`（"轮到你了"= 假陈述）。
+                if (!hudSource.Contains("drive.IsAiTurn"))
+                {
+                    failures.Add("T146(h) `PracticeHudView` 没有把 `drive.IsAiTurn` 喂给状态求解"
+                                 + " ⇒ 对手回合期间状态条回落成 `aim`（嘴上说\"轮到你了\"）。");
+                }
             }
 
             // ③ 关掉卡后不自动进下一局（**行为**：Runtime 出口）
@@ -1421,12 +1498,27 @@ namespace Billiards.Tests
                                  "`Back to club` 必须**真的**回首页（未接线时不许假装已回去）"),
                              ("_secondaryLabel.text = form == MatchResultForm.None ? ExportButtonLabel : BackToClubButtonLabel",
                                  "次键标签必须随形态改写 —— 键上写的必须就是它此刻做的事"),
+                             ("RecordRackAtSettlement(form)",
+                                 "**结算边界**必须记一局（记录与\"导出按钮\"解耦）—— 否则 AI 对局永远不写历史"),
+                             ("PracticeSessionStore.TryAppendRecordToDisk(record, out string error)",
+                                 "记录口必须是**累积**写盘（先读磁盘再追加），不是\"从空历史起算\"的覆盖式写入"),
+                             ("PracticeSessionStore.TryExportHistory(out string error)",
+                                 "`Export data` 只导出**已有**历史、不再追加记录（防双记）"),
                          })
                 {
                     if (!resultSource.Contains(Usage))
                     {
                         failures.Add($"T146(f) 结算卡接线缺失：「{Usage}」—— {Why}。");
                     }
+                }
+
+                // "一次结算恰好一条"：记录口在**结算卡**里只准出现 **2 次**（声明 1 + 调用 1）。
+                // ⇒ 少一次 = 漏接线（统计不涨）；多一次 = **双记**（一局算两局）。
+                int recordSites = Regex.Matches(resultSource, "RecordRackAtSettlement").Count;
+                if (recordSites != 2)
+                {
+                    failures.Add($"T146(g) 结算边界的记录口在 `PracticeResultView.cs` 里应出现 **2 次**"
+                                 + $"（声明 1 + 调用 1），实测 {recordSites} ⇒ 要么漏接线、要么双记。");
                 }
             }
 
@@ -1471,11 +1563,102 @@ namespace Billiards.Tests
                              + "），而本工程是**一局定胜负** ⇒ 假陈述。");
             }
 
+            // ── (g) 结算边界**记一局**：历史真的 +1、只 +1、且**累积** ──────────────
+            // 起因（team-lead 的裁定）：`Export data` 是那份历史的**唯一运行期写入口**，而首页三项统计读它
+            // ⇒ 若记录仍绑在按钮上，**比赛形态（次键是 `Back to club`）打完一局 AI 对战统计不会涨**
+            //   （与"统计恒 0"是同一个病）。故记录必须挪到**结算边界**、且**一次结算恰好一条**。
+            //
+            // ⚠ 本组**会写磁盘**（`PracticeSessionStore.ExportPath`，在仓库外——`T101 (e)` 守这条）；
+            //    用例结束**必须还原**（原内容或"原本不存在"这个事实），否则会污染首页统计与后续用例。
+            string historyPath = PracticeSessionStore.ExportPath;
+            string originalHistory = File.Exists(historyPath) ? File.ReadAllText(historyPath) : null;
+            try
+            {
+                int before = PracticeSessionStore.ReadHistoryFromDisk().Count;
+
+                PracticeSessionRecord first = PracticeSessionStore.NewRecord(
+                    new PracticeSessionSnapshot { shots = 3, pots = 1, fouls = 0, racks = 1 },
+                    PracticeSessionStore.ModeMatch);
+
+                if (!PracticeSessionStore.TryAppendRecordToDisk(first, out string writeError))
+                {
+                    failures.Add($"T146(g) 结算边界的记录口写盘失败：{writeError}");
+                }
+
+                int afterFirst = PracticeSessionStore.ReadHistoryFromDisk().Count;
+                if (afterFirst != before + 1)
+                {
+                    failures.Add($"T146(g) 一次结算应让历史 **+1**，实测 {before} → {afterFirst}"
+                                 + "（结算不落历史 ⇒ 首页三项统计不会涨）。");
+                }
+
+                // 同一条记录（同 `id`）再并一次 ⇒ **只 +1**（"一次结算恰好一条"的存储层兜底）
+                PracticeSessionStore.TryAppendRecordToDisk(first, out _);
+                if (PracticeSessionStore.ReadHistoryFromDisk().Count != before + 1)
+                {
+                    failures.Add("T146(g) 同一条记录重复并入不得加两条（一次结算恰好一条，不许双记）。");
+                }
+
+                // 第二条**不同**记录 ⇒ 必须**累积**到 +2
+                // （旧口径 `AppendToHistory(string.Empty, record)` 会把它**覆盖**成单条历史
+                //   ⇒ 首页 `RACKS` 永远最多 1 = 统计静默做死）
+                PracticeSessionRecord second = PracticeSessionStore.NewRecord(
+                    new PracticeSessionSnapshot { shots = 5, pots = 2, fouls = 1, racks = 1 },
+                    PracticeSessionStore.ModePractice);
+                PracticeSessionStore.TryAppendRecordToDisk(second, out _);
+
+                int afterSecond = PracticeSessionStore.ReadHistoryFromDisk().Count;
+                if (afterSecond != before + 2)
+                {
+                    failures.Add($"T146(g) 两局的记录应当**累积**（期望 {before + 2}），实测 {afterSecond}"
+                                 + " ⇒ 历史被\"覆盖成单条\"，首页的 `RACKS` 永远最多 1。");
+                }
+
+                // 首页口径：三项统计是对历史的**求和**（把这条钉住，免得有人改成"只看最后一条"）
+                int rackSum = 0;
+                foreach (PracticeSessionRecord record in PracticeSessionStore.ReadHistoryFromDisk())
+                {
+                    rackSum += record.racks;
+                }
+
+                if (rackSum < 2)
+                {
+                    failures.Add("T146(g) 首页 `RACKS` 读的是历史里 `racks` 的**求和** ⇒ 两局至少该是 2。");
+                }
+            }
+            catch (System.Exception exception)
+            {
+                failures.Add("T146(g) 历史读写抛出异常：" + exception.Message);
+            }
+            finally
+            {
+                try
+                {
+                    if (originalHistory == null)
+                    {
+                        if (File.Exists(historyPath))
+                        {
+                            File.Delete(historyPath);
+                        }
+                    }
+                    else if (!File.Exists(historyPath) || File.ReadAllText(historyPath) != originalHistory)
+                    {
+                        File.WriteAllText(historyPath, originalHistory);
+                    }
+                }
+                catch (System.Exception exception)
+                {
+                    failures.Add("T146(g) 历史文件**还原失败**（会污染后续用例）：" + exception.Message);
+                }
+            }
+
             Assert.IsEmpty(failures, "T146 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine("T146: 形态映射穷举 ✓；两形态标题/徽章/四配色逐对不同且负局落酒红族 ✓；"
                                   + $"\"为什么\"穷举 {endingOutcomes.Count} 种结局且互不相同 ✓；"
                                   + "出杆让位 / 对手回合提示优先级 / 不自动进下一局 三条收口 ✓；"
-                                  + "Play again 走 MatchSeams、Back to club 走 HomeSeams（未接线不假装）✓");
+                                  + "Play again 走 MatchSeams、Back to club 走 HomeSeams（未接线不假装）✓；"
+                                  + "结算边界记一局（+1、只 +1、且累积；首页口径 = 历史求和）✓；"
+                                  + "`ai-turn` 由 `drive.IsAiTurn` 真接线 ✓");
         }
 
         /// <summary>两个 `Color32` 是否逐通道相同（判据里比色值，不做浮点容差 —— 令牌是 8 位整数量化值）。</summary>

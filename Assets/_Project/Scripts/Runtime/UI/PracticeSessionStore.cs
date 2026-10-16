@@ -164,6 +164,35 @@ namespace Billiards.UI
         }
 
         /// <summary>
+        /// **把一条记录并入磁盘上的历史**（**结算边界**调用；一次结算恰好一条）。
+        ///
+        /// ── 为什么必须与"导出文件"拆开（P6 的裁定）────────────────────────────────
+        /// 旧口径把"写历史"挂在 **`Export data` 按钮**上，且从 `string.Empty` 起算
+        /// （`AppendToHistory(string.Empty, record)`）⇒ 两个后果：
+        /// · 每次导出都把文件**覆盖成单条历史** ⇒ 首页的 `RACKS` 永远最多 1（统计**静默做死**）；
+        /// · 玩家**不点按钮就永远不记录** ⇒ 打完一局 AI 对战，首页三项统计**不会涨**。
+        /// 本方法**先读磁盘、再追加、再写回** ⇒ 历史真的累积；调用点从"按钮"挪到"结算边界"
+        /// ⇒ 统计记的是"**你打了多少局**"，而不是"**你导出过几次**"。
+        ///
+        /// ⚠ **同一条记录（同 `id`）重复并入不会加两条**（`AppendToHistory` 按 `id` 去重）
+        /// —— 这是"一次结算恰好一条"在存储层的兜底，但**首要保证在调用侧**（结算边界只调一次）。
+        /// </summary>
+        public static bool TryAppendRecordToDisk(PracticeSessionRecord record, out string error)
+        {
+            string merged = AppendToHistory(ToHistoryJson(ReadHistoryFromDisk()), record);
+            return TryWriteExport(merged, out error);
+        }
+
+        /// <summary>
+        /// 把磁盘上的历史**原样写出**（幂等）—— "导出文件"这一动作的实现。
+        /// **不新增记录**（记录由结算边界负责）⇒ 与"记一局"彻底解耦，不存在"结算记一次 + 导出又记一次"的双记。
+        /// </summary>
+        public static bool TryExportHistory(out string error)
+        {
+            return TryWriteExport(ToHistoryJson(ReadHistoryFromDisk()), out error);
+        }
+
+        /// <summary>
         /// **读磁盘上的导出历史**（<see cref="ExportPath"/>）—— 首页的 `SHOTS / POCKETED / RACKS`
         /// 三项就是从这份历史累加出来的（参考实现的 `home-ui.js` 同样是 `sum(history ∪ session)`）。
         ///

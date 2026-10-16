@@ -698,8 +698,12 @@ namespace Billiards.UI
             bool awaitingPlacement = phase == ShotPhase.Aim && sim != null
                                      && sim.TableAtRest && drive.PendingCueBallPlacement;
 
+            // **轮到对手**（P6）：真值源 = `PhysicsTestDrive.IsAiTurn`（**不从这里反推**球位/回合）。
+            // 少了这一参，对手回合期间状态条会回落成 `aim` ⇒ 嘴上说"轮到你了"（假陈述）。
+            bool aiTurn = drive != null && drive.IsAiTurn;
+
             HudVisualState state = PracticeHudState.ResolveVisualState(
-                phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen, awaitingPlacement);
+                phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen, awaitingPlacement, aiTurn);
 
             RefreshStatusBar(state, awaitingPlacement, placementRefusedWindow, opponentBlockedWindow);
             RefreshPower(phase);
