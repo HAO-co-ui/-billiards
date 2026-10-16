@@ -34,21 +34,31 @@ namespace Billiards.EditorTools
         public const float OuterCropWarnThreshold = 0.08f;
 
         /// <summary>
-        /// `CAM-04` 的打球区**横向占比下界**。
+        /// `CAM-04` 的打球区**横向占比下界**（按 `play` 口径 —— 场景序列化态就是 play）。
         ///
-        /// ── 口径重定（登记"谁裁定 / 为什么 / 前后值 / 旧意图"）──────────────────────────
-        /// **谁裁定**：用户（2026-10-16，经主理人转达）。
-        /// **为什么**：旧下限 **0.85** 是在"相机把打球区充满屏幕"的口径下定的（旧实测 0.900）。
-        ///   用户裁定"**要能看见球房环境**"⇒ 相机移到桌子 +Z 侧并放宽取景（见
-        ///   `GreyboxSceneSetup.CameraPosition` 的口径变更注释）。**"看得见房间"与"占比 ≥0.85"数学上互斥**：
-        ///   任何能把房间收进画面的取景都会把该占比压到 0.45~0.62。
-        /// **前后值**：**0.85 → 0.50**。实测 A 档 **0.616** ⇒ **余量 0.116**（不贴实测值定）。
-        /// **旧意图**：`CAM-04` 标题即"**防'缩成中间一张小桌'**"。该意图**不变** ——
-        ///   新下限 0.50 仍能抓住"缩成小桌"（`ClothHalfLength` 全宽 1.27×2×1.2 = 3.048 m 在画面里
-        ///   占比掉到 0.50 以下，意味着视锥水平半宽 > 3.05 m，那已不是"看球桌"的取景）。
-        ///   ⚠ 本阈值**只随取景口径变更**而变；**不得**为了让某次取景过而单独下调。
+        /// ── 口径漂移史（**如实记录**：本卡内先放宽、后按新口径重推；四件套齐）────────────────
+        /// **① 本卡先前**：用户裁定"**要能看见球房环境**"⇒ 把唯一的取景放宽 ⇒ 占比 0.900 → 0.616
+        ///   ⇒ 下限 **0.85 → 0.50**（当时登记的理由：**"看得见房间"与"占比 ≥0.85"数学上互斥**）。
+        /// **② 随后用户实机反馈**："这个视角开始游戏打球不太舒服，**点开始游戏就切换为上帝视角**"
+        ///   ⇒ 房间可见性改由**首页取景**承担（`CameraPresets.Home`），**打球回到 `Play`**
+        ///   （= 本卡之前那套、也是用户此前实机打过的那套）。
+        /// **⇒ 本项被测对象 = `play` 口径**（`CAM-01..05` 全部如此，场景序列化态 = play）
+        ///   ⇒ 占比回到 **0.900** ⇒ 下限**回到 `0.85`**。
+        ///   ⚠ **这是"回到原意图"，不是"把数字改到过"**：链条是
+        ///   `0.85`（起点）→（"要看见房间"）`0.50` →（"打球改上帝视角、房间交给首页"）**`0.85`**。
+        ///   ⚠ **余量 `0.05` 是"历史口径的余量"，不是贴着实测值取的**：它来自本项最初的定法
+        ///   （参照实测 `0.900` ⇒ 取 `0.900 − 0.05 = 0.85`），本次**原样沿用**，而不是按今天的实测现算。
+        ///   （反面教训：本项目在 `T133` 上吃过"**8 压 8**、Mono/CoreCLR 差 1"的亏 ⇒ 阈值不许贴着实测定。）
+        ///
+        /// **谁裁定**：用户（2026-10-16，经主理人转达；两条反馈先后到达）。
+        /// **为什么**：见上 —— 口径从"一套"变成"两套 + 运行期切换"，本项只测**打球**那一套。
+        /// **前后值**：`0.85` →（因"要看见房间"）`0.50` →（因"打球改上帝视角、房间交给首页"）**`0.85`**。
+        /// **旧意图**：`CAM-04` 标题即"**防'缩成中间一张小桌'**"。该意图**始终未变**。
+        ///   ⚠ 本阈值**只随打球口径变更**而变；**不得**为了让某次取景过而单独下调。
+        ///   ⚠ **本条不测首页取景** —— 首页那套的占比（0.616）与"看得见房间"由
+        ///   `T134`（两预设必须不同）与 `PlayViewCamera` 的切换判据守，**不靠放宽本阈值来容纳**。
         /// </summary>
-        public const float ClothWidthFractionMin = 0.50f;
+        public const float ClothWidthFractionMin = 0.85f;
 
         /// <summary>`CAM-05` 取景一致性容差：相机位置（米）。</summary>
         public const float FramingPoseTolerance = 1e-3f;
@@ -677,7 +687,7 @@ namespace Billiards.EditorTools
                 //   **注释与实现自相矛盾**的陈旧行（复核方抓到的那条）⇒ 数值只留常量那一处，避免两处各写一份而漂移。
                 float clothWidthFraction = cBox.y - cBox.x;
                 float clothHeightFraction = cBox.w - cBox.z;
-                const string clothWidthExpect = "≥ 0.50（口径重定后的新下限，实测 A 档 0.616 ⇒ 余量 0.116）";
+                const string clothWidthExpect = "≥ 0.85（play 口径下按实测 0.900 重推，余量 0.05）";
                 report.Add(clothWidthFraction >= ClothWidthFractionMin
                     ? CheckResult.Ok("CAM-04", "打球区横向占比 ≥ 参照（防'缩成中间一张小桌'）",
                         clothWidthExpect,
@@ -947,10 +957,13 @@ namespace Billiards.EditorTools
             Vector3 prevPos = cam.transform.position;
             Quaternion prevRot = cam.transform.rotation;
             float prevFov = cam.fieldOfView;
+            // 适配器基准也要存一份：本组证据图的三次取景都改它（而不是直接改相机 fov）。
+            CameraViewportFitter camFitter = cam.GetComponent<CameraViewportFitter>();
+            float prevBaseFov = camFitter != null ? camFitter.baseVerticalFovDeg : prevFov;
 
             cam.transform.position = new Vector3(0.15f, 1.15f, 2.15f);
             cam.transform.rotation = Quaternion.LookRotation(new Vector3(0f, 0.02f, -0.05f) - cam.transform.position, Vector3.up);
-            cam.fieldOfView = 38f;
+            SetBaseFov(cam, 38f);
             RenderToPng(cam, 1440, 900, TestRootPath(PerspectiveName));
             produced.Add(PerspectiveName);
 
@@ -966,7 +979,7 @@ namespace Billiards.EditorTools
 
             cam.transform.position = new Vector3(0.95f, 1.02f, -1.92f);
             cam.transform.rotation = Quaternion.LookRotation(new Vector3(-0.05f, 0.03f, 0.12f) - cam.transform.position, Vector3.up);
-            cam.fieldOfView = 40f;
+            SetBaseFov(cam, 40f);
 
             MeshRenderer bodyRenderer = FindBodyRenderer(table);
             Material[] originalMats = bodyRenderer.sharedMaterials;
@@ -1001,6 +1014,7 @@ namespace Billiards.EditorTools
             cam.transform.position = prevPos;
             cam.transform.rotation = prevRot;
             cam.fieldOfView = prevFov;
+            RestoreBaseFov(cam, prevBaseFov);
             if (sun != null)
             {
                 sun.transform.rotation = Quaternion.Euler(prevSunRot);
@@ -1043,6 +1057,41 @@ namespace Billiards.EditorTools
             throw new InvalidOperationException("找不到球桌网格渲染器。");
         }
 
+        /// <summary>
+        /// 设"**基准垂直 fov**"：**相机上有 `CameraViewportFitter` 就改它的基准**，否则才直接写相机。
+        /// 返回旧基准，供还原。
+        ///
+        /// 为什么统一走 fitter：适配器是**渲染期 fov 的唯一权威**（它按当前宽高比从基准解析），
+        /// 而本验收器的 `CAM-02/03/04` 也是**先设 aspect、再经 fitter 解析**的
+        /// ⇒ 证据图必须走**同一条路**，否则**图里看到的取景与判据量的取景不是同一个**。
+        /// </summary>
+        private static float SetBaseFov(Camera cam, float fovDeg)
+        {
+            CameraViewportFitter fitter = cam.GetComponent<CameraViewportFitter>();
+            if (fitter != null)
+            {
+                float old = fitter.baseVerticalFovDeg;
+                fitter.baseVerticalFovDeg = fovDeg;
+                return old;
+            }
+
+            float oldCam = cam.fieldOfView;
+            cam.fieldOfView = fovDeg;
+            return oldCam;
+        }
+
+        private static void RestoreBaseFov(Camera cam, float oldFovDeg)
+        {
+            CameraViewportFitter fitter = cam.GetComponent<CameraViewportFitter>();
+            if (fitter != null)
+            {
+                fitter.baseVerticalFovDeg = oldFovDeg;
+                return;
+            }
+
+            cam.fieldOfView = oldFovDeg;
+        }
+
         private static void RenderToPng(Camera cam, int w, int h, string fullPath)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
@@ -1055,6 +1104,26 @@ namespace Billiards.EditorTools
 
             cam.targetTexture = rt;
             cam.aspect = (float)w / h;
+
+            // ⚠ **宽高比刚变了** ⇒ 必须让适配器按**新**比例重新解析 fov。
+            //   不这么做，渲染用的就是"按旧比例（或序列化值）算出的 fov"
+            //   ⇒ **证据图里看到的取景 ≠ 判据量的取景**（本卡实测：同一 play 机位，
+            //      旧路径渲出的台呢横宽 ≈0.71、按 fitter 解析 ≈0.998，差得远）。
+            //
+            // ── 口径修正（登记"修的是什么 / 前后数值 / 为什么现在才修"）──────────────────
+            // **修的是什么**：本方法此前**不经过** `CameraViewportFitter` ⇒ 在 16:10 证据尺寸下，
+            //   取景比"真机 16:9 + fitter"**更窄** ⇒ 图与它自称的"主相机画面"**脱节**。
+            // **前后数值**：同一 play 机位，`day3-top-view.png` 的台呢横宽 **0.71 → 0.998**。
+            // **为什么现在才修**：本卡把取景口径改成"两套预设 + 运行期切换"后才暴露
+            //   （`PlayViewCamera` 恰恰必须与 fitter 协同，见 `CameraPresets.ApplyTo`）——
+            //   在此之前"序列化 fov"与"fitter 解析值"差得不明显，掩盖了这条。
+            // **`RND-01`/`NAB-01` 语义不变**（判"非退化 / A≠B"，与取景无关）。
+            CameraViewportFitter fitter = cam.GetComponent<CameraViewportFitter>();
+            if (fitter != null)
+            {
+                fitter.Apply();
+            }
+
             cam.Render();
 
             RenderTexture.active = rt;

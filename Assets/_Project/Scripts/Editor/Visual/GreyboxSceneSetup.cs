@@ -159,30 +159,33 @@ namespace Billiards.EditorTools
         // 提成公开常量 + `BuildCamera` 直接引用 ⇒ 相机取景与 HUD 布局**不可能各自漂移**；
         // 判据 `T95 (f)` 再从**已提交场景**回读校验一次（防"场景被手改、代码没跟上"）。
         //
-        // ── 取景口径变更（登记"谁裁定 / 为什么 / 前后值 / 旧意图"）────────────────────────
-        // **谁裁定**：用户（2026-10-16，经主理人转达）。
-        // **为什么**：旧机位 `(0, 2.10, −0.75)` 朝 **+Z**、俯角 68.7°、离桌 2.25 m，画面只覆盖
-        //   桌远库外约 **0.6 m**；而参考球房的装饰（后墙/墙裙/长凳/盆栽/球杆架/边桌/灯/相框）
-        //   **全在 −Z 一侧** ⇒ 后墙整片落在相机**背后**，**12 件道具的包围盒 8 个角全部在视锥外**
-        //   （离线逐角视锥投影实测，判据 `CAM-*` 与 `day3-top-view.png` 自洽）。
-        //   用户裁定"**要能看见球房环境**"⇒ 相机移到桌子 **+Z 侧**并放宽取景。
-        // **前后值**：pos `(0,2.10,−0.75)` → **`(0,2.10,+2.80)`**；look `(0,0.02,0.06)` → **`(0,0.05,−1.00)`**；
-        //   fov `52` → **`53`**。实测（aspect 1.6 + `CameraViewportFitter` 抬后的有效 fov）：
-        //   打球区横向占比 `0.900` → **`0.616`**；外框裁切 `3.9%` → `4.7%`（仍 ≤ `CAM-03` 的 8%）；
-        //   房间可见件 `1/12` → **`12/12`**。
-        // **旧意图**：桌子**充满屏幕**（`CAM-04` "防缩成中间一张小桌"）。
-        //   ⇒ 该意图**保留**，只把量化下限随口径重定（`ClothWidthFractionMin` 0.85 → 0.50，见验收器）。
-        // **代价（如实）**：桌子在画面里变小（0.900 → 0.616）且下移到 `y≤0.46` —— 这是"看得见房间"的必然取舍。
-        // ⚠ 改这三项 ⇒ **`T95 (d)` 的三组派生期望值必须同步重新推导**（见 `PracticeHudTests` 的对应注释）。
+        // ── 口径变更史（**两套预设**；登记"谁裁定 / 为什么 / 前后值 / 旧意图"）──────────────
+        // ① **本卡先前**：用户裁定"**要能看见球房环境**"⇒ 把**唯一**的取景从 play 放宽到 home
+        //    （pos `(0,2.10,−0.75)` → `(0,2.10,+2.80)`、look → `(0,0.05,−1.00)`、fov `52` → `53`；
+        //    实测打球区占比 `0.900` → `0.616`、房间可见件 `1/12` → `12/12`）。
+        // ② **随后用户实机反馈**："这个视角开始游戏打球不太舒服，**点开始游戏就切换为上帝视角**"
+        //    ⇒ 房间可见性改由**首页取景**承担，**打球回到 play**；于是"一套取景"变成
+        //    "**两套预设 + 运行期切换**"（组件 `Billiards.UI.PlayViewCamera`）。
+        //    ⇒ **两套都保留、各司其职**（不是"改错了又改回来"）。
+        //
+        // **真源**：数值在 `Billiards.Core.CameraPresets`（**Runtime 程序集**）。
+        //   为什么不在本类：本类在 `Billiards.Editor`，而 `Billiards.Runtime.asmdef` **不引用** Editor
+        //   ⇒ 运行期的切换组件读不到本类。⇒ 本类这三项**反向派生**自 Runtime 真源，
+        //   既有引用（验收器 `CAM-01..05` / `T95` / `MaterialVisualSetup`）**一个都不用改**。
+        //
+        // **场景序列化态 = `Play`**（上帝视角）—— 灰盒是**玩法**诊断场景，本就该是 play 口径；
+        //   ⇒ `CAM-05`（Main 与灰盒取景逐项一致）继续成立。
+        // **旧意图**（`CAM-04` "防缩成中间一张小桌"）**不变**，且 play 口径下占比回到 `0.900`
+        //   ⇒ 量化下限也回到随 play 重新推导的值（`ClothWidthFractionMin` 见验收器）。
 
-        /// <summary>主相机世界位置。</summary>
-        public static readonly Vector3 CameraPosition = new Vector3(0f, 2.10f, 2.80f);
+        /// <summary>主相机世界位置（= 打球预设 `Play`；场景序列化态）。</summary>
+        public static readonly Vector3 CameraPosition = CameraPresets.PlayPosition;
 
-        /// <summary>主相机注视点。</summary>
-        public static readonly Vector3 CameraLookTarget = new Vector3(0f, 0.05f, -1.00f);
+        /// <summary>主相机注视点（= 打球预设 `Play`）。</summary>
+        public static readonly Vector3 CameraLookTarget = CameraPresets.PlayLookTarget;
 
         /// <summary>基准垂直 FOV（度）；同时是场景序列化 FOV（`CameraViewportFitter` 从相机取 ⇒ 二者不可能漂移）。</summary>
-        public const float CameraBaseVerticalFovDeg = 53f;
+        public const float CameraBaseVerticalFovDeg = CameraPresets.PlayFovDeg;
 
         // ── 入口 ───────────────────────────────────────────────────────────
 
@@ -434,6 +437,15 @@ namespace Billiards.EditorTools
         private static void BuildGameplayHosts(GameObject root, Camera cam, Transform playfieldRoot, TableConfig config,
             GameObject cueBall, Transform[] ballVisuals, int rackBallCount, bool debugOverlay)
         {
+            // ─ 取景切换（首页开 ⇒ home 观景；点开始 ⇒ play 上帝视角）──
+            // **挂在相机自身**而不是新建宿主 GameObject：本组件要拿同物体上的 `Camera` 与
+            // `CameraViewportFitter`（切换时必须同步改适配器的 `baseVerticalFovDeg`，否则窗口比例一变
+            // 就会被适配器用旧基准覆写回 fov）；同时**不改动"必需宿主清单"**（`T127` 守它）。
+            // 放在这里（而不是 `BuildCamera`）是**必须的**：`BuildCamera` 只服务灰盒自建路径，
+            // 而 `Main.unity` 是 `MaterialVisualSetup` 自建相机后走本方法接玩法层 ⇒ 只有这里能覆盖两个场景。
+            var playView = cam.gameObject.AddComponent<PlayViewCamera>();
+            playView.targetCamera = cam;
+
             // ─ CushionGizmo 宿主（引用 TableConfig 绘制 82 段库边；绘制坐标过显示层）──
             var gizmoGo = new GameObject(GizmoObjectName);
             gizmoGo.transform.SetParent(root.transform, false);

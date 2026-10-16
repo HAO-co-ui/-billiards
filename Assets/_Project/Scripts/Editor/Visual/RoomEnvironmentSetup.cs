@@ -285,7 +285,8 @@ namespace Billiards.EditorTools
         ///
         /// 环境变量：
         ///   · `BILLIARDS_ROOM_PREVIEW_OUT`  输出 PNG（默认 `%TEMP%/billiards_batch/room-preview.png`）
-        ///   · `BILLIARDS_ROOM_PREVIEW_CAM`  `game`（主相机原样）| `room`（房间尺度预设，默认）| `custom`
+        ///   · `BILLIARDS_ROOM_PREVIEW_CAM`  `game`（主相机原样 = 场景序列化态，即 **play 打球视角**）
+        ///     | `home`（**首页观景预设**，取自真源 `CameraPresets.Home`；旧别名 `room` 亦可）| `custom`
         ///   · `custom` 时另需 `..._POS` / `..._LOOK` / `..._FOV`，格式 `x,y,z`
         /// </summary>
         public static void RenderRoomPreviewFromCommandLine()
@@ -317,12 +318,15 @@ namespace Billiards.EditorTools
                 Vector3 prevPos = camGo.transform.position;
                 Quaternion prevRot = camGo.transform.rotation;
                 float prevFov = cam.fieldOfView;
+                var fitter0 = camGo.GetComponent<Billiards.Physics.CameraViewportFitter>();
+                float prevBaseFov = fitter0 != null ? fitter0.baseVerticalFovDeg : prevFov;
 
-                if (string.Equals(mode, "room", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(mode, "home", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(mode, "room", StringComparison.OrdinalIgnoreCase))
                 {
-                    camGo.transform.position = new Vector3(0f, 3.90f, 2.60f);
-                    camGo.transform.rotation = Quaternion.LookRotation(new Vector3(0f, 0.05f, -1.00f) - camGo.transform.position, Vector3.up);
-                    cam.fieldOfView = 50f;
+                    // ⚠ 用**真源** `CameraPresets.Home`（而不是在这里硬编码坐标）——
+                    //   否则"首页观景"会有两份数：运行期一套、渲染工具一套，迟早漂移。
+                    CameraPresets.ApplyTo(cam, CameraPresets.Preset.Home);
                 }
                 else if (string.Equals(mode, "custom", StringComparison.OrdinalIgnoreCase))
                 {
@@ -333,7 +337,7 @@ namespace Billiards.EditorTools
                     float fov = 50f;
                     float.TryParse(Environment.GetEnvironmentVariable("BILLIARDS_ROOM_PREVIEW_FOV"),
                         System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out fov);
-                    cam.fieldOfView = fov;
+                    SetBaseFov(cam, fov);
                 }
 
                 RenderToPng(cam, 1440, 900, outPath);
@@ -341,6 +345,10 @@ namespace Billiards.EditorTools
                 camGo.transform.position = prevPos;
                 camGo.transform.rotation = prevRot;
                 cam.fieldOfView = prevFov;
+                if (fitter0 != null)
+                {
+                    fitter0.baseVerticalFovDeg = prevBaseFov;
+                }
 
                 Debug.Log("ROOM_PREVIEW_OK mode=" + mode + " out=" + outPath);
             }
@@ -356,8 +364,7 @@ namespace Billiards.EditorTools
             }
         }
 
-        private static Vector3 ParseVec(string csv)
-        {
+        private static Vector3 ParseVec(string csv)        {
             if (string.IsNullOrEmpty(csv))
             {
                 throw new InvalidOperationException("缺少向量参数（格式 x,y,z）");
@@ -389,6 +396,24 @@ namespace Billiards.EditorTools
             return null;
         }
 
+        /// <summary>
+        /// 设定"基准垂直 fov"：**有 `CameraViewportFitter` 就改它的基准**，没有才直接写相机 fov。
+        /// 为什么：适配器是**渲染期 fov 的唯一权威**（它按当前宽高比从基准解析）——
+        /// 若绕过它直接写 `cam.fieldOfView`，一旦宽高比变化（本工具渲染时会设成 16:10）就会被它覆写回去。
+        /// </summary>
+        private static void SetBaseFov(Camera cam, float fovDeg)
+        {
+            var fitter = cam.GetComponent<Billiards.Physics.CameraViewportFitter>();
+            if (fitter != null)
+            {
+                fitter.baseVerticalFovDeg = fovDeg;
+                fitter.Apply();
+                return;
+            }
+
+            cam.fieldOfView = fovDeg;
+        }
+
         private static void RenderToPng(Camera cam, int w, int h, string fullPath)
         {
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(fullPath));
@@ -401,6 +426,16 @@ namespace Billiards.EditorTools
 
             cam.targetTexture = rt;
             cam.aspect = (float)w / h;
+
+            // ⚠ **宽高比刚变了** ⇒ 必须让适配器按**新**比例重新解析 fov。
+            //   不这么做的话，渲染用的是"按旧比例算出的 fov"（本工具实测踩过：`home` 模式渲染出的
+            //   取景与真源预设不一致，且不报任何错）。
+            var fitter = cam.GetComponent<Billiards.Physics.CameraViewportFitter>();
+            if (fitter != null)
+            {
+                fitter.Apply();
+            }
+
             cam.Render();
 
             RenderTexture.active = rt;
