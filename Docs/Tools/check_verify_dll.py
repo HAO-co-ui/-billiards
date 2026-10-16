@@ -38,6 +38,13 @@ CHECKS = [
         "IsEndingOutcome",          # MatchResultCopy 的结局归类（穷举）
         "BadgeEdgeColor",           # MatchResultCopy 的形态 → 配色
         "TryShow",                  # HomeSeams 的"回到首页"接缝
+        # 35-C P6 第 3 小段（UI 侧：指定袋 call-pocket）
+        "OnPickPocket",             # PracticeHudView 的选袋回调
+        "RefreshCallPocketPicker",  # 选袋条的可见性/高亮刷新
+        "_callPocketRefusedUntil",  # "打黑 8 却未指定袋"被拒的提示窗口
+        "CalledPocketLine",         # PracticeHudState 的"已指定哪个袋"单点
+        "CallPocketButtonRect",     # PracticeHudLayout 的选袋条几何
+        "CallPocketZone",           # 选袋条的容器矩形
         "ResolveVisualState",       # PracticeHudState 的状态求解
         "UnreachableStates",        # PracticeHudState 的不可达登记
         "PlayAgainButtonLocal",     # PracticeResultLayout 的卡内矩形
@@ -87,6 +94,7 @@ CHECKS = [
         "T131_SmokeAimSweep_PureLogic",
         # 35-C P6（结算卡两形态 + 流程收口）
         "T146_MatchResult_TwoForms_FlowClosure_AndNoFalseAffordance",
+        "T147_CallPocket_EntryLabelRefusal_AndNoSilence",
         "T145_AiShotEntry_PlanLaunchAndDiagnosticPurity",
         # ⚠ `T144_MatchIntro_…_AndNoFalseAffordance`（78 字符）**不列**：本检查按 `[\x20-\x7e]{3,60}`
         #    取"可打印 run" ⇒ 超过 60 字符的名字**不以裸名出现**，列它会**恒假红**（同 `SegmentScreenSkips`）。

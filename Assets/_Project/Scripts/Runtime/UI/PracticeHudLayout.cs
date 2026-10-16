@@ -202,5 +202,44 @@ namespace Billiards.UI
             return inner.xMin >= outer.xMin && inner.xMax <= outer.xMax
                 && inner.yMin >= outer.yMin && inner.yMax <= outer.yMax;
         }
+
+        // ════════════════ 指定袋选袋条（P6 第 3 小段：D3 的 UI）════════════════════
+
+        /// <summary>
+        /// **选袋条的容器**（六个袋号按钮的竖列）。
+        ///
+        /// ── 为什么放在这条**竖缝**里（不是设计稿规定的，是被几何逼出来的）──────────────
+        /// 打球口径下球桌主区投影是 `x[0.0499,0.9501] y[0.0940,0.7647]`（`T95 (d)` 钉住），
+        /// 而 HUD 三块已占满 `y[0.780,0.982]` 的 `x[0.020,0.300] / [0.360,0.640] / [0.700,0.980]`。
+        /// 唯一**既不压球桌、也不与三块重叠**的空档 = 两条 `x` 缝（`[0.300,0.360]` / `[0.640,0.700]`）
+        /// ⇒ 选袋条取**左侧那条**，六个按钮**竖着排**（`≈115 px` 宽 × 各 `≈38 px` 高 @1920×1080）。
+        /// ⚠ **设计稿没有规定选袋件的形态** ⇒ 本条是"**不遮球桌 + 可点**"的**最小实现**，
+        ///    登记为表现差异（`T95` 的"不压球桌"契约对**常驻 HUD** 生效，本条是 `call-pocket` 期间才出现的瞬态件，
+        ///    但它仍然**故意**落在球桌主区之外 —— 不靠"瞬态"豁免几何契约）。
+        /// </summary>
+        public static readonly Rect CallPocketZone = new Rect(0.302f, 0.766f, 0.056f, 0.214f);
+
+        /// <summary>选袋条的按钮数（界面口径；与 `TableConfig.PocketCount` 一致，越界调用返回空矩形）。</summary>
+        public const int CallPocketSlots = 6;
+
+        /// <summary>
+        /// 选袋条内第 <paramref name="index"/> 个按钮的矩形（**索引 0 在最上**）。
+        /// ⚠ 顺序 = **规则索引**，**不对屏幕方位作任何主张**（"哪个按钮对应桌上哪个袋"由玩家点了之后的高亮回答；
+        /// 3D 袋口高亮属表现层增量，未做 ⇒ 见 `PracticeHudView` 的盲带登记）。
+        /// </summary>
+        public static Rect CallPocketButtonRect(int index, int count)
+        {
+            if (count <= 0 || index < 0 || index >= count)
+            {
+                return new Rect(0f, 0f, 0f, 0f);
+            }
+
+            float slot = CallPocketZone.height / count;
+            float gap = slot * 0.18f;   // 按钮之间的缝（比例口径 ⇒ 与分辨率无关）
+            return new Rect(CallPocketZone.xMin,
+                            CallPocketZone.yMax - (index + 1) * slot + gap * 0.5f,
+                            CallPocketZone.width,
+                            slot - gap);
+        }
     }
 }

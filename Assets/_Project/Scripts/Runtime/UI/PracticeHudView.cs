@@ -1,4 +1,5 @@
 using Billiards.Physics;
+using Billiards.Table;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -137,6 +138,21 @@ namespace Billiards.UI
 
         /// <summary>**对手回合点击被拒**的提示窗口截止时刻（P5-B："不许静默"；与上面两个窗口同形）。</summary>
         private float _opponentBlockedUntil;
+
+        /// <summary>选袋条：六个袋号按钮的容器（`null` = 尚未建树）。</summary>
+        private RectTransform[] _callPocketButtons;
+
+        /// <summary>选袋条：六个按钮的**边线**图（选中态改它的颜色 = 亮青）。</summary>
+        private Image[] _callPocketFrames;
+
+        /// <summary>选袋条：六个按钮的袋号文字。</summary>
+        private TextMeshProUGUI[] _callPocketLabels;
+
+        /// <summary>"打黑 8 却未指定袋"**出杆被拒**的轮询基线（第三条拒绝链，与上面两条各有各的窗口）。</summary>
+        private int _lastCallPocketRefusedSeen;
+
+        /// <summary>"打黑 8 却未指定袋"被拒的提示窗口截止时刻（同 <see cref="_opponentBlockedUntil"/> 的范式）。</summary>
+        private float _callPocketRefusedUntil;
 
         private bool _built;
 
@@ -328,6 +344,7 @@ namespace Billiards.UI
             BuildScoreboard(_counters);
             BuildStatusBar(_status);
             BuildShotbar(_power);
+            BuildCallPocketPicker(canvasGo.transform);
         }
 
         // ════════════════ 分区 A：品牌 + 记分牌 ═══════════════════════════════
@@ -616,6 +633,118 @@ namespace Billiards.UI
 
         // ════════════════ 刷新 ═══════════════════════════════════════════════
 
+        // ════════════════ 指定袋选袋条（P6 第 3 小段：D3 的 UI 半边）══════════════
+
+        /// <summary>
+        /// **指定袋选袋条**：六个袋号按钮，**只在 `call-pocket` 期间可见**。
+        ///
+        /// ── 三条设计约束（逐条有理由）──────────────────────────────────────────────
+        /// ① **几何落在球桌主区之外**（`PracticeHudLayout.CallPocketZone` 就是按 `T95 (d)` 的球桌投影
+        ///    与三块 HUD 的占位算出来的那条竖缝）—— **不靠"它是瞬态件"来豁免 `T95 (b)`**。
+        /// ② **写入口唯一**：点击只走 `PhysicsTestDrive.TryCallPocket(int)`（再点同一格 = `ClearCalledPocket()`），
+        ///    **绝不绕开**那个口去改 `CalledPocket`（绕开就绕开了 Runtime 的非法索引校验）。
+        /// ③ **按钮不对屏幕方位作任何主张**：索引顺序 = **规则索引**；"哪个按钮对应桌上哪个袋"由
+        ///    **点了之后的高亮**回答。
+        ///    ⚠ **盲带（如实登记，未做）**：**3D 袋口高亮没有做** —— 它需要"桌上袋口 → 屏幕"的投影
+        ///    与场景接线（属表现层增量）⇒ 本卡里选袋条与桌上袋口只能靠"点了哪个亮哪个"对应。
+        /// </summary>
+        private void BuildCallPocketPicker(Transform parent)
+        {
+            int count = PracticeHudLayout.CallPocketSlots;
+            _callPocketButtons = new RectTransform[count];
+            _callPocketFrames = new Image[count];
+            _callPocketLabels = new TextMeshProUGUI[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                Rect r = PracticeHudLayout.CallPocketButtonRect(i, count);
+                int index = i;   // ⚠ 闭包捕获：必须取副本，否则六个回调全指向同一个 `i`
+
+                RectTransform rect = AddFramed(parent, "CallPocket" + (i + 1),
+                    new Vector2(r.xMin, r.yMin), new Vector2(r.xMax, r.yMax),
+                    ClubUiTokens.LineButton, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusButton);
+
+                _callPocketButtons[i] = rect;
+                _callPocketFrames[i] = rect.GetComponent<Image>();
+                _callPocketFrames[i].raycastTarget = true;   // 与结算卡的两个键同口径：只有控件族收射线
+
+                _callPocketLabels[i] = CreateText(rect, "Label", bodyFont, ClubUiTokens.FontCaption,
+                    ClubUiTokens.IconIdle, TextAlignmentOptions.Center, Vector2.zero, Vector2.one);
+                _callPocketLabels[i].text = (i + 1).ToString();
+
+                var button = rect.gameObject.AddComponent<Button>();
+                button.targetGraphic = _callPocketFrames[i];
+                button.onClick.AddListener(() => OnPickPocket(index));
+
+                rect.gameObject.SetActive(false);   // 默认不显示：只有 `call-pocket` 期间才出现
+            }
+        }
+
+        /// <summary>
+        /// 点第 <paramref name="index"/> 个袋号（0 基，与 `TryCallPocket` **同索引**）。
+        /// **再点同一格 = 取消指定**（走 `ClearCalledPocket`）；否则走**唯一写入口** `TryCallPocket`
+        /// （非法索引 ⇒ 返回 `false` 且**不改状态**，这里不需要也不许自己判合法性）。
+        /// </summary>
+        public void OnPickPocket(int index)
+        {
+            if (drive == null)
+            {
+                return;
+            }
+
+            if (drive.CalledPocket == index)
+            {
+                drive.ClearCalledPocket();
+                return;
+            }
+
+            drive.TryCallPocket(index);
+        }
+
+        /// <summary>刷选袋条：**可见性 + 选中高亮**（两者都只读 `drive.CalledPocket`，本类不自己记"选了哪个"）。</summary>
+        private void RefreshCallPocketPicker(bool visible)
+        {
+            if (_callPocketButtons == null)
+            {
+                return;
+            }
+
+            int called = drive != null ? drive.CalledPocket : -1;
+            for (int i = 0; i < _callPocketButtons.Length; i++)
+            {
+                if (_callPocketButtons[i] == null)
+                {
+                    continue;
+                }
+
+                if (_callPocketButtons[i].gameObject.activeSelf != visible)
+                {
+                    _callPocketButtons[i].gameObject.SetActive(visible);
+                }
+
+                if (!visible)
+                {
+                    continue;
+                }
+
+                bool selected = i == called;
+                if (_callPocketFrames[i] != null)
+                {
+                    // 设计说明 §一：**亮青只用于"指定球袋"** ⇒ 选中态用青族，未选中用中性的按钮边线。
+                    _callPocketFrames[i].color = selected
+                        ? ClubUiTokens.CallPocketEdge
+                        : ClubUiTokens.LineButton;
+                }
+
+                if (_callPocketLabels[i] != null)
+                {
+                    _callPocketLabels[i].color = selected
+                        ? ClubUiTokens.CallPocketSymbol
+                        : ClubUiTokens.IconIdle;
+                }
+            }
+        }
+
         /// <summary>按当前状态刷值。**只写显示层**，不碰任何物理量。</summary>
         public void Refresh()
         {
@@ -668,6 +797,15 @@ namespace Billiards.UI
                     _placementRefusedUntil = now + FoulBannerSeconds;
                 }
 
+                // **打黑 8 却未指定袋 ⇒ 出杆被拒**（P6 第 3 小段；与"落点被拒"同一条"不许静默"规矩）。
+                // ⚠ 被拒这件事**已经由 Runtime 侧拦下**（`Launch()` 里 `IsEightBallShot && calledPocket < 0`
+                //    ⇒ 返回零向量）—— UI 侧**不重复拦**（两处拦必然分叉），只把"没反应"变成"看得见的原因"。
+                if (drive.RefusedCallPocketCount > _lastCallPocketRefusedSeen)
+                {
+                    _lastCallPocketRefusedSeen = drive.RefusedCallPocketCount;
+                    _callPocketRefusedUntil = now + FoulBannerSeconds;
+                }
+
                 // **对手回合点击被拒**（P5-B：用户要求"不许静默"）：
                 // `MatchTurnNotice` 只记账 + 置一个 pending 位，**时间窗在这里开** ——
                 // 与 `ScratchCount` / `RefusedLaunchCount` / `RefusedPlacementCount` 的轮询范式逐字同形。
@@ -702,17 +840,26 @@ namespace Billiards.UI
             // 少了这一参，对手回合期间状态条会回落成 `aim` ⇒ 嘴上说"轮到你了"（假陈述）。
             bool aiTurn = drive != null && drive.IsAiTurn;
 
-            HudVisualState state = PracticeHudState.ResolveVisualState(
-                phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen, awaitingPlacement, aiTurn);
+            // **打黑 8 必须先指定袋**（D3，P6 第 3 小段）：真值源 = `PhysicsTestDrive.IsEightBallShot`
+            // （**单点口径，与 Runtime 共用同一份** —— 绝不在这里拿球号/球位/剩余数自己算一遍）。
+            // 再叠加"**轮到玩家**"：这一句问的是"玩家这一杆要不要先指定袋" ⇒ 对手回合不该弹选袋条。
+            bool callPocket = drive != null && drive.IsEightBallShot && !drive.IsAiTurn;
+            bool callPocketRefusedWindow = now < _callPocketRefusedUntil;
 
-            RefreshStatusBar(state, awaitingPlacement, placementRefusedWindow, opponentBlockedWindow);
+            HudVisualState state = PracticeHudState.ResolveVisualState(
+                phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen, awaitingPlacement, aiTurn,
+                callPocket);
+
+            RefreshStatusBar(state, awaitingPlacement, placementRefusedWindow, opponentBlockedWindow,
+                callPocketRefusedWindow);
+            RefreshCallPocketPicker(state == HudVisualState.CallPocket);
             RefreshPower(phase);
             RefreshCounters();
             RefreshToolButtons();
         }
 
         private void RefreshStatusBar(HudVisualState state, bool awaitingPlacement, bool placementRefused,
-                                      bool opponentBlocked)
+                                      bool opponentBlocked, bool callPocketRefused)
         {
             Color32 symbol = PracticeHudState.SymbolColor(state);
             Color32 edge = PracticeHudState.EdgeColor(state);
@@ -762,8 +909,18 @@ namespace Billiards.UI
                 // 说明行的**文案选择**一律走纯函数 `PracticeHudState.CaptionLine`（判据可直接驱动它）——
                 // 本方法只负责"喂事实"，不自己判"哪句优先"：自由球有三个子情形（待放球 / 已回到台上 /
                 // **落点被拒**）共用同一档状态与配色，优先级必须有个**可被判据钉住**的单一实现点。
+                // ⚠ P6 追加："已指定哪个袋"那两参也从这里喂 —— 判据仍然只驱动 `CaptionLine`。
+                int calledPocket = drive != null ? drive.CalledPocket : -1;
+                bool calledPocketIsCorner = false;
+                if (drive != null && drive.tableConfig != null && calledPocket >= 0
+                    && calledPocket < drive.tableConfig.PocketCount)
+                {
+                    Pocket pocket = drive.tableConfig.GetPocket(calledPocket);
+                    calledPocketIsCorner = pocket != null && pocket.IsCorner;
+                }
+
                 _stateCaption.text = PracticeHudState.CaptionLine(state, awaitingPlacement, placementRefused,
-                    opponentBlocked);
+                    opponentBlocked, calledPocket, calledPocketIsCorner, callPocketRefused);
             }
 
             if (_shotInfoValue != null)

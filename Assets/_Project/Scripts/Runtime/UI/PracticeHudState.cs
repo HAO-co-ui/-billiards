@@ -13,11 +13,10 @@ namespace Billiards.UI
     /// **边线色与指示色**（<see cref="PracticeHudState.EdgeColor"/> / <see cref="PracticeHudState.SymbolColor"/>）、
     /// **文案**（<see cref="PracticeHudState.StateTitle"/> / <see cref="PracticeHudState.StateDetail"/>）。
     ///
-    /// ── 本卡可达 6 态、契约先行 2 态（P6 按事实重钉；如实登记）──────────────────
-    /// `ai-turn` 在 P6 **已接线可达**（对手回合显示"Opponent"，不再假报 `Aim`）；
-    /// 仍不可触发的是 `call-pocket`（**运行期出口已存在，缺 UI 选袋交互**）与 `paused`（**本卡无暂停系统**）。
-    /// 它们仍然在枚举、配色、图标、文案里**全部定义齐全** —— 接入时**不需要改这里**。
-    /// 不可达的两条在 <see cref="UnreachableStates"/> 里显式登记，判据 `T125②` 据此断言
+    /// ── 本卡可达 7 态、契约先行 1 态（P6 按事实重钉；如实登记）──────────────────
+    /// `ai-turn` 与 `call-pocket` 在 P6 **都已接线可达**；仍不可触发的只剩 `paused`（**本卡无暂停系统**）。
+    /// 它仍然在枚举、配色、图标、文案里**定义齐全** —— 接入暂停时**不需要改这里**。
+    /// 不可达的那一条在 <see cref="UnreachableStates"/> 里显式登记，判据 `T125②` / `②'` 据此断言
     /// "不可达集合既没被偷偷扩大、也没被偷偷缩小"，并且**用参数穷举反证**"登记为可达的态真的能被产出"。
     /// </summary>
     public enum HudVisualState
@@ -34,7 +33,7 @@ namespace Billiards.UI
         /// <summary>`ball-in-hand` —— 白球已归位、等你出杆。</summary>
         BallInHand = 3,
 
-        /// <summary>`call-pocket` —— 指定球袋。**仍不可达**：运行期出口已存在，缺 UI 选袋交互。</summary>
+        /// <summary>`call-pocket` —— 指定球袋。**P6 第 3 小段起可达**（真值源 `PhysicsTestDrive.IsEightBallShot`）。</summary>
         CallPocket = 4,
 
         /// <summary>`foul` —— 犯规（本工程唯一的可观测犯规 = 白球落袋）。</summary>
@@ -162,6 +161,45 @@ namespace Billiards.UI
 
         /// <summary>`call-pocket` 状态的说明（契约先行）。</summary>
         public const string CallPocketDetail = "Pick the pocket for the 8 ball";
+
+        // ── P6 第 3 小段：指定袋（D3）的 UI 文案 ─────────────────────────────────
+        // 用户口径：**只在打黑 8 那一杆**要指定袋；**未指定 ⇒ 出杆被拒**（不许静默）。
+
+        /// <summary>"已经指定了袋"那一行的前缀（整行 = `<本前缀> · pocket N (corner|side)`）。</summary>
+        public const string CallPocketCalledPrefix = "Called";
+
+        /// <summary>选袋条上给玩家的一句常驻提示（选袋条只在 `call-pocket` 期间可见）。</summary>
+        public const string CallPocketPickerHint = "Click a pocket to call it";
+
+        /// <summary>
+        /// **"打黑 8 却未指定袋"那次出杆被拒**的说明（`RefusedCallPocketCount` 上升沿开窗）。
+        /// ⚠ 与 <see cref="CallPocketDetail"/> **刻意不同**：那句说"请你选袋"（当前要求），
+        /// 这句回应**玩家刚刚扣了扳机**（"你刚那一杆被拒了，因为还没选袋"）——
+        /// 与 `PlacementRefusedDetail` / `OpponentBlockedDetail` 同一条口径。
+        /// </summary>
+        public const string CallPocketRefusedDetail = "No pocket called · the shot was refused";
+
+        /// <summary>袋口种类名（选袋条与"已指定"行共用，**同一件事只有一个名字**）。</summary>
+        public static string PocketKindLabel(bool isCorner)
+        {
+            return isCorner ? "corner" : "side";
+        }
+
+        /// <summary>
+        /// `call-pocket` 的**说明行**（纯函数 ⇒ 判据可直接驱动，不读像素）。
+        /// `calledPocket &lt; 0` ⇒ "请你选"；否则 ⇒ "已指定 · pocket N (kind)"。
+        /// ⚠ `N` 是**袋号 + 1**（`TryCallPocket` 的索引是 0 基；界面上给玩家看 1..6）。
+        /// </summary>
+        public static string CalledPocketLine(int calledPocket, bool isCorner)
+        {
+            if (calledPocket < 0)
+            {
+                return CallPocketDetail;
+            }
+
+            return CallPocketCalledPrefix + " · pocket " + (calledPocket + 1).ToString()
+                   + " (" + PocketKindLabel(isCorner) + ")";
+        }
 
         // ── 标签与按钮（记分牌 / 力度块）───────────────────────────────────────
         /// <summary>记分牌右侧球行的标签（未进的球亮、已进球的 20% 透明 ⇒ 字面就是"还剩多少"）。</summary>
@@ -385,7 +423,9 @@ namespace Billiards.UI
         /// ③ 其余回落到 `StateDetail(state)`（既有行为**逐字不变**）。
         /// </summary>
         public static string CaptionLine(HudVisualState state, bool awaitingPlacement, bool placementRefused,
-                                         bool opponentBlocked = false)
+                                         bool opponentBlocked = false,
+                                         int calledPocket = -1, bool calledPocketIsCorner = false,
+                                         bool callPocketRefused = false)
         {
             // ⚠ 优先级：**对手回合被拒**排在最前 —— 它是玩家**刚刚做了动作、被拒**的即时反馈，
             //   而其余两句描述的是"当前是什么状态"（状态说明随时都能看到，这一次点击的解释错过就没了）。
@@ -397,6 +437,21 @@ namespace Billiards.UI
             if (placementRefused)
             {
                 return PlacementRefusedDetail;
+            }
+
+            // **打黑 8 却没指定袋 ⇒ 刚那一杆被拒**（P6 第 3 小段）：与"落点被拒"同一条口径 ——
+            // 玩家**刚扣了扳机**，这一句比"请你选袋"（常驻要求）更该先说。
+            if (callPocketRefused)
+            {
+                return CallPocketRefusedDetail;
+            }
+
+            // `call-pocket` 那一行要带"已指定哪个袋"⇒ 它不能走 `StateDetail` 的定值。
+            // 这里能安全地判 `state`：`ResolveVisualState` 把两个残余窗口排在它**前面**，
+            // 所以 `state == CallPocket` 时那两句一定没在开窗。
+            if (state == HudVisualState.CallPocket)
+            {
+                return CalledPocketLine(calledPocket, calledPocketIsCorner);
             }
 
             if (state == HudVisualState.BallInHand && awaitingPlacement)
@@ -450,20 +505,25 @@ namespace Billiards.UI
         /// <summary>
         /// 本卡**无法触发**的状态（显式登记，防"悄悄少做/悄悄多做"）。
         ///
-        /// ── ⚠ **P6 重钉（按事实，不是删掉）**───────────────────────────────────────
-        /// · **`ai-turn` 已移出本集合 —— 它现在真的可达**：真值源 =
-        ///   `Billiards.Physics.PhysicsTestDrive.IsAiTurn`（`= CurrentTurn == ShotTurn.Ai`），
-        ///   施加口 = `SetTurn(ShotTurn)` / `ApplyVerdict(in RuleVerdict)`（取规则层 `nextTurn`），
+        /// ── ⚠ **P6 两小步重钉（按事实，不是删掉）**──────────────────────────────────
+        /// · **`ai-turn` 已移出**（P6 第 2 小段）：真值源 = `Billiards.Physics.PhysicsTestDrive.IsAiTurn`
+        ///   （`= CurrentTurn == ShotTurn.Ai`），施加口 = `SetTurn(ShotTurn)` / `ApplyVerdict(in RuleVerdict)`，
         ///   状态条出口 = <see cref="ResolveVisualState"/> 的 `aiTurn` 入参（由 `PracticeHudView` 喂）。
-        ///   旧理由「本卡无 AI」**已是假陈述**（AI 与规则引擎都已落地）—— 见 `T125②`。
-        /// · **`call-pocket` 仍不可达，但理由不是"没有引擎"**：运行期出口**已存在**
-        ///   （`PhysicsTestDrive.TryCallPocket(int)` / `CalledPocket` / `RefusedCallPocketCount`，
-        ///   规则层 `RuleState.calledPocket` 已参与"进错袋判负"）⇒ 缺的是 **UI 侧的选袋交互**（下一段增量）。
+        ///   旧理由「本卡无 AI」**已是假陈述**。
+        /// · **`call-pocket` 也已移出**（P6 第 3 小段，UI 侧选袋交互落地）：**真值源** =
+        ///   `Billiards.Physics.PhysicsTestDrive.IsEightBallShot`（**单点口径，与 Runtime 共用的那一份**；
+        ///   更底层的事实是 `Billiards.Rules.RuleState.calledPocket` / 组分剩余数），
+        ///   **写入口** = `PhysicsTestDrive.TryCallPocket(int)` / `ClearCalledPocket()`，
+        ///   **读出口** = `PhysicsTestDrive.CalledPocket`，
+        ///   **被拒出口** = `PhysicsTestDrive.RefusedCallPocketCount`，
+        ///   **判定出口**（规则层拿它判负）= `Billiards.Rules.ShotOutcomeKind.EightBallWrongPocket`，
+        ///   **UI 入口** = 本段的选袋状态（`PracticeHudView` 的六格选袋条 + `OnPickPocket`），
+        ///   **状态条出口** = <see cref="ResolveVisualState"/> 的 `callPocket` 入参。
+        ///   旧理由「本卡无规则引擎」**已是假陈述**。
         /// · **`paused` 仍不可达**：本卡**确实没有**暂停系统（没有任何暂停入口或状态真源）。
         /// </summary>
         public static readonly HudVisualState[] UnreachableStates =
         {
-            HudVisualState.CallPocket, // UI 选袋交互未做（运行期出口已存在，见上）
             HudVisualState.Paused,     // 本卡没有暂停系统
         };
 
@@ -540,9 +600,19 @@ namespace Billiards.UI
         /// 而"相位回落"那一层（`Aim` / `Moving`）才是**"现在轮到谁"的常态显示** ——
         /// `ai-turn` 只替换这一层：**对手在打的时候，状态条不许再说 `Aim`**（那是假陈述）。
         /// </param>
+        /// <param name="callPocket">
+        /// **这一杆是"打黑 8"、必须先指定袋**（D3）：真值源 = `Billiards.Physics.PhysicsTestDrive.IsEightBallShot`
+        /// （**单点口径，UI 与 Runtime 共用**；口径 = 已定组且本方剩余为 0 —— **不许在 UI 里拿球号/球位反推**）。
+        /// ⚠ **调用方还须加上"轮到玩家"**（`!IsAiTurn`）：这句判据问的是"玩家这一杆要不要先指定袋"。
+        /// 默认 `false` ⇒ 既有调用点与判据**行为逐位不变**。
+        ///
+        /// ── 优先级为什么也在**残余窗口之后**（与 `ai-turn` 同一条理由）────────────────
+        /// 它替换的同样是"相位回落"那一层：玩家犯规/被拒之后那 1.6 s 里，先说"你刚才那一杆"，再说"轮到你了、请指定袋"。
+        /// </param>
         public static HudVisualState ResolveVisualState(ShotPhase phase, bool foulWindow, bool refusedWindow,
                                                         bool ballInHand, bool resultOpen,
-                                                        bool awaitingPlacement = false, bool aiTurn = false)
+                                                        bool awaitingPlacement = false, bool aiTurn = false,
+                                                        bool callPocket = false)
         {
             if (resultOpen)
             {
@@ -562,6 +632,11 @@ namespace Billiards.UI
             if (ballInHand || awaitingPlacement)
             {
                 return HudVisualState.BallInHand;
+            }
+
+            if (callPocket)
+            {
+                return HudVisualState.CallPocket;
             }
 
             if (aiTurn)
@@ -670,6 +745,10 @@ namespace Billiards.UI
                 MatchResultCopy.ReasonLegalEightBall, MatchResultCopy.ReasonEightBallTooEarly,
                 MatchResultCopy.ReasonEightBallWrongPocket, MatchResultCopy.ReasonEightBallOffTable,
                 MatchResultCopy.ReasonEightBallRespot, MatchResultCopy.ReasonOngoing,
+                // P6 第 3 小段：指定袋（D3）的 UI 文案
+                CallPocketCalledPrefix, CallPocketPickerHint, CallPocketRefusedDetail,
+                PocketKindLabel(true), PocketKindLabel(false),
+                CalledPocketLine(-1, false), CalledPocketLine(0, true), CalledPocketLine(4, false),
                 PowerLabel(0f), PowerLabel(0.45f), PowerLabel(1f),
                 PocketedLabel(0, 15), PocketedLabel(15, 15),
                 "0123456789");

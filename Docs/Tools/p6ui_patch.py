@@ -97,6 +97,31 @@ PATCHES = {
             ),
         ],
     ),
+    # ⑦ **把"只有打黑 8 才进选袋"改成恒真**：普通杆也叫你选袋（整个游戏卡在选袋上）
+    "callpocket-always": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudView.cs",
+        [
+            (
+                "bool callPocket = drive != null && drive.IsEightBallShot && !drive.IsAiTurn;",
+                "bool callPocket = drive != null;",
+            ),
+        ],
+    ),
+    # ⑧ **删掉"被拒上升沿"的消费**：打黑 8 未指定袋被拒 ⇒ 玩家扣了扳机**没有任何反馈**（静默）
+    "callpocket-silent": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudView.cs",
+        [
+            (
+                "                if (drive.RefusedCallPocketCount > _lastCallPocketRefusedSeen)\n"
+                "                {\n"
+                "                    _lastCallPocketRefusedSeen = drive.RefusedCallPocketCount;\n"
+                "                    _callPocketRefusedUntil = now + FoulBannerSeconds;\n"
+                "                }\n"
+                "\n",
+                "",
+            ),
+        ],
+    ),
 }
 
 

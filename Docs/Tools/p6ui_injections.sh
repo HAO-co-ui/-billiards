@@ -34,7 +34,11 @@ case "$TAG" in
   record-overwrite) REL="Assets/_Project/Scripts/Runtime/UI/PracticeSessionStore.cs"
                     BASE="8d702fea291e7008e5b5ab169435486117e8ed8c" ;;
   ai-turn-drop)     REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudState.cs"
-                    BASE="8baf2e2a056edd60bfbd02b2aabb4e0c1b507072" ;;
+                    BASE="b52c366774eed72ee4b2ae86a6c8d39cc19d5694" ;;
+  callpocket-always) REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
+                    BASE="528208bb3bc7250f3421d01bc468afdd253d8b53" ;;
+  callpocket-silent) REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
+                    BASE="528208bb3bc7250f3421d01bc468afdd253d8b53" ;;
   *) echo "未登记的 tag：$TAG" >&2; exit 2 ;;
 esac
 
