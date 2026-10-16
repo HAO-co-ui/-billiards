@@ -55,10 +55,21 @@ def load(path: str):
 
 
 def distinct_colors(img) -> int:
+    """不同颜色数（**口径 = (r,g,b) 三元组**，与 Unity 侧 `RND-01` **同判**）。
+
+    ⚠ **硬要求**：**禁止**在 Pillow 14 **真正移除** `getdata` 之前改用 `get_flattened_data`；若升级，**必须同时**
+    给出「**新旧计数逐位一致**」的验证。**不要**改用 `get_flattened_data`（已试过并**回退**，2026-10-16 批 B）：它返回的是**按通道扁平**的
+    序列，直接 `Counter` 会把计数口径从"三元组"变成别的粒度 ⇒ 计数**虚高数倍**
+    （实测：`perspective` **同一份字节**从 **34,610 → 122,394**），并与 Unity 侧 `RND-01`（12,484 等）
+    **不再同判** ⇒ 两边会"一个绿一个红/数字对不上"。
+    ⇒ 若将来 Pillow 14 真移除 `getdata`，升级时**必须同时**做"新旧计数逐位一致"的等价性验证再改；
+       改前先接受 Pillow 的 `DeprecationWarning`（它不影响结果）。
+    """
     return len(Counter(img.getdata()))
 
 
 def diff_fraction(a: "Image.Image", b: "Image.Image") -> float:
+    """逐像素差异占比（口径同上：三元组比较）。"""
     pa, pb = list(a.getdata()), list(b.getdata())
     if len(pa) != len(pb):
         return 1.0

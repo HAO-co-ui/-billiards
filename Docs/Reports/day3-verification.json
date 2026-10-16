@@ -1,6 +1,6 @@
 {
     "schema": "billiards.day3-verification.v1",
-    "generatedAtUtc": "2026-10-16T03:30:39.8803891Z",
+    "generatedAtUtc": "2026-10-16T04:16:23.9253881Z",
     "unityVersion": "6000.0.49f1",
     "activeBuildTarget": "StandaloneWindows64",
     "projectRoot": "E:\\Unity_Deve\\Unity_Project\\Billiards game",
@@ -206,7 +206,7 @@
             "id": "RND-01",
             "title": "渲染证据图落盘且**非退化**（与 `qa_render_evidence_check.py` 同判）",
             "expected": "4 张且 distinctColors > 1",
-            "actual": "day3-top-view.png：11612 色 sha=ff216b885e09；day3-perspective.png：34610 色 sha=f40c3aee34e7；ab-asis.png：38294 色 sha=de930328c5a8；ab-flipgreen.png：34830 色 sha=807cacf90297",
+            "actual": "E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-top-view.png：12888 色 sha=d0f67077f100；E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-perspective.png：34610 色 sha=f40c3aee34e7；E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-normal-ab\\ab-asis.png：38294 色 sha=de930328c5a8；E:\\Unity_Deve\\Unity_Project\\Billiards game\\Docs\\Reports\\day3-normal-ab\\ab-flipgreen.png：34830 色 sha=807cacf90297",
             "status": "PASS",
             "detail": "**只查\"落盘\"不够**：无 GPU 的批处理下 `cam.Render()` 拿不到内容 ⇒ 纯灰空图。本项与离线工具 `qa_render_evidence_check.py` **同判**（`distinctColors > 1`）。"
         },

@@ -538,6 +538,14 @@ namespace Billiards.EditorTools
                 return;
             }
 
+            // ── 两个 fov 不是同一个量（写在这里，防后人误判"相机被人改错了"）──────────────
+            // 本项（`CAM-01`）断言的是**序列化** fov（**52.000** = 谁手写在相机上的值）；
+            // 而 `CAM-02`/`CAM-03`/`CAM-04`/`CAM-05` 用的是 `CameraViewportFitter` 作用后的**有效** fov
+            // （**56.909 @ aspect 1.6** —— 窄窗时 fitter 抬高垂直 fov 以保住**水平**覆盖）。
+            // **不矛盾，是两个量**：本项守**输入**（改没改常量）、投影类守**输出**（16:10 窗口里实际看到的取景）；
+            // 有效值由 fitter **纯函数**从序列化值推出，而 fitter 规则本身另由 `T52`/`T53` 守。
+            // ⇒ 看到 `52` 与 `56.909` 并存时**不要去"对齐"它们**。
+            //
             // ── 口径重定位（登记"为什么改"）────────────────────────────────────────
             // 期望值由 `MaterialVisualSetup` 的旧常量（pos (0,3.05,−0.88) / fov 37）改为**共用玩法常量**
             // （`GreyboxSceneSetup.CameraPosition` / `CameraBaseVerticalFovDeg = 52`）。
@@ -621,6 +629,16 @@ namespace Billiards.EditorTools
                 //   · > 8% ⇒ **WARN**（**有界可见性**，不是 FAIL：外框可见性本就**不**在取景契约内）。
                 // 判别力自证（实测）：注入 B（根缩放 1.44）超量 **0.178**、注入 D（fov 40）超量 **0.222**
                 //   ⇒ 两者 **> 0.08 ⇒ WARN**；稳态（配置 B）**0.039 ⇒ PASS**。
+                //
+                // ── **它为什么不是冗余**（"模型侧守卫"，**带限定**）──────────────────────
+                // 针对"**换桌模型使木库外框变厚变宽、而位姿与打球区不变**"这种漂移，其余判据**都不会触发**：
+                //   `CAM-01`（只比相机 pos / **序列化** fov）、`CAM-02`/`CAM-04`（对象是**常量基盒**
+                //   `ClothHalfLength/Width × lossyScale`，**不读桌子网格**）、`CAM-05`（模型变会**同等**影响
+                //   两场景 ⇒ Δ 恒 0）、`SCN-02`（只比根缩放常量）⇒ **本项抓得住**。
+                // ⚠ **准确写法（限定，勿写成更强的说法）**：「**在标准管线（模型与包络常量同步更新）下**，
+                //   本项是这类漂移的**唯一**守卫」。**不得**写成"任何换模型的唯一防线" —— 若有人换了模型
+                //   却**没更新 `PoolGeometry` 的包络常量**，则 **`SCN-04` 会先红**（那是它该做的），
+                //   此时本项**不是**唯一；也不得因此以为 `SCN-04` 冗余（它是那种情形下的兜底）。
                 float outerCrop = Mathf.Max(outerOverflowX, outerOverflowY);
                 string outerCropActual = $"外框超量 {outerCrop:P1}（x={outerOverflowX:F3} y={outerOverflowY:F3}）";
                 report.Add(outerCrop <= OuterCropWarnThreshold
@@ -703,6 +721,8 @@ namespace Billiards.EditorTools
             }
 
             // ── RND-01：落盘 **且非退化** ──
+            // ⚠ **印"实际落点（全路径）"，不印写死的 `Docs/Reports/...`**：`TestRootPath` 会随 `-outputDir`
+            //    重定向 ⇒ 固定印相对路径会在重定向跑批时**误导**（让人以为证据进了仓库，其实进了临时目录）。
             var problems = new List<string>();
             var counts = new List<string>();
             foreach (string rel in new[] { TopViewName, PerspectiveName, AbAsIsName, AbFlipName })
@@ -710,24 +730,24 @@ namespace Billiards.EditorTools
                 string full = TestRootPath(rel);
                 if (!File.Exists(full))
                 {
-                    problems.Add(rel + "：不存在");
-                    counts.Add(Path.GetFileName(rel) + "：<缺失>");
+                    problems.Add(full + "：不存在");
+                    counts.Add(full + "：<缺失>");
                     continue;
                 }
 
                 long size = new FileInfo(full).Length;
                 if (size < 100)
                 {
-                    problems.Add($"{rel}：文件过小（{size} B，疑似 Git-LFS 指针或空文件 —— 指针不能当证据）");
-                    counts.Add($"{Path.GetFileName(rel)}：{size} B");
+                    problems.Add($"{full}：文件过小（{size} B，疑似 Git-LFS 指针或空文件 —— 指针不能当证据）");
+                    counts.Add($"{full}：{size} B");
                     continue;
                 }
 
                 int ncol = DistinctColors(full);
-                counts.Add($"{Path.GetFileName(rel)}：{ncol} 色 sha={Sha12(full)}");
+                counts.Add($"{full}：{ncol} 色 sha={Sha12(full)}");
                 if (ncol <= 1)
                 {
-                    problems.Add($"{rel}：**退化图**（distinctColors={ncol} ⇒ 单一底色 = 什么都没渲染；"
+                    problems.Add($"{full}：**退化图**（distinctColors={ncol} ⇒ 单一底色 = 什么都没渲染；"
                                  + "`-batchmode -nographics` 无 GPU 时会这样）");
                 }
             }

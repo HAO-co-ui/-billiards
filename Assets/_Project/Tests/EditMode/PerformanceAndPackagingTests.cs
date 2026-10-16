@@ -469,8 +469,9 @@ namespace Billiards.Tests
         /// ② **角函数闭式**：`AimSweepDegrees` 第 0 帧 = 0°、逐帧增量恒为 `AimSweepDegreesPerFrame`（模 360 回绕后仍单调）、
         ///    80 帧恰覆盖整圈 360° 并回到起点。
         /// ③ **JSON**：字段含 `"aimSweep"` 与 `"gate"`（判定口径名）。
-        /// ④ **拖动闸门**（`MeetsDragTarget`，**宽松**：均值 ≤ `DragFrameBudgetMs`、掉帧 ≤ `DragMaxDroppedFraction`）：
-        ///    只拦"量级失控"，**不声称 60 fps** —— 拖动路径的单位重算成本是内核固有的 ~240 步预测（见规格 §盲带）。
+        /// ④ **闸门阈值对 spec**（`G4`）：拖动与静置现在**同判** `MeetsTarget` ⇒ 它的两个阈值（60 fps 单帧
+        ///    预算 / 超预算占比 ≤ 2%）**用独立字面量**钉住 —— **不是**拿常量比常量。
+        ///    （旧版这里钉的是已被删除的宽松闸门 `MeetsDragTarget`/`DragFrameBudgetMs`；见 ⑤ 的删除守卫。）
         ///
         /// **盲带**：只锁纯逻辑；**不证明**构建产物真的按此拖动（那要真跑一次 exe，见规格 §4）。
         /// </summary>
@@ -505,15 +506,28 @@ namespace Billiards.Tests
                 failures.Add("① 只有 aim 开关、没有帧数 ⇒ 不应进入冒烟模式（否则会静默不跑证据）。");
             }
 
-            // ② 角函数闭式
+            // ② 角函数闭式 —— **期望用独立字面量**（`G3`：修掉"拿常量比常量"的恒真）
+            // ⚠ 旧写法把 `SmokeProbe.AimSweepDegreesPerFrame` **自身**当期望 ⇒ **恒真**：把常量改小 8 倍
+            //   （0.5625°/帧）测试照样绿 —— 而那样"80 帧覆盖整圈"会退化成"只覆盖 45°"，sweep 语义已坏。
+            //   ⇒ 期望改为**独立字面量 4.5f**（= 设计值：4.5°/帧 ⇒ 60 fps 下 270°/s，规格 §3.3），
+            //     并**另行断言常量等于它** ⇒ 改常量必红。
+            const float ExpectedDegreesPerFrame = 4.5f;
+            if (Mathf.Abs(SmokeProbe.AimSweepDegreesPerFrame - ExpectedDegreesPerFrame) > 1e-6f)
+            {
+                failures.Add($"② `AimSweepDegreesPerFrame` 应为设计值 {ExpectedDegreesPerFrame}°，"
+                             + $"实际 {SmokeProbe.AimSweepDegreesPerFrame}°（常量被改 ⇒ 相位增速 / 覆盖圈数已变）。");
+            }
+
             if (Mathf.Abs(SmokeProbe.AimSweepDegrees(0) - 0f) > 1e-4f)
             {
                 failures.Add($"② 第 0 帧应为 0°，实测 {SmokeProbe.AimSweepDegrees(0):R}°。");
             }
 
+            // 覆盖整圈所需帧数 = 360 / **独立设计值**（不是读常量）
+            int framesPerTurn = Mathf.RoundToInt(360f / ExpectedDegreesPerFrame);
             float prev = SmokeProbe.AimSweepDegrees(0);
             float total = 0f;
-            for (int n = 1; n <= 80; n++)
+            for (int n = 1; n <= framesPerTurn; n++)
             {
                 float cur = SmokeProbe.AimSweepDegrees(n);
                 float delta = cur - prev;
@@ -522,10 +536,9 @@ namespace Billiards.Tests
                     delta += 360f;   // 跨 360 回绕
                 }
 
-                if (Mathf.Abs(delta - SmokeProbe.AimSweepDegreesPerFrame) > 1e-3f)
+                if (Mathf.Abs(delta - ExpectedDegreesPerFrame) > 1e-3f)
                 {
-                    failures.Add($"② 第 {n} 帧角增量应为 {SmokeProbe.AimSweepDegreesPerFrame}°，实测 {delta}°"
-                                 + "（非连续 / 非单调）。");
+                    failures.Add($"② 第 {n} 帧角增量应为 {ExpectedDegreesPerFrame}°，实测 {delta}°（非连续 / 非单调）。");
                 }
 
                 total += delta;
@@ -534,56 +547,135 @@ namespace Billiards.Tests
 
             if (Mathf.Abs(total - 360f) > 1e-2f)
             {
-                failures.Add($"② 80 帧应覆盖整圈 360°，实测 {total}°（步长 {SmokeProbe.AimSweepDegreesPerFrame}°）。");
+                failures.Add($"② {framesPerTurn} 帧应覆盖整圈 360°，实测 {total}°（独立设计步长 {ExpectedDegreesPerFrame}°）。");
             }
 
-            if (SmokeProbe.AimSweepDegrees(80) != SmokeProbe.AimSweepDegrees(0))
+            if (SmokeProbe.AimSweepDegrees(framesPerTurn) != SmokeProbe.AimSweepDegrees(0))
             {
-                failures.Add("② 80 帧后应回到起点角（整圈）⇒ 指纹每帧都变，拖动路径被真正触发。");
+                failures.Add($"② {framesPerTurn} 帧后应回到起点角（整圈）⇒ 指纹每帧都变，拖动路径被真正触发。");
             }
 
-            // ③ JSON 字段
+            // ③ JSON 字段（**新可观测项也必须落盘**，否则"上报了却没写进证据"）
             string json = SmokeProbe.ToJson(new SmokeResult { aimSweep = true, passed = true });
-            if (!json.Contains("\"aimSweep\""))
+            foreach (string field in new[]
+                     {
+                         "\"aimSweep\"", "\"gate\"",
+                         "\"minMs\"", "\"loadRatio\"", "\"machineClass\"",
+                         "\"roundMeanMsMin\"", "\"roundMeanMsMedian\"", "\"roundMeanMsMax\"",
+                         "\"predictionComputeCount\"", "\"totalPredictSteps\"",
+                         "\"frameGateOk\"", "\"sceneBudgetOk\"",
+                         "\"rendererCountLimit\"", "\"distinctMaterialCountLimit\"",
+                     })
             {
-                failures.Add("③ JSON 缺字段 \"aimSweep\"。");
+                if (!json.Contains(field))
+                {
+                    failures.Add($"③ JSON 缺字段 {field}。");
+                }
             }
 
-            if (!json.Contains("\"gate\""))
+            // ④ **闸门阈值对 spec 值**（`G4`）：拖动与静置**同判** `MeetsTarget` ⇒ 它的两个阈值就是拖动路径的阈值。
+            //    用**独立字面量**钉住（spec §3.3/§4.2：60 fps ⇒ 单帧 16.666667 ms；超预算占比 ≤ 2%），
+            //    **不是**拿常量比常量。
+            if (Mathf.Abs(SmokeProbe.FrameBudgetMs - 16.666667f) > 1e-4f)
             {
-                failures.Add("③ JSON 缺字段 \"gate\"（判定口径名）。");
+                failures.Add($"④ `FrameBudgetMs` 应为 60 fps 单帧预算 16.666667 ms，实际 {SmokeProbe.FrameBudgetMs}。");
             }
 
-            // ④ 拖动闸门（**宽松**，只拦量级失控）：边界与静置闸门同构，但阈值不同
-            if (!SmokeProbe.MeetsDragTarget(24f, 100, 600))
+            // ⚠ 故意**经局部变量**再比较：直接把两个 `const int` 写进 `if` 会被编译器**常量折叠**成恒假
+            //   ⇒ 分支判为"不可达"（`CS0162` 警告）。经变量后仍是运行时比较、语义不变。
+            int droppedNum = SmokeProbe.DroppedFractionNumerator;
+            int droppedDen = SmokeProbe.DroppedFractionDenominator;
+            if (droppedNum != 2 || droppedDen != 100)
             {
-                failures.Add("④ 均值 24 ms / 掉帧 16.7% 应通过（宽松闸门）。");
+                failures.Add("④ 超预算占比上限应为 2/100，实际 " + $"{droppedNum}/{droppedDen}。");
             }
 
-            if (SmokeProbe.MeetsDragTarget(60f, 0, 600))
+            // ⑤ **"宽松闸门已删、两条负载同判"的源码级 + 类型级守卫**（`G6` 同批）
+            //    ⚠ 只跑一次冒烟看 `gate` 字段证明不了"不许把宽松闸门加回来" ⇒ 静态也要守。
+            string runnerPath = Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".",
+                "Assets/_Project/Scripts/Runtime/Core/SmokeProbeRunner.cs");
+            Assert.IsTrue(File.Exists(runnerPath), "T131：找不到 SmokeProbeRunner.cs（源码级守卫无法执行）。");
+            string runnerCode = File.ReadAllText(runnerPath);
+            foreach (string needed in new[]
+                     {
+                         "MeetsTarget(", "MeetsSceneBudget(", "IsPremiumMachine(",
+                         // ⚠ 必须写**调用形态**（带 `();`）—— 只写 `SampleScenePeaks(` 会命中**方法定义**，
+                         //    于是"把调用删掉"这种注入**照样绿**（本批实测：这条守卫第一版就是空转的，
+                         //    由 `batchB_injections.py g5-peaks` 抓出来）。
+                         "SampleScenePeaks();", "ExitCodeEnvUnclean", "SmokeProbe.Rounds",
+                     })
             {
-                failures.Add("④ 均值 60 ms 超上限 不应通过。");
+                if (!runnerCode.Contains(needed))
+                {
+                    failures.Add($"⑤ 采样执行体未接上 `{needed}`（常量加了但没人用）。");
+                }
             }
 
-            if (SmokeProbe.MeetsDragTarget(24f, 300, 600))
+            if (runnerCode.Contains("MeetsDragTarget"))
             {
-                failures.Add("④ 掉帧 50% 超上限 不应通过。");
+                failures.Add("⑤ 采样执行体仍引用 `MeetsDragTarget` —— 宽松闸门应**已删除**（不留死闸门）。");
             }
 
-            if (!SmokeProbe.MeetsDragTarget(24f, 240, 600))
+            if (typeof(SmokeProbe).GetMethod("MeetsDragTarget") != null)
             {
-                failures.Add("④ 掉帧恰 40%（= 上限）应通过（口径是 `≤`）。");
+                failures.Add("⑤ `SmokeProbe.MeetsDragTarget` 仍存在 —— 已作废的闸门不得留在代码里（会被后人误用）。");
             }
 
-            if (SmokeProbe.MeetsDragTarget(10f, 0, 0))
+            // ⑥ 场景预算纯函数的**判别力**（边界：口径是 `≤`）
+            if (!SmokeProbe.MeetsSceneBudget(SmokeProbe.MaxRendererCount, SmokeProbe.MaxDistinctMaterialCount))
             {
-                failures.Add("④ frames = 0 不应通过。");
+                failures.Add("⑥ 恰在上限值应通过（口径是 ≤）。");
+            }
+
+            if (SmokeProbe.MeetsSceneBudget(SmokeProbe.MaxRendererCount + 1, 0))
+            {
+                failures.Add("⑥ 渲染器超上限 1 应不通过。");
+            }
+
+            if (SmokeProbe.MeetsSceneBudget(0, SmokeProbe.MaxDistinctMaterialCount + 1))
+            {
+                failures.Add("⑥ 材质超上限 1 应不通过。");
+            }
+
+            // ⑦ 机器分类纯函数的**判别力**（相对量；实测空载 ~1.00、忙机 ~1.5+）
+            if (!SmokeProbe.IsPremiumMachine(7f, 6.9f))
+            {
+                failures.Add("⑦ 比值 1.01 应判 premium（空载形态）。");
+            }
+
+            if (SmokeProbe.IsPremiumMachine(12.6f, 6.9f))
+            {
+                failures.Add("⑦ 比值 1.83 应判 loaded（忙机形态）—— 否则机器负载会被误读成产物变慢。");
+            }
+
+            if (SmokeProbe.IsPremiumMachine(7f, 0f))
+            {
+                failures.Add("⑦ min = 0 应判 loaded（不可判）。");
+            }
+
+            // ⑤a 预测成本**必须真的上报**（`G6`）—— 源码级：控制器里必须有上报调用与累计字段
+            //     （否则"加了上报 API 但没人调" ⇒ 冒烟的 `totalPredictSteps` 恒为 0，而字段存在性断言照样绿）。
+            string assistPath = Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".",
+                "Assets/_Project/Scripts/Runtime/Physics/AimAssistController.cs");
+            Assert.IsTrue(File.Exists(assistPath), "T131：找不到 AimAssistController.cs。");
+            string assistCode = File.ReadAllText(assistPath);
+            if (!assistCode.Contains("ReportPredictionCost("))
+            {
+                failures.Add("⑤ 控制器未调用 `ReportPredictionCost`（`G6`）⇒ 冒烟的步数证据会恒为 0。");
+            }
+
+            // ⚠ 必须写**累计使用形态**（`+=`）—— 只写 `TotalPredictSteps` 会命中**属性声明**
+            //    （`AimAssistController.cs` 的 `public long TotalPredictSteps { get; private set; }`）
+            //    ⇒ 「删掉累计行、保留声明」这种注入**照样绿**（同型空转；由复核注入证实、本批修）。
+            if (!assistCode.Contains("TotalPredictSteps +="))
+            {
+                failures.Add("⑤ 控制器未累计 `TotalPredictSteps`（与机器无关的成本量；只声明不累计 ⇒ 步数证据恒为 0）。");
             }
 
             Assert.IsEmpty(failures, "T131 失败：\n" + string.Join("\n", failures));
-            TestContext.WriteLine($"T131: 解析 4 例 + 角函数（步 {SmokeProbe.AimSweepDegreesPerFrame}°，80 帧整圈）"
-                                  + $"+ JSON（aimSweep/gate）+ 拖动闸门 5 例（均值 ≤ {SmokeProbe.DragFrameBudgetMs} ms、"
-                                  + $"掉帧 ≤ {SmokeProbe.DragMaxDroppedFraction:P0}）✓");
+            TestContext.WriteLine($"T131: 解析 4 例 + 角函数（**独立**设计步长 {ExpectedDegreesPerFrame}°，"
+                                  + $"{framesPerTurn} 帧整圈）+ JSON 字段 14 项 + 闸门阈值对 spec（16.666667 ms / 2:100）"
+                                  + " + 执行体接线与「宽松闸门已删」守卫 + 场景预算 3 例 + 机器分类 3 例 ✓");
         }
     }
 }

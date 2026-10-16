@@ -130,6 +130,12 @@ namespace Billiards.Physics
         public int PredictionComputeCount { get; private set; }
 
         /// <summary>
+        /// 累计**预测步数**（只读诊断量；每次重算加 <c>ShotPrediction.StepsSimulated</c>）。
+        /// 它是**与机器无关的"成本"量** —— 见 <see cref="Billiards.Core.SmokeProbe.ReportPredictionCost"/> 的动机。
+        /// </summary>
+        public long TotalPredictSteps { get; private set; }
+
+        /// <summary>
         /// **节流决策**（**纯函数**，判据直接驱动，不依赖计时）：
         /// · 状态没变 ⇒ 不算（脏标记优先）；
         /// · 尚无预测（首算 / 缓存被作废）⇒ 必算；
@@ -206,6 +212,12 @@ namespace Billiards.Physics
             _cacheInvalidated = false;
             _lastRecomputeTime = Time.unscaledTime;
             PredictionComputeCount++;
+            TotalPredictSteps += _prediction.StepsSimulated;
+
+            // **上报预测成本**（`G6`）：毫秒是机器相关的（同一份代码忙机/空闲机能差 ~2×），
+            // 而"重算了几次、累计步进了多少步"是**纯计数** ⇒ 与机器无关、可跨运行比较。
+            // 依赖方向 **Physics → Core**（下层不反向依赖上层），与驱动器上报物理步数同族。
+            Billiards.Core.SmokeProbe.ReportPredictionCost(PredictionComputeCount, TotalPredictSteps);
             return true;
         }
 
