@@ -122,6 +122,13 @@ namespace Billiards.Physics
                 return;
             }
 
+            // **全场自由球（待放球）让位**：白球不在场上 ⇒ 没有可拉杆的对象；
+            // 且此时左键被 `PointerAimController` 接管为"单击放球" ⇒ 右键蓄力一并让位，避免"没球也拉杆"。
+            if (drive.PendingCueBallPlacement)
+            {
+                return;
+            }
+
             if (Input.GetMouseButtonDown(1))
             {
                 // 进入蓄力：球必须静止（与出杆门控同口径）；起点拾取失败（台面外）则不进入。

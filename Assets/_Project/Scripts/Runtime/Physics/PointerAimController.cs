@@ -66,7 +66,20 @@ namespace Billiards.Physics
         [Tooltip("瞄准角 −键（`→`）。")]
         public KeyCode aimRightKey = KeyCode.RightArrow;
 
+        /// <summary>
+        /// **全场自由球**：左键"按下→抬起"的位移超过本值（像素）就**不算放球**（视为"想拖拽瞄准"）。
+        /// 目的：放球与既有"左键拖拽瞄准"**不抢手势**（轻点放球、拖动瞄准）。
+        /// </summary>
+        [Tooltip("放球判定：左键按下→抬起的最大位移（像素）。超过它视为拖拽瞄准。")]
+        public float placementClickMaxPixels = 12f;
+
         private readonly PointerAimState _state = new PointerAimState();
+
+        /// <summary>放球手势的按下位置（像素）。</summary>
+        private Vector2 _placementDownScreen;
+
+        /// <summary>放球手势是否已按下。</summary>
+        private bool _placementDown;
 
         /// <summary>当前交互状态机（只读出口，供调试 / 判据观察）。</summary>
         public PointerAimState State => _state;
@@ -120,6 +133,15 @@ namespace Billiards.Physics
                 return;
             }
 
+            // **全场自由球（待放球）让位**（第四个判据点）：白球不在场上时，"瞄准"没有对象
+            // ⇒ 本组件**整体让位**，并**接管左键单击 = 放球**（见 `HandleCueBallPlacement`）。
+            // 这样放球与右键蓄力（`PointerPowerController`）也不抢手势（那个组件在待放球期间同样让位）。
+            if (drive.PendingCueBallPlacement)
+            {
+                HandleCueBallPlacement();
+                return;
+            }
+
             bool fine = Input.GetKey(fineKey);
 
             // 1) 方向键微调（与"指针拖拽"正交，锁定时也允许微调 —— 那是"锁定后微调"的正常用途）。
@@ -166,6 +188,63 @@ namespace Billiards.Physics
 
             Vector2 direction = PointerAimSolver.AimDirectionPhysics(cuePhysics, targetPhysics);
             drive.aimDegrees = AimDegreesFromPhysicsDirection(direction, drive.aimDegrees);
+        }
+
+        /// <summary>
+        /// **全场自由球：左键单击落点 ⇒ 放白球**（`Update` 在待放球期间调它、并让位瞄准）。
+        ///
+        /// · **轻点**（位移 ≤ <see cref="placementClickMaxPixels"/>）= 放球；**拖动** = 不是放球（避免抢"拖拽瞄准"的手势）；
+        /// · 落点 = **屏幕点投到台面平面**（复用唯一实现点 <see cref="PointerAimSolver.TryPickPhysicsPoint"/>）；
+        ///   拾取失败（近平行 / 相机或根缺失）⇒ **不放**（不得用 NaN 落点）；
+        /// · **合法性由 <see cref="PhysicsTestDrive.TryPlaceCueBall"/> 判**（台面内 / 不压球 / 不在袋口）；
+        ///   **非法 ⇒ 不放、不改状态**（白球仍离台，玩家可再点）+ `RefusedPlacementCount++`
+        ///   ⇒ **不静默**（HUD 侧可读该计数给文案，属 `home-ui` 的域）。
+        /// </summary>
+        private void HandleCueBallPlacement()
+        {
+            // **Esc = 兜底"放回开球点"** —— ⚠ 必须在**本分支自己读**：`Update` 里那处
+            // `cancelAim`（`KeyCode.Escape`）在本分支**之后**、而本分支会 `return` ⇒ 靠它什么都不会发生。
+            // 语义与 HUD 文案常量 `PracticeHudState.BallInHandPendingDetail`（"… Esc puts it back on the break spot"）
+            // **必须一致**（否则界面在承诺一个不存在的操作）。
+            // ⚠ **引文案别抄句子、要引常量名**：抄句子会随文案漂移而失配（本合同批次 B"引数字的文档必须排在
+            //   产数字的动作之后"是同一类毛病）—— 本行就是这么被主理人抓到的。
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                drive.ReturnCueBallToHome();
+                return;
+            }
+
+            if (Input.GetMouseButtonDown(0))
+            {
+                _placementDownScreen = Input.mousePosition;
+                _placementDown = true;
+                return;
+            }
+
+            if (!_placementDown || !Input.GetMouseButtonUp(0))
+            {
+                return;
+            }
+
+            _placementDown = false;
+
+            if (((Vector2)Input.mousePosition - _placementDownScreen).magnitude > placementClickMaxPixels)
+            {
+                return;   // 拖动手势 ⇒ 不是放球
+            }
+
+            if (aimCamera == null || playfieldRoot == null)
+            {
+                return;
+            }
+
+            if (!PointerAimSolver.TryPickPhysicsPoint(aimCamera, playfieldRoot, Input.mousePosition,
+                    out Vector2 placementPhysics))
+            {
+                return;
+            }
+
+            drive.TryPlaceCueBall(placementPhysics);
         }
     }
 }

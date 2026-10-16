@@ -146,6 +146,7 @@ namespace Billiards.Physics
             // ── ④ 步进到首接触（首接触**即停**：不跑到整盘静止） ──
             int steps = 0;
             int bounces = 0;
+            int visibleBeforeFirstCushion = -1;   // ← **首次库边接触之前的顶点数**（绘制截断用；见 `VisiblePathCount`）
             while (steps < maxSteps && !probe.HasBallBallContact)
             {
                 int segmentContactsBefore = probe.TotalContactCount - probe.BallBallContactCount;
@@ -158,8 +159,20 @@ namespace Billiards.Physics
                     break;   // 本步的"白球位置"由幽灵球承担（下面补），不采接触后的位置
                 }
 
+                int segmentContactsAfter = probe.TotalContactCount - probe.BallBallContactCount;
+                if (bounces == 0 && segmentContactsAfter > segmentContactsBefore)
+                {
+                    // **首次库边接触**就发生在**本步之内**，而本步的顶点**还没入列**
+                    // ⇒ 此刻 `path.Count` 恰好 = "接触前已画出的顶点数"（= 折返开始前最后一刻）
+                    // ⇒ 白线就画到这里（**不画折返**）。亚步误差 ≤ 一步位移（见 `ShotPrediction.VisiblePathCount`）。
+                    // ⚠ 若首次库边接触发生在**第 0 步**（白球已贴库 + 瞄向该库），这里会取到 **1**
+                    //   ⇒ 前缀不足 2 个顶点就画不出任何线段 ⇒ **白线整条消失**（实机：白球贴库时"瞄准线没了"）。
+                    //   故下面的落地处用 `>= 2` 兜底回落到整条（详见 `ShotPrediction.VisiblePathCount` 文档）。
+                    visibleBeforeFirstCushion = path.Count;
+                }
+
                 path.Add(probe.Balls[cueLocalIndex].position);
-                bounces += (probe.TotalContactCount - probe.BallBallContactCount) - segmentContactsBefore;
+                bounces += segmentContactsAfter - segmentContactsBefore;
             }
 
             result.CueStart = cueStart;
@@ -173,6 +186,7 @@ namespace Billiards.Physics
             if (!probe.HasBallBallContact)
             {
                 result.CueWorldPath = path;
+                result.VisiblePathCount = visibleBeforeFirstCushion >= 2 ? visibleBeforeFirstCushion : path.Count;
                 return result;
             }
 
@@ -186,6 +200,10 @@ namespace Billiards.Physics
             Vector2 targetVelocityAfter = cueIsFirst ? rec.secondVelocityAfter : rec.firstVelocityAfter;
 
             path.Add(ghost);   // 末点 == 幽灵球（逐位）
+
+            // **可见路径**止于首次库边接触之前（不画折返）；无库边接触 ⇒ 整条。
+            // ⚠ 必须在 `path.Add(ghost)` **之后**算：`path.Count` 此刻才是最终顶点数。
+            result.VisiblePathCount = visibleBeforeFirstCushion >= 2 ? visibleBeforeFirstCushion : path.Count;
 
             result.GhostBall = ghost;
             result.TargetBallCenter = targetCenter;

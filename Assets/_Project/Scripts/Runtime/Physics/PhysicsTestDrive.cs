@@ -205,6 +205,32 @@ namespace Billiards.Physics
         public bool LastLaunchRespawnedCueBall { get; private set; }
 
         /// <summary>
+        /// **全场自由球：是否正处于「待放球」**（白球离台、玩家**尚未**放置）。
+        ///
+        /// **用户原话**：「练习模式白球进袋了，全场自由球，可以把白球放在台面任意位置击球」。
+        /// 语义 = ① 白球不在场上 **且** ② 玩家还没把它放回去。
+        ///
+        /// ⚠ **与 <see cref="LastLaunchRespawnedCueBall"/> 分开**（主理人裁定）：后者**保留**既有语义
+        /// （= "这一杆前白球离台" = **犯规**），它是 `PracticeSession` 犯规计数与 `PracticeResultView` 的**唯一驱动源**
+        /// ⇒ 若把两件事挤进同一个 flag，**犯规统计会静默失真**（而且不会红）。
+        /// </summary>
+        public bool PendingCueBallPlacement { get; private set; }
+
+        /// <summary>最近一次"放球被拒"（落点非法）累计次数（**只读出口**，供 HUD 给"不许静默"的反馈）。</summary>
+        public int RefusedPlacementCount { get; private set; }
+
+        /// <summary>
+        /// **本杆期间白球曾离台**（粘滞位，出杆时消费一次）。
+        ///
+        /// ⚠ **为什么需要它**（全场自由球引入的**真缺陷**，本轮勘出并修）：旧实现里"白球离台"这件事只在
+        /// `Launch()` 里读（`cueOffTable`）⇒ 而现在玩家可以**先放球再出杆**，那一刻 `cueOffTable` 已是 **false**
+        /// ⇒ <see cref="LastLaunchRespawnedCueBall"/> 会被置 **false** ⇒ **犯规计数直接丢掉这一杆**
+        /// （`PracticeSession` 的犯规数 ← 它的上升沿；而且**不会红** —— 典型"静默失真"）。
+        /// ⇒ 改用粘滞位：**白球离台那一刻置位**，到**下一次出杆**时消费（⇒ 上升沿次数与改动前**逐位一致**）。
+        /// </summary>
+        private bool _cueBallLeftTableSinceLastLaunch;
+
+        /// <summary>
         /// **白球落袋（scratch）累计次数**（只读诊断量，**跨杆单调、不因重摆归零**）。
         ///
         /// 口径：出杆那一刻白球不在场上（已入袋 / 擦袋角离台）⇒ 计一次。
@@ -330,6 +356,16 @@ namespace Billiards.Physics
             _accumulator = 0f;
             TotalSteps = 0;
             ResetVisualRotationTracking();   // 重摆是瞬移 ⇒ 不得被当成真实位移、否则球凭空猛转
+
+            // **复位"全场自由球"的两个状态**（独立复核抓出的**状态泄漏**，可达路径很短：
+            // 把白球打进袋 ⇒ 按 `R`（没有任何门拦 `R`）⇒ 卡开 ⇒ 点 `Play again` ⇒ 走到这里）：
+            // ① `PendingCueBallPlacement`：不复位 ⇒ 新局开局就误报"待放球"，且**第一次左键被当成放球**
+            //    （`CanPlaceCueBall` 跳过索引 0 ⇒ 必成功）⇒ 那一次点击把白球挪走而不是瞄准；
+            // ② `_cueBallLeftTableSinceLastLaunch`：不复位 ⇒ 新局第一杆 `LastLaunchRespawnedCueBall = false || true = true`
+            //    ⇒ `PracticeSession._fouls++` ⇒ **一次假犯规**。
+            PendingCueBallPlacement = false;
+            _cueBallLeftTableSinceLastLaunch = false;
+
             SyncVisual();
             SyncAimIndicator();
         }
@@ -371,8 +407,7 @@ namespace Billiards.Physics
                 return;
             }
 
-            Advance(Time.fixedDeltaTime);
-            TrackCueBallScratch();
+            Advance(Time.fixedDeltaTime);   // 记账（含 scratch）已收进 `Advance` 内部，见那里的注释
         }
 
         /// <summary>
@@ -395,6 +430,12 @@ namespace Billiards.Physics
             {
                 ScratchCount++;
                 LastScratchTime = Time.unscaledTime;
+
+                // **进入「待放球」**（全场自由球）：白球离台 ⇒ 由玩家决定放哪（不再自动归位）。
+                // ⚠ 这里**不**去动 `LastLaunchRespawnedCueBall`（它仍是"这一杆前白球离台"的犯规留痕，
+                //   在 `Launch()` 里照旧赋值）⇒ 犯规统计与改动前**逐位一致**。
+                PendingCueBallPlacement = true;
+                _cueBallLeftTableSinceLastLaunch = true;   // 犯规留痕（出杆时消费，见该字段注释）
             }
 
             _cueWasInPlay = inPlay;
@@ -437,6 +478,11 @@ namespace Billiards.Physics
             TotalSteps += steps;
             // 只读上报：给冒烟证据用（Core 层只存一个数字，不认识物理类型 ⇒ 不形成反向依赖）。
             SmokeProbe.ReportPhysicsSteps(TotalSteps);
+
+            // **推进即记账**（白球离台 ⇒ 犯规留痕 + 进入待放球）。
+            // ⚠ 放在这里（而不是只放 `Update`）的理由：**判据要在 EditMode 下确定性驱动它**
+            //（EditMode 不跑 `Update`）⇒ 否则"全场自由球"的状态迁移**无法被判据覆盖**。
+            TrackCueBallScratch();
 
             SyncVisual();
         }
@@ -588,6 +634,75 @@ namespace Billiards.Physics
             aimDegrees = degrees;
         }
 
+        /// <summary>**落点是否合法**（薄包装：把本驱动的表 + 场上球喂给纯函数核 <see cref="PoolSimulator.IsPlacementLegal"/>）。</summary>
+        public bool CanPlaceCueBall(Vector2 position)
+        {
+            if (_simulator == null || tableConfig == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<BallState> balls = _simulator.Balls;
+            var occupied = new List<Vector2>(balls.Count);
+            for (int i = 0; i < balls.Count; i++)
+            {
+                if (i == 0)
+                {
+                    continue;   // 白球自己：正在被放，不参与重叠判定
+                }
+
+                if (_simulator.IsBallInPlay(i))
+                {
+                    occupied.Add(balls[i].position);
+                }
+            }
+
+            return PoolSimulator.IsPlacementLegal(position, occupied, tableConfig.pockets,
+                tableConfig.halfLength, tableConfig.halfWidth);
+        }
+
+        /// <summary>
+        /// **把白球放到 <paramref name="position"/>**（全场自由球）。返回是否成功。
+        /// **合法才放**；成功 ⇒ 退出待放态。非法 ⇒ **不改任何状态**（白球仍离台）+ `RefusedPlacementCount++`
+        /// ⇒ 玩家可以再点（**不许静默**）。
+        /// </summary>
+        public bool TryPlaceCueBall(Vector2 position)
+        {
+            if (_simulator == null || !PendingCueBallPlacement)
+            {
+                return false;
+            }
+
+            if (!CanPlaceCueBall(position))
+            {
+                RefusedPlacementCount++;
+                return false;
+            }
+
+            _simulator.PlaceBall(0, position, Vector2.zero);
+            PendingCueBallPlacement = false;
+            ResetVisualRotationTracking();
+            SyncVisual();
+            return true;
+        }
+
+        /// <summary>
+        /// **兜底：把白球放回开球位**（<see cref="CueBallHomePosition"/>）并退出待放态。
+        /// 由 `Launch()` 在待放球期间出杆时调用；也供 UI/按键挂钩（"放回原位"）。
+        /// </summary>
+        public void ReturnCueBallToHome()
+        {
+            if (_simulator == null || tableConfig == null)
+            {
+                return;   // 与 `CanPlaceCueBall` 同判：缺表配置时不得走进 `tableConfig.footSpot`（否则 NRE）
+            }
+
+            _simulator.PlaceBall(0, CueBallHomePosition(tableConfig.footSpot), Vector2.zero);
+            PendingCueBallPlacement = false;
+            ResetVisualRotationTracking();
+            SyncVisual();
+        }
+
         /// <summary>
         /// **按 <see cref="aimDegrees"/> / <see cref="power"/> 打出一杆**（键盘最小可玩）。
         /// 初速方向 = `(cos θ, sin θ)`（θ = `aimDegrees`），大小 = `Lerp(minLaunchSpeed, maxLaunchSpeed, power)`。
@@ -627,8 +742,17 @@ namespace Billiards.Physics
             float speed = Mathf.Lerp(minLaunchSpeed, maxLaunchSpeed, Mathf.Clamp01(power));
             Vector2 v0 = direction * speed;
 
-            // ③ 白球不在场上（已入袋 / 擦袋角离台）⇒ 显式放回**开球位**；否则 ① 就在它停下的地方出杆。
+            // ③ 白球不在场上（已入袋 / 擦袋角离台）⇒ **兜底**：放回开球位（详见下方 `PendingCueBallPlacement` 分支）；
+            //    否则 ① 就在它停下的地方出杆。
             bool cueOffTable = !_simulator.IsBallInPlay(0);
+            if (cueOffTable && PendingCueBallPlacement)
+            {
+                // **全场自由球的兜底**（主理人裁定「兜底是必需的」）：待放球期间玩家**直接出杆** ⇒
+                // 回落到"放回开球位再出杆"（= 改动前的旧行为）⇒ **不会卡死在待放态**
+                //（否则一旦放置输入失效 / 找不到合法点，玩家就再也动不了）。
+                ReturnCueBallToHome();
+            }
+
             Vector2 cueHome = CueBallHomePosition(tableConfig.footSpot);
             Vector2 from = cueOffTable ? cueHome : _simulator.Balls[0].position;
 
@@ -637,7 +761,10 @@ namespace Billiards.Physics
             // 只清**每杆计数**；逐球入袋记录是跨杆状态，**不得**在此抹掉（否则入袋球会复活）。
             _simulator.ResetDiagnostics();
             _accumulator = 0f;
-            LastLaunchRespawnedCueBall = cueOffTable;
+            // **犯规留痕**：`cueOffTable`（兜底路径）**或**"本杆期间曾离台"（玩家自己放球那条）
+            // ⇒ 两条路都会让 `LastLaunchRespawnedCueBall` 为 true ⇒ **犯规计数与改动前逐位一致**。
+            LastLaunchRespawnedCueBall = cueOffTable || _cueBallLeftTableSinceLastLaunch;
+            _cueBallLeftTableSinceLastLaunch = false;
 
             // 只读出口（音频层轮询增量 ⇒ strike 事件；累计不清零）。
             LaunchCount++;

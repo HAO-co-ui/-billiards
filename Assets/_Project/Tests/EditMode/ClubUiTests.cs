@@ -198,6 +198,13 @@ namespace Billiards.Tests
             "Assets/_Project/Scripts/Runtime/UI/HomeView.cs",
         };
 
+        /// <summary>
+        /// `PracticeHudView` 的源码路径（`T125 ⑤'''` 白盒文本断言用）。
+        /// **从 <see cref="ViewSourceFiles"/> 取**（而不是另写一个字符串字面量）⇒ 两处不可能漂移
+        /// （"同一个路径写两遍"正是这类白盒断言最易失效的方式）。
+        /// </summary>
+        private static readonly string PracticeHudViewSourcePath = ViewSourceFiles[0];
+
         private static void CheckSceneSpriteSlots(List<string> failures)
         {
             Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Additive);
@@ -376,12 +383,33 @@ namespace Billiards.Tests
         /// ② 不可达集合**恰好**是 `{ai-turn, call-pocket, paused}`（本卡无 AI / 无规则引擎 / 无暂停）
         ///    —— 既不许悄悄缩小（做了却没登记），也不许悄悄扩大（少做了却声称"设计没有"）；
         /// ③ 每个状态都有非空且**互不相同**的标题与说明，图标也互不相同（防复制粘贴时漏改）；
+        /// ③' **兜底键 `Esc` 必须在"待放球"文案里出现**（`Esc` 只存在于文案里 ⇒ 删掉它就等于兜底不存在）；
         /// ④ **酒红只给犯规/失败、亮青只给指定袋**：双向断言（该用的必须用、不该用的一个都不许用）；
         /// ⑤ `ResolveVisualState` 的优先级表（结算 &gt; 被拒 &gt; 犯规 &gt; 自由球 &gt; 相位）；
+        /// ⑤' **待放球**（`awaitingPlacement`）：进自由球态，且**不得越过结算卡**；
+        /// ⑤'' **说明行文案**（`CaptionLine`）：自由球三个子情形（待放球 / 已在台上 / **落点被拒**）各说各的，
+        ///     且**"落点被拒"绝不许说成 `"Wait for the table"`**（那一刻台面是静止的 ⇒ 那是**假陈述**），
+        ///     并必须**压过** `moving` 档（两个拒绝窗口可能同时开着）；
+        /// ⑤''' **视图侧接线**（白盒文本断言，读 `PracticeHudView.cs` 的**磁盘文本**）：
+        ///     "检出 `RefusedPlacementCount` 上升沿"与"打开 `_placementRefusedUntil` 窗口"这两行**必须在**；
         /// ⑥ 犯规脉冲是 0.8 s 的一次性 ease-out（端点 + 单调）。
         ///
+        /// ⚠ ③' / ⑤' / ⑤'' / ⑤''' 是**补的守缺口**：既有 9 行优先级表走 5 参调用（`awaitingPlacement` 取默认 `false`）
+        /// ⇒ `ballInHand || awaitingPlacement` 那条分支、自由球的三个子情形文案、以及**两个拒绝窗口的视图侧接线**，
+        /// 过去**一行都没被跑到**（"有守卫 ≠ 守卫会跑"）。
+        ///
         /// **注入负对照**：把 `CallPocketSymbol` 改成黄铜 ⇒ ④ 红；
-        /// 把 `AiTurn` 从 `UnreachableStates` 删掉 ⇒ ② 红；把两个状态的标题改成一样 ⇒ ③ 红。
+        /// 把 `AiTurn` 从 `UnreachableStates` 删掉 ⇒ ② 红；把两个状态的标题改成一样 ⇒ ③ 红；
+        /// 把"待放球"文案里的 `Esc` 删掉 ⇒ ③' 红（兜底键不可发现）；
+        /// 把 `ResolveVisualState` 的 `|| awaitingPlacement` 去掉 ⇒ ⑤' 用例 1 红；
+        /// 把 `resultOpen` 那一段挪到 `awaitingPlacement` 之后 ⇒ ⑤' 用例 2 红（优先级被越级）；
+        /// 把 `CaptionLine` 里 `placementRefused` 那条挪到最后 ⇒ ⑤'' 用例 3 红（落点被拒被 `moving` 压掉）；
+        /// 把 `PlacementRefusedDetail` 改成 `"Wait for the table"` ⇒ ⑤'' 假陈述守卫红；
+        /// **删掉 `_placementRefusedUntil = now + FoulBannerSeconds;` 那一行 ⇒ ⑤''' 红**
+        /// （**已实测**：`INJ2.xml` mtime 18:56:04、`total=231 / passed=230 / failed=1`、
+        /// 失败名恰为 `T125_StatusContract_MapsDesignStates`、消息含"视图侧接线缺失"；
+        /// 逐条红名单见规格 §12.2.3 的 ⑤''' 行，本批注入总表见 §12.2.9）；
+        /// 删掉 `drive.RefusedPlacementCount > _lastPlacementRefusedSeen` 那一行 ⇒ ⑤''' 红（同一条断言的另一半）。
         /// </summary>
         [Test]
         public void T125_StatusContract_MapsDesignStates()
@@ -477,6 +505,15 @@ namespace Billiards.Tests
                 }
             }
 
+            // ③' **兜底键必须可发现**（原始派单第 ③ 条的硬要求）：
+            //     `Esc`（放回开球点）**只**存在于文案里 —— 界面上没有任何别的替代物
+            //     ⇒ 不把这条写进判据的话，将来改文案时"悄悄删掉兜底提示"不会有任何东西红，
+            //        而后果是**兜底形同不存在**（玩家不会去猜一个没写在界面上的键）。
+            if (!PracticeHudState.BallInHandPendingDetail.Contains("Esc"))
+            {
+                failures.Add("③ 自由球\"待放球\"文案里找不到 `Esc` ⇒ 兜底键不可发现（形同不存在）。");
+            }
+
             // ④ 颜色族纪律（双向）
             foreach (HudVisualState state in states)
             {
@@ -533,6 +570,114 @@ namespace Billiards.Tests
                 }
             }
 
+            // ⑤' **待放球**（"全场自由球"：白球入袋后由玩家点台面任意合法位置放下，`Esc` 才放回开球点）
+            //     —— `awaitingPlacement` 是本轮**新增**的优先级输入。为什么单列两张：
+            //     上面 9 行走的是 **5 参**调用（`awaitingPlacement` 取默认 `false`）⇒
+            //     `ballInHand || awaitingPlacement` 这条分支**一行都没被跑到** ——
+            //     正是本项目反复在清的"**有守卫 ≠ 守卫会跑**"（谁把 `|| awaitingPlacement` 删掉都不会红）。
+            //     **注入负对照**：① 去掉 `|| awaitingPlacement` ⇒ "待放球 ⇒ 进自由球态"红；
+            //                   ② 把 `resultOpen` 那一段挪到它之后 ⇒ "结算卡压过待放球"红。
+            (string Case, HudVisualState Want, bool ResultOpen)[] awaitingPlacementCases =
+            {
+                ("待放球 ⇒ 进自由球态", HudVisualState.BallInHand, false),
+                ("结算卡压过待放球（优先级不被越级）", HudVisualState.Result, true),
+            };
+
+            foreach ((string name, HudVisualState want, bool resultOpen) in awaitingPlacementCases)
+            {
+                HudVisualState actual = PracticeHudState.ResolveVisualState(
+                    ShotPhase.Aim, false, false, false, resultOpen, awaitingPlacement: true);
+                if (actual != want)
+                {
+                    failures.Add($"⑤' {name}：应为 {want}，实际 {actual}。");
+                }
+            }
+
+            // ⑤'' **说明行文案**（`PracticeHudState.CaptionLine`，纯函数）：自由球的三个子情形
+            //      —— 这三者**共用同一档状态与配色**（`ball-in-hand`），差别**只**在说明那句话，
+            //      所以"哪句优先"必须被判据钉住，否则它只活在视图里、没人守。
+            //      **注入负对照**：把 `CaptionLine` 里 `placementRefused` 那条挪到最后 ⇒ 用例 3 红；
+            //                     删掉 `state == BallInHand && awaitingPlacement` 那条 ⇒ 用例 1 红。
+            (string Case, HudVisualState State, bool Awaiting, bool Refused, string Want)[] captionCases =
+            {
+                ("待放球 ⇒ 提示怎么放（含 Esc 兜底）",
+                    HudVisualState.BallInHand, true, false, PracticeHudState.BallInHandPendingDetail),
+                ("白球已回到台上 ⇒ 只说球在台上（不谎称位置）",
+                    HudVisualState.BallInHand, false, false, PracticeHudState.BallInHandDetail),
+                ("落点被拒 ⇒ 说落点那句",
+                    HudVisualState.BallInHand, true, true, PracticeHudState.PlacementRefusedDetail),
+                ("出杆被拒 ⇒ 既有那句逐字不变",
+                    HudVisualState.Moving, false, false, PracticeHudState.RefusedDetail),
+            };
+
+            foreach ((string name, HudVisualState st, bool awaiting, bool refused, string want) in captionCases)
+            {
+                string caption = PracticeHudState.CaptionLine(st, awaiting, refused);
+                if (caption != want)
+                {
+                    failures.Add($"⑤'' {name}：应为 \"{want}\"，实际 \"{caption}\"。");
+                }
+            }
+
+            // ⑤'' **假陈述守卫**（独立于上表）：落点被拒那一刻**台面是静止的**
+            //      （正因为静止才允许放球）⇒ 此时若显示"出杆被拒"那句 `"Wait for the table"`，就是**假陈述**。
+            //      单列一条是为了：将来谁把两句的顺序调换、或把 `PlacementRefusedDetail` 改成同一句，这里都会红。
+            string placementRefusedCaption = PracticeHudState.CaptionLine(HudVisualState.BallInHand, true, true);
+            if (placementRefusedCaption == PracticeHudState.RefusedDetail)
+            {
+                failures.Add("⑤'' 落点被拒显示了出杆被拒那句 `\"" + PracticeHudState.RefusedDetail
+                             + "\"` ⇒ 那一刻台面是静止的，这是**假陈述**。");
+            }
+
+            // ⑤'' 落点被拒必须**压过** `moving` 档（两个拒绝窗口可能同时开着：刚被拒就又去出杆）
+            //      ⇒ 玩家**刚做的那个动作**要拿到解释，不能被另一条更早的提示盖掉。
+            if (PracticeHudState.CaptionLine(HudVisualState.Moving, true, true)
+                != PracticeHudState.PlacementRefusedDetail)
+            {
+                failures.Add("⑤'' 落点被拒被 `moving` 档的说明盖掉了 ⇒ 玩家刚被拒的那一次点击没有任何解释。");
+            }
+
+            // ⑤''' **视图侧接线**（白盒文本断言，与 `T137④②` 读 `PlayViewCamera` 源码同法）
+            //
+            // 为什么必须白盒：`_placementRefusedUntil` 的**赋值**只活在 `PracticeHudView.Refresh()` 的轮询体里，
+            // 而 EditMode 跑不到那条运行期路径 ⇒ 纯函数判据（`CaptionLine`）**只能守"哪句文案"**；
+            // 删掉那行赋值 ⇒ 纯函数判据**照旧全绿**，而"落点被拒的可见反馈"会**静默失效**
+            // （正是 §"绿而空"那一族：`TotalPredictSteps` 踩过的同型）。
+            //
+            // ⚠ **必须断言"使用形态"、不能只断言符号名**：写 `Contains("_placementRefusedUntil")`
+            //    会命中**字段声明**（`PracticeHudView.cs:136`）⇒ 删掉赋值行**仍然绿**（`TotalPredictSteps` 的坑）。
+            // ⚠ **刻意不用** `AssetDatabase.LoadAssetAtPath`：它会命中内存缓存造成**假 PASS**
+            //    ⇒ 必须读**磁盘文本**。
+            // **注入负对照（已实测）**：
+            //    删掉 `_placementRefusedUntil = now + FoulBannerSeconds;` 那一行 ⇒ 本条必红；还原 ⇒ 复跑绿。
+            //    **证据（可回读）**：`%TEMP%\billiards_batch\verify\INJ2.xml`，mtime **18:56:04**，
+            //    `total=231 / passed=230 / failed=1`，失败名恰为 `T125_StatusContract_MapsDesignStates`。
+            //    **逐条红名单**见规格 **§12.2.3**（⑤''' 行）；**本批注入总表**见 **§12.2.9**。
+            //    ⚠ 注：本处早先写的是"见规格 §5 第 7 条" —— 那是**坏引用**（§5 只有 1–6 条；
+            //      规格里另一个"第 7 条"在 §11，讲的是 `g6-accumulate`，与本处无关）⇒ 已改指 §12.2.3。
+            string viewSource = StripComments(ReadSourceOrNull(PracticeHudViewSourcePath));
+            if (string.IsNullOrEmpty(viewSource))
+            {
+                failures.Add("⑤''' 读不到 `PracticeHudView.cs` 的**磁盘文本** ⇒ 白盒接线守卫失效（等于没有守卫）。");
+            }
+            else
+            {
+                foreach (string usage in new[]
+                         {
+                             // 落点被拒的**上升沿检测**（少了它 ⇒ 窗口永远不会被打开）
+                             "drive.RefusedPlacementCount > _lastPlacementRefusedSeen",
+                             // 落点被拒窗口的**打开赋值**（少了它 ⇒ 窗口恒停在 0，提示永远不出现）
+                             "_placementRefusedUntil = now + FoulBannerSeconds",
+                         })
+                {
+                    if (!viewSource.Contains(usage))
+                    {
+                        failures.Add($"⑤''' 视图侧接线缺失：「{usage}」—— 删掉它，落点被拒的可见反馈会"
+                                     + "**静默失效**，而纯函数侧的判据仍会全绿（\"有守卫 ≠ 守卫会跑\"）。");
+                    }
+                }
+            }
+
             // ⑥ 犯规脉冲
             if (!Mathf.Approximately(PracticeHudState.FoulPulseSeconds, 0.8f))
             {
@@ -565,7 +710,9 @@ namespace Billiards.Tests
 
             Assert.IsEmpty(failures, "T125 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine($"T125: 八态 token 逐字对应 ✓；不可达 {PracticeHudState.UnreachableStates.Length} 态登记一致 ✓；"
-                                  + "标题/说明/图标互异 ✓；酒红仅犯规、亮青仅指定袋 ✓；优先级 9 例 ✓；脉冲 0.8 s ✓");
+                                  + "标题/说明/图标互异 ✓；兜底键 Esc 可发现 ✓；酒红仅犯规、亮青仅指定袋 ✓；"
+                                  + "优先级 9 例 + 待放球 2 例 ✓；"
+                                  + "说明行 3 子情形 + 落点被拒非假陈述 ✓；脉冲 0.8 s ✓");
         }
 
         private static bool InFamily(Color32[] family, Color32 color)

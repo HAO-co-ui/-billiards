@@ -512,6 +512,65 @@ namespace Billiards.Physics
         }
 
         /// <summary>
+        /// **纯函数：把一颗球放到 <paramref name="position"/> 是否合法**（**全场自由球**的落点校验，**单一实现**）。
+        ///
+        /// 三条同时成立：
+        /// ① **台面内**（球心离库边 ≥ 球半径；留 <see cref="BallInitialOverlapTolerance"/> 的浮点余量）；
+        /// ② **不与任何其它球重叠**（间距 ≥ `2r − BallInitialOverlapTolerance`）；
+        /// ③ **不在袋口区域内**（**离袋喉中心的径向距离** ≥ `openingRadius + 球半径`）。
+        ///
+        /// ⚠ **口径一律复用既有量**（铁律 16）：重叠下限 = <see cref="BallInitialOverlapTolerance"/>
+        /// （与 <see cref="ValidateInitialPlacement"/> **同一口径**）；袋口 = **径向距喉心**
+        /// `|C − throatCenter| ≤ openingRadius + 球半径`，与内核**静止补判** `DropBallsRestingInsidePocketMouths`
+        /// （`|C − tc| ≤ openingRadius`，**对 `s` 不加限制**）**同源**，只多一个"球体不压洞口圆盘"的余量
+        /// ⇒ **比补判更严、方向安全**。
+        ///
+        /// ⚠ **不要用 `throatNormal` 做点积**（本方法的第一版就是这么写的，**是错的**）：`throatNormal` 是
+        /// **喉平面法向（指向网内）**，`|dot(C − tc, tn)|` 量的是"到喉平面的**垂直深度**"。对**中袋**（`tn ≈ ∓ŷ`）
+        /// 它会拒掉 `|y − tc.y| ≤ ~90 mm` 的整条带 ⇒ **离长库边 61 mm 以内的整条区域全被拒**
+        /// （与"离袋口多远"无关）⇒ 玩家放不了库边附近的任何点。
+        /// </summary>
+        public static bool IsPlacementLegal(Vector2 position, IReadOnlyList<Vector2> occupiedCenters,
+            IReadOnlyList<Billiards.Table.Pocket> pockets, float halfLength, float halfWidth)
+        {
+            float r = PoolConstants.BallRadius;
+
+            if (Mathf.Abs(position.x) > halfLength - r + BallInitialOverlapTolerance
+                || Mathf.Abs(position.y) > halfWidth - r + BallInitialOverlapTolerance)
+            {
+                return false;
+            }
+
+            if (occupiedCenters != null)
+            {
+                float minGap = 2f * r - BallInitialOverlapTolerance;
+                for (int i = 0; i < occupiedCenters.Count; i++)
+                {
+                    if ((occupiedCenters[i] - position).magnitude < minGap)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            if (pockets != null)
+            {
+                for (int i = 0; i < pockets.Count; i++)
+                {
+                    Billiards.Table.Pocket pocket = pockets[i];
+
+                    // **径向距喉心**（与 `DropBallsRestingInsidePocketMouths` 同源）+ 球半径余量。
+                    float mouth = pocket.openingRadius + r;
+                    if ((position - pocket.throatCenter).sqrMagnitude <= mouth * mouth)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
         /// **初始摆放校验（校验期单点实现）**：任意两球间距须 ≥ `2r − BallInitialOverlapTolerance`。
         /// 合法摆放可落在**边界**上（与"贴库静止球"同族），故用的是**容差**而非严格不等。
         /// 无违规返回 <c>null</c>；否则返回首个违规的可读描述。

@@ -45,10 +45,10 @@ namespace Billiards.Physics
         public const float PredictionLineWidth = 0.006f;
 
         /// <summary>目标球出射线段长度（**规范米**，与 `PhysicsTestDrive.aimIndicatorLength = 0.55` 同量级）。</summary>
-        public const float TargetLineLength = 0.55f;
+        public const float TargetLineLength = 0.40f;
 
         /// <summary>白球偏转线长度（**规范米**）。比目标球出射线短（主次分明）。</summary>
-        public const float CueDeflectLineLength = 0.35f;
+        public const float CueDeflectLineLength = 0.26f;
 
         /// <summary>幽灵球空心圆的圆周采样段数（平滑度）。</summary>
         public const int GhostCircleSegments = 32;
@@ -200,7 +200,8 @@ namespace Billiards.Physics
             if (path != null && path.Count >= 2)
             {
                 Gizmos.color = PathColor;
-                AppendPolylineDashSegments(path, PredictionDashLength, PredictionGapLength, _segmentBuffer);
+                AppendPolylineDashSegments(path, PredictionDashLength, PredictionGapLength, _segmentBuffer,
+                    prediction.VisiblePathCount);
                 for (int s = 0; s < _segmentBuffer.Count; s++)
                 {
                     (Vector2 sa, Vector2 sb) = _segmentBuffer[s];
@@ -277,7 +278,8 @@ namespace Billiards.Physics
             _segmentBuffer.Clear();
             if (path != null && path.Count >= 2)
             {
-                AppendPolylineDashSegments(path, PredictionDashLength, PredictionGapLength, _segmentBuffer);
+                AppendPolylineDashSegments(path, PredictionDashLength, PredictionGapLength, _segmentBuffer,
+                    prediction.VisiblePathCount);
             }
 
             SyncRenderers(_segmentBuffer);
@@ -433,13 +435,32 @@ namespace Billiards.Physics
         public static void AppendPolylineDashSegments(IReadOnlyList<Vector2> path, float dashLength, float gapLength,
             List<(Vector2 a, Vector2 b)> buffer)
         {
-            if (path == null || path.Count < 2 || !(dashLength > 0f))
+            AppendPolylineDashSegments(path, dashLength, gapLength, buffer, -1);
+        }
+
+        /// <summary>
+        /// 同上，但**只取前 <paramref name="visibleCount"/> 个顶点**（`≤ 0` 或 ≥ `Count` ⇒ 整条）。
+        ///
+        /// **为什么需要它**（用户实机反馈"白色瞄准线碰到台球桌边就不用反射了"）：
+        /// 白线取 <see cref="ShotPrediction.VisiblePathCount"/> 作前缀 ⇒ **不画折返段**。
+        /// ⚠ 截断**只发生在绘制侧** —— `CueWorldPath` 本体不变（其"末点 == 幽灵球"被判据**逐位钉死**）。
+        /// </summary>
+        public static void AppendPolylineDashSegments(IReadOnlyList<Vector2> path, float dashLength, float gapLength,
+            List<(Vector2 a, Vector2 b)> buffer, int visibleCount)
+        {
+            if (path == null || !(dashLength > 0f))
+            {
+                return;
+            }
+
+            int use = visibleCount <= 0 ? path.Count : Mathf.Min(visibleCount, path.Count);
+            if (use < 2)
             {
                 return;
             }
 
             float total = 0f;
-            for (int i = 0; i + 1 < path.Count; i++)
+            for (int i = 0; i + 1 < use; i++)
             {
                 total += (path[i + 1] - path[i]).magnitude;
             }
@@ -462,12 +483,18 @@ namespace Billiards.Physics
                     break;
                 }
 
-                buffer.Add((PointAlongPath(path, s0), PointAlongPath(path, s1)));
+                buffer.Add((PointAlongPath(path, s0, use), PointAlongPath(path, s1, use)));
             }
         }
 
         /// <summary>折线上累计弧长 <paramref name="s"/> 处的点（`s ≤ 0` ⇒ 起点；超长 ⇒ 终点）。</summary>
         private static Vector2 PointAlongPath(IReadOnlyList<Vector2> path, float s)
+        {
+            return PointAlongPath(path, s, path.Count);
+        }
+
+        /// <summary>同上，但只在**前 <paramref name="use"/> 个顶点**构成的折线上取点。</summary>
+        private static Vector2 PointAlongPath(IReadOnlyList<Vector2> path, float s, int use)
         {
             if (s <= 0f)
             {
@@ -475,7 +502,7 @@ namespace Billiards.Physics
             }
 
             float acc = 0f;
-            for (int i = 0; i + 1 < path.Count; i++)
+            for (int i = 0; i + 1 < use; i++)
             {
                 Vector2 a = path[i];
                 Vector2 b = path[i + 1];

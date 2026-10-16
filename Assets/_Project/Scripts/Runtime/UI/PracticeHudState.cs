@@ -107,8 +107,48 @@ namespace Billiards.UI
         /// <summary>`foul` 状态的处置说明 —— 本工程的实际处置是**白球放回开球点**。</summary>
         public const string FoulDetail = "Cue ball back on the spot";
 
-        /// <summary>`ball-in-hand` 状态的说明（本工程是**自动归位**，非手动摆位，故如实这么写）。</summary>
-        public const string BallInHandDetail = "Cue ball replaced at the spot";
+        /// <summary>
+        /// `ball-in-hand` 且**白球已回到台上**时的说明。
+        ///
+        /// ⚠ 旧文案是 `Cue ball replaced at the spot`，描述的是**旧规则**（白球入袋后自动放回开球点）。
+        /// 新规则是"**全场自由球**"（白球入袋后玩家可把它放在台面任意合法位置，Esc 才放回开球点）
+        /// ⇒ 那句已经**不成立**了（玩家可能把它放在别处），故改为**不含位置主张**的陈述。
+        /// </summary>
+        public const string BallInHandDetail = "Cue ball is back on the table";
+
+        /// <summary>
+        /// `ball-in-hand` 且**白球还在手上（尚未放下）**时的说明 —— 即"**待放球**"这一瞬态。
+        ///
+        /// 三条信息缺一不可：① 动作（点台面放下）；② 范围（台面任意合法位置）；③ **兜底键**（`Esc`）。
+        /// ③ 是**可发现性**的硬要求：兜底若不在界面上出现，就等于不存在（玩家不会去猜）。
+        ///
+        /// ── 两处措辞是**被裁定修正过的**（都不是风格问题）─────────────────────────────
+        /// · `Tap` → **`Click`**：本工程的放下动作是鼠标 `Input.GetMouseButtonDown(0)`，**不是触摸屏**
+        ///   （全库只有这一处曾用 `Tap`）⇒ 写 `Tap` 是**指向不存在的输入方式**；
+        /// · **`Esc` 那句的落点措辞**：最终写作 **`returns it to its starting position`**。
+        ///   为什么**不用** `spot` 这个词（这是本条最值得留下的理由）：`Esc` 的落点是
+        ///   `PhysicsTestDrive.ReturnCueBallToHome()` → `CueBallHomePosition(tableConfig.footSpot)`
+        ///   = **本局白球起始位**（球堆顶点 `RackApexX = -0.30` **后方 1.27 m**，见该字段注释），
+        ///   而 **`spot` 在台球标准术语里专指 `foot spot`**（摆球那一点），本工程的 `footSpot` 也正是那个点
+        ///   ⇒ 一旦用 `spot`，玩家会把它读成"放在脚点"——**与"离它 1.27 m"的事实相反**。
+        ///   换句话说：不是"换个说法"，而是**这个位置在标准术语里就没有对应的那个词**，故措辞必须回避它。
+        ///
+        /// ℹ **一处回报（引用常量名的价值）**：`PointerAimController.HandleCueBallPlacement()` 的注释
+        ///   引用的是本常量的**名字**（不是抄句子）⇒ 本次措辞改动**它一行都不用改**。
+        ///   这就是"让它引常量名而不是抄句子"的直接回报（见那条注释自身写明的一致性要求）。
+        ///
+        /// 字符口径：本工程字体只覆盖 Latin 子集，中间的分隔符用 `·`（U+00B7，5 个源字体实测全覆盖）。
+        /// </summary>
+        public const string BallInHandPendingDetail =
+            "Click to place the cue ball anywhere · Esc returns it to its starting position";
+
+        /// <summary>
+        /// `ball-in-hand` 且**落点被拒**（`PhysicsTestDrive.RefusedPlacementCount` 上升沿）时的说明。
+        ///
+        /// ⚠ **不得复用** `RefusedDetail`（`"Wait for the table"`）：落点被拒那一刻台面**是静止的**
+        /// （正因为静止才允许放球）⇒ 那句话在此场景是**假陈述**。故单开这一条。
+        /// </summary>
+        public const string PlacementRefusedDetail = "Cue ball can't go there";
 
         /// <summary>`paused` 状态的说明（契约先行）。</summary>
         public const string PausedDetail = "Match frozen";
@@ -253,6 +293,34 @@ namespace Billiards.UI
             }
         }
 
+        /// <summary>
+        /// **状态条"说明"行的最终文案**（纯函数 ⇒ 判据可直接驱动，不必起视图）。
+        ///
+        /// 为什么要有这一层：`StateDetail(state)` 只按状态取文案，但自由球**有三个子情形**
+        /// （待放球 / 已回到台上 / **落点被拒**），它们的说明各不相同却共用同一档状态与配色
+        /// ⇒ 选择逻辑必须有个**可被判据钉住的单一实现点**，否则"哪句优先"只活在视图里、没人守。
+        ///
+        /// ── 优先级（定死在这里，逐条有理由）────────────────────────────────────────
+        /// ① **落点被拒**最优先：它是玩家**刚刚做了动作、没成功**的即时反馈，而默认文案会给出
+        ///    **假陈述**（落点时台面是静止的，`"Wait for the table"` 不成立）⇒ 必须压过其它。
+        /// ② **待放球**次之：白球在手上时最该说的是"怎么把它放下"（含 `Esc` 兜底键）。
+        /// ③ 其余回落到 `StateDetail(state)`（既有行为**逐字不变**）。
+        /// </summary>
+        public static string CaptionLine(HudVisualState state, bool awaitingPlacement, bool placementRefused)
+        {
+            if (placementRefused)
+            {
+                return PlacementRefusedDetail;
+            }
+
+            if (state == HudVisualState.BallInHand && awaitingPlacement)
+            {
+                return BallInHandPendingDetail;
+            }
+
+            return StateDetail(state);
+        }
+
         /// <summary>状态条边线色（设计契约逐条取自 `style.css` 的 `.status-bar[data-state=…]`）。</summary>
         public static Color32 EdgeColor(HudVisualState state)
         {
@@ -357,8 +425,14 @@ namespace Billiards.UI
         /// <param name="refusedWindow">出杆被拒窗口内（由 `RefusedLaunchCount` 上升沿驱动）。</param>
         /// <param name="ballInHand">白球刚被自动归位、玩家尚未出杆（`LastLaunchRespawnedCueBall` 驱动）。</param>
         /// <param name="resultOpen">结算卡已弹出。</param>
+        /// <param name="awaitingPlacement">
+        /// **待放球**（"全场自由球"新规则）：白球**不在台上**、轮到玩家、台面已停 ⇒ 它等着被**放下**。
+        /// 由既有只读出口 `PoolSimulator.IsBallInPlay(0)` 直接给出，**不需要物理侧新增任何状态**。
+        /// 默认 `false` ⇒ 既有调用点（含判据 `T96` / `T125` 的优先级表）**行为逐位不变**。
+        /// </param>
         public static HudVisualState ResolveVisualState(ShotPhase phase, bool foulWindow, bool refusedWindow,
-                                                        bool ballInHand, bool resultOpen)
+                                                        bool ballInHand, bool resultOpen,
+                                                        bool awaitingPlacement = false)
         {
             if (resultOpen)
             {
@@ -375,7 +449,7 @@ namespace Billiards.UI
                 return HudVisualState.Foul;
             }
 
-            if (ballInHand)
+            if (ballInHand || awaitingPlacement)
             {
                 return HudVisualState.BallInHand;
             }
@@ -461,6 +535,9 @@ namespace Billiards.UI
                 HomeClubName, HomeClubSub, HomeEyebrow, HomeTableNumber,
                 HomeDifficultyLabel, HomeDifficultyCasual, HomeDifficultyClub, HomeDifficultyExpert,
                 HomeStatRacks, HomeHouseLabel, HomeHouseNumber, HomeTrackTitle,
+                // 自由球"待放球"与"落点被拒"两个子情形的说明
+                //（`BallInHandDetail` 已由上面的 `states` 循环覆盖，不重复列举）
+                BallInHandPendingDetail, PlacementRefusedDetail,
                 PowerLabel(0f), PowerLabel(0.45f), PowerLabel(1f),
                 PocketedLabel(0, 15), PocketedLabel(15, 15),
                 "0123456789");

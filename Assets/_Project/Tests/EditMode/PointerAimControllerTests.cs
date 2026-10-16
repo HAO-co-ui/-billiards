@@ -28,6 +28,22 @@ namespace Billiards.Tests
     /// </summary>
     public class PointerAimControllerTests
     {
+        /// <summary>`PointerAimController` 源码路径（④' 白盒文本断言用）。</summary>
+        private const string ControllerSourcePath = "Assets/_Project/Scripts/Runtime/Physics/PointerAimController.cs";
+
+        /// <summary>逐行剥掉 `//` 之后的注释（与 `T72b` 的"读源码剔注释"同法）。</summary>
+        private static string StripLineComments(string source)
+        {
+            var sb = new System.Text.StringBuilder(source.Length);
+            foreach (string line in source.Split('\n'))
+            {
+                int cut = line.IndexOf("//", System.StringComparison.Ordinal);
+                sb.Append(cut >= 0 ? line.Substring(0, cut) : line).Append('\n');
+            }
+
+            return sb.ToString();
+        }
+
         private const string ScenePath = "Assets/_Project/Scenes/PhysicsGreybox.unity";
 
         private static PhysicsTestDrive FindDrive(Scene scene)
@@ -157,6 +173,23 @@ namespace Billiards.Tests
 
             Assert.IsEmpty(failures, "T50 失败判据：\n" + string.Join("\n", failures));
             TestContext.WriteLine($"T50: ① 变（100→30）② 冻结（逐位 == {frozen}）③ 又变（→70）；阶段 Free→Dragging→Locked→Free→Dragging ✓");
+
+            // ── **④' 输入接线守卫**（白盒文本断言；本批用户反馈第 3 条「全场自由球」的**输入路径**）──────
+            // ⚠ 本轮勘出：`HandleCueBallPlacement` 的接线**一条判据都没有** —— 删掉下面任一处，原 231 条**全绿**：
+            //   ① 待放球模态门 + 分发；② **点击放球那一行**（本批**头号交付物**的输入路径）；③ Esc 兜底。
+            //   ⇒ 与 `_placementRefusedUntil` 那处**同型**：**"有文案 ≠ 有实现"**，而 `③'` 只守了文案那一半。
+            // 断言**使用形态**（不是符号名 —— 写 `Contains("TryPlaceCueBall")` 会命中驱动侧调用点而**永不红**）。
+            string controllerSrc = StripLineComments(
+                System.IO.File.ReadAllText(System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(UnityEngine.Application.dataPath), ControllerSourcePath)));
+            Assert.IsTrue(controllerSrc.Contains("HandleCueBallPlacement();"),
+                "④' 待放球模态门 + 分发缺失：删掉 `if (drive.PendingCueBallPlacement) { HandleCueBallPlacement(); return; }`"
+                + " ⇒ 左键会**去瞄准**而不是放球（而 231 条全绿）。");
+            Assert.IsTrue(controllerSrc.Contains("drive.TryPlaceCueBall(placementPhysics)"),
+                "④' **点击放球接线缺失**：删掉 `drive.TryPlaceCueBall(placementPhysics);` ⇒ 用户要的"
+                + "「可以把白球放在台面任意位置击球」**整个功能静默失效**（而 231 条全绿）。");
+            Assert.IsTrue(controllerSrc.Contains("drive.ReturnCueBallToHome()"),
+                "④' **Esc 兜底接线缺失**：删掉 Esc 那三行 ⇒ 界面仍在承诺 Esc（`③'` 只查文案含 `Esc`、查不到实现）。");
         }
 
         // ══════════════════ T51 微调粒度（0.2° / 1.0°，且界 == 场景值）═══════════

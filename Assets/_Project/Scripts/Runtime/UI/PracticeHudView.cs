@@ -27,7 +27,9 @@ namespace Billiards.UI
     ///
     /// ── 数据来源（全部既有只读出口，本类不新建任何状态）────────────────────────
     /// · 状态 ← `CueStickController.Flow.Phase`（`ShotPhase`）+ `ScratchCount` 上升沿（犯规）
-    ///   + `RefusedLaunchCount` 上升沿（出杆被拒）+ `LastLaunchRespawnedCueBall`（白球归位）
+    ///   + `RefusedLaunchCount` 上升沿（出杆被拒）+ **`RefusedPlacementCount` 上升沿（落点被拒）**
+    ///   + `LastLaunchRespawnedCueBall`（白球归位）
+    ///   + **`PendingCueBallPlacement`（"待放球"＝白球离台且玩家尚未放置，全场自由球新规则）**
     ///   + `PracticeResultView.IsOpen`（结算）
     /// · 力度 ← `PhysicsTestDrive.power`；杆数/犯规 ← `LaunchCount` / `ScratchCount`；
     ///   进球 / 总数 ← `PoolSimulator.IsBallInPlay`（经 `PracticeSession.CountBalls` 单点口径）
@@ -120,11 +122,18 @@ namespace Billiards.UI
         // ── 轮询基线 ─────────────────────────────────────────────────────────
         private int _lastScratchSeen;
         private int _lastRefusedSeen;
+
+        /// <summary>落点被拒的轮询基线（与 <see cref="_lastRefusedSeen"/> **刻意分开**：两条拒绝链各有各的窗口）。</summary>
+        private int _lastPlacementRefusedSeen;
+
         private int _lastLaunchSeen;
         private bool _ballInHandLatch;
         private float _foulUntil;
         private float _foulStart;
         private float _refusedUntil;
+
+        /// <summary>落点被拒的提示窗口截止时刻（与 <see cref="_refusedUntil"/> 分开，见 `PlacementRefusedDetail`）。</summary>
+        private float _placementRefusedUntil;
 
         private bool _built;
 
@@ -645,22 +654,44 @@ namespace Billiards.UI
                     _lastRefusedSeen = drive.RefusedLaunchCount;
                     _refusedUntil = now + FoulBannerSeconds;
                 }
+
+                // **落点被拒**（"全场自由球"）：`PlacePendingCueBall` 在非法落点上**不改任何状态**、
+                // 只把 `RefusedPlacementCount` 加一 ⇒ 与"出杆被拒"同一种"静默失败"，同样要变成
+                // "看得见的原因"。**另开一个窗口、另用一条文案**（详见 `PracticeHudState.PlacementRefusedDetail`）：
+                // 那一刻台面**是静止的**，所以出杆被拒那句 `"Wait for the table"` 在这里是**假陈述**。
+                if (drive.RefusedPlacementCount > _lastPlacementRefusedSeen)
+                {
+                    _lastPlacementRefusedSeen = drive.RefusedPlacementCount;
+                    _placementRefusedUntil = now + FoulBannerSeconds;
+                }
             }
 
             bool foulWindow = now < _foulUntil;
             bool refusedWindow = now < _refusedUntil;
+            bool placementRefusedWindow = now < _placementRefusedUntil;
             bool ballInHand = _ballInHandLatch && phase == ShotPhase.Aim;
 
-            HudVisualState state = PracticeHudState.ResolveVisualState(
-                phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen);
+            // **待放球**（"全场自由球"新规则）：白球**不在台上**、玩家尚未放置、轮到玩家、台面已停
+            // ⇒ 它不是"等着被击打"，而是**等着被放下**（点台面任意合法位置放下；`Esc` 放回**开球位**）。
+            // 判据用**语义量** `PhysicsTestDrive.PendingCueBallPlacement`（物理侧新增的只读出口，
+            // 语义 = "白球离台 + 玩家尚未放置"），**不再**由更底层的 `IsBallInPlay(0)` 反推。
+            // `TableAtRest` **刻意留在这一侧**（不烘进字段）：它是另一个子系统的状态、且会随运动抖动，
+            // 烘进去会让字段的语义变成"两条链的合取"；放在这里既能挡住"球还在滚就叫玩家点"的假提示，
+            // 又不动字段本身的球生命周期语义。
+            PoolSimulator sim = drive != null ? drive.Simulator : null;
+            bool awaitingPlacement = phase == ShotPhase.Aim && sim != null
+                                     && sim.TableAtRest && drive.PendingCueBallPlacement;
 
-            RefreshStatusBar(state);
+            HudVisualState state = PracticeHudState.ResolveVisualState(
+                phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen, awaitingPlacement);
+
+            RefreshStatusBar(state, awaitingPlacement, placementRefusedWindow);
             RefreshPower(phase);
             RefreshCounters();
             RefreshToolButtons();
         }
 
-        private void RefreshStatusBar(HudVisualState state)
+        private void RefreshStatusBar(HudVisualState state, bool awaitingPlacement, bool placementRefused)
         {
             Color32 symbol = PracticeHudState.SymbolColor(state);
             Color32 edge = PracticeHudState.EdgeColor(state);
@@ -707,7 +738,10 @@ namespace Billiards.UI
 
             if (_stateCaption != null)
             {
-                _stateCaption.text = PracticeHudState.StateDetail(state);
+                // 说明行的**文案选择**一律走纯函数 `PracticeHudState.CaptionLine`（判据可直接驱动它）——
+                // 本方法只负责"喂事实"，不自己判"哪句优先"：自由球有三个子情形（待放球 / 已回到台上 /
+                // **落点被拒**）共用同一档状态与配色，优先级必须有个**可被判据钉住**的单一实现点。
+                _stateCaption.text = PracticeHudState.CaptionLine(state, awaitingPlacement, placementRefused);
             }
 
             if (_shotInfoValue != null)

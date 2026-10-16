@@ -464,75 +464,279 @@ namespace Billiards.Tests
             }
         }
 
-        // ══════════════════ T70 白球入袋 ⇒ 显式放回开球位（可观测）════════════
+        // ══════════════════ T70a / T70b 白球入袋 ⇒ **全场自由球**（可观测）════════════
+
+        /// <summary>把白球确定性打进一个中袋（`T70a`/`T70b`/`T141` 共用）。</summary>
+        private static void PotCueBall(PhysicsTestDrive drive)
+        {
+            Pocket pocket = SidePocket(Table());
+            Vector2 tn = pocket.throatNormal;
+            drive.Simulator.PlaceBall(0, pocket.throatCenter - 0.15f * tn, 1.0f * tn);
+            AdvanceToRest(drive, RestCap);
+            Assert.GreaterOrEqual(drive.Simulator.CapturedPocketIndex(0), 0, "前提 —— 白球应已入袋。");
+            Assert.IsFalse(drive.Simulator.IsBallInPlay(0), "前提 —— 已入袋的白球应不在场上。");
+            Assert.IsTrue(drive.Simulator.TableAtRest, "前提 —— 入袋后整盘应静止。");
+        }
 
         /// <summary>
-        /// **白球入袋 ⇒ 出杆时显式放回<span>开球位</span>，且这件事必须可观测**（不许静默）。
+        /// **`T70a`：白球入袋 ⇒ 进入「待放球」⇒ 玩家指定点放下 ⇒ 白球**逐位**在该点、且能正常出杆。**
         ///
-        /// 做法：单球模式 ⇒ 静止 ⇒ 用 `PlaceBall(0, …)` 把白球放到中袋喉口内侧并朝袋内给初速
-        /// ⇒ 推进到静止（白球**确定性入袋**、离台）⇒ 断言前提（已入袋、不在场上）
-        /// ⇒ 出杆 ⇒ 断言 ① 白球**已回到场上**；② 位置 == **`CueBallHomePosition(footSpot)`**（容差 0）；
-        /// ③ 只读出口 <see cref="PhysicsTestDrive.LastLaunchRespawnedCueBall"/> == `true`（**可观测性**）。
+        /// **用户原话**：「练习模式白球进袋了，全场自由球，可以把白球放在台面任意位置击球」。
         ///
-        /// ── 重钉登记（**改的是什么 / 为什么 / 前后值**）────────────────────────────────
-        /// · **改的是什么**：期望落点由 `footSpot` 改为 **`PhysicsTestDrive.CueBallHomePosition(footSpot)`**
-        ///   （与 `RackPositions[0]` **同一个值** ⇒ 仍是一处真源）。
-        /// · **为什么**：**用户裁定**"开球距离对齐现实（约半台 1.27 m）" ⇒ 出杆/重摆**同口径**。
-        ///   本判据的语义**本就**是"放回**开球区**"，只是此前那个"开球区"恰好等于 `footSpot`。
-        /// · **前后值**：`(0.508, 0)` → **`(0.97, 0)`**。⚠ **未放宽**：仍是"逐位/容差 0"，没有改成
-        ///   "只要不在台外"这类模糊形态。
+        /// ⚠ **本判据取代旧 `T70` 的"自动放回开球位"语义**（主理人批准**改语义**、不是重钉数值）：
+        /// 旧 `T70` 守的是"**白球被静默摆回 = 整盘重置缺陷**"这条内核意图 —— **它依然成立**，
+        /// 只是落点从"自动"变成"玩家指定"；"**逐位、容差 0、不许静默**"三个性质**一个都没放宽** ✓。
+        /// 兜底路径（玩家不放、直接出杆）由 **`T70b`** 守。
         ///
-        /// **能测出**：白球入袋后"静默消失"（既不放回也不报错）／放回了但**没有任何出口**可断言。
-        /// **注入负对照（实测）**：把 `Launch()` 的起点改成"白球当前位置"（不放回）⇒ FAIL。
+        /// **怎么打死它**：把 `TryPlaceCueBall` 写成 no-op ⇒ 红；把落点写成 `CueBallHomePosition`（偷偷自动归位）⇒ 逐位断言红。
         /// </summary>
         [Test]
-        public void T70_Launch_RespawnsCapturedCueBallAtFootSpot_Observably()
+        public void T70a_CapturedCueBall_GoesToPendingPlacement_ThenPlayerPicksSpot()
         {
-            var go = new GameObject("T70Drive");
+            var go = new GameObject("T70aDrive");
             try
             {
                 PhysicsTestDrive drive = NewDrive(go, rack: false);
                 AdvanceToRest(drive, RestCap);
-                Assert.IsTrue(drive.Simulator.TableAtRest, "T70：前提 —— 摆好后应在上限内静止。");
+                PotCueBall(drive);
 
-                Pocket pocket = SidePocket(Table());
-                Vector2 tn = pocket.throatNormal;
-                drive.Simulator.PlaceBall(0, pocket.throatCenter - 0.15f * tn, 1.0f * tn);
+                Assert.IsTrue(drive.PendingCueBallPlacement,
+                    "T70a：白球入袋后应进入**待放球**（全场自由球）—— 不再自动归位。");
 
-                int steps = AdvanceToRest(drive, RestCap);
-                Assert.GreaterOrEqual(drive.Simulator.CapturedPocketIndex(0), 0,
-                    $"T70：前提 —— 白球应已入袋（{steps} 步后仍未入袋）。");
-                Assert.IsFalse(drive.Simulator.IsBallInPlay(0), "T70：前提 —— 已入袋的白球应不在场上。");
-                Assert.IsTrue(drive.Simulator.TableAtRest, "T70：前提 —— 入袋后整盘应静止。");
+                var target = new Vector2(0.60f, 0.25f);
+                Assert.IsTrue(drive.CanPlaceCueBall(target), "T70a：前提 —— 该点应是合法落点。");
+                Assert.IsTrue(drive.TryPlaceCueBall(target), "T70a：合法落点应放球成功。");
 
-                // ⚠ 期望落点 = **开球位**（与 `RackPositions[0]` 同源），不是 `footSpot`
-                //   —— 见本判据的重钉登记（用户裁定"开球距离对齐现实"）。
+                Assert.IsTrue(drive.Simulator.IsBallInPlay(0), "T70a：放下后白球应在场上。");
+                Assert.AreEqual(RVec(target), RVec(drive.Simulator.Balls[0].position),
+                    "T70a：白球必须落在**玩家指定的那一点**（**逐位**，容差 0）。");
+                Assert.IsFalse(drive.PendingCueBallPlacement, "T70a：放下后应退出待放态。");
+
+                AdvanceToRest(drive, RestCap);
+                drive.aimDegrees = 180f;
+                drive.power = 1f;
+                Assert.Greater(drive.Launch().magnitude, 0f, "T70a：放下后应能**正常出杆**。");
+
+                TestContext.WriteLine($"T70a: 落袋 ⇒ 待放 ⇒ 放在 {RVec(target)} ⇒ 出杆成功 ✓");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>
+        /// **`T70b`：兜底路径** —— 待放球期间**玩家直接出杆** ⇒ 回落到"放回开球位再出杆"（= 旧行为），
+        /// 且 `LastLaunchRespawnedCueBall` 仍为 **true**（**犯规留痕不许丢**）。
+        ///
+        /// **为什么必须有这条**（主理人裁定「兜底是必需的」）：没有兜底，一旦放置输入失效 / 找不到合法点，
+        /// 游戏会**永久卡在待放态**（比"自动放回"更糟的失败模式）。
+        ///
+        /// **怎么打死它**：删掉 `Launch()` 里的兜底分支 ⇒ 红；把兜底落点改成别处 ⇒ 逐位断言红。
+        /// </summary>
+        [Test]
+        public void T70b_PendingPlacement_LaunchFallsBackToCueBallHome_AndKeepsFoulFlag()
+        {
+            var go = new GameObject("T70bDrive");
+            try
+            {
+                PhysicsTestDrive drive = NewDrive(go, rack: false);
+                AdvanceToRest(drive, RestCap);
+                PotCueBall(drive);
+                Assert.IsTrue(drive.PendingCueBallPlacement, "T70b：前提 —— 应处于待放球。");
+
                 Vector2 cueHome = PhysicsTestDrive.CueBallHomePosition(Table().footSpot);
                 drive.aimDegrees = 180f;
                 drive.power = 1f;
-                Assert.Greater(drive.Launch().magnitude, 0f, "T70：前提 —— 出杆应被接受。");
+                Assert.Greater(drive.Launch().magnitude, 0f, "T70b：待放球期间出杆应被接受（走兜底，不是卡住）。");
 
                 var failures = new List<string>();
                 if (!drive.Simulator.IsBallInPlay(0))
                 {
-                    failures.Add("白球入袋后出杆，它**没有回到场上**（静默消失）。");
+                    failures.Add("兜底出杆后白球**不在场上**（静默消失）。");
                 }
 
                 float off = (drive.Simulator.Balls[0].position - cueHome).magnitude;
                 if (!(off < 1e-6f))
                 {
-                    failures.Add($"白球应被放回开球位 {RVec(cueHome)}，实测 {RVec(drive.Simulator.Balls[0].position)}（偏 {off:E3} m）。");
+                    failures.Add($"兜底应把白球放回开球位 {RVec(cueHome)}，实测 {RVec(drive.Simulator.Balls[0].position)}（偏 {off:E3} m）。");
                 }
 
                 if (!drive.LastLaunchRespawnedCueBall)
                 {
-                    failures.Add("`LastLaunchRespawnedCueBall` 应为 true —— 「白球重摆」这件事**必须可观测**（不许静默）。");
+                    failures.Add("`LastLaunchRespawnedCueBall` 应为 true —— 犯规留痕**必须可观测**（不许静默）。");
                 }
 
-                Assert.IsEmpty(failures,
-                    "T70 白球入袋后重摆失败：\n" + string.Join("\n", failures));
-                TestContext.WriteLine($"T70: 白球入袋后出杆 ⇒ 回到 {RVec(drive.Simulator.Balls[0].position)}（= footSpot），"
+                Assert.IsFalse(drive.PendingCueBallPlacement, "T70b：兜底出杆后应退出待放态。");
+                Assert.IsEmpty(failures, "T70b 兜底路径失败：\n" + string.Join("\n", failures));
+
+                TestContext.WriteLine($"T70b: 待放球期间直接出杆 ⇒ 兜底回 {RVec(cueHome)}，"
                                       + "`LastLaunchRespawnedCueBall` = true ✓");
+
+                // ── **F1 状态泄漏负路径**（独立复核抓出；可达路径：白球落袋 ⇒ 按 `R`（无门拦 R）⇒ 卡开 ⇒ `Play again`）──
+                // 断言：`ReloadRack()` **必须复位本批两个新状态**；否则 ① 新局误报"待放球"、第一次左键被当成放球
+                //（`CanPlaceCueBall` 跳过索引 0 ⇒ 必成功 ⇒ 那次点击把白球挪走而不是瞄准）；② 新局第一杆记一次**假犯规**。
+                PotCueBall(drive);
+                Assert.IsTrue(drive.PendingCueBallPlacement, "F1：前提 —— 落袋后应处于待放球。");
+                drive.ReloadRack();
+                // ⚠ 同样用**收集全部失败**范式：F1① 与 F1② 是**两个独立不变**，裸 `Assert` 会掩盖后者。
+                var f1Failures = new List<string>();
+                if (drive.PendingCueBallPlacement)
+                {
+                    f1Failures.Add("F1①：`ReloadRack()` 必须复位 `PendingCueBallPlacement` —— 否则新局开局误报待放球、"
+                                   + "且**第一次左键被当成放球**（把白球挪走而不是瞄准）。");
+                }
+
+                AdvanceToRest(drive, RestCap);
+                drive.aimDegrees = 180f;
+                drive.power = 1f;
+                Assert.Greater(drive.Launch().magnitude, 0f, "F1：重摆后第一杆应被接受。");
+                if (drive.LastLaunchRespawnedCueBall)
+                {
+                    f1Failures.Add("F1②：新局第一杆**不得**记假犯规 —— `_cueBallLeftTableSinceLastLaunch` 必须随重摆复位"
+                                   + "（否则 `LastLaunchRespawnedCueBall = false || true = true` ⇒ `PracticeSession._fouls++`）。");
+                }
+
+                Assert.IsEmpty(f1Failures, "F1 重摆状态泄漏（**收集全部**）：\n" + string.Join("\n", f1Failures));
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>
+        /// **`T140`：全场自由球的落点合法性（纯函数核 `PoolSimulator.IsPlacementLegal`）**。
+        ///
+        /// 六组：① 空地**合法** ② **出界**非法 ③ **贴库边**（球心 = 半长 − 球半径）**合法**（边界可放）
+        /// ④ **压别的球**非法 ⑤ **在袋口区域**非法 ⑥ 刚好不压（间距 = `2r`）**合法**。
+        /// **口径**：重叠下限复用 `PoolSimulator.BallInitialOverlapTolerance`（**不许另写容差**，铁律 16）。
+        ///
+        /// **怎么打死它**：去掉"台面内"分支 ⇒ ②红；去掉"不重叠" ⇒ ④红；去掉"不在袋口" ⇒ ⑤红。
+        /// </summary>
+        [Test]
+        public void T140_CueBallPlacementLegality_IsPureAndComplete()
+        {
+            TableConfig t = Table();
+            var pockets = t.pockets;
+            float r = PoolConstants.BallRadius;
+
+            Assert.IsTrue(PoolSimulator.IsPlacementLegal(new Vector2(0.5f, 0.2f), null, pockets,
+                t.halfLength, t.halfWidth), "T140①：空地应合法。");
+
+            Assert.IsFalse(PoolSimulator.IsPlacementLegal(new Vector2(t.halfLength + 0.05f, 0f), null, pockets,
+                t.halfLength, t.halfWidth), "T140②：出界（超库边）应非法。");
+
+            Assert.IsTrue(PoolSimulator.IsPlacementLegal(new Vector2(t.halfLength - r, 0f), null, pockets,
+                t.halfLength, t.halfWidth), "T140③：**贴库边**（球心 = 半长 − 球半径）应**合法**（边界可放）。");
+
+            var occupied = new List<Vector2> { new Vector2(0.5f, 0.2f) };
+            Assert.IsFalse(PoolSimulator.IsPlacementLegal(new Vector2(0.5f, 0.2f), occupied, pockets,
+                t.halfLength, t.halfWidth), "T140④：压别的球应非法。");
+
+            Pocket pocket = SidePocket(t);
+            // ⚠ **探针点必须在台面内**（独立复核实测的教训）：`pocket.throatCenter` 的 `|y| = 0.6951 > halfWidth − r + 1e-4`
+            //   ⇒ **已被 ①（台面内）拒掉** ⇒ 单关 ③（袋口分支）**⑤ 不会红**（红的是 ⑨）⇒ ⑤ 在本实现下**零独立判别力**。
+            //   ⇒ 改用**中袋前方、且在台面内**的点 `(0, 0.6060)`：`|y| = 0.6060 ≤ 0.6065794` **通过 ①**；
+            //      到中袋喉心 `(0, 0.6950634)` 的**径向距离 = 0.0890634 ≤ openingRadius + r = 0.0898916**
+            //      ⇒ **只有 ③ 会拒** ⇒ ⑤ 从此**独立可判**。
+            //      （该点是 ① 放行、**由 ③ 唯一拒掉**的点；**单关 ③ 的注入验证见规格 §12.2.9**。）
+            Assert.IsFalse(PoolSimulator.IsPlacementLegal(new Vector2(0f, 0.6060f), null, pockets,
+                t.halfLength, t.halfWidth), "T140⑤：**袋口区域**（中袋前方、台面内的点）应非法 —— 这是唯一由 ③ 拒掉的点。");
+
+            var justClear = new List<Vector2> { new Vector2(0.5f, 0.2f) };
+            Assert.IsTrue(PoolSimulator.IsPlacementLegal(new Vector2(0.5f + 2f * r, 0.2f), justClear, pockets,
+                t.halfLength, t.halfWidth), "T140⑥：间距恰为 `2r` 应**合法**（与初始摆放同口径）。");
+
+            // ⚠ **本用例的 ⑦⑧⑨⑩ 无法在同一次运行中各自被独立观察**（给复核方 / 下一个做注入的人）：
+            //   它们同处**一个 `[Test]`**，而 `Assert` 在**首个失败处即中止** ⇒ 例如"把判据改回旧式"只会让
+            //   **⑦** 先爆；**⑧**（同判据、不同坐标）**结构上观察不到** ⇒ 它的判别力是**推得**、不是观察。
+            //   ⇒ 若将来需要逐条独立留证：把本用例改成「**收集全部失败**」范式（与 `ClubUiTests` 的 failures 列表同范式）。
+            //   ⇒ 相关登记见规格 `Docs/35-B_Main入口与瞄准性能_spec.md` §12.2.3。
+            //
+            // ⑦⑧⑨⑩ **判别用例（权威表 a–d；旧三点已作废 —— 它们区分不了两版，铁律 17）**
+            // 口径：**沿库方向偏离袋口**才能区分"喉面法向深度"与"径向距喉心"两版。
+            // 下表 a–d 与主理人给的权威表逐点一致（离线按资产真源复算：修前 / 修后）。
+            //   a: (x = −0.6, y = 0.6065) 修前 false → **修后必须 true**
+            //      ⚠ **本用例的判别力全在 `x` 上**：`x = 0` 时两版**都是** false（那是正对袋口）；
+            //        只有 `x = −0.6`（**沿库横向离中袋 600 mm**）才 false→true ⇒ 坐标必须逐字给出、可一条命令复算。
+            //   b: (x = −0.6, y = 0.6060) 修前 false → **修后必须 true**
+            //   c: (x =  0.0, y = 0.6065) 两版都 false（**正对中袋**）⇒ **必须 false**
+            //   d: (x = −0.6, y = 0.5500) 两版都 true（对照）⇒ **必须 true**
+            // ⚠ **本组用「收集全部失败」范式**（不是裸 `Assert` 串）—— 规矩 3 的正解：
+            //   ⑦⑧⑨⑩ 是**同一个用例里的四个独立不变**，裸 `Assert` 会在 ⑦ 处中止 ⇒ ⑧⑩ **结构上不可独立观察**
+            //   （独立复核实测打不死 ⑧）。改成收集范式后，一次注入能让 ⑦ 与 ⑧ **同时**留证。
+            var t140Failures = new List<string>();
+            void Chk140(bool ok, string msg)
+            {
+                if (!ok)
+                {
+                    t140Failures.Add(msg);
+                }
+            }
+
+            Chk140(PoolSimulator.IsPlacementLegal(new Vector2(-0.6f, 0.6065f), null, pockets, t.halfLength, t.halfWidth),
+                "T140⑦（a）：贴长库、横向离中袋 600 mm 必须**合法** —— 旧公式（喉面法向点积）会误拒它，这是唯一能证伪旧实现的点。");
+            Chk140(PoolSimulator.IsPlacementLegal(new Vector2(-0.6f, 0.6060f), null, pockets, t.halfLength, t.halfWidth),
+                "T140⑧（b）：同上、稍离库一点，也必须合法。");
+            Chk140(!PoolSimulator.IsPlacementLegal(new Vector2(0f, 0.6065f), null, pockets, t.halfLength, t.halfWidth),
+                "T140⑨（c）：**正对中袋**应非法（两版都必须拒）。");
+            Chk140(PoolSimulator.IsPlacementLegal(new Vector2(-0.6f, 0.55f), null, pockets, t.halfLength, t.halfWidth),
+                "T140⑩（d）：对照点，两版都合法。");
+            Assert.IsEmpty(t140Failures, "T140⑦–⑩ 失败项（**收集全部**，不在首个失败处中止）：\n"
+                + string.Join("\n", t140Failures));
+
+            TestContext.WriteLine("T140: 空地✓ 出界✗ 贴库✓ 压球✗ 袋口✗ 恰不压✓ + a/b/贴合库✓ c/正对中袋✗ d✓");
+        }
+
+        /// <summary>
+        /// **`T141`：全场自由球端到端 + 犯规留痕**：落袋 ⇒ 待放球 ⇒ **非法点被拒（不改状态、计数上升，不静默）**
+        /// ⇒ 合法点放下 ⇒ 白球逐位在该点、能出杆 ⇒ **`LastLaunchRespawnedCueBall` 仍为 true**。
+        ///
+        /// ⚠ 最后那条是"**把待放球与犯规留痕拆成两个 flag**"那个决定的**守卫**：
+        /// 玩家自己放球后 `cueOffTable` 已变 false（那个 flag 的旧写法会把它置 false）⇒ **犯规会被静默丢掉** ⇒ 本条红。
+        ///
+        /// **怎么打死它**：去掉 `_cueBallLeftTableSinceLastLaunch` 的粘滞位 ⇒ 最后一条断言红；
+        /// 把非法落点也照放 ⇒ 第一条断言红。
+        /// </summary>
+        [Test]
+        public void T141_BallInHand_EndToEnd_AndFoulTraceSurvives()
+        {
+            var go = new GameObject("T141Drive");
+            try
+            {
+                PhysicsTestDrive drive = NewDrive(go, rack: false);
+                AdvanceToRest(drive, RestCap);
+                PotCueBall(drive);
+                Assert.IsTrue(drive.PendingCueBallPlacement, "T141：前提 —— 应处于待放球。");
+
+                int refusedBefore = drive.RefusedPlacementCount;
+
+                // ① 非法落点（出界）⇒ **不放、状态不变、计数上升**（不静默）
+                Assert.IsFalse(drive.TryPlaceCueBall(new Vector2(Table().halfLength + 0.3f, 0f)),
+                    "T141①：出界落点应被拒。");
+                Assert.IsTrue(drive.PendingCueBallPlacement, "T141①：被拒后应**仍在待放态**（状态不变）。");
+                Assert.IsFalse(drive.Simulator.IsBallInPlay(0), "T141①：被拒后白球仍应不在场上。");
+                Assert.AreEqual(refusedBefore + 1, drive.RefusedPlacementCount,
+                    "T141①：被拒必须**计数上升**（不许静默）。");
+
+                // ② 合法落点 ⇒ 放下
+                var target = new Vector2(-0.55f, -0.20f);
+                Assert.IsTrue(drive.TryPlaceCueBall(target), "T141②：合法落点应放球成功。");
+                Assert.AreEqual(RVec(target), RVec(drive.Simulator.Balls[0].position),
+                    "T141②：白球应**逐位**落在玩家指定点。");
+
+                // ③ 能正常出杆 + **犯规留痕仍在**
+                AdvanceToRest(drive, RestCap);
+                drive.aimDegrees = 180f;
+                drive.power = 1f;
+                Assert.Greater(drive.Launch().magnitude, 0f, "T141③：放下后应能正常出杆。");
+                Assert.IsTrue(drive.LastLaunchRespawnedCueBall,
+                    "T141③：**犯规留痕必须仍在** —— 玩家自己放球**不得**让 `LastLaunchRespawnedCueBall` 变 false"
+                    + "（否则犯规统计会静默丢杆；这正是「拆两个 flag」要守住的东西）。");
+
+                TestContext.WriteLine($"T141: 被拒 {drive.RefusedPlacementCount} 次；放在 {RVec(target)}；"
+                                      + "出杆成功且犯规留痕 = true ✓");
             }
             finally
             {

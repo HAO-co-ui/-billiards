@@ -588,5 +588,38 @@ namespace Billiards.Tests
                  + v.y.ToString("R", CultureInfo.InvariantCulture) + ", "
                  + v.z.ToString("R", CultureInfo.InvariantCulture) + ")";
         }
+        /// <summary>
+        /// **`T139`：黄线（目标球出射）/ 蓝线（白球偏转）已按用户反馈缩短，且语义关系未变。**
+        ///
+        /// 用户实机反馈："黄色和蓝色线也稍微缩短一点" ⇒ 两条**纯方向指示线**的**长度常量**各缩短约 26–27%。
+        /// ⚠ 缩短**不改变语义**：黄 = 目标球去向、蓝 = 白球偏转去向，长度只是「画多长」，与预测计算无关
+        /// （两处绘制 —— Gizmos 与运行时 `LineRenderer` —— 读**同一对常量** ⇒ 只改常量即可）。
+        ///
+        /// 断言：① 就是批准的新值（`0.40` / `0.26`）；② **黄 > 蓝**（保留「主次分明」的原有关系）；
+        /// ③ 两者都 ∈ (0, 1) m（规范米量级合理）。
+        ///
+        /// **怎么打死它**：把两者写成相等（黄不再比蓝长）⇒ ② 红；把任一个改回旧值 ⇒ ① 红。
+        /// </summary>
+        [Test]
+        public void T139_TargetAndCueDeflectLines_AreShortened_AndKeepPriority()
+        {
+            Assert.AreEqual(0.40f, AimAssistView.TargetLineLength, 1e-6f,
+                "T139①：黄线（目标球出射）应为主理人批准的新值 0.40（原 0.55）。");
+            Assert.AreEqual(0.26f, AimAssistView.CueDeflectLineLength, 1e-6f,
+                "T139①：蓝线（白球偏转）应为主理人批准的新值 0.26（原 0.35）。");
+
+            Assert.Greater(AimAssistView.TargetLineLength, AimAssistView.CueDeflectLineLength,
+                "T139②：**黄线必须仍比蓝线长**（保序：主次分明）—— 用户要的是「缩短」，不是「改主次」。");
+
+            Assert.Greater(AimAssistView.TargetLineLength, 0f);
+            Assert.Greater(AimAssistView.CueDeflectLineLength, 0f);
+            Assert.Less(AimAssistView.TargetLineLength, 1f);
+            Assert.Less(AimAssistView.CueDeflectLineLength, 1f);
+
+            TestContext.WriteLine($"T139: 黄 {AimAssistView.TargetLineLength:R} > 蓝 {AimAssistView.CueDeflectLineLength:R}"
+                                  + "（均已缩短、主次关系保持）✓");
+        }
+
+
     }
 }

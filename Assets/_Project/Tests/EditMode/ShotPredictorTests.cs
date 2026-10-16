@@ -1085,5 +1085,142 @@ namespace Billiards.Tests
             Assert.IsEmpty(failures, "T83 失败判据：\n" + string.Join("\n", failures));
             TestContext.WriteLine($"T83: 上界 maxPredictSteps={maxPredictSteps}；" + string.Join("；", report) + " ✓");
         }
+
+        /// <summary>
+        /// **`T138`：白线在"首次库边接触"处截断（**不画折返**）** —— 用户实机反馈"白色瞄准线碰到台球桌边就不用反射了"。
+        ///
+        /// 三组断言：
+        /// ① **纯函数**：`AimAssistView.AppendPolylineDashSegments(..., visibleCount)` 只铺**前 N 个顶点**构成的折线
+        ///    （`-1`/越界 ⇒ 整条；`< 2` ⇒ 不铺任何段）；
+        /// ② **端到端（银行球，先撞库）**：`VisiblePathCount < CueWorldPath.Count`（**确实截了**），
+        ///    **且 `CueWorldPath` 末点仍**逐位**等于 `GhostBall`**、`HasFirstContact` 仍为真、
+        ///    `CushionBounceCountBeforeContact ≥ 1` ⇒ **证明截断只发生在绘制侧、预测结果一个字节没动**
+        ///    （这正是"幽灵球与首碰不得受影响"那条口径的守卫）；
+        /// ③ **无库边接触（直击）**：`VisiblePathCount == CueWorldPath.Count` ⇒ **不截断、行为不变**。
+        ///
+        /// **怎么打死它**：把截断去掉（画整条）⇒ ② 红；把 `bounces == 0` 也截 ⇒ ③ 红；
+        /// **把截断做进 `CueWorldPath`**（而不是绘制侧）⇒ ② 的"末点逐位 == 幽灵球"红。
+        /// </summary>
+        [Test]
+        public void T138_AimPath_StopsAtFirstCushion_ButPredictionUnchanged()
+        {
+            // ── ① 纯函数：可见顶点数 ⇒ 只铺前缀 ──
+            var path = new List<Vector2>
+            {
+                new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(2f, 0f), new Vector2(3f, 0f),
+            };
+            var buf = new List<(Vector2 a, Vector2 b)>();
+
+            AimAssistView.AppendPolylineDashSegments(path, 0.5f, 0f, buf, -1);
+            float full = 0f;
+            for (int i = 0; i < buf.Count; i++)
+            {
+                full += (buf[i].b - buf[i].a).magnitude;
+            }
+
+            Assert.AreEqual(3f, full, 1e-4f, "T138①：`visibleCount = -1` 应铺整条（弧长 3.0）。");
+
+            buf.Clear();   // ⚠ 该 API **只 append、不清空** ⇒ 每个子用例前必须自己 Clear（否则累加、断言恒红）
+            AimAssistView.AppendPolylineDashSegments(path, 1.2f, 0f, buf, 2);
+            float cut = 0f;
+            for (int i = 0; i < buf.Count; i++)
+            {
+                cut += (buf[i].b - buf[i].a).magnitude;
+            }
+
+            Assert.AreEqual(1f, cut, 1e-4f, "T138①：`visibleCount = 2` 应只铺前 2 个顶点（弧长 1.0）—— 这就是「不画折返」。");
+
+            buf.Clear();
+            AimAssistView.AppendPolylineDashSegments(path, 0.5f, 0f, buf, 99);
+            float over = 0f;
+            for (int i = 0; i < buf.Count; i++)
+            {
+                over += (buf[i].b - buf[i].a).magnitude;
+            }
+
+            Assert.AreEqual(3f, over, 1e-4f, "T138①：越界的 `visibleCount` 应被夹到整条。");
+
+            buf.Clear();
+            AimAssistView.AppendPolylineDashSegments(path, 0.5f, 0f, buf, 1);
+            Assert.AreEqual(0, buf.Count, "T138①：`visibleCount = 1` 不足两点 ⇒ 不铺任何段。");
+
+            // ── ② / ③ 端到端：同一驱动，两种瞄准 ──
+            var driveGo = new GameObject("T138Drive");
+            try
+            {
+                var drive = driveGo.AddComponent<PhysicsTestDrive>();
+                drive.tableConfig = AssetDatabase.LoadAssetAtPath<TableConfig>(TablePath);
+                Assert.IsNotNull(drive.tableConfig, "T138：需要 TableConfig.asset。");
+                drive.loadRackForBallBallDemo = true;
+                drive.rackBallCount = 3;
+                drive.Initialize();
+                drive.Simulator.PlaceBall(0, drive.tableConfig.footSpot, Vector2.zero);
+                drive.Simulator.PlaceBall(1, new Vector2(-0.40f, 0.30f), Vector2.zero);
+                for (int i = 0; i < PoolSimulator.RestStableFrames + 2; i++)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                }
+
+                Assert.IsTrue(drive.Simulator.TableAtRest, "T138：前提 —— 应已静止。");
+                int maxSteps = driveGo.AddComponent<AimAssistController>().maxPredictSteps;
+
+                // ② 银行球：172.50° 先撞左长库（与 `T78` 同一几何）
+                ShotPrediction bank = PredictAt(drive, 172.50f, maxSteps);
+                Assert.IsTrue(bank.HasFirstContact, "T138②：前提 —— 银行球应有首接触。");
+                Assert.GreaterOrEqual(bank.CushionBounceCountBeforeContact, 1,
+                    "T138②：前提 —— 银行球应在首碰前先撞库（否则本组断言无区分度）。");
+                Assert.Less(bank.VisiblePathCount, bank.CueWorldPath.Count,
+                    "T138②：**先撞库的路径必须被截断**（否则白线仍会画出折返段）。");
+                Assert.GreaterOrEqual(bank.VisiblePathCount, 2, "T138②：截断后至少要有 2 个顶点可画。");
+                Assert.AreEqual(RVec(bank.GhostBall), RVec(bank.CueWorldPath[bank.CueWorldPath.Count - 1]),
+                    "T138②：**截断不得动 `CueWorldPath`** —— 其末点必须仍**逐位**等于幽灵球"
+                    + "（若把截断做进了预测结果，本条会红；而 `ShotPredictorTests` 早先那两条也会红）。");
+
+                // ③ 直击：不碰库 ⇒ 不截断
+                ShotPrediction direct = PredictAt(drive, 161.75f, maxSteps);
+                Assert.AreEqual(0, direct.CushionBounceCountBeforeContact,
+                    "T138③：前提 —— 直击不应先撞库（否则本组断言无区分度）。");
+                Assert.AreEqual(direct.CueWorldPath.Count, direct.VisiblePathCount,
+                    "T138③：**无库边接触 ⇒ 不截断**（行为与改动前一致）。");
+
+                // ── ④ **退化几何负对照**（主理人抓到的"白线整条消失"）：白球**贴库 + 瞄向该库 + 满力** ──
+                // 一步位移 = 8 m/s ÷ 120 Hz = **6.667 cm**；白球心到接触要走 `d − r`。
+                // 取白球心 `(x = 0.5, y = 0.58)` ⇒ 离长库线 0.6350544 的距离 **d = 5.51 cm**
+                // ⚠ **必须给 `x`**：`x = 0` 正对**中袋** ⇒ 球会**进袋**而不是撞库（`bounces` 会是 0、前提断言红）。
+                // ⇒ `d − r = 2.65 cm < 6.667 cm` ⇒ **接触发生在第 0 步** ⇒ 前缀退化为 1。
+                // 断言 = **线不得整条消失**（`VisiblePathCount >= 2`）。
+                drive.Simulator.PlaceBall(0, new Vector2(0.5f, 0.58f), Vector2.zero);
+                for (int i = 0; i < PoolSimulator.RestStableFrames + 2; i++)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                }
+
+                Assert.IsTrue(drive.Simulator.TableAtRest, "T138④：前提 —— 换位后应已静止。");
+                ShotPrediction hugging = PredictAt(drive, 90f, maxSteps);   // 瞄 +y（朝那条长库）
+                Assert.GreaterOrEqual(hugging.CushionBounceCountBeforeContact, 1,
+                    "T138④：前提 —— 贴库瞄向该库应在首碰前先撞库（否则本组无区分度）。");
+                Assert.GreaterOrEqual(hugging.VisiblePathCount, 2,
+                    "T138④：**白球贴库瞄向该库时，白线不得整条消失** —— 前缀退化为 1 时必须回落到整条"
+                    + $"（实测 VisiblePathCount={hugging.VisiblePathCount}）。这是「全场自由球可贴库放球」后的常见姿态。");
+
+                TestContext.WriteLine($"T138: 银行球 bounces={bank.CushionBounceCountBeforeContact} "
+                                      + $"可见 {bank.VisiblePathCount}/{bank.CueWorldPath.Count} 点；"
+                                      + $"直击 bounces=0 可见 {direct.VisiblePathCount}/{direct.CueWorldPath.Count} 点；"
+                                      + $"贴库瞄库 可见 {hugging.VisiblePathCount}/{hugging.CueWorldPath.Count} 点（≥2 ✓）");
+            }
+            finally
+            {
+                Object.DestroyImmediate(driveGo);
+            }
+        }
+
+        /// <summary>在给定驱动上按瞄准角做一次预测（`T138` 用）。</summary>
+        private static ShotPrediction PredictAt(PhysicsTestDrive drive, float aimDeg, int maxSteps)
+        {
+            float rad = aimDeg * Mathf.Deg2Rad;
+            Vector2 v0 = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad))
+                         * Mathf.Lerp(drive.minLaunchSpeed, drive.maxLaunchSpeed, 1f);
+            return ShotPredictor.Predict(drive.tableConfig, drive.Simulator, v0, maxSteps);
+        }
     }
 }
