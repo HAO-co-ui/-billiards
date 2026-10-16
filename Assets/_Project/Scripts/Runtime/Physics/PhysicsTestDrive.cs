@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Billiards.Core;
+using Billiards.Rules;
 using Billiards.Table;
 using UnityEngine;
 
@@ -53,6 +54,32 @@ namespace Billiards.Physics
         /// </summary>
         [Tooltip("球堆模式的目标球数（不含白球）。正式对局用默认值；测试可显式调小以搭隔离场景。")]
         public int rackBallCount = RackBallCount;
+
+        /// <summary>
+        /// **8 球开局摆位的种子**（35-C `P5-A`）。<see cref="RandomRackSeed"/>（`-1`）= **每次
+        /// <see cref="Initialize"/> 取一次真随机**（运行期）；其余值 = 直接用（**判据注入固定种子 ⇒ 逐位可复现**）。
+        ///
+        /// ⚠ **只有 15 颗**（<see cref="RackBallCount"/>）才走"**按球号编号**"的 8 球摆位
+        /// （<see cref="EightBallRackPositions"/>：`[8]` 在第三排正中、底排两角一实一花）；
+        /// 其它球数（测试的小堆）仍走既有几何摆位 <see cref="RackPositions"/> —— **既有夹具的期望值一个都不动**。
+        ///
+        /// ⚠ **两条路径的"位置集合"完全相同**（同一个 <see cref="RackSlot"/> 铺同样的槽）
+        /// ⇒ 只差"哪个下标拿哪个槽"（= 球号）⇒ 纯物理量（接触数 / 是否静止 / 某颗球的行程）**与种子无关**。
+        /// </summary>
+        [Tooltip("8 球开局摆位种子。-1 = 运行期取真随机；判据注入固定值。")]
+        public int rackSeed = RandomRackSeed;
+
+        /// <summary>`rackSeed` 的**真随机**哨兵值（运行期每局取一次）。</summary>
+        public const int RandomRackSeed = -1;
+
+        /// <summary>
+        /// **本局实际生效的摆位种子**（<see cref="Initialize"/> 解析一次并**留痕**）——
+        /// 判据读它即可知道"这一局用的是哪个种子"，不必猜"真随机有没有生效"。
+        ///
+        /// ⚠ <see cref="ReloadRack"/> **不重掷**（沿用本值）：重摆是"同一局的再来一杆"，
+        /// 重掷会让"重摆后逐位可复现"这条既有契约失效。
+        /// </summary>
+        public int ResolvedRackSeed { get; private set; }
 
         [Header("物理参数（占位值；正式值待手感标定）")]
         [Tooltip("库边法向恢复系数 e。占位值，未经策划确认。")]
@@ -283,6 +310,15 @@ namespace Billiards.Physics
                 return;
             }
 
+            // **8 球摆位种子：每局解析一次**（35-C P5-A）。`-1` ⇒ 取真随机并**留痕**（可回读复现该局）。
+            // ⚠ 解析点必须在 `BuildRack()` **之前**（`LoadBalls(...BuildRack())` 要用 `ResolvedRackSeed`）。
+            ResolvedRackSeed = rackSeed == RandomRackSeed ? System.Guid.NewGuid().GetHashCode() : rackSeed;
+            if (rackSeed == RandomRackSeed)
+            {
+                Debug.Log($"[PhysicsTestDrive] 8 球摆位取真随机种子 ResolvedRackSeed = {ResolvedRackSeed}"
+                          + "（要复现这一局就把 `rackSeed` 设成该值）。", this);
+            }
+
             // ⚠ **必须逐字段显式赋值**：`default(PhysicsParams)` 恒为全零（C# 语言定义），
             // 而 `ballTangentialFriction = 0` 会把切向分量整个删除（非物理耗散）、
             // `ballRestitution = 0` 会让球-球碰撞完全非弹性。
@@ -369,6 +405,285 @@ namespace Billiards.Physics
             SyncVisual();
             SyncAimIndicator();
         }
+
+        /// <summary>
+        /// **力度 ⇒ 白球初速大小**（**唯一算式**）：`Lerp(minLaunchSpeed, maxLaunchSpeed, Clamp01(power))`。
+        /// ⚠ <see cref="Launch"/> 与 <see cref="EvaluateAiCandidate"/> **必须共用本对函数**，
+        /// 否则"AI 评估的那一杆"与"真正打出的那一杆"会各自演化（AI 照着**另一个物理**做决策）。
+        /// </summary>
+        public float LaunchSpeedFor(float power)
+        {
+            return Mathf.Lerp(minLaunchSpeed, maxLaunchSpeed, Mathf.Clamp01(power));
+        }
+
+        /// <summary>
+        /// **角度 + 速度大小 ⇒ 白球初速向量**（**唯一算式**）：
+        /// 方向 = `(cos θ, sin θ)`（θ = 角度，`0° = +x`、逆时针为正），再乘速度大小。
+        /// ⚠ 本函数与 <see cref="LaunchSpeedFor"/> 一起，是 `Launch()` 改动前那三行算术的**逐位等价拆分**
+        /// （同 3 步：`Cos` / `Sin` / `向量 × 标量`，只把 `Lerp` 挪进另一个函数体）。
+        /// </summary>
+        public Vector2 CueVelocityFor(float degrees, float speed)
+        {
+            float rad = degrees * Mathf.Deg2Rad;
+            var direction = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
+            return direction * speed;
+        }
+
+        // ══════════════════ AI 出杆（35-C P5-A）═════════════════════════════
+
+        /// <summary>
+        /// **AI 认定的本方分组**（`P5-B` 的宿主写它；默认开放球局）。
+        /// ⚠ 这是**规则层**的输入（本方打实色 / 花色 / 未定组），**不是**"轮到谁"（那个在宿主）。
+        /// </summary>
+        [Tooltip("AI 认定的本方分组（开放 / 实色 / 花色）。")]
+        public GroupState aiGroupState = GroupState.OpenTable;
+
+        /// <summary>
+        /// **AI 评估探针**（懒建、**复用**；**与主内核完全分离**）——
+        /// 两条硬保证：① 评估**绝不改动**真实球台；② 评估期的接触事件**绝不混进**主内核的诊断流。
+        /// </summary>
+        private PoolSimulator _aiProbe;
+
+        /// <summary>**最近一次 AI 规划出的意图**（可读出口：UI 与事后诊断用；未规划过 ⇒ `planned == false`）。</summary>
+        public AiShotIntent LastAiShotIntent { get; private set; }
+
+        /// <summary>**最近一次 AI 决策用的种子**（判据据此复现同一次决策）。</summary>
+        public int LastAiSeed { get; private set; }
+
+        /// <summary>
+        /// **只规划、不出杆**（可复现性判据与 UI 预览用）。`seed` 由**调用方注入**：
+        /// 宿主传**真随机**、判据传**固定值** —— 同 `seed` + 同局面 ⇒ **逐位可复现**。
+        ///
+        /// ⚠ **不改变任何真实状态**（只读 `_simulator`；写 <see cref="LastAiShotIntent"/> / <see cref="LastAiSeed"/>）。
+        /// </summary>
+        public AiShotIntent PlanAiShot(AiDifficulty difficulty, int seed)
+        {
+            LastAiSeed = seed;
+            if (_simulator == null)
+            {
+                LastAiShotIntent = default;
+                return LastAiShotIntent;
+            }
+
+            AiShotContext context = BuildAiContext();
+            LastAiShotIntent = EightBallAi.Plan(context, difficulty, seed, EvaluateAiCandidate);
+            return LastAiShotIntent;
+        }
+
+        /// <summary>
+        /// **AI 出杆入口**：先 <see cref="PlanAiShot"/> ⇒ 把意图写进**既有的** `aimDegrees` / `power`
+        /// （与交互层**同一写入口径**）⇒ 再走**既有 <see cref="Launch()"/>**（**物理一行不动**）。
+        ///
+        /// 返回值与 <see cref="Launch"/> **同契约**：零向量 = 被门控拒绝（此时意图仍留在
+        /// <see cref="LastAiShotIntent"/> 里，调用方可据此重试或显示"未出杆"）。
+        /// </summary>
+        public Vector2 TryLaunchAiShot(AiDifficulty difficulty, int seed)
+        {
+            AiShotIntent intent = PlanAiShot(difficulty, seed);
+            if (!intent.planned)
+            {
+                return Vector2.zero;
+            }
+
+            aimDegrees = intent.aimDegrees;
+            power = intent.power;
+            SyncAimIndicator();
+            return Launch();
+        }
+
+        /// <summary>
+        /// **给一个候选打分（真内核）** —— <see cref="EightBallAi.Plan"/> 的求值器**本体**，
+        /// 也是**判据 / 诊断**的唯一入口（`public` 是刻意的：判据要能对**同一个候选**做顺序无关性检查）。
+        ///
+        /// 契约：**只读主内核、只写探针** ⇒ 调用任意次都**不改变真实球台**。
+        ///
+        /// ⚠ **每次评估必须先 <see cref="PoolSimulator.ResetDiagnostics"/>**：`ShotContactEvents` 是
+        /// **累积到本杆**的流，而 `LoadBalls` **不清它** ⇒ 不清就会读到**上一个候选**的越喉事件，
+        /// 于是"这一杆其实没进"被评成"进了"（症状 = **评估结果依赖评估顺序** = 诊断被污染）。
+        /// </summary>
+        public float EvaluateAiCandidate(AiShotContext context, float aimDegrees, float power, int targetBall,
+            int pocketIndex)
+        {
+            PoolSimulator probe = PrepareProbe(context, aimDegrees, power);
+            if (probe == null)
+            {
+                return 0f;
+            }
+
+            // **"目标球是否真进袋" = 事件流**（§4.3 口径）：存在 `Pocket` 事件且 `ballA == 目标球`。
+            float score = -20f;                                 // 没进 ⇒ 负分
+            IReadOnlyList<ContactEvent> events = probe.ShotContactEvents;
+            for (int i = 0; i < events.Count; i++)
+            {
+                ContactEvent ev = events[i];
+                if (ev.kind != ContactKind.Pocket || ev.ballA != targetBall)
+                {
+                    continue;
+                }
+
+                // 越喉越**居中** ⇒ 分越高（连续分，避免"进袋=1/不进=0"的并列把选杆推到窗口边缘）。
+                float centrality = 0.5f;
+                if (pocketIndex >= 0 && pocketIndex < tableConfig.PocketCount)
+                {
+                    Pocket pocket = tableConfig.GetPocket(pocketIndex);
+                    if (pocket != null && pocket.throatWidth > 1e-6f)
+                    {
+                        centrality = Mathf.Clamp01((ev.position - pocket.throatCenter).magnitude / pocket.throatWidth);
+                    }
+                }
+
+                score = Mathf.Max(score, 100f - 60f * centrality);
+            }
+
+            if (!probe.IsBallInPlay(0))
+            {
+                score -= 300f;                                   // 白球落袋 / 离台 ⇒ 重罚（"不会自己送"）
+            }
+
+            return score;
+        }
+
+        /// <summary>
+        /// **只回答"这个候选会不会把目标球打进"**（**不含任何评分/惩罚**）。
+        ///
+        /// ⚠ **为什么必须单独有这么一个读出**：<see cref="EvaluateAiCandidate"/> 的**合成分**不能当"进没进"的分类器 ——
+        /// 它的"白球落袋 −300"能把"被污染而虚高的进袋分 (+98)"**压回负数**，于是"没进"与"进了但白球也落袋"
+        /// 在分数上**不可区分**（实测：`98.60 − 300 = −201.40`，看起来像"没进袋"⇒ 判据假绿）。
+        /// 判据要判的是**分类**，所以这里把"进没进"这一个信号单独取出。
+        /// ⚠ 与 <see cref="EvaluateAiCandidate"/> **共用** <see cref="PrepareProbe"/>（单一探针设置点）——
+        /// 否则"少一次 `ResetDiagnostics`"的注入只会打到其中一个读出，另一个变成**真空**。
+        /// </summary>
+        public bool AiCandidatePots(AiShotContext context, float aimDegrees, float power, int targetBall)
+        {
+            PoolSimulator probe = PrepareProbe(context, aimDegrees, power);
+            if (probe == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<ContactEvent> events = probe.ShotContactEvents;
+            for (int i = 0; i < events.Count; i++)
+            {
+                if (events[i].kind == ContactKind.Pocket && events[i].ballA == targetBall)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// **探针的一次"本杆"设置（单点实现）**：**归零诊断（含事件快照）→ 灌局面 → 给白球初速 → 推到静止**。
+        ///
+        /// ⚠ **`ResetDiagnostics()` 必须在这里、且只有这一处**：`ShotContactEvents` 是**累积到本杆**的流，
+        /// 而 `LoadBalls` **不清它** ⇒ 少这一次归零，**两个读出（评分 / 进没进）会同时**被上一个候选的
+        /// 越喉事件污染（症状：规划不再确定性 + "没进"被读成"进了"）。
+        /// </summary>
+        private PoolSimulator PrepareProbe(AiShotContext context, float aimDegrees, float power)
+        {
+            PoolSimulator probe = EnsureAiProbe();
+            if (probe == null)
+            {
+                return null;
+            }
+
+            probe.ResetDiagnostics();                          // ★ 本杆诊断归零（**含事件快照**）
+            LoadProbeBalls(probe, context);
+            probe.PlaceBall(0, context.cueBallPosition, CueVelocityFor(aimDegrees, LaunchSpeedFor(power)));
+            StepToRest(probe);
+            return probe;
+        }
+
+        /// <summary>
+        /// 由**当前真实球台**构造 <see cref="AiShotContext"/>（**球号 = 下标**；球号约定见 35-C §6-P1）。
+        /// **只读**：`public` 是刻意的 —— 判据与 UI/诊断要能拿到"AI 眼里的局面"。
+        /// </summary>
+        public AiShotContext BuildAiContext()
+        {
+            var positions = new Vector2[16];
+            var inPlay = new bool[16];
+            IReadOnlyList<BallState> balls = _simulator.Balls;
+            for (int ball = 0; ball < positions.Length; ball++)
+            {
+                bool present = ball < balls.Count;
+                positions[ball] = present ? balls[ball].position : Vector2.zero;
+                inPlay[ball] = present && _simulator.IsBallInPlay(ball);
+            }
+
+            return new AiShotContext
+            {
+                cueBallPosition = positions[0],
+                ballPositions = positions,
+                ballInPlay = inPlay,
+                groupState = aiGroupState,
+                calledPocket = -1,          // D3「指定袋」的 UI 在 P5-B；纯层已支持 `calledPocket >= 0`
+                pocketCenters = PocketCenters(),
+            };
+        }
+
+        private Vector2[] PocketCenters()
+        {
+            var centers = new Vector2[tableConfig.PocketCount];
+            for (int i = 0; i < centers.Length; i++)
+            {
+                centers[i] = tableConfig.GetPocket(i).throatCenter;
+            }
+
+            return centers;
+        }
+
+        /// <summary>
+        /// 懒建 AI 探针：**照抄主内核的物理口径**（`Params` / 袋口缩放 / 静止阈值 / 静止帧数）
+        /// ⇒ 评估模型与实跑模型一致（否则 AI 会照着**另一套物理**做决策）。
+        /// </summary>
+        private PoolSimulator EnsureAiProbe()
+        {
+            if (_aiProbe == null && tableConfig != null && _simulator != null)
+            {
+                _aiProbe = new PoolSimulator(tableConfig, _simulator.Params,
+                    _simulator.PocketCaptureRadiusScaleValue, _simulator.RestSpeedThresholdValue,
+                    _simulator.RestStableFramesValue);
+            }
+
+            return _aiProbe;
+        }
+
+        /// <summary>
+        /// 把局面灌进探针。**不在场的球**（已入袋 / 越界冻结）一律**挪到台外停车位**（`y = 50 + i·0.5`，
+        /// 彼此不重叠）—— `LoadBalls` 会把它们"复活"到场上，而复活一颗已入袋的球会让评估结果失真。
+        /// </summary>
+        private static void LoadProbeBalls(PoolSimulator probe, AiShotContext context)
+        {
+            var balls = new BallState[context.ballPositions.Length];
+            for (int ball = 0; ball < balls.Length; ball++)
+            {
+                bool present = context.ballInPlay != null && ball < context.ballInPlay.Length && context.ballInPlay[ball];
+                balls[ball] = new BallState
+                {
+                    position = present ? context.ballPositions[ball] : new Vector2(0f, 50f + ball * 0.5f),
+                    velocity = Vector2.zero,
+                };
+            }
+
+            probe.LoadBalls(balls);
+        }
+
+        /// <summary>把探针推到"整盘静止"（上限与预测路径同数量级；到上限即收尾，绝不无限循环）。</summary>
+        private static void StepToRest(PoolSimulator probe)
+        {
+            for (int i = 0; i < AiProbeStepCap; i++)
+            {
+                probe.Step();
+                if (probe.TableAtRest)
+                {
+                    return;
+                }
+            }
+        }
+
+        /// <summary>探针单次评估的步数上限（8 m/s 满力滚动 ≈ 3800 步 ⇒ 给 2 倍余量）。</summary>
+        private const int AiProbeStepCap = 8000;
 
         private void Update()
         {
@@ -532,7 +847,15 @@ namespace Billiards.Physics
         private BallState[] BuildRack()
         {
             int count = Mathf.Max(1, rackBallCount);
-            Vector2[] positions = RackPositions(tableConfig.footSpot, count);
+
+            // **8 球局（15 颗）** ⇒ 走"**按球号编号**"的摆位：`[0]` 白球、`[1..15]` 各号球
+            //   （`[8]` = 黑 8 在**第三排正中**、底排两角一实一花）。
+            // 其它球数（测试搭的小堆）⇒ **原样**走几何摆位 `RackPositions`（既有期望值不动）。
+            // ⚠ 两条路径的**位置集合相同**（同一个 `RackSlot` 铺同样的槽）⇒ 物理量不因本分支而变。
+            Vector2[] positions = count == RackBallCount
+                ? EightBallRackPositions(tableConfig.footSpot, ResolvedRackSeed)
+                : RackPositions(tableConfig.footSpot, count);
+
             var balls = new BallState[positions.Length];
             for (int i = 0; i < positions.Length; i++)
             {
@@ -844,10 +1167,11 @@ namespace Billiards.Physics
                 return Vector2.zero;
             }
 
-            float rad = aimDegrees * Mathf.Deg2Rad;
-            var direction = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
-            float speed = Mathf.Lerp(minLaunchSpeed, maxLaunchSpeed, Mathf.Clamp01(power));
-            Vector2 v0 = direction * speed;
+            // 初速 = **方向 × 速度**（**唯一算式**见 <see cref="CueVelocityFor"/> / <see cref="LaunchSpeedFor"/>：
+            // AI 评估探针读**同一对函数**，否则"评估的那一杆"与"真正打出的那一杆"会悄悄分叉）。
+            // 算式与改动前**逐位等价**（同 3 步：`Cos` / `Sin` / `向量 × 标量`，只把 `Lerp` 挪进函数体）。
+            float speed = LaunchSpeedFor(power);
+            Vector2 v0 = CueVelocityFor(aimDegrees, speed);
 
             // ③ 白球不在场上（已入袋 / 擦袋角离台）⇒ **兜底**：放回开球位（详见下方 `PendingCueBallPlacement` 分支）；
             //    否则 ① 就在它停下的地方出杆。

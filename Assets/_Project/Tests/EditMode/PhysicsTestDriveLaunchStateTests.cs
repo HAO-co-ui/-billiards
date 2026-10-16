@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using Billiards.Core;
 using Billiards.Physics;
+using Billiards.Rules;
 using Billiards.Table;
 using NUnit.Framework;
 using UnityEditor;
@@ -91,6 +92,21 @@ namespace Billiards.Tests
             return sb.ToString();
         }
 
+        /// <summary>
+        /// **驱动里实际的球表位置**（下标 = 球号）—— `P5-A` 的 (f)/(g) 用来核对"接线后的摆位"。
+        /// ⚠ 取的是**内核球表**（`Simulator.Balls`）而不是再算一遍纯函数：判据要证的是"装配真的用了它"。
+        /// </summary>
+        private static Vector2[] RackPositionsOf(PhysicsTestDrive drive)
+        {
+            var positions = new Vector2[drive.Simulator.Balls.Count];
+            for (int i = 0; i < positions.Length; i++)
+            {
+                positions[i] = drive.Simulator.Balls[i].position;
+            }
+
+            return positions;
+        }
+
         /// <summary>`PoolSimulator.cs` 源码路径（`P2` 白盒守卫用）。</summary>
         private const string PoolSimulatorSourcePath = "Assets/_Project/Scripts/Runtime/Physics/PoolSimulator.cs";
 
@@ -169,6 +185,14 @@ namespace Billiards.Tests
         ///
         /// **能测出**：`Launch()` 把整盘摆回开球位（本缺陷本体）。
         /// **注入负对照（实测）**：把 `BuildRack()` + `LoadBalls()` 加回 `Launch()` ⇒ FAIL。
+        ///
+        /// **35-C `P1` 追加（(a)–(e)）**：`EightBallRackPositions` 的纯函数契约（16 点 / 8 号第三排正中 /
+        /// 底排两角一实一花 / 同种子逐位相同且不同种子不同 / 不误伤 3 颗版）。
+        /// **35-C `P5-A` 追加（(f)–(g)）—— 从"纯函数对"升级到"**装配真的用了它**"**：
+        /// · **(f) 接线**：15 颗（正式对局球数）建一个 drive ⇒ 读**内核球表**，要求逐位 ==
+        ///   `EightBallRackPositions(footSpot, drive.ResolvedRackSeed)`，且**下标 8 在第三排正中**（独立几何式）；
+        /// · **(g) 种子可复现**：同一 `rackSeed` 两次 `Initialize` **逐位相同**；不同 `rackSeed` **不得全等**。
+        ///   ⇒ **打死法**：`BuildRack` 的 15 颗分支改回 `RackPositions` ⇒ (f) 红；让它忽略 `ResolvedRackSeed` ⇒ (g) 红。
         ///
         /// ⚠ **两次实测教训（务必保留，否则会重复踩）**：
         /// ① **不要把 `Simulator.Balls` 的数组引用缓存到 `Launch()` 之前**：
@@ -376,6 +400,75 @@ namespace Billiards.Tests
                 {
                     failures.Add($"(e) 3 颗版最小球心距应 == {rackSpacing:R}（未误伤），实测 {minGap3:R}。");
                 }
+            }
+
+            // ── **35-C P5-A：(f) 15 颗开局必须走"按球号编号"的 8 球摆位（**接线**）+ (g) 种子可复现** ──
+            // 期望值来源：**独立几何式**（第三排正中 = `RackApexX − 2·(s·√3/2)` 且 `y = 0`；`s = BallDiameter + 2e-4`）＋ 纯函数契约。
+            // **怎么打死它**：把 `BuildRack` 的 15 颗分支改回 `RackPositions` ⇒ (f) 必红（下标 8 不在第三排正中）；
+            //   让 `BuildRack` 忽略 `ResolvedRackSeed`（或用常量）⇒ (g) 的"不同 seed 应不同"必红。
+            var rackGo = new GameObject("T65RackDrive");
+            try
+            {
+                PhysicsTestDrive rackDrive = rackGo.AddComponent<PhysicsTestDrive>();
+                rackDrive.tableConfig = Table();
+                rackDrive.loadRackForBallBallDemo = true;
+                rackDrive.rackBallCount = PhysicsTestDrive.RackBallCount;   // 15（正式对局球数）
+                rackDrive.rackSeed = 4242;                                 // **注入固定种子**
+                rackDrive.Initialize();
+
+                if (rackDrive.ResolvedRackSeed != 4242)
+                {
+                    failures.Add($"(f) 注入的 `rackSeed`（4242）应被原样采用，实测 `ResolvedRackSeed = {rackDrive.ResolvedRackSeed}`。");
+                }
+
+                if (rackDrive.Simulator == null || rackDrive.Simulator.Balls.Count != 16)
+                {
+                    failures.Add($"(f) 15 颗开局应有 16 颗球，实测 "
+                                 + $"{(rackDrive.Simulator == null ? -1 : rackDrive.Simulator.Balls.Count)}。");
+                }
+                else
+                {
+                    // (f) 逐位 == `EightBallRackPositions(footSpot, ResolvedRackSeed)`（用**驱动自己解析出的**种子）
+                    Vector2[] expectedRack = PhysicsTestDrive.EightBallRackPositions(rackFootSpot, rackDrive.ResolvedRackSeed);
+                    for (int ball = 0; ball < expectedRack.Length; ball++)
+                    {
+                        if (RVec(rackDrive.Simulator.Balls[ball].position) != RVec(expectedRack[ball]))
+                        {
+                            failures.Add($"(f) 球表下标 {ball} 应逐位 == `EightBallRackPositions(seed)` 的 "
+                                         + $"{RVec(expectedRack[ball])}，实测 {RVec(rackDrive.Simulator.Balls[ball].position)}"
+                                         + "（⇒ `BuildRack` 没走 15 颗的编号摆位）。");
+                            break;
+                        }
+                    }
+
+                    // (f) **接线后的 8 号（下标 8）在第三排正中**（独立几何式，不复述实现）
+                    var expectedEightInDrive = new Vector2(PhysicsTestDrive.RackApexX - 2f * rackRowSpacing, 0f);
+                    if (RVec(rackDrive.Simulator.Balls[8].position) != RVec(expectedEightInDrive))
+                    {
+                        failures.Add($"(f) **接线后 8 号（下标 8）应在第三排正中** {RVec(expectedEightInDrive)}（逐位），"
+                                     + $"实测 {RVec(rackDrive.Simulator.Balls[8].position)}。");
+                    }
+                }
+
+                // (g) 同一 `rackSeed` 两次 `Initialize` ⇒ 逐位相同
+                string sigFirst = RackSignature(RackPositionsOf(rackDrive));
+                rackDrive.Initialize();
+                if (RackSignature(RackPositionsOf(rackDrive)) != sigFirst)
+                {
+                    failures.Add("(g) 同一 `rackSeed` 两次 `Initialize` 应逐位相同（可复现）。");
+                }
+
+                // (g) 不同 `rackSeed` ⇒ 至少一处不同（防"种子被忽略 = 假随机"）
+                rackDrive.rackSeed = 777;
+                rackDrive.Initialize();
+                if (RackSignature(RackPositionsOf(rackDrive)) == sigFirst)
+                {
+                    failures.Add("(g) 不同 `rackSeed` 应产生不同摆法（否则种子被忽略 = 假随机）。");
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(rackGo);
             }
 
                 Assert.IsEmpty(failures,
@@ -985,6 +1078,325 @@ namespace Billiards.Tests
             finally
             {
                 Object.DestroyImmediate(go);
+            }
+        }
+
+
+        /// <summary>T145 的干净局面里**唯一在场**的目标球号（实色、≠8）。</summary>
+        private const int AiCleanTargetBall = 3;
+
+        /// <summary>在场球数（T145 用来前置断言"只剩 1 颗目标球"）。</summary>
+        private static int CountBallsInPlay(PhysicsTestDrive drive)
+        {
+            int count = 0;
+            for (int ball = 0; ball < drive.Simulator.Balls.Count; ball++)
+            {
+                if (ball != 0 && drive.Simulator.IsBallInPlay(ball))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        // ══════════════════ T145 AI 出杆入口（35-C P5-A）═════════════════════
+
+        /// <summary>15 颗（正式对局球数）＋**注入固定 `rackSeed`** ⇒ 开局摆位确定（判据可复现的前提）。</summary>
+        private static PhysicsTestDrive NewAiDrive(GameObject go, int rackSeed)
+        {
+            PhysicsTestDrive drive = go.AddComponent<PhysicsTestDrive>();
+            drive.tableConfig = Table();
+            drive.loadRackForBallBallDemo = true;
+            drive.rackBallCount = PhysicsTestDrive.RackBallCount;   // 15
+            drive.rackSeed = rackSeed;
+            drive.Initialize();
+            Assert.IsNotNull(drive.Simulator, "T145：Initialize 后应有内核。");
+            Assert.AreEqual(16, drive.Simulator.Balls.Count, "T145：15 颗开局应有 16 颗球。");
+            return drive;
+        }
+
+        /// <summary>两个意图**逐位**相同（含 `planned` / 目标球 / 袋 / 分 / 评估次数）。</summary>
+        private static bool SameIntent(in AiShotIntent a, in AiShotIntent b)
+        {
+            return a.planned == b.planned && a.aimDegrees == b.aimDegrees && a.power == b.power
+                   && a.targetBall == b.targetBall && a.pocketIndex == b.pocketIndex
+                   && a.score == b.score && a.candidatesEvaluated == b.candidatesEvaluated;
+        }
+
+        /// <summary>本杆接触事件流签名（逐条：kind / 球号 / 位置）——用来比"两杆的事件流是否逐条相同"。</summary>
+        private static string StreamSignature(PoolSimulator sim)
+        {
+            var sb = new StringBuilder();
+            IReadOnlyList<ContactEvent> events = sim.ShotContactEvents;
+            for (int i = 0; i < events.Count; i++)
+            {
+                sb.Append(i).Append(':').Append(events[i].kind).Append('|')
+                  .Append(events[i].ballA).Append('|').Append(events[i].ballB).Append('|')
+                  .Append(RVec(events[i].position)).Append('\n');
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// **AI 出杆入口**（35-C `P5-A`）；编号 `T145`（⚠ `T144` 已被 `ClubUiTests` 的 `MatchIntro` 占用，避开重号）。
+        ///
+        /// · **① 种子可复现**：同 `seed` 两次 `PlanAiShot` **逐位相同**；换 `seed` ⇒ **不得全等**
+        ///   （防"种子被忽略 = 假随机"）；**并且**多次规划后主内核快照**逐位不变**（规划是**只读**的）。
+        /// · **② 预算封顶**：`candidatesEvaluated ≤ Parameters(档).candidateBudget` 且 `> 0`（空转即红）。
+        /// · **③ 评估不污染诊断**（**可证伪**形式）：
+        ///   (a) **只读性**：`EvaluateAiCandidate` 前后主内核快照**逐位不变**（评估若借用主内核，快照必变）；
+        ///   (b) **分类与评估顺序无关**：一个**确定打偏**的候选，无论"单独评估"，还是"夹在一个**确实进袋**的候选之后评估"，
+        ///       都**必须判为没进袋**（分 ≤ `-20`）。⚠ 不能只比"两次评分是否相等" —— 陈旧事件会让每个候选的分**饱和**到
+        ///       同一个高值（实测：那样写会**漏检**，见下方注入实测记录）。
+        /// · **④ 出杆后球真的动**：`TryLaunchAiShot` 返回的初速非零 + 推进后白球真的位移；
+        ///   **并且**主内核事件流与"同一 aim/power 手工 `Launch()`"**逐条相同**。
+        ///
+        /// ⚠ **为什么不用字面口径"出杆后事件流只含这一杆"当主判据**：`Launch()` **自身**在出杆前就调
+        /// `ResetDiagnostics()`（它清 `_shotContactEvents`）⇒ 无论评估有没有污染，出杆后的事件流都**只含这一杆**
+        /// ⇒ 那条断言**恒真**（恒真证据 = 无证据）。故改用 ③(a) 快照只读性 —— 它**能**被"评估借用了主内核"打死。
+        /// ⚠ **为什么 ④ 里那条对照不是恒真**：手工盘与 AI 盘**都**要 `Launch()`，若 AI 路径额外改动了球台状态
+        /// （例如评估期把速度留在了某颗球上），两条事件流就会分叉。
+        ///
+        /// **注入负对照（实测）**：
+        /// · 删掉 `EvaluateAiCandidate` 里的 `probe.ResetDiagnostics()` ⇒ **③(b) 红**；
+        /// · 在 `PlanAiShot` 里把 `seed` 写死 ⇒ **① 的"换 seed 不得全等"红**。
+        /// </summary>
+        [Test]
+        public void T145_AiShotEntry_PlanLaunchAndDiagnosticPurity()
+        {
+            var failures = new List<string>();
+            var go = new GameObject("T145Drive");
+            var goManual = new GameObject("T145Manual");
+            try
+            {
+                PhysicsTestDrive drive = NewAiDrive(go, rackSeed: 4242);
+                PhysicsTestDrive manual = NewAiDrive(goManual, rackSeed: 4242);
+                AdvanceToRest(drive, RestCap);
+                AdvanceToRest(manual, RestCap);
+                Assert.IsTrue(drive.Simulator.TableAtRest, "T145：前提 —— AI 盘应在开球前静止。");
+                Assert.IsTrue(manual.Simulator.TableAtRest, "T145：前提 —— 对照盘应在开球前静止。");
+
+                // ⚠ **把两台都改成"干净进球局面"**（一颗目标球 + 白球正对一只角袋，其余球挪出台外）：
+                //   满 15 颗三角堆里球彼此挡住 ⇒ "确实会进袋的候选"不存在 ⇒ ③(b) 会**真空**（实测踩过）。
+                int cleanPocket = FirstCornerPocket(drive.tableConfig);
+                SetUpCleanPot(drive, AiCleanTargetBall, cleanPocket, drive.Simulator.Balls.Count);
+                SetUpCleanPot(manual, AiCleanTargetBall, cleanPocket, manual.Simulator.Balls.Count);
+                AdvanceToRest(drive, RestCap);
+                AdvanceToRest(manual, RestCap);
+                Assert.IsTrue(drive.Simulator.TableAtRest, "T145：前提 —— 干净局面摆好后应静止。");
+                Assert.AreEqual(1, CountBallsInPlay(drive), "T145：前提 —— 干净局面应只剩 1 颗目标球在场。");
+
+                // ── ③ 评估不污染诊断（**必须最先做**：前提要在探针"全新"时量）──
+                // ⚠ 若把它放到 ①②（会跑 `PlanAiShot`）之后，规划期的陈旧事件会把"前提①"一起弄脏
+                //   （实测：注入版下 `missAlone` 直接变 true ⇒ 判据归因错误、被读成"前提不成立"而不是"被污染"）。
+                AiShotContext context = drive.BuildAiContext();
+                string beforeEvaluation = Snapshot(drive);
+
+                // 参照候选 = **幽灵球基准方向**（几何上的完美线）；打偏候选 = 该方向 **+40°**。
+                float perfectAim = EightBallAi.AimDegreesForPocket(context.cueBallPosition,
+                    context.ballPositions[AiCleanTargetBall], context.pocketCenters[cleanPocket]);
+                const float probePower = 0.5f;
+                float missAim = perfectAim + 40f;
+
+                // 前提①：打偏候选**不得**进袋（探针此刻全新 ⇒ 不受任何历史事件影响）
+                bool missAlone = drive.AiCandidatePots(context, missAim, probePower, AiCleanTargetBall);
+                // 前提②：参照候选**确实**进袋（否则没有"泄漏源"）
+                bool potter = drive.AiCandidatePots(context, perfectAim, probePower, AiCleanTargetBall);
+                // 判据：把一个**确实进袋**的候选评过之后，打偏候选**仍须**判为没进袋
+                bool missAfterPotter = drive.AiCandidatePots(context, missAim, probePower, AiCleanTargetBall);
+
+                if (missAlone)
+                {
+                    failures.Add("(③b) 非空转前提不成立：**故意打偏的候选**（基准 +40°、力度 0.5）在**全新探针**上就进袋了"
+                                 + " ⇒ 「进袋 vs 没进袋」不可区分，本对照是**真空**的（需换局面）。");
+                }
+                else if (!potter)
+                {
+                    failures.Add("(③b) 非空转前提不成立：**幽灵球基准方向**在目标袋上（力度 0.5）**不进袋**"
+                                 + " ⇒ 本对照没有「泄漏源」、是**真空**的（需换局面或力度）。");
+                }
+                else if (missAfterPotter)
+                {
+                    failures.Add("(③b) **评估被污染**：一个确定打偏的候选（基准 +40°、力度 0.5）单独评是「没进袋」，"
+                                 + "但把一个**确实进袋**的候选评过之后再评，变成「进袋了」"
+                                 + " ⇒ `ShotContactEvents` 未按候选归零，上一个候选的越喉事件被算进了这一杆。");
+                }
+
+                if (Snapshot(drive) != beforeEvaluation)
+                {
+                    failures.Add("(③a) 评估改动了主内核快照 ⇒ 评估**不是只读**的"
+                                 + "（求值器借用了真实球台；真实对局会被评估过程污染）。");
+                }
+
+                // ⚠ **评分不能当"进没进"的分类器**：合成分里"白球落袋 −300"会把"被污染而虚高的进袋分 (+98)"
+                //   **压回负数**（实测 `98.60 − 300 = −201.40`，看起来像"没进袋" ⇒ 判据假绿）。
+                //   故 ③ 一律用 `AiCandidatePots`（**只答进没进**）。
+
+                string beforeAnyPlanning = Snapshot(drive);
+
+                // ── ① 种子可复现 + 规划只读 ──
+                AiShotIntent first = drive.PlanAiShot(AiDifficulty.Club, 20261);
+                AiShotIntent again = drive.PlanAiShot(AiDifficulty.Club, 20261);
+                if (!SameIntent(first, again))
+                {
+                    failures.Add($"(①) 同 `seed` 两次 `PlanAiShot` 应逐位相同："
+                                 + $"aim {first.aimDegrees} vs {again.aimDegrees}、power {first.power} vs {again.power}、"
+                                 + $"目标 {first.targetBall} vs {again.targetBall}、评估次数 "
+                                 + $"{first.candidatesEvaluated} vs {again.candidatesEvaluated}。");
+                }
+
+                AiShotIntent other = drive.PlanAiShot(AiDifficulty.Club, 999);
+                if (SameIntent(first, other))
+                {
+                    failures.Add("(①) 换 `seed` 后意图**完全没变** ⇒ `seed` 被忽略（假随机）；"
+                                 + $"两次分别是 aim {first.aimDegrees} / {other.aimDegrees}。");
+                }
+
+                if (Snapshot(drive) != beforeAnyPlanning)
+                {
+                    failures.Add("(①) 三次 `PlanAiShot` 后主内核快照**变了** ⇒ 规划不是只读的（污染了真实球台）。");
+                }
+
+                // ── ② 预算封顶 + 非空转 ──
+                AiDifficultyParameters parameters = EightBallAi.Parameters(AiDifficulty.Club);
+                if (!first.planned)
+                {
+                    failures.Add("(②) 15 颗开局 + 静止台面下 AI 应产出意图（`planned == true`），实测 false。");
+                }
+
+                if (first.candidatesEvaluated <= 0)
+                {
+                    failures.Add("(②) `candidatesEvaluated == 0` ⇒ 求值器根本没被调用（空转）。");
+                }
+                else if (first.candidatesEvaluated > parameters.candidateBudget)
+                {
+                    failures.Add($"(②) 候选评估 {first.candidatesEvaluated} 次 > 预算 {parameters.candidateBudget}。");
+                }
+
+                if (drive.LastAiSeed != 999)
+                {
+                    failures.Add($"(②) `LastAiSeed` 应记最近一次决策的种子（999），实测 {drive.LastAiSeed}。");
+                }
+
+                // ── ④ 出杆：初速非零 + 球真的动 + 与手工同杆事件流逐条相同 ──
+                Vector2 aiVelocity = drive.TryLaunchAiShot(AiDifficulty.Club, 20261);
+                if (aiVelocity.magnitude <= 0f)
+                {
+                    failures.Add("(④) `TryLaunchAiShot` 返回零向量 ⇒ 没有真的出杆（门控被拒或意图为空）。");
+                }
+
+                AiShotIntent launched = drive.LastAiShotIntent;
+                if (!(drive.aimDegrees == launched.aimDegrees && drive.power == launched.power))
+                {
+                    failures.Add($"(④) 出杆前应把意图写进 `aimDegrees`/`power`（与交互层同一写入口径），"
+                                 + $"实测 aim {drive.aimDegrees} / power {drive.power}，意图 {launched.aimDegrees} / {launched.power}。");
+                }
+
+                manual.aimDegrees = launched.aimDegrees;
+                manual.power = launched.power;
+                manual.Launch();
+
+                // 两盘**推进同样的步数**（不各自"跑到静止"⇒ 否则步数不同会让事件流不可比）
+                const int compareSteps = 1500;
+                Vector2 cueBefore = drive.Simulator.Balls[0].position;
+                for (int i = 0; i < compareSteps; i++)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                    manual.Advance(PoolSimulator.FixedDeltaTime);
+                }
+
+                if ((drive.Simulator.Balls[0].position - cueBefore).magnitude <= 0.05f)
+                {
+                    failures.Add("(④) 白球在 1500 步内位移 ≤ 0.05 m ⇒ 球没真的动（非空转检查失败）。");
+                }
+
+                string aiStream = StreamSignature(drive.Simulator);
+                if (aiStream.Length == 0)
+                {
+                    failures.Add("(④) AI 出杆后**一个接触事件都没有** ⇒ 本判据的事件流对照是**真空**的。");
+                }
+
+                if (aiStream != StreamSignature(manual.Simulator))
+                {
+                    failures.Add("(④) AI 出杆后的主内核事件流与「同一 aim/power 手工出杆」**逐条不同** ⇒ "
+                                 + "AI 路径额外改动了球台状态（评估不得留在真实球台上）。");
+                }
+
+                TestContext.WriteLine($"T145: 意图 aim {launched.aimDegrees:F3}° / power {launched.power:F3} / "
+                                      + $"目标 {launched.targetBall} → 袋 {launched.pocketIndex} / 评估 "
+                                      + $"{launched.candidatesEvaluated} 次（预算 {parameters.candidateBudget}）；"
+                                      + $"偏杆进袋 = {missAlone}（应为 False）、参照候选进袋 = {potter}；事件流 {compareSteps} 步逐条相同 ✓");
+
+                Assert.IsEmpty(failures, "T145（AI 出杆入口）失败：\n" + string.Join("\n", failures));
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+                Object.DestroyImmediate(goManual);
+            }
+        }
+
+        /// <summary>取一只**角袋**（优先 +x/+y 象限；与具体资产编号解耦）。</summary>
+        private static int FirstCornerPocket(TableConfig table)
+        {
+            int fallback = 0;
+            bool hasFallback = false;
+            for (int i = 0; i < table.PocketCount; i++)
+            {
+                Pocket pocket = table.GetPocket(i);
+                if (pocket == null || !pocket.IsCorner)
+                {
+                    continue;
+                }
+
+                if (!hasFallback)
+                {
+                    fallback = i;
+                    hasFallback = true;
+                }
+
+                if (pocket.throatCenter.x > 0f && pocket.throatCenter.y > 0f)
+                {
+                    return i;
+                }
+            }
+
+            return fallback;
+        }
+
+        /// <summary>
+        /// 把球台改成**干净进球局面**：`targetBall` 放在"离某角袋 0.45 m"的直线上、白球在其**幽灵球**后方 0.30 m
+        /// （正对 ⇒ 几何上必进），其余球一律挪到**台外停车位**（`y = 50 + i·0.5`，彼此不重叠 ⇒ 首次 `Step` 即冻结为"不在场"）。
+        ///
+        /// ⚠ **为什么必须这么做**：满 15 颗三角堆里**绝大多数球都被邻球挡住**，根本打不进
+        /// ⇒ 拿满堆当"评估器"的判据会**真空**（**实测**：幽灵球基准方向在满堆上四个力度档**全不进袋**，
+        /// 于是"进袋候选"这个泄漏源根本不存在）。
+        /// </summary>
+        private static void SetUpCleanPot(PhysicsTestDrive drive, int targetBall, int pocketIndex, int ballCount)
+        {
+            TableConfig table = drive.tableConfig;
+            Vector2 pocket = table.GetPocket(pocketIndex).throatCenter;
+            Vector2 dir = (pocket - Vector2.zero).normalized;
+            Vector2 target = pocket - dir * 0.45f;
+            Vector2 ghost = target - dir * (2f * PoolConstants.BallRadius);
+            Vector2 cue = ghost - dir * 0.30f;
+
+            for (int ball = 0; ball < ballCount; ball++)
+            {
+                if (ball == 0)
+                {
+                    drive.Simulator.PlaceBall(ball, cue, Vector2.zero);
+                }
+                else if (ball == targetBall)
+                {
+                    drive.Simulator.PlaceBall(ball, target, Vector2.zero);
+                }
+                else
+                {
+                    drive.Simulator.PlaceBall(ball, new Vector2(0f, 50f + ball * 0.5f), Vector2.zero);
+                }
             }
         }
     }
