@@ -1217,15 +1217,15 @@ namespace Billiards.Tests
                 }
                 else
                 {
-                    if (RVec(bank.VisiblePathEnd) != RVec(bank.CushionContactPosition))
+                    if (RVec(bank.VisiblePathEnd) != RVec(bank.FirstContactPosition))
                     {
-                        t138EndFailures.Add($"⑪ 可见末点 {RVec(bank.VisiblePathEnd)} ≠ 库边接触点 {RVec(bank.CushionContactPosition)}（逐位）。");
+                        t138EndFailures.Add($"⑪ 可见末点 {RVec(bank.VisiblePathEnd)} ≠ 库边接触点 {RVec(bank.FirstContactPosition)}（逐位）。");
                     }
 
                     // ⚠ **判"落在某条库线上"**（不是只判长库）：本几何瞄 172.50° ⇒ 撞的是 **−x 端库**
                     //   （实测 `|x| = 1.24142647`，恰 = `halfLength − r = 1.27 − 0.028575`）⇒ 只判 `|y|` 会**恒红**（本条第一版就踩了）。
-                    float offEndX = Mathf.Abs(Mathf.Abs(bank.CushionContactPosition.x) - (Table().halfLength - rEnd));
-                    float offEndY = Mathf.Abs(Mathf.Abs(bank.CushionContactPosition.y) - (halfWidthEnd - rEnd));
+                    float offEndX = Mathf.Abs(Mathf.Abs(bank.FirstContactPosition.x) - (Table().halfLength - rEnd));
+                    float offEndY = Mathf.Abs(Mathf.Abs(bank.FirstContactPosition.y) - (halfWidthEnd - rEnd));
                     if (!(offEndX <= EndTol || offEndY <= EndTol))
                     {
                         t138EndFailures.Add($"⑪ 库边接触点应落在**某条库线**上（离端库 {offEndX:R}、离长库 {offEndY:R}，均 > {EndTol:R}）。");
@@ -1249,9 +1249,9 @@ namespace Billiards.Tests
                 {
                     t138EndFailures.Add("⑬ 贴库瞄库的首个接触应为库边。");
                 }
-                else if (RVec(hugging.VisiblePathEnd) != RVec(hugging.CushionContactPosition))
+                else if (RVec(hugging.VisiblePathEnd) != RVec(hugging.FirstContactPosition))
                 {
-                    t138EndFailures.Add($"⑬ 贴库瞄库的可见末点 {RVec(hugging.VisiblePathEnd)} ≠ 库边接触点 {RVec(hugging.CushionContactPosition)}（逐位）。");
+                    t138EndFailures.Add($"⑬ 贴库瞄库的可见末点 {RVec(hugging.VisiblePathEnd)} ≠ 库边接触点 {RVec(hugging.FirstContactPosition)}（逐位）。");
                 }
 
                 Assert.IsEmpty(t138EndFailures, "T138⑪–⑬ 失败项（**收集全部**）：\n" + string.Join("\n", t138EndFailures));

@@ -87,8 +87,15 @@ namespace Billiards.Physics
         /// <summary>首个接触**是不是库边**（⇒ 在接触点画"库边圆"；球-球时**不画**库圆，走原幽灵球行为）。</summary>
         public bool HasCushionFirstContact;
 
-        /// <summary>库边接触点（= <see cref="FirstContactPosition"/>，仅 <see cref="HasCushionFirstContact"/> 时有意义）。</summary>
-        public Vector2 CushionContactPosition;
+        /// <summary>
+        /// **首个接触是球-球**（**显式**字段；视图一律用它，**不要**用"类别 != Cushion"**反推**）。
+        /// ⚠ 反推会把 `Pocket`（越袋喉）等**非球-球**类别误当球首碰 ⇒ 去读**未被赋值**的 <see cref="GhostBall"/>（= `(0,0)`）
+        /// ⇒ 圆画在台面正中（缺陷 C）。同理：<see cref="GhostBall"/> **只在**本字段为真时可读。
+        /// </summary>
+        public bool HasBallBallFirstContact;
+
+        // ⚠ **已删除 `CushionContactPosition`**（根治"只在某分支才填 ⇒ 读了未填字段 ⇒ 画到 (0,0)"这一整类 bug）：
+        //   视图一律用**单一对** `FirstContactKind` + `FirstContactPosition`（对所有类别都填）✓
 
         /// <summary>
         /// **可见路径的末点** —— **有接触 ⇒ = 精确接触点**（`FirstContactPosition`，**亚步误差归零**）；

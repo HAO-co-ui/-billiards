@@ -280,8 +280,10 @@ namespace Billiards.Physics
                 // 里存的是**上一杆的旧结果**；不复位就会看到"瞄准线停在原地不动"（用户实测反馈）。
                 if (!_linesCleared)
                 {
-                    SyncRenderers(System.Array.Empty<(Vector2 a, Vector2 b)>());
-                    SyncContactMarkers(default);
+                    // ⚠ **唯一实现点**（缺陷 A 的修法）：以前这里只清了"虚线池 + 接触标记"，
+                    //   而白线本体的载体**换成 `_pathLine` 后忘了同步清空** ⇒ 出杆后白线**留在台上**
+                    //   （用户第三轮反馈："怎么发射完还留线"）。⇒ 现在一律只调 `HideAllAimVisuals()`。
+                    HideAllAimVisuals();
                     _linesCleared = true;
                     _lastDrawnVersion = -1;
                 }
@@ -383,6 +385,93 @@ namespace Billiards.Physics
         /// 顶点一律走 <see cref="MarkerWorldPoint"/> / <see cref="WorldDirection"/>（与 Scene Gizmos 同口径）。
         /// 无首接触（打空）⇒ 三者全部隐藏，只留路径线。
         /// </summary>
+        /// <summary>
+        /// **按「首个接触」决定该画哪些标记**（**唯一实现点**；判据直接驱动本函数，不必读渲染对象）。
+        ///
+        /// · **首接触 = 库边** ⇒ 只画【库边圆】；**不画**幽灵球圆 / 目标出射线 / 白球偏转线
+        ///   （那三样都是"**碰球之后**"才发生的事 ⇒ 库里首碰时画它们**语义错误、且会误导**）；
+        /// · **首接触 = 球** ⇒ 画【幽灵球圆 + 目标出射线 + 白球偏转线】；**不画**库边圆；
+        /// · **无接触** ⇒ 全不画。
+        /// ⚠ 缺陷 B（用户第三轮："怎么有两个圈"）：旧实现里幽灵球圆用 `HasFirstContact`（= **球-球**接触，
+        ///   可能在**碰库之后**才发生）、库边圆用 `HasCushionFirstContact` ⇒ "**先碰库再碰球**"的杆里**两者同时为真**
+        ///   ⇒ **两个圈**。旧注释那句"两圆互斥，不会叠"**是假的**（它默认了 `HasFirstContact` == 首个接触）。
+        /// </summary>
+        public readonly struct AimMarkerSet
+        {
+            public readonly bool GhostCircle;
+            public readonly bool CushionCircle;
+            public readonly bool TargetLine;
+            public readonly bool CueDeflectLine;
+
+            public AimMarkerSet(bool ghostCircle, bool cushionCircle, bool targetLine, bool cueDeflectLine)
+            {
+                GhostCircle = ghostCircle;
+                CushionCircle = cushionCircle;
+                TargetLine = targetLine;
+                CueDeflectLine = cueDeflectLine;
+            }
+        }
+
+        /// <summary>见 <see cref="AimMarkerSet"/>：按**首个接触的类别**给出该显示哪组标记（纯函数）。</summary>
+        public static AimMarkerSet MarkersFor(ContactKind firstContactKind, bool hasFirstContactEvent)
+        {
+            if (!hasFirstContactEvent)
+            {
+                return new AimMarkerSet(false, false, false, false);
+            }
+
+            // ⚠ **必须穷举四档、不许有"兜底成球首碰"的分支**（缺陷 C 的根因就在这个 `else`）：
+            //   白线指向**球袋**时首接触是 `ContactKind.Pocket`（越袋喉）⇒ 旧实现把它当成"球首碰"⇒ 去画幽灵球圆；
+            //   而"无球-球接触"时 `GhostBall` **从未被赋值**（`Predict` 的提前返回分支里没有它）= `default` = **(0,0)**
+            //   ⇒ **圆画在台面正中**（用户第三轮："圆圈分离出来了"）。
+            switch (firstContactKind)
+            {
+                case ContactKind.Cushion:
+                    return new AimMarkerSet(false, true, false, false);    // 库边首碰：只库边圆
+
+                case ContactKind.BallBall:
+                    return new AimMarkerSet(true, false, true, true);      // 球首碰：幽灵球圆 + 黄线 + 蓝线
+
+                case ContactKind.Pocket:
+                    // 越袋喉 = 球进袋 ⇒ **没有"接触物"要标**（画幽灵球圆/出射线都是**语义错误**）。
+                    return new AimMarkerSet(false, false, false, false);
+
+                default:
+                    // ⚠ **未知/新增类别一律不画**（**不得**落入"球首碰"兜底）。
+                    //   将来加类别时，`switch` 的穷举会提醒在此处显式决定（编译器不会静默兜底）。
+                    return new AimMarkerSet(false, false, false, false);
+            }
+        }
+
+        /// <summary>
+        /// **隐藏全部瞄准可视物**（**唯一实现点**；清空分支与任何"该隐藏"的路径都只调它）。
+        ///
+        /// ⚠ **迁移检查清单（本处最值钱的一条）**：**换渲染载体时，必须同时更新"所有"引用该载体的路径** ——
+        /// **绘制 / 清空 / 显隐门 / 池回收**，并**加一条"清空后无残留"的判据**（否则下次还会漏）。
+        /// 本缺陷 A 漏的正是"**清空**"那一列（白线载体由虚线池换成 `_pathLine` 时只改了绘制）。
+        /// 本方法**显式枚举**全部对象（不依赖 `SyncContactMarkers(default)` 的内部逻辑 ⇒ 更稳）：
+        /// 虚线池（已退役，仍一并清）/ `_pathLine` / `_ghostCircle` / `_cushionCircle` / `_targetLine` / `_cueDeflectLine`。
+        /// </summary>
+        private void HideAllAimVisuals()
+        {
+            SyncRenderers(System.Array.Empty<(Vector2 a, Vector2 b)>());
+
+            HideLine(_pathLine);
+            HideLine(_ghostCircle);
+            HideLine(_cushionCircle);
+            HideLine(_targetLine);
+            HideLine(_cueDeflectLine);
+        }
+
+        /// <summary>隐藏单个瞄准可视物（`null` 安全）。</summary>
+        private static void HideLine(LineRenderer line)
+        {
+            if (line != null)
+            {
+                line.gameObject.SetActive(false);
+            }
+        }
+
         private void SyncContactMarkers(in ShotPrediction prediction)
         {
             if (playfieldRoot == null)
@@ -390,6 +479,8 @@ namespace Billiards.Physics
                 return;
             }
 
+            // ⚠ **按"首个接触"互斥**（缺陷 B 的修法）：可见性一律由纯函数 `MarkersFor` 决定。
+            AimMarkerSet markers = MarkersFor(prediction.FirstContactKind, prediction.HasFirstContactEvent);
             bool hasContact = prediction.HasFirstContact;
             float scale = DrawScale(playfieldRoot);
             Vector3 ghostWorld = DrawPoint(playfieldRoot, PoolGeometry.PhysicsBallToUnity(prediction.GhostBall));
@@ -405,8 +496,8 @@ namespace Billiards.Physics
                 _ghostCircle.positionCount = GhostCircleSegments;
             }
 
-            _ghostCircle.gameObject.SetActive(hasContact);
-            if (hasContact)
+            _ghostCircle.gameObject.SetActive(markers.GhostCircle);
+            if (markers.GhostCircle)
             {
                 float radius = PoolConstants.BallRadius * scale;
                 for (int i = 0; i < GhostCircleSegments; i++)
@@ -430,12 +521,13 @@ namespace Billiards.Physics
                 _cushionCircle.positionCount = GhostCircleSegments;
             }
 
-            bool hasCushionCircle = prediction.HasCushionFirstContact;
+            bool hasCushionCircle = markers.CushionCircle;
             _cushionCircle.gameObject.SetActive(hasCushionCircle);
             if (hasCushionCircle)
             {
+                // ⚠ 用**单一对**里的 `FirstContactPosition`（对所有类别都填）—— 不再有"只在库边分支才填"的字段。
                 Vector3 cushionWorld = DrawPoint(playfieldRoot,
-                    PoolGeometry.PhysicsBallToUnity(prediction.CushionContactPosition));
+                    PoolGeometry.PhysicsBallToUnity(prediction.FirstContactPosition));
                 float cushionRadius = PoolConstants.BallRadius * scale;
                 for (int i = 0; i < GhostCircleSegments; i++)
                 {
@@ -445,7 +537,7 @@ namespace Billiards.Physics
                 }
             }
 
-            bool hasTarget = hasContact && prediction.TargetOutgoingDirection != Vector2.zero;
+            bool hasTarget = markers.TargetLine && prediction.TargetOutgoingDirection != Vector2.zero;
             if (_targetLine == null)
             {
                 _targetLine = CreateMarkerLine("AimAssistTargetLine", TargetColor, 2);
@@ -458,7 +550,7 @@ namespace Billiards.Physics
                 _targetLine.SetPosition(1, ghostWorld + WorldDirection(prediction.TargetOutgoingDirection) * (TargetLineLength * scale));
             }
 
-            bool hasCue = hasContact && prediction.CueOutgoingDirection != Vector2.zero;
+            bool hasCue = markers.CueDeflectLine && prediction.CueOutgoingDirection != Vector2.zero;
             if (_cueDeflectLine == null)
             {
                 _cueDeflectLine = CreateMarkerLine("AimAssistCueDeflectLine", CueDeflectColor, 2);

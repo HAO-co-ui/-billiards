@@ -641,6 +641,131 @@ namespace Billiards.Tests
                     failures.Add($"(b) 判别力锚失效：actual == 直写镜像版 {V(mirrored)} ⇒ 本判据打不死\"漏双取反\"。");
                 }
 
+            // ── **缺陷 A：发射后白线残留**（2026-10-16 第三轮用户反馈："怎么发射完还留线"）──────────────
+            // (A) **清空后无残留**（白盒守卫写法 = **调用形态**，不是方法名）：
+            //   ① 清空分支必须走**唯一实现点** `HideAllAimVisuals()`；
+            //   ② 该实现点里**必须**清白线载体 `_pathLine`（本缺陷漏的就是这一行）。
+            // **怎么打死它**：删掉 `HideLine(_pathLine);` 那行 ⇒ 本条(②)必红（**注入两向**：删调用点红、删别的行不红）。
+            string viewSource = StripLineCommentsT80(
+                System.IO.File.ReadAllText(System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(UnityEngine.Application.dataPath), ViewSourcePath)));
+            if (!viewSource.Contains("HideAllAimVisuals();"))
+            {
+                failures.Add("(A①) 清空分支未走唯一实现点 `HideAllAimVisuals()`。");
+            }
+
+            if (!viewSource.Contains("HideLine(_pathLine);"))
+            {
+                failures.Add("(A②) 唯一实现点里**未清白线载体 `_pathLine`** —— 出杆后白线会**留在台上**"
+                             + "（用户第三轮反馈：「怎么发射完还留线」）。");
+            }
+
+            // ── **缺陷 B：两个圈**（用户第三轮："怎么有两个圈"）──────────────────────────────
+            // (B) **按"首个接触"互斥** —— 纯函数直驱（不读渲染对象）：
+            //   · 库边首碰 ⇒ **只**库边圆（不画幽灵球圆 / 不画黄线 / 不画蓝线 —— 那三样都在"碰球之后"才发生）；
+            //   · 球首碰 ⇒ 幽灵球圆 + 黄线 + 蓝线；**不画**库边圆；
+            //   · 无接触 ⇒ 全不画。
+            // **怎么打死它**：去掉"库边分支抑制幽灵球/出射线" ⇒ (B①) 红（**正是用户看到的现象**）；
+            //   直击球时抑制出射线 ⇒ (B②) 红。
+            AimAssistView.AimMarkerSet onCushion = AimAssistView.MarkersFor(ContactKind.Cushion, true);
+            if (onCushion.GhostCircle || !onCushion.CushionCircle || onCushion.TargetLine || onCushion.CueDeflectLine)
+            {
+                failures.Add($"(B①) 库边首碰应**只**画库边圆（实测 ghost={onCushion.GhostCircle} cushion={onCushion.CushionCircle}"
+                             + $" target={onCushion.TargetLine} deflect={onCushion.CueDeflectLine}）—— 否则会出现**两个圈**。");
+            }
+
+            AimAssistView.AimMarkerSet onBall = AimAssistView.MarkersFor(ContactKind.BallBall, true);
+            if (!onBall.GhostCircle || onBall.CushionCircle || !onBall.TargetLine || !onBall.CueDeflectLine)
+            {
+                failures.Add($"(B②) 球首碰应画幽灵球圆 + 黄线 + 蓝线、且**不画**库边圆（实测 ghost={onBall.GhostCircle}"
+                             + $" cushion={onBall.CushionCircle} target={onBall.TargetLine} deflect={onBall.CueDeflectLine}）。");
+            }
+
+            // (B④) **视图必须"施加"该纯函数**（白盒调用形态；这是 INJ-2/INJ-3 能被红的前提）：
+            //   四个标记的可见性**逐个**都要由 `markers.*` 门控 ——
+            //   若某处又改回直接用 `prediction.HasFirstContact`（= **球-球**接触、可能在碰库之后）
+            //   ⇒ 库边首碰的杆里会**同时**画出幽灵球圆/出射线 ⇒ **两个圈 + 误导的出射线**（用户第三轮现象）。
+            //   ⚠ **为什么不写运行期断言**：EditMode **不进 Play**、视图的 `LineRenderer` 在运行期才建
+            //   ⇒ 运行期"逐个 `!activeSelf`"的断言在本环境**取不到对象**（见 §12.3.10 的边界登记）。
+            if (!viewSource.Contains("markers.GhostCircle"))
+            {
+                failures.Add("(B④) 幽灵球圆的可见性**未**由 `MarkersFor` 的结果门控（`markers.GhostCircle`）。");
+            }
+
+            if (!viewSource.Contains("markers.CushionCircle"))
+            {
+                failures.Add("(B④) 库边圆的可见性**未**由 `MarkersFor` 的结果门控（`markers.CushionCircle`）。");
+            }
+
+            if (!viewSource.Contains("markers.TargetLine"))
+            {
+                failures.Add("(B④) 黄线（目标出射）的可见性**未**由 `MarkersFor` 的结果门控（`markers.TargetLine`）"
+                             + " —— 库边首碰时它仍在画 ⇒ **语义错误、误导**。");
+            }
+
+            if (!viewSource.Contains("markers.CueDeflectLine"))
+            {
+                failures.Add("(B④) 蓝线（白球偏转）的可见性**未**由 `MarkersFor` 的结果门控（`markers.CueDeflectLine`）。");
+            }
+
+            // ── **缺陷 C：圆圈分离出来了**（2026-10-16 第三轮；白线指向**球袋**时圆圈跑到**台面正中**）──────────
+            // 根因：`MarkersFor` 的旧 `else` 把 `Pocket`（**越袋喉**）兜底成"球首碰" ⇒ 去画幽灵球圆；
+            //   而"无球-球接触"时 **`GhostBall` 从未被赋值** = `default` = **(0,0)** = **球桌中心** ⇒ 圆画在正中、与线末分离。
+            // **(C①) 穷举 `ContactKind` 全档**（加强版：**将来新增类别自动落到判据面上**）──────────────
+            // 期望表 = "不许有兜底"的落地方式：**表里没有的类别 ⇒ 本条失败**（把它们逼出来显式决定）。
+            //   Cushion  ⇒ 只库边圆（不画幽灵球/黄/蓝 —— 那三样都在"碰球之后"才发生）
+            //   BallBall ⇒ 幽灵球圆 + 黄线 + 蓝线（不画库边圆）
+            //   Pocket   ⇒ 全 false（球进袋，没有"接触物"要标；否则幽灵球圆会画到 (0,0) = 台面正中）
+            var markerExpectations = new Dictionary<ContactKind, AimAssistView.AimMarkerSet>
+            {
+                [ContactKind.Cushion] = new AimAssistView.AimMarkerSet(false, true, false, false),
+                [ContactKind.BallBall] = new AimAssistView.AimMarkerSet(true, false, true, true),
+                [ContactKind.Pocket] = new AimAssistView.AimMarkerSet(false, false, false, false),
+            };
+
+            foreach (ContactKind kind in System.Enum.GetValues(typeof(ContactKind)))
+            {
+                if (!markerExpectations.TryGetValue(kind, out AimAssistView.AimMarkerSet want))
+                {
+                    failures.Add($"(C①) **新增类别 `{kind}` 未在期望表内** —— 请在 `T85` 的期望表里显式给出它的期望标记集"
+                                 + "（这就是「不许有兜底分支」的落地方式）。");
+                    continue;
+                }
+
+                AimAssistView.AimMarkerSet got = AimAssistView.MarkersFor(kind, true);
+                if (got.GhostCircle != want.GhostCircle || got.CushionCircle != want.CushionCircle
+                    || got.TargetLine != want.TargetLine || got.CueDeflectLine != want.CueDeflectLine)
+                {
+                    failures.Add($"(C①) `{kind}` 标记集不符：实测 ghost={got.GhostCircle} cushion={got.CushionCircle}"
+                                 + $" target={got.TargetLine} deflect={got.CueDeflectLine}；期望 ghost={want.GhostCircle}"
+                                 + $" cushion={want.CushionCircle} target={want.TargetLine} deflect={want.CueDeflectLine}。");
+                }
+            }
+
+            // **无接触档**（`hasFirstContactEvent == false`）单独一例：任何类别都必须全 false。
+            foreach (ContactKind kind in System.Enum.GetValues(typeof(ContactKind)))
+            {
+                AimAssistView.AimMarkerSet none = AimAssistView.MarkersFor(kind, false);
+                if (none.GhostCircle || none.CushionCircle || none.TargetLine || none.CueDeflectLine)
+                {
+                    failures.Add($"(C①) **无接触**时（类别 = `{kind}`）应全不画标记。");
+                }
+            }
+
+            // **(C②) 白盒守卫：必须显式穷举 `case ContactKind.Pocket:`**（不许有"兜底成球首碰"的分支）。
+            // **怎么打死它**：把 `case ContactKind.Pocket:` 那一档删掉 ⇒ 本条必红
+            //   （注意：单纯删档**不会**让 (C①) 红 —— 因为 `default` 也是全 false；故"不许有兜底"这件事**必须由本条守**）。
+            if (!viewSource.Contains("case ContactKind.Pocket:"))
+            {
+                failures.Add("(C②) `MarkersFor` 必须**显式穷举** `case ContactKind.Pocket:`（不得依赖兜底）。");
+            }
+
+            AimAssistView.AimMarkerSet onNone = AimAssistView.MarkersFor(ContactKind.Cushion, false);
+            if (onNone.GhostCircle || onNone.CushionCircle || onNone.TargetLine || onNone.CueDeflectLine)
+            {
+                failures.Add("(B③) **无接触**时应全不画标记。");
+            }
+
                 Assert.IsEmpty(failures, "T85 失败：\n" + string.Join("\n", failures));
                 TestContext.WriteLine($"T85: MarkerWorldPoint = {V(actual)}；与手写双取反+根变换一致（≤1e-4）；与直写镜像版不同 ✓");
             }

@@ -963,3 +963,70 @@ $ python Docs/Tools/scene_semantic_diff.py HEAD Assets/_Project/Scenes/Main.unit
 - `git check-ignore -v Temp/verify_homeui/harness.csproj` ⇒ **命中 `.gitignore:8:/[Tt]emp/`** ⇒ harness **不入库**；全仓未跟踪项 `??` = **0**。
 - `PlayViewCameraTests.cs` 的 `517d0070… → 017482ef…` 经**独立逐行 diff** 核对：含 `Assert.` / `ShouldShowStick` 的行**没有任何删除**
   ⇒ **纯注释追加**（档位更正）；两条 `②''` 断言**逐字未改** ⇒ **INJ-C 的红名单对应的就是交付态断言** ✓
+
+---
+
+## 12.4 本批（用户第三轮实测截图）：瞄准线的**三个真缺陷**（A 残留 / B 两圈 / C 指袋时圆跑到台面正中）
+
+用户三张截图逐条对应一个**真缺陷**（不是观感差异）：①「怎么发射完还留线」②「怎么有两个圈」③「白线指向球袋时…圆圈分离出来了」。
+
+### 12.4.1 缺陷 A：出杆后白线**残留**
+- **根因**：`LateUpdate` 的清空分支只调 `SyncRenderers(empty)`（清**虚线池**）与 `SyncContactMarkers(default)`（清标记），
+  **没有碰 `_pathLine`** —— 而白线载体在上一轮已由"按弧长铺的虚线池"换成"整条折线 = **一个** `LineRenderer`"。
+- **修法（单点）**：抽 `HideAllAimVisuals()` 为**唯一实现点**，**显式枚举**清 6 项：虚线池（已退役、仍一并清）／`_pathLine`／
+  `_ghostCircle`／`_cushionCircle`／`_targetLine`／`_cueDeflectLine`；`LateUpdate` 清空分支**只调它**。
+- ⚠ **迁移检查清单（本处最值钱的一条）**：**换渲染载体时必须同时更新"所有"引用该载体的路径** —— **绘制 / 清空 / 显隐门 / 池回收**，
+  并**加一条"清空后无残留"的判据**。本缺陷漏的正是"**清空**"那一列。
+
+### 12.4.2 缺陷 B：**两个圈**（且库边首碰时黄/蓝线也在画）
+- **根因**：幽灵球圆用 `prediction.HasFirstContact`（= **球-球**接触，**可能在碰库之后**才发生），库边圆用 `HasCushionFirstContact`
+  （= **首个**接触是库边）⇒ 在"先碰库、再碰球"的杆里**两者同时为真**。代码里那句「**两圆互斥，不会叠**」是**假陈述**
+  —— 它默认了"`HasFirstContact` == 首个接触"，该前提不成立。
+  **同源**：黄线（目标出射）与蓝线（白球偏转）也按 `HasFirstContact` 画 ⇒ 库边首碰时也在画，而那两段是**反弹之后**才发生的事 ⇒ **语义错误、误导**。
+- **修法（单一实现点的纯函数）**：`MarkersFor(ContactKind firstContactKind, bool hasFirstContactEvent)` 决定该显示哪组标记；
+  视图侧四个标记的可见性**全部由 `markers.*` 门控**（不再直接读 `prediction`）。
+
+### 12.4.3 缺陷 C：白线指向**球袋**时圆圈画到**台面正中**
+- **根因（两半叠加）**：① `MarkersFor` 的 `else` 分支把**一切"不是 Cushion"** 的类别当成"球首碰" ⇒ **`ContactKind.Pocket`（越袋喉）也落进去**
+  ⇒ 去画幽灵球圆；② 而"无球-球接触"时 `Prediction.GhostBall` **从未被赋值**（提前返回分支里没有它）= `default` = **(0,0)** = **球桌中心**
+  ⇒ 圆画在台面正中、与停在袋口的白线末**分离**。
+- **修法（三件）**：① `MarkersFor` 改**穷举 `switch`**（`Cushion`／`BallBall`／**`Pocket`**／`default` 全 false）⇒ **删掉兜底语义**；
+  ② 新增**显式** `HasBallBallFirstContact`（**不要用「类别 != Cushion」反推**）；
+  ③ **根治：删掉 `CushionContactPosition`** —— 视图/判据一律只读**一对** `FirstContactKind` + `FirstContactPosition`（对所有类别都填）
+  ⇒ "**读了没被赋值的字段 ⇒ 画到 (0,0)**"这**一整类** bug 从此不可能发生。
+
+### 12.4.4 判据与**四条注入**（逐条独立命令；均 `cp` 还原、sha1 逐位一致、注入标记 grep = 0）
+| 注入 | 内容 | 红名单 | 消息命中 | 对照结论 |
+|---|---|---|---|---|
+| INJ-1 | 删 `HideAllAimVisuals()` 里的 `HideLine(_pathLine);` | 恰好 `T85` | **A②** | 期望命中 |
+| INJ-2 | `MarkersFor` 的 `Cushion` 档改成球首碰那档（**值注入**） | 恰好 `T85` | **B①** + (C①) | **正是用户现象"两个圈"** |
+| INJ-3 | `MarkersFor` 的 `BallBall` 档去掉黄/蓝线（**值注入**） | 恰好 `T85` | **B②** + (C①) | **B④ 保持绿**（接线未动）|
+| INJ-4 | 把 `_targetLine` 的门控改回 `prediction.HasFirstContact`（**接线型注入**） | 恰好 `T85` | **B④** | **B①②③ 保持绿**（值表未动）|
+| INJ-① | 删 `case ContactKind.Pocket:` | 恰好 `T85` | **C②** | **(C①) 保持绿**（落到 `default`、值仍全 false）⇒ "不许有兜底"**只能由 C② 守** |
+
+- ⭐ **值注入 vs 接线注入（本处最值钱的区分）**：同一处代码，**改"纯函数的返回值"**与**改"视图是否施加该纯函数"**能打红的守卫**完全不同**。
+  ⇒ **新守卫必须配一句"它能被哪种注入打死"**；**没被任何注入打过的守卫 = "没打过"的守卫**（与"恒真守卫"是同一枚硬币的两面）。
+- **(C①) 已是穷举**：`foreach (Enum.GetValues(typeof(ContactKind)))` + 期望表（`Cushion`/`BallBall`/`Pocket`）+ **"表里没有的类别 ⇒ 失败"**
+  ⇒ **将来新增类别自动落到判据面上**。
+- ⚠ **A 的判据边界（如实）**：`T85` 的 A①② 是**白盒调用形态**断言，**不是运行期断言** —— EditMode **不进 Play**、那些 `LineRenderer` **运行期才创建**
+  ⇒ 结构上取不到对象。⇒ **登记后续卡：在 Play / 冒烟档加一条运行期断言**（"球在滚时瞄准可视体全部不可见"）—— 那才是"无残留"的运行期实证。
+
+### 12.4.5 瞄准可视物**规则表**（对象 × 何时可见 × **何时清空** × 判据）
+| 对象 | 何时可见 | **何时清空** | 判据 |
+|---|---|---|---|
+| 白线 `_pathLine` | `ShouldShow` 且路径 ≥2 点 | `HideAllAimVisuals()`（清空分支） | `T80`（实线口径）+ A② 白盒 |
+| 幽灵球圆 `_ghostCircle` | `markers.GhostCircle`（**首接触 = 球**） | 同上 | B② + (C①) 穷举表 |
+| 库边圆 `_cushionCircle` | `markers.CushionCircle`（**首接触 = 库边**） | 同上 | B① + (C①) |
+| 黄线 `_targetLine` | `markers.TargetLine`（首接触 = 球 且方向非零） | 同上 | B④（接线）+ (C①) |
+| 蓝线 `_cueDeflectLine` | `markers.CueDeflectLine`（同上） | 同上 | B④ + (C①) |
+| 虚线池（**已退役**） | 不再用于绘制 | 同上（一并清） | `T80(b)` 仍直接测其公开纯函数 |
+| 球杆 `CueStick` | `ShouldShowStick(flow, cueBallInPlay, transition, homeViewOpen)` | 同门（`MeshRenderer.enabled`） | `T137②`/`②''` + `T123` 计数 == 1 |
+| 瞄准可视物整体 | `AimAssistController.ShouldShow` | `HideAllAimVisuals()` | A①/A② 白盒 + **Play 档运行期断言（后续卡）** |
+
+> ⚠ **"清空"是这张表的必需列** —— 缺陷 A 漏的正是这一列。
+
+### 12.4.6 最终绿锚点（本轮）
+`tests` **231 / 231 passed**、failed=0、skipped=0；**XML mtime `20:54:09`**
+（`C:\Users\hp\AppData\Local\Temp\billiards_batch\editmode_results.xml`，**213440 B**，sha1 `4ca6c2efbe4dc814ca9ff9de1252513bfaa14ea7`）。
+⇒ 四条注入 + 一次干净复跑（`20:41:39` 那次为"穷举升级后"的中间锚点）全部落在本轮改动之后；**测试数仍 231**（新判据全部折进已有 `[Test]`）⇒ 台账不动。
+⚠ 该路径是 `tests` 的**固定输出路径、会被后续任何一次跑批覆盖** ⇒ 引用须带 `sha1`（规矩 6）。

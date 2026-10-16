@@ -270,10 +270,7 @@ namespace Billiards.Physics
                 result.FirstContactKind = first.kind;
                 result.FirstContactPosition = first.position;
                 result.HasCushionFirstContact = first.kind == ContactKind.Cushion;
-                if (result.HasCushionFirstContact)
-                {
-                    result.CushionContactPosition = first.position;
-                }
+                result.HasBallBallFirstContact = first.kind == ContactKind.BallBall;
 
                 // ⚠ **球-球首碰**：事件里的 `position` 是**两球中点**，而"白线该停在哪"是**幽灵球**（= 白球球心在接触瞬间的位置）
                 //   ⇒ 用调用方传入的**精确幽灵球**（与 `CueWorldPath` 末点逐位一致）⇒ 线不会多伸进球里半个球径。
