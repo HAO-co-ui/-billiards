@@ -26,6 +26,9 @@ namespace Billiards.Tests
     ///   —— 这也正是把切换规则抽成纯函数的原因（可测）。
     ///
     /// **它为什么不是恒绿摆设**：把 `CameraPresets.HomePosition` 改成 `PlayPosition` ⇒ `T134①` 红；
+    /// **把 `HomePosition`/`HomeLookTarget` 一起改成与 `Play` 相同、只留 `HomeFovDeg=53`**（复核方的注入 (i)-1）
+    /// ⇒ `T134①` **也必须红** —— 本判据按**几何**判（位置距离与注视点距离都要 > 阈值），
+    /// **fov 差不再能顶替**；这正是那次 CONCERN 的修法（旧口径下该注入下 ① 仍绿、只被 ② 兜住）。
     /// 把 `GreyboxSceneSetup.CameraPosition` 改指 `HomePosition` ⇒ `T134②` 红；
     /// 把 `Resolve` 的两个分支写反 ⇒ `T135` 红；把 `ApplyPreset` 写成 no-op ⇒ `T135` 的施加断言红。
     /// </summary>
