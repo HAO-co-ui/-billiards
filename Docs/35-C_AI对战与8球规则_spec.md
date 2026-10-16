@@ -203,6 +203,17 @@ public static bool IsBreakShotForwardEnough(Vector2 cueVelocity, float minForwar
 | 阶段 | 内容 | 判据（示例） |
 |---|---|---|
 | **P0** | 内核加法：`ContactEvent` 加球号（4 个记录点）+ 本杆事件快照 | ① 事件里能拿到球号（逐位对已知场景）② **`DrainContactEvents` 语义未变**（音频判据全绿）③ 注入：不填球号 ⇒ 必红 |
+> ### §3.3 的三条**显式子要求**（P3-d 登记，2026-10-16；由独立只读复核抓出、主理人认可）
+> 1. **开球黑 8 复位**：`RuleVerdict` 必须有**显式出口**（`respotEightBall`）表达"把黑 8 拿回放球点" ——
+>    只断言 `gameOver == false` **不足以**表达这条规则（宿主会靠猜）。判据 = **`gameOver == false` 且 `respotEightBall == true`**。
+> 2. **碰库原则含时序**：「**母球碰球之后**，任意球碰库或有球进袋」⇒ 事实里必须有
+>    **首碰事件序号** + **序号 > 首碰序号的碰库球号集合**（`cushionsAfterFirstBallContact`）。
+>    用"全杆碰过库"的集合会把 **先碰库 → 再碰球 → 此后无碰库** 误判**合法**。
+> 3. **定组要看"第一颗合法进球"**：`pottedBalls` 是**集合**、判不出先后 ⇒ 须有**按事件时间序**的落袋序列
+>    （`pottedOrder`）＋ 单点实现 `FirstLegalPottedBall(groupState, pottedOrder)`
+>    （开放球局 ⇒ 任何目标球；已定组 ⇒ **跳过对方组的球**）；`RuleVerdict.groupBall` 回传定组依据的球号。
+> ⇒ 三条**都由「事件流本来就是按时间序」解决**（`ShotContactEvents` 已带 `ballA/ballB`）。
+
 | **P1** | 球号与摆球：**下标即球号** + `EightBallRackPositions`（15 颗、**黑 8 在第三排中间**、两角一实一花） | ① 15 颗位置与几何单源一致 ② 8 号位居中 ③ **既有 3 颗夹具保留**（见 §7 风险） |
 
 > ⚠ **P1 未接线登记（2026-10-16，主理人裁定）**：`EightBallRackPositions(Vector2, int seed)` **已就绪且已有判据**
@@ -210,6 +221,12 @@ public static bool IsBreakShotForwardEnough(Vector2 cueVelocity, float minForwar
 > **接线点 = 对局开局阶段**，届时一并决定：**运行期种子来源**（谁在什么时机给种子）与**判据注入方式**。
 > 依据：全仓现有 `RackPositions` 调用点**全是 3 颗**（`PhysicsTuningTools.cs:154`、`GreyboxSceneSetup.cs:906`、`PhysicsValidator.cs:293`）
 > ⇒ 接线是**纯增量**，但**时机属于开局设计**（不属 P1）。
+>
+> ⚠ **推迟登记（主理人批准，2026-10-16）**：**接线推迟到 P5**（与"开始一局"那条链一起接，**一次跑批覆盖**）。
+> ① **接的是** `PhysicsTestDrive.EightBallRackPositions(footSpot, seed)`；
+> ② **风险面** = **默认 15 颗路径**的摆法会变 ⇒ 牵动既有夹具/逐位基线 ⇒ **必须"新增 15 颗夹具 + 保留 3 颗夹具"并存，不许原地改期望值**；
+> ③ **判据** = 开球随机（**注入种子**）＋ **8 居中** ＋ **两角一实一花** ＋ **同一局内两次读逐位相同**。
+> ⇒ 本条同时是"**函数已就绪但未接入运行期**"的留痕（避免 `EightBallRackPositions` 成为**没人用的死代码**而无痕）。
 | **P2** | 头线 + `IsPlacementLegalInKitchen` | ① 球心在线后 ✓、压线/越线 ✗ ② 与 `IsPlacementLegal` 三条同源（单点实现）③ 注入 ⇒ 红 |
 | **P3** | 规则层：`RuleFacts` + `Judge` 纯函数 + `RuleState` | **每条规则一条判据**（含开放球局定组、有效开球、碰库原则、黑 8 三种判负）＋ 每条**负路径** |
 | **P4** | AI 层：候选生成 → 整杆推演 → 评分 → 难度注入 → 合法性过滤 | ① 三档参数可断言字面量 ② 同台面下 Casual < Club < Expert 的**可观测差异**（如成功率）③ 性能：**单帧 ≤1 次推演**、每回合 ≤64 次、超时收尾 ④ 注入：去掉合法性过滤 ⇒ 必红（AI 会打出犯规杆） |

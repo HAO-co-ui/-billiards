@@ -97,6 +97,26 @@ namespace Billiards.Rules
         /// （只知"进了黑 8"不够，还要知道**进的是不是指定的那个袋**）。
         /// </summary>
         public int eightBallPocket;
+
+        // ── **下列三项是"时序"事实（P3-d 补）** ─────────────────────────────────────
+        // 规则原文对"碰库原则"的表述是「**母球碰球之后**，任意球碰库或有球进袋」——**时序是规则的一部分**；
+        // 而 `cushionTouchedByBall` 只是**集合**（时序丢失）⇒ "母球先碰库 → 再碰球 → 此后无球碰库"
+        // 会被**误判合法**（旧实现必然漏）。
+
+        /// <summary>**首个"球-球"接触的事件序号**（`ShotContactEvents` 的**时间序下标**；`-1` = 没碰到球）。</summary>
+        public int firstBallContactEventIndex;
+
+        /// <summary>
+        /// **在首个球-球接触之后**碰过库的球号（**按球号去重**）—— 由**事件序号 > 首碰序号**筛出。
+        /// **碰库原则必须用它**（不是用"全杆碰过库"的集合）。
+        /// </summary>
+        public List<int> cushionsAfterFirstBallContact;
+
+        /// <summary>
+        /// **落袋球号，按事件时间序**（同一个球重复落袋事件不会出现；用于"**第一颗合法进球**定组"）。
+        /// ⚠ 集合版 `pottedBalls` **判不出"第一颗"** ⇒ 同杆先进对方的球再进自己的球时定组会错（P3-d-③）。
+        /// </summary>
+        public List<int> pottedOrder;
     }
 
     /// <summary>**判定结果**（纯数据；**施加**留给宿主 —— 切回合 / 发自由球 / 记分都在 P5 的薄宿主）。</summary>
@@ -126,6 +146,19 @@ namespace Billiards.Rules
 
         /// <summary>**是否重新定组**（开放球局里第一颗合法进球 ⇒ `true`；开球**不定组** ⇒ `false`）。</summary>
         public bool reassignGroup;
+
+        /// <summary>
+        /// **按哪颗球定组**（`reassignGroup == true` 时有效；`-1` = 无）—— 由
+        /// <see cref="EightBallRules.FirstLegalPottedBall"/> 单点算出（**不得**由宿主自己猜）。
+        /// </summary>
+        public int groupBall;
+
+        /// <summary>
+        /// **是否要把黑 8 复位回放球点（`footSpot`）** —— **开球黑 8 进袋**那条规则的**显式出口**
+        /// （P3-d-① 补：此前只有 `gameOver == false` 表达"不算赢"，**"拿回放球点"没有任何出口可断**）。
+        /// **施加**由宿主做（纯层只表达意图）。
+        /// </summary>
+        public bool respotEightBall;
 
         /// <summary>
         /// **下一杆必须往开球线前方击球**（头区自由球的附加约束）—— 宿主把它写进下一杆的
@@ -173,6 +206,9 @@ namespace Billiards.Rules
                 cushionTouchedByBall = new List<int>(),
                 pottedBalls = new List<int>(),
                 offTableBalls = new List<int>(),
+                firstBallContactEventIndex = -1,
+                cushionsAfterFirstBallContact = new List<int>(),
+                pottedOrder = new List<int>(),
             };
 
             if (shotEvents != null)
@@ -201,6 +237,31 @@ namespace Billiards.Rules
                     if (ev.kind == ContactKind.Cushion && ev.ballA >= 0 && !facts.cushionTouchedByBall.Contains(ev.ballA))
                     {
                         facts.cushionTouchedByBall.Add(ev.ballA);   // **按球号去重**（同一颗多次碰库只算 1 颗）
+                    }
+
+                    if (ev.kind == ContactKind.Pocket && ev.ballA >= 0)
+                    {
+                        facts.pottedOrder.Add(ev.ballA);            // **按事件时间序**（供"第一颗合法进球"用）
+                    }
+
+                    // **首个球-球接触的事件序号**（时序基准；碰库原则要在它"之后"筛）
+                    if (ev.kind == ContactKind.BallBall && facts.firstBallContactEventIndex < 0)
+                    {
+                        facts.firstBallContactEventIndex = i;
+                    }
+                }
+
+                // **首碰之后**碰过库的球（**按序号 > 首碰序号**筛 ⇒ 时序进入事实）
+                if (facts.firstBallContactEventIndex >= 0)
+                {
+                    for (int i = facts.firstBallContactEventIndex + 1; i < shotEvents.Count; i++)
+                    {
+                        ContactEvent later = shotEvents[i];
+                        if (later.kind == ContactKind.Cushion && later.ballA >= 0
+                            && !facts.cushionsAfterFirstBallContact.Contains(later.ballA))
+                        {
+                            facts.cushionsAfterFirstBallContact.Add(later.ballA);
+                        }
                     }
                 }
             }
@@ -297,6 +358,7 @@ namespace Billiards.Rules
             if (eightPotted)
             {
                 verdict.gameOver = false;       // ★ 明确：开球进黑 8 **不是胜利**
+                verdict.respotEightBall = true; // ★ **显式出口**（P3-d-①）：宿主据此把黑 8 复位到放球点
                 verdict.reassignGroup = false;
             }
 
@@ -329,8 +391,10 @@ namespace Billiards.Rules
                 }
             }
 
-            // ② **碰库原则**：母球碰到球之后，**任意球碰库 或 有球进袋** 才算合法
-            bool anyBallTouchedCushion = shot.cushionTouchedByBall != null && shot.cushionTouchedByBall.Count > 0;
+            // ② **碰库原则**：**母球碰球之后**，任意球碰库 或 有球进袋 才算合法
+            //    ⚠ **必须用"首碰之后"的集合**（P3-d-②）：用全杆集合会把"先碰库→再碰球→此后无碰库"**误判合法**。
+            bool anyBallTouchedCushion = shot.cushionsAfterFirstBallContact != null
+                                         && shot.cushionsAfterFirstBallContact.Count > 0;
             bool anyBallPotted = (shot.pottedBalls != null && shot.pottedBalls.Count > 0)
                                  || (shot.offTableBalls != null && shot.offTableBalls.Count > 0);
             if (!anyBallTouchedCushion && !anyBallPotted)
@@ -366,9 +430,11 @@ namespace Billiards.Rules
             }
 
             // ⑤ 定组：**开球后的第一颗合法进球**才定组（开放球局 + 无犯规 + 有目标球进袋）
-            if (before.groupState == GroupState.OpenTable && !fouled && CountObjectBalls(shot.pottedBalls) > 0)
+            int groupBall = FirstLegalPottedBall(before.groupState, shot.pottedOrder);
+            if (before.groupState == GroupState.OpenTable && !fouled && groupBall > 0)
             {
-                verdict.reassignGroup = true;      // 宿主按"第一颗落袋球的球号"判实/花
+                verdict.reassignGroup = true;
+                verdict.groupBall = groupBall;     // **第一颗合法进球**（单点实现 ⇒ 宿主不必猜）
             }
 
             // ⑥ 犯规 ⇒ 对手**全场**自由球；否则继续打（不换手）
@@ -402,6 +468,48 @@ namespace Billiards.Rules
             }
 
             return count;
+        }
+
+        /// <summary>
+        /// **"第一颗合法进球"的球号**（P3-d-③ 的单点实现）—— 定组就按它判实/花。
+        ///
+        /// 定义：按**事件时间序**扫描落袋序列，返回**第一个**满足"该球在**当前分组状态下算合法**"的球号：
+        /// · **开放球局** ⇒ 任何目标球（`1..15`，**不含**黑 8）都算合法（⇒ 先进哪颗就按哪颗定组）；
+        /// · **已定实色** ⇒ 只有实色球（`1..7`）算合法（**对方组的球被跳过**，不算"第一颗合法"）；
+        /// · **已定花色** ⇒ 只有花色球（`9..15`）算合法。
+        /// ⇒ 无合法球 ⇒ 返回 `-1`。
+        /// ⚠ 为什么集合版不行：`pottedBalls` 是无序集合 ⇒ 同杆"先进对方的球、再进自己的球"时**判不出先后**。
+        /// </summary>
+        public static int FirstLegalPottedBall(GroupState groupState, IReadOnlyList<int> pottedOrder)
+        {
+            if (pottedOrder == null)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < pottedOrder.Count; i++)
+            {
+                int ball = pottedOrder[i];
+                if (ball == EightBall || ball < 1 || ball > 15)
+                {
+                    continue;   // 黑 8 与白球都不参与"定组"
+                }
+
+                bool legal = groupState switch
+                {
+                    GroupState.OpenTable => true,
+                    GroupState.Solid => IsSolid(ball),
+                    GroupState.Stripe => IsStripe(ball),
+                    _ => false,
+                };
+
+                if (legal)
+                {
+                    return ball;
+                }
+            }
+
+            return -1;
         }
 
         /// <summary>对手。</summary>

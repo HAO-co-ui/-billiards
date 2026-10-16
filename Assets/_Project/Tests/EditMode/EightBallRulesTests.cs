@@ -225,6 +225,93 @@ namespace Billiards.Tests
                 failures.Add($"(d①) **黑 8 离台 ⇒ 本局负**，实测 gameOver={d1.gameOver} winner={d1.winner}。");
             }
 
+            // ══ P3-d：**时序事实**（碰库原则含时序 / 定组看第一颗合法 / 开球黑 8 复位出口）═══════════
+            // 期望值来源（逐条写清推导）：
+            //  ① 碰库原则原文 =「**母球碰球之后**，任意球碰库或有球进袋」⇒ **碰库必须晚于首碰**（时序）
+            //  ② 定组原文 =「开球后的**第一颗合法进球**定组」⇒ 必须按**事件时间序**取第一颗
+            //  ③ 开球黑 8 原文 =「拿回放球点、继续打、不算赢」⇒ 需**显式出口**表达"复位"（只有 gameOver=false 不够）
+
+            // (f①) **时序负路径**：母球**先碰库**（事件 0）→ 再碰球（事件 1）→ **此后无球碰库/无球进袋**
+            //        ⇒ 旧"全杆集合"实现会看到"Cushion 集合非空"⇒ **误判合法**；新实现必须判**犯规**。
+            var timeSeqEvents = new List<ContactEvent>
+            {
+                new ContactEvent { kind = ContactKind.Cushion, ballA = 0, ballB = -1, position = Vector2.zero },   // 白球先碰库
+                new ContactEvent { kind = ContactKind.BallBall, ballA = 0, ballB = 3, position = Vector2.zero },   // 再碰 3 号
+            };
+            RuleFacts f1 = EightBallRules.ExtractFacts(
+                new List<int> { -1, -1, -1, -1 }, new List<int> { -1, -1, -1, -1 },
+                new List<bool> { true, true, true, true }, new List<bool> { true, true, true, true },
+                timeSeqEvents);
+            if (f1.firstBallContactEventIndex != 1)
+            {
+                failures.Add($"(f①) 首碰事件序号应为 1（先碰库那条在 0），实测 {f1.firstBallContactEventIndex}。");
+            }
+
+            if (f1.cushionsAfterFirstBallContact.Count != 0)
+            {
+                failures.Add($"(f①) **首碰之后**没有碰库 ⇒ `cushionsAfterFirstBallContact` 应为空，"
+                             + $"实测 {{{string.Join(",", f1.cushionsAfterFirstBallContact)}}}。");
+            }
+
+            RuleVerdict f1v = EightBallRules.Judge(solid, f1);
+            if (!f1v.foul || f1v.ballInHand != BallInHandKind.FullTable)
+            {
+                failures.Add($"(f①) **母球先碰库→再碰球→此后无球碰库** ⇒ 必须**判犯规 + 全场自由球**（碰库原则含时序）；"
+                             + $"实测 foul={f1v.foul} ballInHand={f1v.ballInHand}。");
+            }
+
+            // (f②) **正路径**：碰球（事件 1）**之后**有球碰库（事件 2）⇒ **合法**（别把新规则变成"一律犯规"）
+            var timeSeqOk = new List<ContactEvent>
+            {
+                new ContactEvent { kind = ContactKind.BallBall, ballA = 0, ballB = 3, position = Vector2.zero },
+                new ContactEvent { kind = ContactKind.Cushion, ballA = 3, ballB = -1, position = Vector2.zero },
+            };
+            RuleFacts f2 = EightBallRules.ExtractFacts(
+                new List<int> { -1, -1, -1, -1 }, new List<int> { -1, -1, -1, -1 },
+                new List<bool> { true, true, true, true }, new List<bool> { true, true, true, true },
+                timeSeqOk);
+            RuleVerdict f2v = EightBallRules.Judge(solid, f2);
+            if (f2v.foul)
+            {
+                failures.Add("(f②) 母球碰球**之后**有球碰库 ⇒ 应**合法**（不得把新规则做成一律犯规）。");
+            }
+
+            // (f③) **定组看"第一颗合法进球"**：同杆**先进 9（对方组）、再进 3（本方组）**
+            //   · **开放球局** ⇒ 9 也算合法 ⇒ 定组依据 = **9**（第一颗）
+            //   · **已定实色** ⇒ 9 属对方组 ⇒ **跳过** ⇒ 依据 = **3**
+            if (EightBallRules.FirstLegalPottedBall(GroupState.OpenTable, new List<int> { 9, 3 }) != 9)
+            {
+                failures.Add("(f③) 开放球局的第一颗合法进球应为 **9**（先进哪颗就按哪颗定组）。");
+            }
+
+            if (EightBallRules.FirstLegalPottedBall(GroupState.Solid, new List<int> { 9, 3 }) != 3)
+            {
+                failures.Add("(f③) 已定实色时 **9 属对方组、必须跳过** ⇒ 第一颗合法进球应为 **3**。");
+            }
+
+            // ⚠ **集合顺序刻意与时间序不同**（ vs 时间序 ）：
+            //   这样**换回集合版**就**必然**得出 3（错），只有用**有序序列**才得 9（对）。
+            RuleFacts f3 = Facts(3, new[] { 3 }, new[] { 3, 9 }, null);
+            f3.pottedOrder = new List<int> { 9, 3 };      // **按事件时间序**（集合版判不出先后）
+            RuleVerdict f3v = EightBallRules.Judge(State(isBreak: false, group: GroupState.OpenTable), f3);
+            if (!f3v.reassignGroup || f3v.groupBall != 9)
+            {
+                failures.Add($"(f③) 开放球局同杆进 {{9,3}} ⇒ 定组依据应为 **9**（`reassignGroup=true` 且 `groupBall=9`），"
+                             + $"实测 reassignGroup={f3v.reassignGroup} groupBall={f3v.groupBall}。");
+            }
+
+            // (f④) **开球黑 8 复位出口**：`gameOver == false` **且** `respotEightBall == true`
+            RuleVerdict f4v = EightBallRules.Judge(State(isBreak: true), Facts(1, new[] { 1 }, new[] { 8 }, null, eightPocket: 0));
+            if (f4v.gameOver)
+            {
+                failures.Add("(f④) 开球进黑 8 **不算赢**（`gameOver` 必须为 false）。");
+            }
+
+            if (!f4v.respotEightBall)
+            {
+                failures.Add("(f④) 开球进黑 8 ⇒ **必须给出 `respotEightBall = true`**（否则「拿回放球点」这条规则无出口表达）。");
+            }
+
             Assert.IsEmpty(failures, "T142 失败（**收集全部**，不在首个失败处中止）：\n" + string.Join("\n", failures));
         }
     }
