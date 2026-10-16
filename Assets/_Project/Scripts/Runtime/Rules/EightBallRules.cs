@@ -119,6 +119,33 @@ namespace Billiards.Rules
         public List<int> pottedOrder;
     }
 
+    /// <summary>
+    /// **本杆的结局种类**（P6：让"结算出口"能**与规则层同源**地说明"为什么结束"，而不是由宿主自己猜）。
+    ///
+    /// ⚠ **这是穷举枚举**（`switch` 必须**列全**；**不得**再写成 `default: 当成"合法进黑 8"` ——
+    /// 那正是"袋口落兜底"那轮的教训）。新增分支时必须同时改这里的枚举与 `Judge`。
+    /// </summary>
+    public enum ShotOutcomeKind
+    {
+        /// <summary>本杆**没有**达成任何结局（继续打 / 换手 / 犯规罚自由球）。</summary>
+        Ongoing = 0,
+
+        /// <summary>**合法进黑 8**（本方组已清完 + 本杆合法 + 进的是**指定袋**）⇒ **胜**。</summary>
+        LegalEightBallPotted,
+
+        /// <summary>**黑 8 提前进袋**（本方组未清完 / 本杆犯规 / 开放球局）⇒ **负**。</summary>
+        EightBallPottedTooEarly,
+
+        /// <summary>**打黑 8 进错袋**（`calledPocket` 不一致或未指定）⇒ **负**（D3 指定袋判负）。</summary>
+        EightBallWrongPocket,
+
+        /// <summary>**黑 8 离台**（非入袋离台）⇒ **负**。</summary>
+        EightBallOffTable,
+
+        /// <summary>**开球进黑 8** ⇒ **复位回脚点、继续打、不算赢**（唯一"进袋但没结局"的分支）。</summary>
+        EightBallRespot,
+    }
+
     /// <summary>**判定结果**（纯数据；**施加**留给宿主 —— 切回合 / 发自由球 / 记分都在 P5 的薄宿主）。</summary>
     /// <remarks>
     /// ⚠ **它是 ** ⇒ 分支函数**必须用  传**（按值传的修改会**静默丢失** ——
@@ -166,6 +193,12 @@ namespace Billiards.Rules
         /// <see cref="Billiards.Physics.PoolSimulator.IsBreakShotForwardEnough"/> 判。
         /// </summary>
         public bool mustShootForward;
+
+        /// <summary>
+        /// **本杆的结局种类**（P6）：结算出口据此说明"为什么结束"——**由规则层填**，
+        /// 宿主**只做映射、不自己猜**（判据⑥守这条）。
+        /// </summary>
+        public ShotOutcomeKind outcome;
     }
 
     /// <summary>
@@ -319,6 +352,7 @@ namespace Billiards.Rules
                 verdict.gameOver = true;
                 verdict.winner = Other(before.turn);
                 verdict.nextTurn = Other(before.turn);
+                verdict.outcome = ShotOutcomeKind.EightBallOffTable;
                 return verdict;
             }
 
@@ -360,6 +394,7 @@ namespace Billiards.Rules
                 verdict.gameOver = false;       // ★ 明确：开球进黑 8 **不是胜利**
                 verdict.respotEightBall = true; // ★ **显式出口**（P3-d-①）：宿主据此把黑 8 复位到放球点
                 verdict.reassignGroup = false;
+                verdict.outcome = ShotOutcomeKind.EightBallRespot;
             }
 
             // **开球进球不定组**（开放球局）
@@ -426,6 +461,14 @@ namespace Billiards.Rules
                 verdict.gameOver = true;
                 verdict.winner = (!fouled && !openTable && ownGroupCleared && !wrongPocket) ? before.turn : Other(before.turn);
                 verdict.nextTurn = verdict.winner;
+
+                // **结局归类**（P6；**穷举**、无兜底）：`wrongPocket` 优先于"提前进袋" ——
+                // 进错袋是**更具体**的违规（D3），先按它归类；否则按胜负分"合法 / 提前"。
+                verdict.outcome = wrongPocket
+                    ? ShotOutcomeKind.EightBallWrongPocket
+                    : (verdict.winner == before.turn
+                        ? ShotOutcomeKind.LegalEightBallPotted
+                        : ShotOutcomeKind.EightBallPottedTooEarly);
                 return;
             }
 

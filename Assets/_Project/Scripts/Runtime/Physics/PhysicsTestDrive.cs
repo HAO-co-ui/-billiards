@@ -493,6 +493,180 @@ namespace Billiards.Physics
         /// <summary>是否轮到对手。（**只读出口**：供判据与诊断用；**不参与出杆路径**）</summary>
         public bool IsAiTurn => CurrentTurn == ShotTurn.Ai;
 
+        // ── 结算出口（P6：一局定胜负）────────────────────────────────────────
+
+        /// <summary>**本局是否已结束**（`true` ⇒ **不会再有第 2 局**：只有显式再调 `StartMatch` 才开新局）。
+        /// （**只读出口**：供 UI 与诊断用；**不参与出杆路径**）</summary>
+        public bool MatchOver { get; private set; }
+
+        /// <summary>**本局胜者**（`MatchOver == true` 时有效；`ShotTurn.Player` = 玩家胜）。
+        /// （**只读出口**：供 UI 与诊断用；**不参与出杆路径**）</summary>
+        public ShotTurn Winner { get; private set; }
+
+        /// <summary>
+        /// **结算原因**（`MatchOver == true` 时有效）—— **由规则层 `RuleVerdict.outcome` 原样映射**，
+        /// 宿主**不自己猜**（判据⑥守这条：改规则层结论 ⇒ 本出口必须跟着变）。
+        /// （**只读出口**：供 UI 与诊断用；**不参与出杆路径**）
+        /// </summary>
+        public ShotOutcomeKind EndReason { get; private set; }
+
+        private bool _settlementPending;
+
+        /// <summary>
+        /// **本杆的规则层输入**（**宿主维护**：轮次 / 本方组别 / 剩余球数 / 指定袋 / 是否开球）。
+        /// ⚠ 驱动器**不自己编造**这些（它不认识"谁该打哪个组"）—— 宿主灌进来，驱动器只负责
+        /// "一杆结束后拿它去问规则层"。
+        /// </summary>
+        public RuleState ruleState;
+
+        private bool _shotInFlight;
+        private int[] _shotBeforePocketIndex;
+        private bool[] _shotBeforeInPlay;
+
+        /// <summary>
+        /// **施加一次判定**（**唯一施加口**）：规则层给的 `RuleVerdict` ⇒ 切回合 / 记结算。
+        ///
+        /// · 非结局杆 ⇒ 只切回合（`CurrentTurn = verdict.nextTurn`），不动结算位；
+        /// · 结局杆（`gameOver`）⇒ `MatchOver = true` + 记 `Winner` / `EndReason`（**原样取规则层的**），
+        ///   并置"结算待展示"位（**一局只弹一次**，见 <see cref="TryConsumeSettlement"/>）。
+        /// </summary>
+        public void ApplyVerdict(in RuleVerdict verdict)
+        {
+            SetTurn(verdict.nextTurn);   // 走唯一施加口（连带做回合边界的 calledPocket 清理）
+            if (!verdict.gameOver)
+            {
+                return;
+            }
+
+            MatchOver = true;
+            Winner = verdict.winner;
+            EndReason = verdict.outcome;
+            _settlementPending = true;
+        }
+
+        /// <summary>
+        /// **结算面板只该弹一次**的闸门：返回 `true` **仅第一次**（取走即清零）。
+        /// ⚠ 用**显式标志**而不是让 UI 自己记 —— 判据要能断"不会重复弹"。
+        /// </summary>
+        public bool TryConsumeSettlement()
+        {
+            if (!_settlementPending)
+            {
+                return false;
+            }
+
+            _settlementPending = false;
+            return true;
+        }
+
+        // ── 指定袋（D3，P6 的 Runtime 半边）──────────────────────────────────
+
+        /// <summary>本杆指定的袋号（`-1` = 未指定）。**只读出口**：UI 的"指定了哪个袋"读它。</summary>
+        public int CalledPocket => ruleState.calledPocket;
+
+        /// <summary>因"**打黑 8 却没指定袋**"被拒的出杆次数（**只读出口**：判据不读像素）。</summary>
+        public int RefusedCallPocketCount { get; private set; }
+
+        /// <summary>
+        /// **本杆是否"打黑 8"**（= 该杆**必须**指定袋）—— **单点口径，UI 与 Runtime 共用**
+        /// （别在 UI 与 Runtime 各算一遍，那会分叉）。
+        ///
+        /// 口径与 `EightBallRules.JudgeRegular` 的 `ownGroupCleared` **同源**：按 `groupState` 取对应组的剩余数，
+        /// `<= 0` 即已清完；**开放球局不算**（那时还没定组，不可能是"打黑 8 那杆"）。
+        /// （**只读出口**：供 UI 与诊断用；**不参与出杆路径**）
+        /// </summary>
+        public bool IsEightBallShot
+        {
+            get
+            {
+                if (ruleState.groupState == GroupState.OpenTable)
+                {
+                    return false;
+                }
+
+                return ruleState.groupState == GroupState.Solid
+                    ? ruleState.solidRemaining <= 0
+                    : ruleState.stripeRemaining <= 0;
+            }
+        }
+
+        /// <summary>
+        /// **指定袋 —— 唯一写入口**（写进 `ruleState.calledPocket`）。
+        /// **非法索引**（越界 / 该袋不存在）⇒ 返回 `false` 且**不改任何状态**。
+        /// </summary>
+        public bool TryCallPocket(int pocketIndex)
+        {
+            if (tableConfig == null || pocketIndex < 0 || pocketIndex >= tableConfig.PocketCount
+                || tableConfig.GetPocket(pocketIndex) == null)
+            {
+                return false;
+            }
+
+            ruleState.calledPocket = pocketIndex;
+            return true;
+        }
+
+        /// <summary>清除指定袋（回到 `-1` 未指定）。UI 取消选择时调它。</summary>
+        public void ClearCalledPocket()
+        {
+            ruleState.calledPocket = -1;
+        }
+
+        /// <summary>本杆"前"快照（P6）：`Launch()` 捕获一次，结算时与"后"比对。</summary>
+        private void CaptureShotBaseline()
+        {
+            int n = _simulator.Balls.Count;
+            _shotBeforePocketIndex = new int[n];
+            _shotBeforeInPlay = new bool[n];
+            for (int i = 0; i < n; i++)
+            {
+                _shotBeforePocketIndex[i] = _simulator.CapturedPocketIndex(i);
+                _shotBeforeInPlay[i] = _simulator.IsBallInPlay(i);
+            }
+        }
+
+        /// <summary>
+        /// **一杆结束后结算 —— 规则管线接结算口的唯一实现点**（P6）。
+        ///
+        /// 流程：`_shotInFlight && TableAtRest && !MatchOver` ⇒
+        /// 取"后"快照 ⇒ `EightBallRules.ExtractFacts(before, after, ShotContactEvents)` ⇒
+        /// `EightBallRules.Judge(ruleState, facts)` ⇒ `ApplyVerdict(verdict)`。
+        ///
+        /// 硬约束：
+        /// · **静止门用既有 `TableAtRest`**（不新造判定）；
+        /// · **同一杆只结算一次**（`_shotInFlight` 落闸）；
+        /// · **规则结论只来自规则层**（驱动器不自己算胜负 —— 判据⑥守这条）；
+        /// · **一局定胜负**：结算后 `MatchOver` 制住后续杆，要再来一局必须显式 `StartMatch`。
+        /// </summary>
+        /// <returns>`true` = 本次真的结算了一杆。</returns>
+        public bool SettleShotIfAtRest()
+        {
+            if (_simulator == null || !_shotInFlight || MatchOver || !_simulator.TableAtRest)
+            {
+                return false;
+            }
+
+            _shotInFlight = false;
+
+            int n = _simulator.Balls.Count;
+            var afterPocketIndex = new List<int>(n);
+            var afterInPlay = new List<bool>(n);
+            for (int i = 0; i < n; i++)
+            {
+                afterPocketIndex.Add(_simulator.CapturedPocketIndex(i));
+                afterInPlay.Add(_simulator.IsBallInPlay(i));
+            }
+
+            RuleFacts facts = EightBallRules.ExtractFacts(_shotBeforePocketIndex, afterPocketIndex,
+                _shotBeforeInPlay, afterInPlay, _simulator.ShotContactEvents);
+
+            RuleState state = ruleState;
+            state.turn = CurrentTurn;   // 轮次以**施加端**为准（宿主灌的 `ruleState.turn` 可能滞后）
+
+            ApplyVerdict(EightBallRules.Judge(state, facts));
+            return true;
+        }
+
         /// <summary>
         /// **设置回合**（**施加端**）：规则层只判"下一杆轮到谁"（`RuleVerdict.nextTurn`），
         /// 真正切回合由宿主做 —— 本方法就是那个唯一的施加口。
@@ -500,6 +674,13 @@ namespace Billiards.Physics
         public void SetTurn(ShotTurn turn)
         {
             CurrentTurn = turn;
+
+            // **回合边界清回 -1**（P6）：玩家回合**不得复用**上一杆（可能是 AI）的选择；
+            // 放在 `SetTurn` 这个**唯一施加口**里，别在 UI 与 Runtime 各清一遍。
+            if (turn == ShotTurn.Player)
+            {
+                ClearCalledPocket();
+            }
         }
 
         /// <summary>
@@ -515,6 +696,13 @@ namespace Billiards.Physics
             rackSeed = RandomRackSeed;
             Initialize();
             CurrentTurn = ShotTurn.Player;
+
+            // **一局定胜负**：`StartMatch` 是**唯一**能开新局的口 —— 它把结算位一并清掉
+            // （⇒ "结算后不会自动进第 2 局"；要再来一局必须**显式**再调一次本方法）。
+            MatchOver = false;
+            Winner = ShotTurn.Player;
+            EndReason = ShotOutcomeKind.Ongoing;
+            _settlementPending = false;
         }
 
         /// <summary>
@@ -567,6 +755,18 @@ namespace Billiards.Physics
             if (!intent.planned)
             {
                 return Vector2.zero;
+            }
+
+            // **AI 打黑 8 必须自己指定袋**（P6，功能级）：否则会撞上"未指定 ⇒ 拒杆"的闸门
+            // ⇒ **AI 会一直出不了杆（对局卡死）**。
+            // 袋号 = `Plan` **已经选出的目标袋**（不另写一套选袋逻辑）；写入口仍是**唯一**入口 `TryCallPocket`。
+            // ⚠ 普通杆**不动** `calledPocket`；"清回 -1" 由回合边界（`SetTurn`）负责，不在这里各清一遍。
+            if (IsEightBallShot)
+            {
+                if (intent.pocketIndex < 0 || !TryCallPocket(intent.pocketIndex))
+                {
+                    return Vector2.zero;   // 袋号非法（不该发生）⇒ 不出杆，绝不带着错的指定袋开打
+                }
             }
 
             aimDegrees = intent.aimDegrees;
@@ -703,7 +903,10 @@ namespace Billiards.Physics
                 ballPositions = positions,
                 ballInPlay = inPlay,
                 groupState = aiGroupState,
-                calledPocket = -1,          // D3「指定袋」的 UI 在 P5-B；纯层已支持 `calledPocket >= 0`
+                calledPocket = -1,          // ⚠ **AI 决策侧尚未接 D3**：这里恒为 -1（= AI 不指定袋）。
+                                            //   规则层已支持（`RuleState.calledPocket` + `ShotOutcomeKind.EightBallWrongPocket`），
+                                            //   玩家侧的设置口是 `TryCallPocket(int)` / `CalledPocket`；
+                                            //   要不要让 **AI 打黑 8 时也读 `CalledPocket`** 尚待 team-lead 裁定。
                 pocketCenters = PocketCenters(),
             };
         }
@@ -884,6 +1087,11 @@ namespace Billiards.Physics
             // ⚠ 放在这里（而不是只放 `Update`）的理由：**判据要在 EditMode 下确定性驱动它**
             //（EditMode 不跑 `Update`）⇒ 否则"全场自由球"的状态迁移**无法被判据覆盖**。
             TrackCueBallScratch();
+
+            // **P6：本杆结束后结算**（**唯一接线点**）—— 静止门在里面用既有 `TableAtRest` 判。
+            // ⚠ 放在 `Advance` 里（而不是只放 `Update`/`FixedUpdate`）：**判据要在 EditMode 下确定性驱动它**
+            // （EditMode 不跑 `Update`/`FixedUpdate`）—— 与上面 `TrackCueBallScratch()` 同一个理由。
+            SettleShotIfAtRest();
 
             SyncVisual();
         }
@@ -1253,6 +1461,14 @@ namespace Billiards.Physics
                 return Vector2.zero;
             }
 
+            // **打黑 8 必须先指定袋**（D3，P6）。⚠ **只在"这一杆是打黑 8"时生效** ——
+            // 若无条件拦，普通杆也出不去 ⇒ 整个游戏卡死。判定口径走**单点** `IsEightBallShot`。
+            if (IsEightBallShot && ruleState.calledPocket < 0)
+            {
+                RefusedCallPocketCount++;
+                return Vector2.zero;
+            }
+
             // 初速 = **方向 × 速度**（**唯一算式**见 <see cref="CueVelocityFor"/> / <see cref="LaunchSpeedFor"/>：
             // AI 评估探针读**同一对函数**，否则"评估的那一杆"与"真正打出的那一杆"会悄悄分叉）。
             // 算式与改动前**逐位等价**（同 3 步：`Cos` / `Sin` / `向量 × 标量`，只把 `Lerp` 挪进函数体）。
@@ -1277,6 +1493,8 @@ namespace Billiards.Physics
 
             // 只清**每杆计数**；逐球入袋记录是跨杆状态，**不得**在此抹掉（否则入袋球会复活）。
             _simulator.ResetDiagnostics();
+            CaptureShotBaseline();   // **P6**：本杆"前"快照（结算要做前后比对）
+            _shotInFlight = true;
             _accumulator = 0f;
             // **犯规留痕**：`cueOffTable`（兜底路径）**或**"本杆期间曾离台"（玩家自己放球那条）
             // ⇒ 两条路都会让 `LastLaunchRespawnedCueBall` 为 true ⇒ **犯规计数与改动前逐位一致**。

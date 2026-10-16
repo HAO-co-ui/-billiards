@@ -1506,6 +1506,302 @@ namespace Billiards.Tests
                                  + " ⇒ 「AI 回合拒绝玩家输入」的接线被摘掉了（值/设施还在，但没人调用它）。");
                 }
 
+                // ── ⑨ 端到端：真出一杆 ⇒ 规则管线自动结算到出口 ──
+                // ⚠ **刻意不显式调 `SettleShotIfAtRest()`** —— 结算必须由 `Advance` 那条**唯一接线**触发；
+                //   删掉那处调用 ⇒ 本判据必红（"设施在但没人接线"的实证）。
+                var settleGo = new GameObject("T145Settle");
+                try
+                {
+                    PhysicsTestDrive sd = NewAiDrive(settleGo, rackSeed: 5);
+                    int potPocket = FirstCornerPocket(sd.tableConfig);
+                    SetUpCleanPot(sd, 8, potPocket, sd.Simulator.Balls.Count);   // 8 号球，正对角袋
+                    AdvanceToRest(sd, RestCap);
+
+                    sd.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,   // 本方（玩家）已定实色
+                        solidRemaining = 0,              // 已清完 ⇒ 该打黑 8
+                        stripeRemaining = 7,
+                        isBreak = false,
+                    };
+                    // ⚠ **次序（实测踩过）**：`SetTurn(Player)` 是**回合边界**，会把 `calledPocket` 清回 -1
+                    //（= 玩家回合不得复用上一杆的选择）⇒ 指定袋必须在**回合边界之后**、并走**唯一写入口**
+                    // `TryCallPocket`。旧版把 `calledPocket` 写在 `ruleState` 初值里、再 `SetTurn(Player)`
+                    // ⇒ 被清成 -1 ⇒ `Launch()` 撞上「未指定 ⇒ 拒杆」⇒ 判据红在「前提不成立」（不是产品缺陷）。
+                    sd.SetTurn(ShotTurn.Player);
+                    if (!sd.TryCallPocket(potPocket))   // D3：指定袋 == 实际进的那个袋
+                    {
+                        failures.Add("(⑨) 前提不成立：打黑 8 指定袋写入失败。");
+                    }
+
+                    AiShotContext sctx = sd.BuildAiContext();
+                    sd.aimDegrees = EightBallAi.AimDegreesForPocket(sctx.cueBallPosition, sctx.ballPositions[8],
+                        sctx.pocketCenters[potPocket]);
+                    sd.power = 0.5f;
+
+                    if (sd.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(⑨) 前提不成立：端到端那一杆没打出去（门控被拒）。");
+                    }
+                    else
+                    {
+                        AdvanceToRest(sd, RestCap);   // ← 结算应由 `Advance` 的**唯一接线**自动触发
+
+                        if (!sd.MatchOver)
+                        {
+                            failures.Add("(⑨) **端到端没结算**：合法进黑 8 之后 `MatchOver` 仍是 false"
+                                         + " ⇒ 规则管线没接到结算口（`SettleShotIfAtRest` 无调用者）／静止门没过。");
+                        }
+                        else
+                        {
+                            if (sd.Winner != ShotTurn.Player)
+                            {
+                                failures.Add($"(⑨) 合法进黑 8 应由**玩家**胜，实测 {sd.Winner}。");
+                            }
+
+                            if (sd.EndReason != ShotOutcomeKind.LegalEightBallPotted)
+                            {
+                                failures.Add($"(⑨) 结算原因应为 `LegalEightBallPotted`，实测 {sd.EndReason}。");
+                            }
+
+                            if (!sd.TryConsumeSettlement())
+                            {
+                                failures.Add("(⑨) 结算应可被**消费一次**（`TryConsumeSettlement` 第一次应返回 true）。");
+                            }
+                            else if (sd.TryConsumeSettlement())
+                            {
+                                failures.Add("(⑨) **结算只该弹一次** —— 第二次调用仍返回 true。");
+                            }
+
+                            // ⑤ 一局定胜负：**什么都不做** ⇒ 不会冒出第 2 局
+                            for (int i = 0; i < 60; i++)
+                            {
+                                sd.Advance(PoolSimulator.FixedDeltaTime);
+                            }
+
+                            if (!sd.MatchOver)
+                            {
+                                failures.Add("(⑤) 结算后**不得**自动进入第 2 局（`MatchOver` 应保持 true）。");
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(settleGo);
+                }
+
+                // ── 指定袋（D3）判据 ②③④（①「指定袋进该袋⇒胜」已由上面 ⑨ 覆盖）──
+                var callGo = new GameObject("T145Call");
+                try
+                {
+                    PhysicsTestDrive cd = NewAiDrive(callGo, rackSeed: 7);
+                    int p1 = FirstCornerPocket(cd.tableConfig);
+                    int p2 = cd.tableConfig.PocketCount > 1 ? (p1 + 1) % cd.tableConfig.PocketCount : p1;
+
+                    // ④ 非法索引 ⇒ false 且**状态不变**
+                    cd.ruleState = new RuleState { groupState = GroupState.Solid, solidRemaining = 0,
+                                                   stripeRemaining = 7, calledPocket = -1, isBreak = false };
+                    if (cd.TryCallPocket(-1) || cd.TryCallPocket(999) || cd.TryCallPocket(cd.tableConfig.PocketCount))
+                    {
+                        failures.Add("(④) 非法袋索引（-1 / 999 / PocketCount）应返回 false。");
+                    }
+
+                    if (cd.CalledPocket != -1)
+                    {
+                        failures.Add($"(④) 非法索引**不得**改状态（`CalledPocket` 应仍为 -1），实测 {cd.CalledPocket}。");
+                    }
+
+                    if (!cd.TryCallPocket(p1) || cd.CalledPocket != p1)
+                    {
+                        failures.Add($"(④) 合法索引 {p1} 应写入成功，实测 CalledPocket={cd.CalledPocket}。");
+                    }
+
+                    // ③ 未指定 ⇒ 打黑 8 那杆被拒；**普通杆不受影响**（正反都断）
+                    cd.ClearCalledPocket();
+                    SetUpCleanPot(cd, 8, p1, cd.Simulator.Balls.Count);
+                    AdvanceToRest(cd, RestCap);
+                    int refusedBefore = cd.RefusedCallPocketCount;
+                    if (cd.Launch().magnitude > 0f)
+                    {
+                        failures.Add("(③) **打黑 8 却未指定袋** ⇒ 出杆必须被拒，实测打出去了。");
+                    }
+
+                    if (cd.RefusedCallPocketCount != refusedBefore + 1)
+                    {
+                        failures.Add($"(③) 被拒应留痕（`RefusedCallPocketCount` 应 +1），实测 "
+                                     + $"{refusedBefore} → {cd.RefusedCallPocketCount}。");
+                    }
+
+                    // 正：同一局面，指定袋后就该放行
+                    if (!cd.TryCallPocket(p1))
+                    {
+                        failures.Add("(③) 指定合法袋应成功。");
+                    }
+                    else if (cd.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(③) 已指定袋 ⇒ 打黑 8 那一杆应放行，实测被拒。");
+                    }
+
+                    AdvanceToRest(cd, RestCap);
+
+                    // ③反：**普通杆**（本方组未清完）不得被这道门拦住
+                    PhysicsTestDrive nd = NewAiDrive(new GameObject("T145Normal"), rackSeed: 8);
+                    nd.ruleState = new RuleState { groupState = GroupState.Solid, solidRemaining = 3,
+                                                   stripeRemaining = 7, calledPocket = -1, isBreak = false };
+                    AdvanceToRest(nd, RestCap);
+                    if (nd.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(③) **普通杆不得被「未指定袋」这道门拦住**（否则整个游戏卡死）。");
+                    }
+
+                    // ② 指定了袋、却进**别的**袋 ⇒ `EightBallWrongPocket` 判负
+                    var wrongGo = new GameObject("T145Wrong");
+                    try
+                    {
+                        PhysicsTestDrive wd = NewAiDrive(wrongGo, rackSeed: 9);
+                        int w1 = FirstCornerPocket(wd.tableConfig);
+                        int w2 = wd.tableConfig.PocketCount > 1 ? (w1 + 1) % wd.tableConfig.PocketCount : w1;
+                        SetUpCleanPot(wd, 8, w1, wd.Simulator.Balls.Count);   // 球实际会进 w1
+                        AdvanceToRest(wd, RestCap);
+                        wd.ruleState = new RuleState { groupState = GroupState.Solid, solidRemaining = 0,
+                                                       stripeRemaining = 7,
+                                                       isBreak = false };
+                        wd.SetTurn(ShotTurn.Player);   // 回合边界先清（见 ⑨ 的次序说明）
+                        if (!wd.TryCallPocket(w2))     // ← 回合边界**之后**指定**别的**袋
+                        {
+                            failures.Add("(②) 前提不成立：指定袋写入失败。");
+                        }
+                        AiShotContext wctx = wd.BuildAiContext();
+                        wd.aimDegrees = EightBallAi.AimDegreesForPocket(wctx.cueBallPosition, wctx.ballPositions[8],
+                            wctx.pocketCenters[w1]);
+                        wd.power = 0.5f;
+                        if (wd.Launch().magnitude <= 0f)
+                        {
+                            failures.Add("(②) 前提不成立：指定错袋那一杆没打出去。");
+                        }
+                        else
+                        {
+                            AdvanceToRest(wd, RestCap);
+                            if (!wd.MatchOver || wd.EndReason != ShotOutcomeKind.EightBallWrongPocket)
+                            {
+                                failures.Add($"(②) 进**非指定袋**应判负且原因为 `EightBallWrongPocket`，实测 "
+                                             + $"MatchOver={wd.MatchOver} / EndReason={wd.EndReason}"
+                                             + $"（指定 {w2}、实际进 {w1}）。");
+                            }
+                            else if (wd.Winner != ShotTurn.Ai)
+                            {
+                                failures.Add($"(②) 进错袋应由**对手**胜，实测 {wd.Winner}。");
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        Object.DestroyImmediate(wrongGo);
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(callGo);
+                }
+
+                // ── AI 指定袋（P6 功能级，**折进本用例，不新开**）：判据 ①②③ ──
+                // 动机：AI 打黑 8 时必须**自己指定袋**；否则会撞上"未指定 ⇒ 拒杆"的闸门 ⇒ **对局卡死**
+                //（"AI 会被闸门卡死"的实证 = 下面的注入 6：删掉 `TryLaunchAiShot` 里那段 ⇒ ① 必红）。
+                var aiCallGo = new GameObject("T145AiCall");
+                try
+                {
+                    PhysicsTestDrive ad = NewAiDrive(aiCallGo, rackSeed: 11);
+                    int aiPocket = FirstCornerPocket(ad.tableConfig);
+                    SetUpCleanPot(ad, 8, aiPocket, ad.Simulator.Balls.Count);   // 只剩黑 8 在场、正对角袋
+                    AdvanceToRest(ad, RestCap);
+
+                    // "打黑 8"的口径：本方组已清完（`IsEightBallShot == true`）
+                    ad.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,
+                        solidRemaining = 0,
+                        stripeRemaining = 7,
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    ad.SetTurn(ShotTurn.Ai);   // AI 回合
+
+                    // ── ① AI 回合 + 打黑 8 ⇒ 出杆**不被拒**（`RefusedCallPocketCount` 不涨）
+                    //    且 `CalledPocket == intent.pocketIndex` ──
+                    int refusedBeforeAi = ad.RefusedCallPocketCount;
+                    Vector2 aiCallVelocity = ad.TryLaunchAiShot(AiDifficulty.Club, 31337);
+                    AiShotIntent aiIntent = ad.LastAiShotIntent;
+
+                    if (aiCallVelocity.magnitude <= 0f)
+                    {
+                        failures.Add("(AI①) AI 打黑 8 应能出杆（`TryLaunchAiShot` 返回非零），实测被拒 —— "
+                                     + "多半是 AI 没在打黑 8 时调 `TryCallPocket`，撞上了「未指定 ⇒ 拒杆」的闸门"
+                                     + "（后果 = 对局卡死）。");
+                    }
+
+                    if (ad.RefusedCallPocketCount != refusedBeforeAi)
+                    {
+                        failures.Add($"(AI①) AI 打黑 8 出杆**不得**被「未指定袋」这道门拒"
+                                     + $"（`RefusedCallPocketCount` 应保持 {refusedBeforeAi}），实测 "
+                                     + $"{refusedBeforeAi} → {ad.RefusedCallPocketCount}。");
+                    }
+
+                    if (ad.CalledPocket != aiIntent.pocketIndex)
+                    {
+                        failures.Add($"(AI①) AI 打黑 8 应把自己的目标袋写进 `CalledPocket`"
+                                     + $"（应 == intent.pocketIndex = {aiIntent.pocketIndex}），实测 {ad.CalledPocket}。");
+                    }
+
+                    // ── ③ 回合边界：`SetTurn(Ai)` **不得**清；`SetTurn(Player)` ⇒ 清回 -1（**正反都断**）──
+                    ad.SetTurn(ShotTurn.Ai);
+                    if (ad.CalledPocket != aiIntent.pocketIndex)
+                    {
+                        failures.Add($"(AI③反) `SetTurn(Ai)` **不得**清除 `calledPocket`"
+                                     + $"（应仍为 {aiIntent.pocketIndex}），实测 {ad.CalledPocket}。");
+                    }
+
+                    ad.SetTurn(ShotTurn.Player);
+                    if (ad.CalledPocket != -1)
+                    {
+                        failures.Add($"(AI③正) `SetTurn(Player)` 应把 `calledPocket` 清回 -1"
+                                     + $"（回合边界单点），实测 {ad.CalledPocket}。");
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(aiCallGo);
+                }
+
+                // ── ② AI 的**普通杆**（本方组未清完）不得写 `calledPocket`（保持 -1）──
+                var aiNormalGo = new GameObject("T145AiNormal");
+                try
+                {
+                    PhysicsTestDrive an = NewAiDrive(aiNormalGo, rackSeed: 12);
+                    int anPocket = FirstCornerPocket(an.tableConfig);
+                    SetUpCleanPot(an, AiCleanTargetBall, anPocket, an.Simulator.Balls.Count);   // 只剩 1 颗实色目标球
+                    AdvanceToRest(an, RestCap);
+                    an.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,
+                        solidRemaining = 3,   // 未清完 ⇒ **不是**"打黑 8 那杆"
+                        stripeRemaining = 7,
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    an.SetTurn(ShotTurn.Ai);
+                    an.TryLaunchAiShot(AiDifficulty.Club, 4242);
+                    if (an.CalledPocket != -1)
+                    {
+                        failures.Add($"(AI②) AI 的**普通杆**（本方组未清完）**不得**写 `calledPocket`"
+                                     + $"（应保持 -1），实测 {an.CalledPocket}。");
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(aiNormalGo);
+                }
+
                 Assert.IsEmpty(failures, "T145（AI 出杆入口）失败：\n" + string.Join("\n", failures));
             }
             finally

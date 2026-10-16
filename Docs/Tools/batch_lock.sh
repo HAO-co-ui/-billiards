@@ -60,11 +60,19 @@ case "${1:-}" in
 
   release)
     owner="${2:-unknown}"
+    force="${3:-}"
     if [ -f "$LOCK" ]; then
       IFS='|' read -r o pid started < "$LOCK"
-      if [ "$pid" != "$$" ]; then
-        echo "⚠ 警告：锁的 PID($pid) ≠ 本进程($$)；仍按 $owner 的请求释放（留痕）" >&2
-        printf '释放 %s by %s(pid=%s) at %s\n' "$(cat "$LOCK")" "$owner" "$$" "$(now)" >> "$HIST"
+      # ⚠ **非本人不得释放**（实测事故：命令链"让路后仍无条件 release" ⇒ 把**别人的锁**删了，
+      #   持有者以为自己在被保护、其实保护已经没了）。⇒ 只有 owner 名一致才放行；确需强拆用 `--force`。
+      if [ "$o" != "$owner" ] && [ "$force" != "--force" ]; then
+        echo "⛔ 拒绝释放：锁属于 **$o**（pid=$pid started=$started），而请求者是 $owner。" >&2
+        echo "   要强拆请显式：bash Docs/Tools/batch_lock.sh release $owner --force" >&2
+        exit 4
+      fi
+      if [ "$o" != "$owner" ]; then
+        printf '**强拆** %s by %s(pid=%s) at %s\n' "$(cat "$LOCK")" "$owner" "$$" "$(now)" >> "$HIST"
+        echo "⚠ 已按 --force 强拆（留痕于 BATCH_LOCK.history）" >&2
       fi
       unlink "$LOCK" >/dev/null
       echo "✓ 已释放锁（owner=$owner）"
