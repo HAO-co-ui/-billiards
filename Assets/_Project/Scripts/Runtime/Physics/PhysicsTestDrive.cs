@@ -243,6 +243,31 @@ namespace Billiards.Physics
         /// </summary>
         public bool PendingCueBallPlacement { get; private set; }
 
+        // ── 球在手 UX（P8-E，用户要求：白球落袋 ⇒ **悬浮在空中等放置**）──────────────
+
+        /// <summary>**是否正处于"待放置"**（白球离台 / 自由球，且还没放好）—— 只读出口（UI 据此显示提示）。</summary>
+        public bool IsWaitingForPlacement => PendingCueBallPlacement;
+
+        /// <summary>
+        /// **待放置期间被拒的出杆次数**（只读出口）。
+        /// ⚠ P8 起"白球离台 ⇒ 自动回开球位帮玩家代打"的兜底**已删除**（用户要"等他放置"）⇒
+        /// 未放好之前出杆必须**被拒**，而且**拒绝要留痕**（不许静默无反应）。
+        /// </summary>
+        public int RefusedPendingPlacementCount { get; private set; }
+
+        /// <summary>待放置时白球的**悬浮位置**（**物理坐标** x/y）：取**台面中心**（离所有袋口与球最远）。</summary>
+        public static readonly Vector2 CueBallFloatPhysicsPosition = Vector2.zero;
+
+        /// <summary>待放置时白球的**悬浮高度**（米，球心离台面）—— 贴地就看不出"悬浮"了。</summary>
+        public const float CueBallFloatHeightMeters = 0.12f;
+
+        /// <summary>
+        /// 待放置时白球的**悬浮世界坐标**（只读出口；UI 据此把白球画在空中、等玩家拖动）。
+        /// ⚠ 只在 <see cref="IsWaitingForPlacement"/> 为真时有意义。
+        /// </summary>
+        public Vector3 CueBallFloatWorldPosition =>
+            PoolGeometry.PhysicsToUnity(CueBallFloatPhysicsPosition, CueBallFloatHeightMeters);
+
         /// <summary>最近一次"放球被拒"（落点非法）累计次数（**只读出口**，供 HUD 给"不许静默"的反馈）。</summary>
         public int RefusedPlacementCount { get; private set; }
 
@@ -395,7 +420,7 @@ namespace Billiards.Physics
             // ⚠ 必须在 `LoadBalls` **之后**：剩余球数是**按球台**算的。
             // ⚠ 两个入口（`Initialize` / `ReloadRack`）都走这段 ⇒ 重摆后不会带着上一局的组别继续打。
             _playerGroup = GroupState.OpenTable;
-            ruleState = new RuleState { calledPocket = -1 };
+            ruleState = new RuleState();
             BallInHand = BallInHandKind.None;
             PendingCueBallPlacement = false;
             AiPhase = AiShotPhase.None;
@@ -439,7 +464,7 @@ namespace Billiards.Physics
             // ⚠ 必须在 `LoadBalls` **之后**：剩余球数是**按球台**算的。
             // ⚠ 两个入口（`Initialize` / `ReloadRack`）都走这段 ⇒ 重摆后不会带着上一局的组别继续打。
             _playerGroup = GroupState.OpenTable;
-            ruleState = new RuleState { calledPocket = -1 };
+            ruleState = new RuleState();
             BallInHand = BallInHandKind.None;
             PendingCueBallPlacement = false;
             AiPhase = AiShotPhase.None;
@@ -570,15 +595,8 @@ namespace Billiards.Physics
         private float _aiPhaseElapsed;
         private float _aiPlannedPower;
 
-        /// <summary>**本杆是否在飞**（只读出口：球杆据此决定"跟球"还是"冻结在击球位置"）。</summary>
+        /// <summary>**本杆是否在飞**（只读出口：球杆据此在**球在滚的整段时间**里整根隐藏，见 `ShouldShowStick`）。</summary>
         public bool ShotInFlight => _shotInFlight;
-
-        /// <summary>
-        /// **最近一次出杆那一刻白球的位置**（物理坐标，只读出口）。
-        /// ⚠ 存在的理由：出杆后白球会跑，而球杆若每帧读 `ballVisuals[0].position` ⇒ **杆跟着白球飞**
-        ///（用户实机反馈）。球杆在 `ShotInFlight` 期间应当冻结在**这个点**。
-        /// </summary>
-        public Vector2 LastStrikeCueBallPosition { get; private set; }
 
         private float _aiThinkElapsed;
         private int _aiLaunchCount;
@@ -806,7 +824,6 @@ namespace Billiards.Physics
             PendingCueBallPlacement = false;
             BallInHand = BallInHandKind.None;
             ruleState.mustShootForward = false;
-            ClearCalledPocket();
             ResetVisualRotationTracking();
             RefreshRemainingCounts();
             SyncVisual();
@@ -827,58 +844,13 @@ namespace Billiards.Physics
             return true;
         }
 
-        // ── 指定袋（D3，P6 的 Runtime 半边）──────────────────────────────────
-
-        /// <summary>本杆指定的袋号（`-1` = 未指定）。**只读出口**：UI 的"指定了哪个袋"读它。</summary>
-        public int CalledPocket => ruleState.calledPocket;
-
-        /// <summary>因"**打黑 8 却没指定袋**"被拒的出杆次数（**只读出口**：判据不读像素）。</summary>
-        public int RefusedCallPocketCount { get; private set; }
-
-        /// <summary>
-        /// **本杆是否"打黑 8"**（= 该杆**必须**指定袋）—— **单点口径，UI 与 Runtime 共用**
-        /// （别在 UI 与 Runtime 各算一遍，那会分叉）。
-        ///
-        /// 口径与 `EightBallRules.JudgeRegular` 的 `ownGroupCleared` **同源**：按 `groupState` 取对应组的剩余数，
-        /// `<= 0` 即已清完；**开放球局不算**（那时还没定组，不可能是"打黑 8 那杆"）。
-        /// （**只读出口**：供 UI 与诊断用；**不参与出杆路径**）
-        /// </summary>
-        public bool IsEightBallShot
-        {
-            get
-            {
-                if (ruleState.groupState == GroupState.OpenTable)
-                {
-                    return false;
-                }
-
-                return ruleState.groupState == GroupState.Solid
-                    ? ruleState.solidRemaining <= 0
-                    : ruleState.stripeRemaining <= 0;
-            }
-        }
-
-        /// <summary>
-        /// **指定袋 —— 唯一写入口**（写进 `ruleState.calledPocket`）。
-        /// **非法索引**（越界 / 该袋不存在）⇒ 返回 `false` 且**不改任何状态**。
-        /// </summary>
-        public bool TryCallPocket(int pocketIndex)
-        {
-            if (tableConfig == null || pocketIndex < 0 || pocketIndex >= tableConfig.PocketCount
-                || tableConfig.GetPocket(pocketIndex) == null)
-            {
-                return false;
-            }
-
-            ruleState.calledPocket = pocketIndex;
-            return true;
-        }
-
-        /// <summary>清除指定袋（回到 `-1` 未指定）。UI 取消选择时调它。</summary>
-        public void ClearCalledPocket()
-        {
-            ruleState.calledPocket = -1;
-        }
+        // ── 指定袋（D3）—— **已按用户要求取消（P8-C）** ─────────────────────────
+        // 用户原话：「取消最后呼叫球袋黑8，黑8最后打进哪个袋都行」⇒ D3 的**整套出口**
+        // （`CalledPocket` / `TryCallPocket` / `ClearCalledPocket` / `RefusedCallPocketCount` /
+        //   `IsEightBallShot` / "未指定 ⇒ 拒杆"那道门 / 回合边界清理 / AI 叫袋）**全部删除**，
+        // 不留半套（留着不用 = 下一个人会以为它还在生效）。规则层同步删掉
+        // `ShotOutcomeKind.EightBallWrongPocket`。
+        // 历史：P6 曾实现 D3（指定袋 + 进错袋判负），P8 由用户撤销。
 
         /// <summary>本杆"前"快照（P6）：`Launch()` 捕获一次，结算时与"后"比对。</summary>
         private void CaptureShotBaseline()
@@ -942,13 +914,6 @@ namespace Billiards.Physics
         public void SetTurn(ShotTurn turn)
         {
             CurrentTurn = turn;
-
-            // **回合边界清回 -1**（P6）：玩家回合**不得复用**上一杆（可能是 AI）的选择；
-            // 放在 `SetTurn` 这个**唯一施加口**里，别在 UI 与 Runtime 各清一遍。
-            if (turn == ShotTurn.Player)
-            {
-                ClearCalledPocket();
-            }
         }
 
         /// <summary>
@@ -1025,18 +990,8 @@ namespace Billiards.Physics
                 return Vector2.zero;
             }
 
-            // **AI 打黑 8 必须自己指定袋**（P6，功能级）：否则会撞上"未指定 ⇒ 拒杆"的闸门
-            // ⇒ **AI 会一直出不了杆（对局卡死）**。
-            // 袋号 = `Plan` **已经选出的目标袋**（不另写一套选袋逻辑）；写入口仍是**唯一**入口 `TryCallPocket`。
-            // ⚠ 普通杆**不动** `calledPocket`；"清回 -1" 由回合边界（`SetTurn`）负责，不在这里各清一遍。
-            if (IsEightBallShot)
-            {
-                if (intent.pocketIndex < 0 || !TryCallPocket(intent.pocketIndex))
-                {
-                    return Vector2.zero;   // 袋号非法（不该发生）⇒ 不出杆，绝不带着错的指定袋开打
-                }
-            }
-
+            // ⚠ **D3（指定袋）已按用户要求取消**（P8-C）：黑 8 进任意袋都算 ⇒ 这里**不再叫袋**，
+            //   也不再因为"没指定袋"拒杆（`intent.pocketIndex` 仍由 `Plan` 给出，但只作诊断留痕）。
             aimDegrees = intent.aimDegrees;
             power = intent.power;
             SyncAimIndicator();
@@ -1180,12 +1135,7 @@ namespace Billiards.Physics
                 return false;
             }
 
-            // AI 打黑 8 必须自己叫袋（既有口径：写入口唯一 `TryCallPocket`）。
-            if (IsEightBallShot && (intent.pocketIndex < 0 || !TryCallPocket(intent.pocketIndex)))
-            {
-                return false;
-            }
-
+            // ⚠ **D3 已按用户要求取消**（P8-C）：黑 8 进任意袋都算 ⇒ 不再叫袋、不再因袋号拒杆。
             aimDegrees = intent.aimDegrees;
             _aiPlannedPower = intent.power;
             power = 0f;
@@ -1373,11 +1323,9 @@ namespace Billiards.Physics
                 ballPositions = positions,
                 ballInPlay = inPlay,
                 groupState = aiGroupState,
-                // **AI 打黑 8 也自己指定袋**（D3）：`TryLaunchAiShot` 在 `IsEightBallShot` 时，用本方法喂出的
-                // 局面让 `Plan` 选出 `intent.pocketIndex`，再走**唯一写入口** `TryCallPocket(int)` 写进
-                // `RuleState.calledPocket`；**袋号非法 ⇒ 不出杆**（绝不带着错的指定袋开打）。
-                // 之后由规则层据此判"进错袋 ⇒ 负"（`ShotOutcomeKind.EightBallWrongPocket`）；
-                // `SetTurn(Player)` 在**回合边界**把它清回 `-1`（玩家回合不复用上一杆的选择）。
+                // ⚠ **D3（指定袋）已按用户要求取消**（P8-C）：黑 8 进任意袋都算。
+                // `Plan` 仍然会给出 `intent.pocketIndex`（它自己选的目标袋），但**只作诊断留痕**，
+                // 不再写进任何"指定袋"状态、也不再据此判负。
                 pocketCenters = PocketCenters(),
             };
         }
@@ -1947,13 +1895,8 @@ namespace Billiards.Physics
                 return Vector2.zero;
             }
 
-            // **打黑 8 必须先指定袋**（D3，P6）。⚠ **只在"这一杆是打黑 8"时生效** ——
-            // 若无条件拦，普通杆也出不去 ⇒ 整个游戏卡死。判定口径走**单点** `IsEightBallShot`。
-            if (IsEightBallShot && ruleState.calledPocket < 0)
-            {
-                RefusedCallPocketCount++;
-                return Vector2.zero;
-            }
+            // ⚠ **D3（"打黑 8 必须先指定袋"）已按用户要求取消**（P8-C）：
+            //   用户原话「黑8最后打进哪个袋都行」⇒ 这道门**整块删除**，黑 8 进任意袋都算。
 
             // 初速 = **方向 × 速度**（**唯一算式**见 <see cref="CueVelocityFor"/> / <see cref="LaunchSpeedFor"/>：
             // AI 评估探针读**同一对函数**，否则"评估的那一杆"与"真正打出的那一杆"会悄悄分叉）。
@@ -1970,23 +1913,23 @@ namespace Billiards.Physics
                 return Vector2.zero;
             }
 
-            // ③ 白球不在场上（已入袋 / 擦袋角离台）⇒ **兜底**：放回开球位（详见下方 `PendingCueBallPlacement` 分支）；
-            //    否则 ① 就在它停下的地方出杆。
+            // ③ **P8-E（用户要求）**：白球**落袋（不在场上）**时**不许"自动回开球位"帮玩家代打** ——
+            //   用户原话「白球落袋了应该重新拿出来悬浮在空中等待放置」⇒ 白球不在场上就**拒绝出杆**并留痕
+            //  （`RefusedPendingPlacementCount`）；要打就必须先**放置**。
+            //   ⚠ **只拦"白球不在场上"**，不拦"手里拿着球但球还在台上"：真实 8 球里 ball-in-hand 是
+            //     「**可以**拿起来重放」而不是「必须重放」⇒ 球还在台上时从原地出杆是合法的
+            //    （否则练习模式/单球模式每一杆都会被判空杆犯规而永久卡住）。
+            //   ⚠ **不会硬卡死**：`PointerAimController` 里 `Esc = 放回开球点`（`ReturnCueBallToHome`）仍是显式出路。
             bool cueOffTable = !_simulator.IsBallInPlay(0);
-            if (cueOffTable && PendingCueBallPlacement)
+            if (cueOffTable)
             {
-                // **全场自由球的兜底**（主理人裁定「兜底是必需的」）：待放球期间玩家**直接出杆** ⇒
-                // 回落到"放回开球位再出杆"（= 改动前的旧行为）⇒ **不会卡死在待放态**
-                //（否则一旦放置输入失效 / 找不到合法点，玩家就再也动不了）。
-                ReturnCueBallToHome();
+                RefusedPendingPlacementCount++;
+                return Vector2.zero;
             }
 
-            Vector2 cueHome = CueBallHomePosition(tableConfig.footSpot);
-            Vector2 from = cueOffTable ? cueHome : _simulator.Balls[0].position;
+            Vector2 from = _simulator.Balls[0].position;
 
             _simulator.PlaceBall(0, from, v0);
-            // **记住击球位置**：出杆后白球会跑，球杆在 `ShotInFlight` 期间要**冻结在这个点**（不许跟球飞）。
-            LastStrikeCueBallPosition = from;
 
             // **P7：一开打，"放球窗口"就结束**（自由球不能用两次；否则 `PendingCueBallPlacement`
             // 会一直挂着，下一杆还会被当成"待放球"）。
@@ -1997,24 +1940,14 @@ namespace Billiards.Physics
             CaptureShotBaseline();   // **P6**：本杆"前"快照（结算要做前后比对）
             _shotInFlight = true;
             _accumulator = 0f;
-            // **犯规留痕**：`cueOffTable`（兜底路径）**或**"本杆期间曾离台"（玩家自己放球那条）
-            // ⇒ 两条路都会让 `LastLaunchRespawnedCueBall` 为 true ⇒ **犯规计数与改动前逐位一致**。
-            LastLaunchRespawnedCueBall = cueOffTable || _cueBallLeftTableSinceLastLaunch;
+            // **犯规留痕**：本杆期间白球曾离台（`_cueBallLeftTableSinceLastLaunch`，由 `TrackCueBallScratch` 置位）
+            // ⇒ `LastLaunchRespawnedCueBall` 为 true ⇒ `PracticeSession` 的犯规计数**逐位不变**。
+            LastLaunchRespawnedCueBall = _cueBallLeftTableSinceLastLaunch;
             _cueBallLeftTableSinceLastLaunch = false;
 
             // 只读出口（音频层轮询增量 ⇒ strike 事件；累计不清零）。
             LaunchCount++;
             LastLaunchSpeed = speed;
-
-            if (cueOffTable)
-            {
-                // ⚠ scratch 的**计数与时间戳**不在这里加 —— 见 `TrackCueBallScratch()`：
-                // 若等到下一杆才计，玩家在本杆结束后**看不到任何判罚**（用户实测："落网又没反馈"）。
-
-                // 白球从袋口**瞬移**回开球位 ⇒ 必须重置自转跟踪，否则这一瞬移会被当成真实位移、球凭空猛转一下。
-                ResetVisualRotationTracking();
-                Debug.Log($"PhysicsTestDrive：白球已离台（入袋/擦袋角）⇒ 放回开球位 {cueHome} 后出杆。", this);
-            }
 
             SyncVisual();
             return v0;

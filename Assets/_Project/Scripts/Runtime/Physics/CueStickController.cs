@@ -142,25 +142,16 @@ namespace Billiards.Physics
         ///    > "立在椅子旁边"是用户给的**另一个**选项，属**新摆放工作**（要先给椅子定锚点、再摆一个"靠椅"
         ///    > 姿态），已登记为**可选后续**，本卡不做。
         ///
-        /// ⚠ `homeViewOpen` **带默认值 `false`**：既有 4 条断言（`T137②`）与生产调用点之外的调用者
-        ///   一律**行为逐位不变**（这正是"不误伤"那一半的守）。生产侧**显式**传 `HomeView.IsOpen`。
+        /// ⚠ `homeViewOpen` / `shotInFlight` 都**带默认值 `false`**：既有断言（`T137②` 3 参 / 4 参调用）
+        ///   与生产调用点之外的调用者一律**行为逐位不变**；生产侧**显式**传后两个实参。
+        ///
+        /// ⚠ **`shotInFlight`（P8-D，用户要求）**：出杆后球在滚的整段时间里，球杆**整根隐藏**（不是"冻结在击球位"）——
+        ///   用户原话「AI 击玩球，画面上的球杆也要暂时消失」。等台面静止、相位回到 `Aim` 时自然重新出现。
         /// </summary>
         public static bool ShouldShowStick(bool flowVisible, bool cueBallInPlay, bool transitionActive,
-                                          bool homeViewOpen = false)
+                                          bool homeViewOpen = false, bool shotInFlight = false)
         {
-            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen;
-        }
-
-        /// <summary>
-        /// **球杆的锚点**（= 杆尖要对准的那个点）—— **纯函数**，判据直接驱动它（不起场景）。
-        ///
-        /// `shotInFlight == true` ⇒ **冻在"出杆那一刻"的白球位置**。
-        /// ⚠ 为什么必须冻结（用户实机反馈）：原来每帧读 `ballVisuals[0].position` ⇒ 出杆后白球在跑，
-        /// **杆就跟着白球飞**。球杆在"球在飞"期间应当**定在击球位置**，等球停下/下一杆 `Aim` 再回到白球旁。
-        /// </summary>
-        public static Vector3 StickAnchorPosition(bool shotInFlight, Vector3 cueBallWorld, Vector3 strikeCueBallWorld)
-        {
-            return shotInFlight ? strikeCueBallWorld : cueBallWorld;
+            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen && !shotInFlight;
         }
 
         private void SyncStick()
@@ -181,8 +172,9 @@ namespace Billiards.Physics
             // 首页那个取景下杆看着像浮在桌面 ⇒ 让位。读 `HomeView.IsOpen` 与 `AimAssistController`
             // 的模态门**同一范式**（同程序集、单向 UI→Physics 只读静态属性）⇒ **不引入新的依赖方向**。
             bool cueBallInPlay = drive.Simulator != null && drive.Simulator.IsBallInPlay(0);
+            // **P8-D**：出杆后（球在飞的整段时间）**球杆整根隐藏** —— 用户要"暂时消失"，不是"冻在原地"。
             bool visible = ShouldShowStick(_flow.IsStickVisible, cueBallInPlay,
-                Billiards.Core.CameraTransition.IsActive, Billiards.UI.HomeView.IsOpen);
+                Billiards.Core.CameraTransition.IsActive, Billiards.UI.HomeView.IsOpen, drive.ShotInFlight);
             if (_stickRenderer != null && _stickRenderer.enabled != visible)
             {
                 _stickRenderer.enabled = visible;
@@ -199,11 +191,6 @@ namespace Billiards.Physics
             }
 
             Vector3 cueBallWorld = drive.ballVisuals[0].position;
-
-            // **出杆后不跟球**（P7）：`ShotInFlight` 期间锚点冻在"击球那一刻"的白球位置。
-            // 位置来自驱动器的 `LastStrikeCueBallPosition`（**物理坐标**）⇒ 与视觉更新次序无关，也不会被帧序干扰。
-            Vector3 strikeWorld = PoolGeometry.PhysicsBallToUnity(drive.LastStrikeCueBallPosition);
-            cueBallWorld = StickAnchorPosition(drive.ShotInFlight, cueBallWorld, strikeWorld);
 
             Vector3 aimDir = drive.AimDirectionUnity;
 

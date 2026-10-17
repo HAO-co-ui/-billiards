@@ -467,13 +467,14 @@ namespace Billiards.Tests
             //    重钉依据（**不是删掉**）：
             //    · `ai-turn`：真值源 `PhysicsTestDrive.IsAiTurn`、施加口 `SetTurn` / `ApplyVerdict`、
             //      状态条出口 `ResolveVisualState(..., aiTurn)`（由 `PracticeHudView` 喂）；
-            //    · `call-pocket`：真值源 `PhysicsTestDrive.IsEightBallShot`（单点口径）、
-            //      写入口 `TryCallPocket` / `ClearCalledPocket`、读出口 `CalledPocket`、
-            //      被拒出口 `RefusedCallPocketCount`、状态条出口 `ResolveVisualState(..., callPocket)`。
+            //    · `call-pocket`：**D3 已按用户要求取消**（黑 8 任意袋有效）⇒ 产品侧出口
+            //      （`IsEightBallShot` / `TryCallPocket` / `CalledPocket` / `RefusedCallPocketCount`）已全部删除
+            //      ⇒ 该状态**重新变为不可达**（契约先行：枚举/配色/图标仍在）。
             var unreachable = new HashSet<HudVisualState>(PracticeHudState.UnreachableStates);
             var expectedUnreachable = new HashSet<HudVisualState>
             {
-                HudVisualState.Paused,
+                // D3 已按用户要求取消（黑 8 任意袋有效）⇒ `call-pocket` 重回不可达；`paused` 本卡无暂停系统。
+                HudVisualState.CallPocket, HudVisualState.Paused,
             };
 
             foreach (HudVisualState state in expectedUnreachable)
@@ -514,10 +515,9 @@ namespace Billiards.Tests
                                 {
                                     foreach (bool aiTurn in new[] { false, true })
                                     {
-                                        foreach (bool call in new[] { false, true })
                                         {
                                             produced.Add(PracticeHudState.ResolveVisualState(
-                                                phase, foul, refused, hand, resultOpen, placement, aiTurn, call));
+                                                phase, foul, refused, hand, resultOpen, placement, aiTurn));
                                         }
                                     }
                                 }
@@ -1376,7 +1376,6 @@ namespace Billiards.Tests
             {
                 ShotOutcomeKind.LegalEightBallPotted,
                 ShotOutcomeKind.EightBallPottedTooEarly,
-                ShotOutcomeKind.EightBallWrongPocket,
                 ShotOutcomeKind.EightBallOffTable,
             };
 
@@ -1411,7 +1410,6 @@ namespace Billiards.Tests
             {
                 [ShotOutcomeKind.LegalEightBallPotted] = true,     // 本方组清完 + 本杆合法 + 进指定袋
                 [ShotOutcomeKind.EightBallPottedTooEarly] = false, // 提前进黑 8
-                [ShotOutcomeKind.EightBallWrongPocket] = false,    // 进错袋（D3）
                 [ShotOutcomeKind.EightBallOffTable] = false,       // 黑 8 非入袋离台
             };
 
@@ -1812,6 +1810,10 @@ namespace Billiards.Tests
         ///     ⚠ **阈值必须随契约上调**：旧的 18/13 在"回调到 1.5"（正文正好 18 px）时**仍然绿**
         ///       —— 那正是"回调换绿"的滑坡，所以下限写 22/16。
         ///
+        /// (h) **首页不吃倍率**（用户原话：「我没说改开始主页字体，现在字体排版都乱了」）：
+        ///     `HomeView` 里 `applyGlobalScale: false` 的出现次数 **≥ 4**（三处散点 + `CreateHomeText` 单点）
+        ///     ⇒ 一旦有人把首页改回吃倍率，这条立刻红（否则"首页保持原版式"就只是口头约定）。
+        ///
         /// **怎么打死它**：① 把 `CreateText` 的乘号**乘两次**（`p9-font-scale-twice`）⇒ (d) 红；
         /// ② 把赛前屏标题带高改回 1.28 时代的 50（`p9-title-band-shrink`）⇒ **(e) 赛前屏标题** 红
         ///    —— 证明**新版式也确实被守**，不是"改了就算"。
@@ -1860,7 +1862,12 @@ namespace Billiards.Tests
             else
             {
                 int inLayout = Regex.Matches(layoutSource, @"\*\s*FontScale").Count;
-                int inView = Regex.Matches(viewSource, @"\*\s*PracticeHudLayout\.FontScale").Count;
+                //  视图侧改成数 `PracticeHudLayout.FontScale` 的**出现次数**（含"乘"与"三元取舍"两种写法）：
+                //  首页已改为 `applyGlobalScale: false`（用户要求保持原字号）⇒ 不再是纯 `*` 形态；
+                //  "乘两次"的注入仍会把它变成 2 ⇒ 判别力不变（实测注入后报 `实测 2`）。
+                // ⚠ **这不是放宽**：口径从"数 `* FontScale`"变"数标识符出现次数"，只允许 `CreateText` 里**唯一一处**
+                //   三元取舍；**不许**把 `? FontScale : …` 这种形态堆到视图别处（否则计数会 >1 立刻红）。
+                int inView = Regex.Matches(viewSource, @"PracticeHudLayout\.FontScale").Count;
                 int writes = Regex.Matches(viewSource, @"\.fontSize\s*=").Count;
 
                 if (inLayout != 1)
@@ -1887,16 +1894,13 @@ namespace Billiards.Tests
             //    `ReferenceHeight`，见 `HomeLayout.Px`）⇒ 必须 ×`ReferenceHeight` 才回到设计 px。
             //    （首版漏了这一步 ⇒ 带高算成 0.046 px、整组假红；**这是判据的单位错，不是产品缺陷**。）
             //  ⚠ 两个比例（状态条 0.60、主行 0.46、说明行 0.42）取自 `PracticeHudView.BuildStatusBar`；
-            //    选袋格的 0.82 来自 `PracticeHudLayout.CallPocketButtonRect` 的 18% 缝。改那边要同改这里。
+            //    （选袋条那一块已随 D3 取消删除，18 块 → 17 块。）
             const float homeRefH = HomeLayout.ReferenceHeight;
             float statusBarH = PracticeHudLayout.StatusZone.height * PracticeHudLayout.ReferenceHeight * 0.60f;
             var bands = new (string Name, float Band, float Font)[]
             {
                 ("状态条说明行", statusBarH * 0.42f, ClubUiTokens.FontCaption),
                 ("状态条主行", statusBarH * 0.46f, ClubUiTokens.FontBody),
-                ("选袋条单格",
-                    PracticeHudLayout.CallPocketButtonRect(0, PracticeHudLayout.CallPocketSlots).height
-                    * PracticeHudLayout.ReferenceHeight, ClubUiTokens.FontCaption),
                 ("赛前屏标题", HomeLayout.MatchIntroTitle.height * homeRefH, ClubUiTokens.FontResultTitle),
                 ("赛前屏小标", HomeLayout.MatchIntroEyebrow.height * homeRefH, ClubUiTokens.FontBody),
                 ("赛前屏赛制标题", HomeLayout.MatchIntroFormatTitle.height * homeRefH, ClubUiTokens.FontHomeAction),
@@ -1972,6 +1976,42 @@ namespace Billiards.Tests
                              + " ⇒ 倍率太小（用户已两次反馈看不清）。");
             }
 
+            // ── (h) 首页不吃倍率（用户："我没说改开始主页字体"）──
+            string homeSource = StripComments(ReadSourceOrNull(HomeViewSourcePath));
+            if (string.IsNullOrEmpty(homeSource))
+            {
+                failures.Add("T148(h) 读不到 `HomeView.cs` 的磁盘文本 ⇒ 首页免倍率守卫失效。");
+            }
+            else
+            {
+                // ⚠ **恰好 4 处**（不是"≥ 4"）：只断下界的话，将来在 HUD 里也偷偷 opt-out 同样能过
+                //   —— 而"只有首页可以不吃倍率"才是用户的要求（HUD 正是要放大的那部分）。
+                int optOut = Regex.Matches(homeSource, @"applyGlobalScale: *false").Count;
+                if (optOut != 4)
+                {
+                    failures.Add($"T148(h) **首页应恰好 4 处** `applyGlobalScale: false`（三处散点 + `CreateHomeText` 单点），"
+                                 + $"实测 {optOut} ⇒ 多一处是别处偷偷退出倍率、少一处是首页会被带歪。");
+                }
+
+                // **其它视图一律不许 opt-out**（第二个文件能退出倍率 = 静默削弱"整体放大"）。
+                foreach (string otherView in new[] { ViewSourceFiles[0], ViewSourceFiles[1] })
+                {
+                    string otherCode = StripComments(ReadSourceOrNull(otherView));
+                    if (string.IsNullOrEmpty(otherCode))
+                    {
+                        failures.Add($"T148(h) 读不到 {Path.GetFileName(otherView)} ⇒ 该守卫失效。");
+                        continue;
+                    }
+
+                    int leaks = Regex.Matches(otherCode, @"applyGlobalScale: *false").Count;
+                    if (leaks != 0)
+                    {
+                        failures.Add($"T148(h) {Path.GetFileName(otherView)} 里出现了 {leaks} 处 `applyGlobalScale: false`"
+                                     + " ⇒ 只有**首页**可以不吃倍率，HUD / 结算卡必须吃。");
+                    }
+                }
+            }
+
             Assert.IsEmpty(failures, "T148 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine($"T148: FontScale = {PracticeHudLayout.FontScale:R}（参考 1920×1080，CanvasScale = 1）✓；"
                                   + $"换算点放大生效（{PracticeHudLayout.LabelFontSize:R} → {labelPx:R} px）✓；单调 ✓；"
@@ -1980,477 +2020,5 @@ namespace Billiards.Tests
                                   + "结算卡标题与\"为什么\"行不重叠 ✓");
         }
 
-        // ════════════════ T147 P6-3：指定袋（call-pocket）的 UI 半边 ══════════════
-
-        /// <summary>
-        /// **`T147`：指定袋选袋（`call-pocket`）的 UI 半边** —— 进入时机 / 显示 / 被拒不许静默。
-        ///
-        /// ── 用户口径（逐条落成断言）──────────────────────────────────────────────
-        /// · **只在打黑 8 那一杆**要指定袋 ⇒ (a) 两向都断：`callPocket: true ⇒ CallPocket`；
-        ///   **普通杆（`false`）在任何相位/窗口组合下都不得进入 `call-pocket`**；
-        /// · **明确显示已指定哪个袋** ⇒ (b0) 选袋条**槽位数 == 6** 且与 `TableConfig.PocketCount` 对齐；
-        ///   (b) 六个袋号**逐号可分辨**、未指定时是"请你选"、
-        ///   已指定时是"已指定 · pocket N (kind)"，两句**必须不同**；
-        /// · **未指定 ⇒ 出杆被拒 + 可见反馈（不许静默）** ⇒ (c) 行为级：`IsEightBallShot && CalledPocket < 0`
-        ///   时 `Launch()` 必须被拒且 `RefusedCallPocketCount` **+1**；视图必须**消费这个上升沿**开窗口；
-        ///   且"被拒那一句"与"请你选袋"**不是同一句**（否则等于没反馈）。
-        ///
-        /// ── 白盒接线（读磁盘文本、去注释）─────────────────────────────────────────
-        /// (d) 进入条件必须来自 `drive.IsEightBallShot`（**与 Runtime 共用的单点口径**，不许在这里拿
-        ///     球号/球位/剩余数再算一遍）；写只走 `TryCallPocket` / `ClearCalledPocket`；
-        ///     读只读 `CalledPocket`；被拒上升沿必须被消费。
-        ///
-        /// ── (e) 对手（AI）叫袋那一行（P6 第 4 小段）────────────────────────────────
-        /// (e1) AI 回合 + 已叫袋 ⇒ **出现**、袋号 = **索引 + 1**、且**不复用**玩家那条文案；
-        /// (e2) AI 回合但**没叫袋** ⇒ **回落常驻说明**（不是空串；`IsAiTurn && CalledPocket >= 0` 是唯一条件）；
-        /// (e3) **玩家回合 + `CalledPocket >= 0` ⇒ 绝不出现**（防串台，最容易写漏）；
-        /// (e4) `SetTurn(Player)` 后消失 —— 且是**因为 `CalledPocket` 被清回 -1**，不是 UI 自己记的；
-        /// (e5) 袋号 → 种类走**单点** `TryDescribePocket`（与玩家那条共用）且与 `TableConfig` 几何一致。
-        /// ⚠ **时序事实（别当 bug）**：`TryLaunchAiShot` 在**出杆那一刻**才叫袋 ⇒ 可见窗口是
-        ///   「AI 出杆后 → 回合切回前」（球还在滚的几秒）。**判据不要求"出杆前就能看见"** —— 那要改
-        ///   `Runtime/Physics` 的 `TryLaunchAiShot` / `PlanAiShot`，属另一域。
-        ///
-        /// **怎么打死它（注入，均已实测）**：① 把进入条件改成**恒真**（`drive.IsEightBallShot` → `true`）
-        /// ⇒ (d) 红；② 把**被拒上升沿的消费删掉** ⇒ (d) 红（玩家扣了扳机没有任何反馈）；
-        /// ③ 把 `PracticeHudLayout.CallPocketSlots` 改小（`p7-slot-count`）⇒ (b0) 红
-        /// （槽位数是**独立断言**，不是让"循环次数"自己证明自己）；
-        /// ④ 把"轮到 AI"那道闸去掉（`p8-ai-called-always`）⇒ **(e3) 红**（玩家回合串台）；
-        /// ⑤ 去掉 `CalledPocket >= 0` 那道守卫（`p8-ai-called-no-guard`）⇒ **(e2) 红**
-        ///   （没叫袋时说明行变空串，而不是回落常驻说明）；
-        /// ⑥ 让对手那行**套用玩家文案**（`p8-ai-called-player-copy`）⇒ **(e1) 红**；
-        /// ⑦ 去掉"状态必须是 `ai-turn`"那道闸（`p8-ai-called-state-gate-drop`）⇒ **(e2)/(e3) 红**
-        ///   （`foul` / `moving` / `result` 那些档会被这一行顶掉）；
-        /// ⑧ **视图把 `aiTurn` 喂成恒真**（`p8-ai-called-view-feed`）⇒ **`T146(h)` 红**。
-        ///   ⚠ 这条是**实测教训**：纯函数判据看不到视图侧的喂参，而 `T146(h)` 原先只 `Contains("drive.IsAiTurn")`
-        ///   —— P6 第 4 小段之后该串在视图里**出现两次**（`aiTurn` 那行 + `callPocket` 那行）
-        ///   ⇒ 只查子串时该注入**全绿**（第一轮实测 `237/237` 抓到的）。现改成**整行赋值**断言。
-        ///
-        /// ── 盲带（如实）────────────────────────────────────────────────────────
-        /// · **3D 袋口高亮没做**（它要"桌上袋口 → 屏幕"的投影与场景接线，属表现层增量）⇒ 选袋条与桌上
-        ///   袋口的对应只能靠"点了哪个亮哪个"。
-        /// · **真实鼠标点击的端到端**属手动验收（与 `T102` 同口径）：判据锁的是纯函数 + 几何 + 接线 + 行为出口。
-        /// </summary>
-        [Test]
-        public void T147_CallPocket_EntryLabelRefusal_AndNoSilence()
-        {
-            var failures = new List<string>();
-
-            // ── (a) 进入时机（两向）──
-            if (PracticeHudState.ResolveVisualState(ShotPhase.Aim, false, false, false, false, false, false, true)
-                != HudVisualState.CallPocket)
-            {
-                failures.Add("T147(a) `callPocket: true` 时状态必须是 `call-pocket`。");
-            }
-
-            var phases = (ShotPhase[])System.Enum.GetValues(typeof(ShotPhase));
-            foreach (ShotPhase phase in phases)
-            {
-                foreach (bool foul in new[] { false, true })
-                {
-                    foreach (bool refused in new[] { false, true })
-                    {
-                        foreach (bool hand in new[] { false, true })
-                        {
-                            foreach (bool resultOpen in new[] { false, true })
-                            {
-                                foreach (bool placement in new[] { false, true })
-                                {
-                                    foreach (bool aiTurn in new[] { false, true })
-                                    {
-                                        HudVisualState state = PracticeHudState.ResolveVisualState(
-                                            phase, foul, refused, hand, resultOpen, placement, aiTurn, false);
-                                        if (state == HudVisualState.CallPocket)
-                                        {
-                                            failures.Add("T147(a) **普通杆**（`callPocket: false`）不得进入 "
-                                                         + "`call-pocket`（否则整个游戏都在叫你选袋）。");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── (b0) 选袋条的**槽位数**（QA 修复轮 B10）──
-            // ⚠ 旧断言里 `lines.Count != CallPocketSlots * 2` 是**自指**的：把 `CallPocketSlots` 改小，
-            //   期望值跟着一起变、照样绿。⇒ 槽位数必须**独立断言**（界面口径 = 六个袋）。
-            if (PracticeHudLayout.CallPocketSlots != 6)
-            {
-                failures.Add($"T147(b0) 选袋条槽位数应为 **6**（六个袋），实际 {PracticeHudLayout.CallPocketSlots}"
-                             + " —— 槽位数是界面契约，不能让\"循环次数\"自己证明自己。");
-            }
-
-            // ── (b) "已指定哪个袋"要逐号可分辨 ──
-            string none = PracticeHudState.CalledPocketLine(-1, false);
-            if (none != PracticeHudState.CallPocketDetail)
-            {
-                failures.Add("T147(b) `calledPocket < 0` 时应输出\"请你选袋\"那一句。");
-            }
-
-            var lines = new HashSet<string>();
-            for (int i = 0; i < PracticeHudLayout.CallPocketSlots; i++)
-            {
-                string corner = PracticeHudState.CalledPocketLine(i, true);
-                string side = PracticeHudState.CalledPocketLine(i, false);
-
-                if (string.IsNullOrWhiteSpace(corner) || corner == none)
-                {
-                    failures.Add($"T147(b) 袋号 {i + 1} 的\"已指定\"行不得为空、也不得等于\"请你选袋\"那句。");
-                }
-
-                if (!corner.Contains((i + 1).ToString()))
-                {
-                    failures.Add($"T147(b) 袋号 {i + 1} 的\"已指定\"行里找不到它的号数（玩家看不出指定了哪个）。");
-                }
-
-                if (corner == side || !lines.Add(corner) || !lines.Add(side))
-                {
-                    failures.Add($"T147(b) 袋号 {i + 1} 的\"已指定\"行与别的组合重复 ⇒ 分不出指定了哪个袋。");
-                }
-
-                if (!corner.Contains(PracticeHudState.PocketKindLabel(true))
-                    || !side.Contains(PracticeHudState.PocketKindLabel(false)))
-                {
-                    failures.Add($"T147(b) 袋号 {i + 1} 的\"已指定\"行里没有种类名（corner / side）。");
-                }
-            }
-
-            if (lines.Count != PracticeHudLayout.CallPocketSlots * 2)
-            {
-                failures.Add($"T147(b) 6 个袋 × 2 种应有 {PracticeHudLayout.CallPocketSlots * 2} 条互不相同的"
-                             + $"\"已指定\"行，实测 {lines.Count}。");
-            }
-
-            // ── (b2) 选袋条的几何：**必须落在球桌主区之外** ─────────────────────
-            //  球桌投影取 `T95 (d)` 钉住的 16:9 打球口径那组值（`x[0.0499,0.9501] y[0.0940,0.7647]`）。
-            //  ⚠ **口径一变必须回来重推**（与 `T95 (d)` 同纪律）：那里会先红，别在这里调数字。
-            var table = new Rect(0.049899f, 0.093984f, 0.950101f - 0.049899f, 0.764702f - 0.093984f);
-            if (PracticeHudLayout.CallPocketZone.yMin <= table.yMax)
-            {
-                failures.Add("T147(b2) 选袋条整体应在球桌主区**上方**"
-                             + $"（实测 yMin={PracticeHudLayout.CallPocketZone.yMin:R} ≤ 球桌 yMax={table.yMax:R}）"
-                             + " —— 不靠\"它是瞬态件\"豁免 HUD 的几何契约。");
-            }
-
-            for (int i = 0; i < PracticeHudLayout.CallPocketSlots; i++)
-            {
-                Rect r = PracticeHudLayout.CallPocketButtonRect(i, PracticeHudLayout.CallPocketSlots);
-                if (r.width <= 0f || r.height <= 0f)
-                {
-                    failures.Add($"T147(b2) 第 {i + 1} 个袋号按钮的矩形为空。");
-                    continue;
-                }
-
-                if (r.xMin < 0f || r.xMax > 1f || r.yMin < 0f || r.yMax > 1f)
-                {
-                    failures.Add($"T147(b2) 第 {i + 1} 个袋号按钮越出屏幕。");
-                }
-
-                if (r.Overlaps(table))
-                {
-                    failures.Add($"T147(b2) 第 {i + 1} 个袋号按钮与**球桌主区**相交 "
-                                 + $"x[{r.xMin:R},{r.xMax:R}] y[{r.yMin:R},{r.yMax:R}]。");
-                }
-            }
-
-            if (PracticeHudLayout.CallPocketButtonRect(-1, PracticeHudLayout.CallPocketSlots).width != 0f
-                || PracticeHudLayout.CallPocketButtonRect(PracticeHudLayout.CallPocketSlots,
-                        PracticeHudLayout.CallPocketSlots).width != 0f
-                || PracticeHudLayout.CallPocketButtonRect(0, 0).width != 0f)
-            {
-                failures.Add("T147(b2) 越界 / 零槽位的按钮矩形应为**空矩形**（不对越界位置作任何主张）。");
-            }
-
-            // ── (e) 对手（AI）叫袋那一行（P6 第 4 小段）──────────────────────────
-            // ⚠ **时序事实（别当 bug 修）**：`TryLaunchAiShot` 在**出杆那一刻**才 `TryCallPocket` ⇒
-            //   可见窗口 =「AI 出杆之后 → 回合切回玩家之前」（= 球还在滚的那几秒）。
-            //   判据**不要求**"出杆前就能看见"（那要改 Runtime，属另一域）；这里只锁**显示条件与文案**。
-            string opponentLine = PracticeHudState.CalledPocketLineForOpponent(3, true);
-
-            // (e1) AI 回合 + 叫了袋 ⇒ 出现；袋号 = **索引 + 1**；**不复用**玩家文案
-            string shownOnAiTurn = PracticeHudState.CaptionLine(
-                HudVisualState.AiTurn, false, false, false, 3, true, false, true);
-
-            if (shownOnAiTurn != opponentLine)
-            {
-                failures.Add($"T147(e1) AI 回合 + `CalledPocket = 3` 应显示 \"{opponentLine}\"，"
-                             + $"实测 \"{shownOnAiTurn}\"。");
-            }
-
-            if (!shownOnAiTurn.Contains("4"))
-            {
-                failures.Add("T147(e1) 那一行的袋号必须是**索引 + 1**（索引 3 ⇒ 显示 4），"
-                             + "否则与玩家那条口径分叉。");
-            }
-
-            if (shownOnAiTurn == PracticeHudState.CalledPocketLine(3, true))
-            {
-                failures.Add("T147(e1) 对手那一行**不得**复用玩家那条文案"
-                             + "（`Pick the pocket for the 8 ball` 对 AI 没有意义）。");
-            }
-
-            // (e2) AI 回合但**没叫袋** ⇒ 回落**常驻说明**（不是空串，也不是那一行）
-            string shownWhenNotCalled = PracticeHudState.CaptionLine(
-                HudVisualState.AiTurn, false, false, false, -1, false, false, true);
-
-            if (shownWhenNotCalled != PracticeHudState.StateDetail(HudVisualState.AiTurn))
-            {
-                failures.Add("T147(e2) AI 没叫袋时应回落常驻说明 "
-                             + $"\"{PracticeHudState.StateDetail(HudVisualState.AiTurn)}\"，"
-                             + $"实测 \"{shownWhenNotCalled}\"。");
-            }
-
-            // (e2) 显示条件的**三道闸**逐道钉住（状态 / 轮次 / 有没有叫）
-            bool gateOk =
-                PracticeHudState.ShowOpponentCalledPocket(HudVisualState.AiTurn, true, -1) == false   // 没叫袋
-                && PracticeHudState.ShowOpponentCalledPocket(HudVisualState.AiTurn, true, 0) == true  // 正例
-                && PracticeHudState.ShowOpponentCalledPocket(HudVisualState.AiTurn, false, 3) == false // 玩家回合
-                && PracticeHudState.ShowOpponentCalledPocket(HudVisualState.Aim, true, 3) == false    // 状态不是 ai-turn
-                && PracticeHudState.ShowOpponentCalledPocket(HudVisualState.Foul, true, 3) == false;  // 犯规档自己的话
-
-            if (!gateOk)
-            {
-                failures.Add("T147(e2) 显示条件必须**恰好**是「`state == AiTurn` **且** `IsAiTurn` **且** "
-                             + "`CalledPocket >= 0`」这三道闸（玩家回合 / 非 ai-turn 档 / 没叫袋，一律不许显示）。");
-            }
-
-            // (e3) **玩家回合**（`aiTurn = false`）+ `CalledPocket >= 0` ⇒ 绝不出现 AI 那行（防串台）
-            //      ⚠ 两向都断：① `state` 仍是 `AiTurn`（状态/轮次**不一致**时的串台）；② `state` 是玩家档。
-            foreach (HudVisualState playerState in new[] { HudVisualState.AiTurn, HudVisualState.Aim, HudVisualState.CallPocket })
-            {
-                string onPlayerTurn = PracticeHudState.CaptionLine(
-                    playerState, false, false, false, 3, true, false, false);
-
-                if (onPlayerTurn == opponentLine)
-                {
-                    failures.Add($"T147(e3) **玩家回合**（state = {playerState}、`IsAiTurn` = false）"
-                                 + "不得出现 AI 那一行 ⇒ 串台了。");
-                }
-            }
-
-            // ── (c) 未指定 ⇒ 出杆被拒 + 不许静默 ─────────────────────────────
-            if (PracticeHudState.CallPocketRefusedDetail == PracticeHudState.CallPocketDetail)
-            {
-                failures.Add("T147(c) \"被拒那一句\"与\"请你选袋\"那句相同 ⇒ 玩家扣了扳机等于什么都没看到。");
-            }
-
-            if (string.IsNullOrWhiteSpace(PracticeHudState.CallPocketRefusedDetail)
-                || string.IsNullOrWhiteSpace(PracticeHudState.CallPocketPickerHint))
-            {
-                failures.Add("T147(c) 选袋提示 / 被拒提示不得为空。");
-            }
-
-            PhysicsTestDrive callDrive = null;
-            GameObject callGo = null;
-            try
-            {
-                callGo = new GameObject("T147Drive");
-                callDrive = callGo.AddComponent<PhysicsTestDrive>();
-                callDrive.tableConfig = AssetDatabase.LoadAssetAtPath<TableConfig>(DriveTableConfigPath);
-
-                if (callDrive.tableConfig == null)
-                {
-                    failures.Add($"T147(c) 载不到 {DriveTableConfigPath} ⇒ 拒杆判据失效。");
-                }
-                else
-                {
-                    // 槽位数必须与**规则层的袋数**对齐（否则界面上的 1..6 与 `TryCallPocket` 的索引错位）
-                    if (PracticeHudLayout.CallPocketSlots != callDrive.tableConfig.PocketCount)
-                    {
-                        failures.Add($"T147(c) 选袋条槽位 {PracticeHudLayout.CallPocketSlots} "
-                                     + $"≠ `TableConfig.PocketCount` {callDrive.tableConfig.PocketCount}"
-                                     + " ⇒ 界面上的袋号与规则层索引对不上。");
-                    }
-
-                    callDrive.Initialize();
-
-                    // **前提：整盘静止**（`Launch()` 的第一道门控就是 `TableAtRest`；刚 `Initialize()` 还没满
-                    // `RestStableFrames` 帧 ⇒ 会**先**被那道门拒，而它留的痕是 `RefusedLaunchCount`、
-                    // **不是**本判据要的 `RefusedCallPocketCount`）。
-                    // ⚠ 这是**前提**、不是被测行为：少了它判据会因为"门控顺序"而红，**归因就错了**
-                    //   （实测踩过：`0 → 0` + 指定袋后仍被拒 —— 两个红都指向同一句"前提没量在干净起点上"）。
-                    for (int i = 0; i < 240 && !callDrive.Simulator.TableAtRest; i++)
-                    {
-                        callDrive.Advance(PoolSimulator.FixedDeltaTime);
-                    }
-
-                    if (!callDrive.Simulator.TableAtRest)
-                    {
-                        failures.Add("T147(c) 前提不成立：推进 240 步后台面仍未静止"
-                                     + " ⇒ `Launch()` 会被 `TableAtRest` 那道门先拒，本判据失去判别力。");
-                    }
-
-                    // 造"这一杆就是打黑 8"的局面：**只走 Runtime 的公开状态**（UI 侧不许反过来推）。
-                    callDrive.ruleState = new RuleState
-                    {
-                        groupState = GroupState.Solid, solidRemaining = 0, stripeRemaining = 7,
-                        calledPocket = -1, isBreak = false,
-                    };
-
-                    if (!callDrive.IsEightBallShot)
-                    {
-                        failures.Add("T147(c) 前提不成立：`Solid` + `solidRemaining = 0` 时应 `IsEightBallShot == true`。");
-                    }
-
-                    callDrive.ClearCalledPocket();
-                    int refusedBefore = callDrive.RefusedCallPocketCount;
-                    float speed = callDrive.Launch().magnitude;
-
-                    if (speed > 0f)
-                    {
-                        failures.Add("T147(c) **打黑 8 却未指定袋** ⇒ 出杆必须被拒（实测打出去了）"
-                                     + " —— 用户口径：未指定 ⇒ 不出杆。");
-                    }
-
-                    if (callDrive.RefusedCallPocketCount != refusedBefore + 1)
-                    {
-                        failures.Add("T147(c) 被拒必须留痕（`RefusedCallPocketCount` +1），实测 "
-                                     + $"{refusedBefore} → {callDrive.RefusedCallPocketCount}"
-                                     + " —— 没有留痕就没有\"不许静默\"的出口。");
-                    }
-
-                    // 正的那一向：指定合法袋后，同一局面必须放行
-                    if (!callDrive.TryCallPocket(0) || callDrive.CalledPocket != 0)
-                    {
-                        failures.Add("T147(c) 指定袋号 0 应写入成功（`TryCallPocket` 是唯一写入口）。");
-                    }
-                    else if (callDrive.Launch().magnitude <= 0f)
-                    {
-                        failures.Add("T147(c) 已指定袋 ⇒ 打黑 8 那一杆必须放行（实测仍被拒）。");
-                    }
-
-                    // 取消指定
-                    callDrive.ClearCalledPocket();
-                    if (callDrive.CalledPocket != -1)
-                    {
-                        failures.Add("T147(c) `ClearCalledPocket` 之后应回到 -1（未指定）。");
-                    }
-
-                    // ── (e4) 回合切换即消失（**行为级**）：靠 `SetTurn(Player)` 清 `CalledPocket`，
-                    //   不是靠 UI 另存"刚才 AI 叫了哪个袋" ──
-                    if (!callDrive.TryCallPocket(0))
-                    {
-                        failures.Add("T147(e4) 前提：指定袋号 0 应成功。");
-                    }
-                    else
-                    {
-                        callDrive.SetTurn(ShotTurn.Ai);
-                        bool aiTurnNow = callDrive.IsAiTurn;
-                        int calledOnAiTurn = callDrive.CalledPocket;
-
-                        if (!aiTurnNow || calledOnAiTurn != 0)
-                        {
-                            failures.Add($"T147(e4) 前提：`SetTurn(Ai)` 后应 `IsAiTurn` 且 `CalledPocket == 0`，"
-                                         + $"实测 {aiTurnNow} / {calledOnAiTurn}。");
-                        }
-                        else
-                        {
-                            string onAiTurn = PracticeHudState.CaptionLine(
-                                HudVisualState.AiTurn, false, false, false, calledOnAiTurn, true, false, aiTurnNow);
-                            if (onAiTurn != PracticeHudState.CalledPocketLineForOpponent(0, true))
-                            {
-                                failures.Add("T147(e4) AI 回合 + 已叫袋应显示对手那一行，"
-                                             + $"实测 \"{onAiTurn}\"。");
-                            }
-                        }
-
-                        callDrive.SetTurn(ShotTurn.Player);
-                        bool aiTurnAfter = callDrive.IsAiTurn;
-                        int calledAfter = callDrive.CalledPocket;
-
-                        if (aiTurnAfter)
-                        {
-                            failures.Add("T147(e4) `SetTurn(Player)` 后 `IsAiTurn` 应为 false。");
-                        }
-
-                        if (calledAfter != -1)
-                        {
-                            failures.Add($"T147(e4) `SetTurn(Player)` 应把 `CalledPocket` 清回 -1，实测 {calledAfter}"
-                                         + " —— 那一行必须靠这个**自动消失**；UI 不许另存\"刚才 AI 叫了哪个袋\"。");
-                        }
-
-                        string onPlayerTurn = PracticeHudState.CaptionLine(
-                            HudVisualState.Aim, false, false, false, calledAfter, true, false, aiTurnAfter);
-                        if (onPlayerTurn == PracticeHudState.CalledPocketLineForOpponent(0, true))
-                        {
-                            failures.Add("T147(e4) 回合切回玩家后**不得**仍显示 AI 那一行。");
-                        }
-                    }
-
-                    // ── (e5) 袋号 → 种类：**单点** `TryDescribePocket` 与资产几何一致（两处共用）──
-                    for (int i = 0; i < callDrive.tableConfig.PocketCount; i++)
-                    {
-                        if (!PracticeHudState.TryDescribePocket(callDrive.tableConfig, i, out bool isCorner))
-                        {
-                            failures.Add($"T147(e5) `TryDescribePocket` 对合法索引 {i} 应返回 true。");
-                            continue;
-                        }
-
-                        if (isCorner != callDrive.tableConfig.GetPocket(i).IsCorner)
-                        {
-                            failures.Add($"T147(e5) 袋 {i} 的种类判定与 `TableConfig` 不一致"
-                                         + " ⇒ 玩家那条与对手那条会给出不同的 corner/side。");
-                        }
-                    }
-
-                    if (PracticeHudState.TryDescribePocket(callDrive.tableConfig, -1, out _)
-                        || PracticeHudState.TryDescribePocket(
-                               callDrive.tableConfig, callDrive.tableConfig.PocketCount, out _)
-                        || PracticeHudState.TryDescribePocket(null, 0, out _))
-                    {
-                        failures.Add("T147(e5) 越界索引 / 空资产时 `TryDescribePocket` 应返回 **false**（不抛）。");
-                    }
-                }
-            }
-            catch (System.Exception exception)
-            {
-                failures.Add("T147(c) 拒杆判据抛出异常：" + exception.Message);
-            }
-            finally
-            {
-                Object.DestroyImmediate(callGo);
-            }
-
-            // ── (d) 视图侧白盒接线 ──
-            string hudSource = StripComments(ReadSourceOrNull(PracticeHudViewSourcePath));
-            if (string.IsNullOrEmpty(hudSource))
-            {
-                failures.Add("T147(d) 读不到 `PracticeHudView.cs` 的磁盘文本 ⇒ 接线守卫失效。");
-            }
-            else
-            {
-                foreach ((string Usage, string Why) in new (string, string)[]
-                         {
-                             ("drive.IsEightBallShot",
-                                 "进入条件必须来自 Runtime 的**单点口径**（在 UI 里再算一遍必然分叉）"),
-                             ("drive.TryCallPocket(index)",
-                                 "选袋只能走**唯一写入口** `TryCallPocket`（绕开就绕开了非法索引校验）"),
-                             ("drive.ClearCalledPocket()",
-                                 "取消指定要走 `ClearCalledPocket`（不许直接改 `CalledPocket`）"),
-                             ("drive.CalledPocket",
-                                 "选袋条的可见性/高亮只读 `CalledPocket`（本类不自己记\"选了哪个\"）"),
-                             ("drive.RefusedCallPocketCount > _lastCallPocketRefusedSeen",
-                                 "被拒的上升沿**必须被消费**并开一个可见窗口（否则扣了扳机没有任何反馈）"),
-                             ("bool callPocket = drive != null && drive.IsEightBallShot && !drive.IsAiTurn;",
-                                 "进入条件必须**同时**要求\"这是打黑 8 那杆\"与\"轮到玩家\""
-                                 + "（缺前者 ⇒ 普通杆也叫你选袋；缺后者 ⇒ 对手回合弹选袋条）"),
-                         })
-                {
-                    if (!hudSource.Contains(Usage))
-                    {
-                        failures.Add($"T147(d) 选袋接线缺失：「{Usage}」—— {Why}。");
-                    }
-                }
-            }
-
-            Assert.IsEmpty(failures, "T147 失败：\n" + string.Join("\n", failures));
-            TestContext.WriteLine("T147: 进入时机两向 ✓；6 袋 × 2 种\"已指定\"行互不相同 ✓；"
-                                  + "选袋条几何在球桌主区之外（且越界给空矩形）✓；未指定 ⇒ 被拒 + 留痕 + 已指定放行 ✓；"
-                                  + "视图侧：`IsEightBallShot` / `TryCallPocket` / `ClearCalledPocket` / "
-                                  + "`CalledPocket` / 被拒上升沿 接线 ✓；"
-                                  + "对手叫袋行（AI 回合出现 / 玩家回合不串台 / 未叫袋回落常驻说明 / 换手即消失 / 种类单点）✓；"
-                                  + "3D 袋口高亮**未做**（登记盲带）");
-        }
     }
 }

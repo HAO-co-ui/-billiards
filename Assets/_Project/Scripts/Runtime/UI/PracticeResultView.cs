@@ -291,11 +291,13 @@ namespace Billiards.UI
             var hit = rect.GetComponent<Image>();
             hit.raycastTarget = true;   // 本画布唯一需要接收射线的控件族
 
+            // **两个键同一视觉中轴**（用户反馈"文案偏左"）：标签占**整宽**居中，箭头移到右缘作指示符。
+            // 旧版是「标签占左 0..0.56 居中 + 箭头 0.575」⇒ 内容整体压在左侧 2/3，看起来就是偏左。
             TextMeshProUGUI text = PracticeHudView.CreateText(rect, "Label", hud.bodyFont, ClubUiTokens.FontBody,
-                textColor, TextAlignmentOptions.Center, Vector2.zero, new Vector2(0.56f, 1f));
+                textColor, TextAlignmentOptions.Center, Vector2.zero, Vector2.one);
             text.text = label;
 
-            hud.AddFixed(rect, "Glyph", glyph, textColor, new Vector2(0.575f, 0.5f),
+            hud.AddFixed(rect, "Glyph", glyph, textColor, new Vector2(0.92f, 0.5f),
                 new Vector2(ClubUiTokens.ButtonArrowSize, ClubUiTokens.ButtonArrowSize));
 
             var button = rect.gameObject.AddComponent<Button>();

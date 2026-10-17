@@ -87,10 +87,6 @@ namespace Billiards.UI
         public const string ReasonEightBallTooEarly =
             "The 8 ball dropped before your group was cleared";
 
-        /// <summary>打黑 8 进错袋（D3 指定袋判负）⇒ 负。</summary>
-        public const string ReasonEightBallWrongPocket =
-            "The 8 ball dropped in a pocket you did not call";
-
         /// <summary>黑 8 非入袋离台 ⇒ 负。</summary>
         public const string ReasonEightBallOffTable =
             "The 8 ball left the table";
@@ -127,9 +123,8 @@ namespace Billiards.UI
             {
                 case ShotOutcomeKind.LegalEightBallPotted:
                 case ShotOutcomeKind.EightBallPottedTooEarly:
-                case ShotOutcomeKind.EightBallWrongPocket:
                 case ShotOutcomeKind.EightBallOffTable:
-                    return true;
+                    return true;   // D3 已取消：不再有"进错袋"这一种结局（集合由 4 → 3）
 
                 case ShotOutcomeKind.EightBallRespot:   // 复位 ⇒ gameOver == false
                 case ShotOutcomeKind.Ongoing:            // 未达成结局
@@ -180,7 +175,6 @@ namespace Billiards.UI
             {
                 case ShotOutcomeKind.LegalEightBallPotted: return ReasonLegalEightBall;
                 case ShotOutcomeKind.EightBallPottedTooEarly: return ReasonEightBallTooEarly;
-                case ShotOutcomeKind.EightBallWrongPocket: return ReasonEightBallWrongPocket;
                 case ShotOutcomeKind.EightBallOffTable: return ReasonEightBallOffTable;
                 case ShotOutcomeKind.EightBallRespot: return ReasonEightBallRespot;
                 case ShotOutcomeKind.Ongoing: return ReasonOngoing;

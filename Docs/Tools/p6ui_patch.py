@@ -238,8 +238,9 @@ PATCHES = {
         r"Assets\_Project\Scripts\Runtime\UI\PracticeHudView.cs",
         [
             (
-                "text.fontSize = size * PracticeHudLayout.FontScale;",
-                "text.fontSize = size * PracticeHudLayout.FontScale * PracticeHudLayout.FontScale;",
+                "text.fontSize = size * (applyGlobalScale ? PracticeHudLayout.FontScale : 1f);",
+                "text.fontSize = size * (applyGlobalScale ? PracticeHudLayout.FontScale : 1f) "
+                "* PracticeHudLayout.FontScale;",
             ),
         ],
     ),

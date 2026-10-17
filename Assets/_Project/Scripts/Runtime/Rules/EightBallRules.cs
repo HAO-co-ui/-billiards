@@ -58,8 +58,8 @@ namespace Billiards.Rules
         /// <summary>**本杆必须往开球线前方击球**（头区自由球的附加约束）。</summary>
         public bool mustShootForward;
 
-        /// <summary>**指定的袋号**（D3；`-1` = 尚未指定）。仅在打黑 8 那一杆有意义。</summary>
-        public int calledPocket;
+        // ⚠ **D3「指定袋」（`calledPocket`）已按用户要求取消（P8-C）**：
+        //   用户原话「取消最后呼叫球袋黑8，黑8最后打进哪个袋都行」⇒ 该字段**整块删除**（不留半套）。
 
         /// <summary>本杆是否是**开球那一杆**。</summary>
         public bool isBreak;
@@ -92,11 +92,9 @@ namespace Billiards.Rules
         /// <summary>**白球落袋或离台**（`0` 号不在场）。</summary>
         public bool cueBallPottedOrOff;
 
-        /// <summary>
-        /// **黑 8 落进了哪个袋**（袋号；`-1` = 本杆黑 8 未落袋）—— **D3「指定袋」判定必需**
-        /// （只知"进了黑 8"不够，还要知道**进的是不是指定的那个袋**）。
-        /// </summary>
-        public int eightBallPocket;
+        // ⚠ `eightBallPocket`（"黑 8 进了哪个袋"）**已随 D3 一起删除**（P8-C）：
+        //   它是"指定袋判定"的唯一输入（只知"进了黑 8"不够，还要知道进的是不是指定的那个袋）；
+        //   而用户已要求"黑 8 进任意袋都行" ⇒ 这个事实**没有读者了**，留着就是死字段。
 
         // ── **下列三项是"时序"事实（P3-d 补）** ─────────────────────────────────────
         // 规则原文对"碰库原则"的表述是「**母球碰球之后**，任意球碰库或有球进袋」——**时序是规则的一部分**；
@@ -136,8 +134,8 @@ namespace Billiards.Rules
         /// <summary>**黑 8 提前进袋**（本方组未清完 / 本杆犯规 / 开放球局）⇒ **负**。</summary>
         EightBallPottedTooEarly,
 
-        /// <summary>**打黑 8 进错袋**（`calledPocket` 不一致或未指定）⇒ **负**（D3 指定袋判负）。</summary>
-        EightBallWrongPocket,
+        // ⚠ `EightBallWrongPocket`（打黑 8 进错袋 ⇒ 负）**已按用户要求取消（P8-C）** ——
+        //   用户原话「黑8最后打进哪个袋都行」⇒ 黑 8 进**任意**袋都有效，不再有"进错袋"这个结局。
 
         /// <summary>**黑 8 离台**（非入袋离台）⇒ **负**。</summary>
         EightBallOffTable,
@@ -324,9 +322,6 @@ namespace Billiards.Rules
             }
 
             facts.cueBallPottedOrOff = facts.pottedBalls.Contains(0) || facts.offTableBalls.Contains(0);
-            facts.eightBallPocket = (afterPocketIndex != null && afterPocketIndex.Count > EightBall)
-                ? (facts.pottedBalls.Contains(EightBall) ? afterPocketIndex[EightBall] : -1)
-                : -1;
             return facts;
         }
 
@@ -453,7 +448,9 @@ namespace Billiards.Rules
 
             verdict.foul = fouled;
 
-            // ④ 黑 8 入袋：分胜 / 负（**未清完就打进 ⇒ 判负**；清完 + 合法 + 指定袋 ⇒ 胜）
+            // ④ 黑 8 入袋：分胜 / 负（**未清完就打进 ⇒ 判负**；清完 + 本杆合法 ⇒ 胜）——
+            //    ⚠ **D3（指定袋 / 进错袋判负）已按用户要求取消（P8-C）**：黑 8 进**任意**袋都有效，
+            //    所以这里**没有** `wrongPocket` 这一层，结局只剩"合法进黑 8 / 提前进袋"两种。
             if (eightPotted)
             {
                 bool ownGroupCleared = before.groupState == GroupState.Solid
@@ -461,22 +458,14 @@ namespace Billiards.Rules
                     : before.stripeRemaining <= 0;
                 bool openTable = before.groupState == GroupState.OpenTable;
 
-                // **进非指定袋 ⇒ 判负**；**未指定（-1）却进了黑 8 ⇒ 也必须判负并留痕**（不许静默放过）
-                // **进非指定袋 ⇒ 判负**；**未指定（-1）却进了黑 8 ⇒ 也必须判负并留痕**（不许静默放过）
-                bool wrongPocket = before.calledPocket < 0
-                                   || (shot.eightBallPocket >= 0 && shot.eightBallPocket != before.calledPocket);
-
                 verdict.gameOver = true;
-                verdict.winner = (!fouled && !openTable && ownGroupCleared && !wrongPocket) ? before.turn : Other(before.turn);
+                verdict.winner = (!fouled && !openTable && ownGroupCleared) ? before.turn : Other(before.turn);
                 verdict.nextTurn = verdict.winner;
 
-                // **结局归类**（P6；**穷举**、无兜底）：`wrongPocket` 优先于"提前进袋" ——
-                // 进错袋是**更具体**的违规（D3），先按它归类；否则按胜负分"合法 / 提前"。
-                verdict.outcome = wrongPocket
-                    ? ShotOutcomeKind.EightBallWrongPocket
-                    : (verdict.winner == before.turn
-                        ? ShotOutcomeKind.LegalEightBallPotted
-                        : ShotOutcomeKind.EightBallPottedTooEarly);
+                // **结局归类**（穷举、无兜底）：按胜负分"合法进黑 8 / 提前进袋"。
+                verdict.outcome = verdict.winner == before.turn
+                    ? ShotOutcomeKind.LegalEightBallPotted
+                    : ShotOutcomeKind.EightBallPottedTooEarly;
                 return;
             }
 

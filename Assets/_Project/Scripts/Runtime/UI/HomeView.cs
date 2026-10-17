@@ -289,7 +289,8 @@ namespace Billiards.UI
 
             PracticeHudView.CreateText(rule, "TableNumber", hud.bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.HomeHint,
                 TextAlignmentOptions.Center,
-                new Vector2(0.5f - halfText, 0f), new Vector2(0.5f + halfText, 1f))
+                new Vector2(0.5f - halfText, 0f), new Vector2(0.5f + halfText, 1f),
+                applyGlobalScale: false)
                 .text = PracticeHudState.HomeTableNumber;
         }
 
@@ -326,7 +327,8 @@ namespace Billiards.UI
 
             PracticeHudView.CreateText(frame, "Label", hud.titleFont, ClubUiTokens.FontHomeAction, labelColor,
                 TextAlignmentOptions.Left,
-                new Vector2(HomeLayout.ActionPaddingX / HomeLayout.MenuWidth, 0f), new Vector2(0.86f, 1f))
+                new Vector2(HomeLayout.ActionPaddingX / HomeLayout.MenuWidth, 0f), new Vector2(0.86f, 1f),
+                applyGlobalScale: false)
                 .text = label;
 
             // 箭头：`x` 取「右边距 20 + 半个箭头」⇒ 与 CSS 的 `padding:13px 20px` + `space-between` 等价。
@@ -387,7 +389,8 @@ namespace Billiards.UI
 
                 PracticeHudView.CreateText(cell, "Label", hud.bodyFont, ClubUiTokens.FontBodySmall,
                     active ? ClubUiTokens.SegmentActiveText : ClubUiTokens.SegmentIdleText,
-                    TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = labels[i];
+                    TextAlignmentOptions.Center, Vector2.zero, Vector2.one,
+                    applyGlobalScale: false).text = labels[i];
             }
 
             // 整段禁用：压暗 + 不接收射线 + 三格都不挂 `Button`（见类注释偏离②）。
@@ -885,7 +888,9 @@ namespace Billiards.UI
         private TextMeshProUGUI CreateHomeText(string name, TMP_FontAsset font, float size, Color color,
                                            TextAlignmentOptions alignment, Rect rect)
         {
-            return PracticeHudView.CreateText(_root, name, font, size, color, alignment, Min(rect), Max(rect));
+            // 首页所有散落文本都走这里 ⇒ **统一不吃全局倍率**（首页保持原版式，用户明确要求）。
+            return PracticeHudView.CreateText(_root, name, font, size, color, alignment, Min(rect), Max(rect),
+                applyGlobalScale: false);
         }
     }
 }

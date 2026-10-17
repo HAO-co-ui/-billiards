@@ -784,16 +784,18 @@ namespace Billiards.Tests
         }
 
         /// <summary>
-        /// **`T70b`：兜底路径** —— 待放球期间**玩家直接出杆** ⇒ 回落到"放回开球位再出杆"（= 旧行为），
-        /// 且 `LastLaunchRespawnedCueBall` 仍为 **true**（**犯规留痕不许丢**）。
+        /// **`T70b`：待放球期间**出杆必须被拒**（P8-E，用户要求：白球落袋后「重新拿出来悬浮等待放置」）。
         ///
-        /// **为什么必须有这条**（主理人裁定「兜底是必需的」）：没有兜底，一旦放置输入失效 / 找不到合法点，
-        /// 游戏会**永久卡在待放态**（比"自动放回"更糟的失败模式）。
+        /// 四条一起断：① `Launch()` 返回零向量；② `RefusedPendingPlacementCount` **+1**（拒绝**不许静默**）；
+        /// ③ 白球**仍不在场上**、且**仍在待放态**（不许偷偷归位代打）；④ 悬浮出口可读且**离台面有高度**。
+        /// 显式出路：`ReturnCueBallToHome()`（`Esc`「放回开球点」）仍可用 ⇒ 放回后必须能正常出杆（**不硬卡死**）。
         ///
-        /// **怎么打死它**：删掉 `Launch()` 里的兜底分支 ⇒ 红；把兜底落点改成别处 ⇒ 逐位断言红。
+        /// ⚠ **P8 重钉**：旧版断言「走兜底 ⇒ 回开球位 ⇒ `LastLaunchRespawnedCueBall = true`」——
+        /// 那正是用户**要求撤销**的行为。旧期望**不是被打松，而是被替换**；
+        /// 犯规留痕（`LastLaunchRespawnedCueBall`）改由 `_cueBallLeftTableSinceLastLaunch` 承担，见下方 F1② 仍守。
         /// </summary>
         [Test]
-        public void T70b_PendingPlacement_LaunchFallsBackToCueBallHome_AndKeepsFoulFlag()
+        public void T70b_PendingPlacement_LaunchIsRefused_AndStaysPending_UntilPlaced()
         {
             var go = new GameObject("T70bDrive");
             try
@@ -803,33 +805,53 @@ namespace Billiards.Tests
                 PotCueBall(drive);
                 Assert.IsTrue(drive.PendingCueBallPlacement, "T70b：前提 —— 应处于待放球。");
 
-                Vector2 cueHome = PhysicsTestDrive.CueBallHomePosition(Table().footSpot);
+                var failures = new List<string>();
+                int refusedBefore = drive.RefusedPendingPlacementCount;
+                int launchesBefore = drive.LaunchCount;
                 drive.aimDegrees = 180f;
                 drive.power = 1f;
-                Assert.Greater(drive.Launch().magnitude, 0f, "T70b：待放球期间出杆应被接受（走兜底，不是卡住）。");
-
-                var failures = new List<string>();
-                if (!drive.Simulator.IsBallInPlay(0))
+                if (drive.Launch().magnitude > 0f)
                 {
-                    failures.Add("兜底出杆后白球**不在场上**（静默消失）。");
+                    failures.Add("**待放球期间出杆必须被拒**（用户要求「白球落袋后等放置」），实测打出去了。");
                 }
 
-                float off = (drive.Simulator.Balls[0].position - cueHome).magnitude;
-                if (!(off < 1e-6f))
+                if (drive.LaunchCount != launchesBefore)
                 {
-                    failures.Add($"兜底应把白球放回开球位 {RVec(cueHome)}，实测 {RVec(drive.Simulator.Balls[0].position)}（偏 {off:E3} m）。");
+                    failures.Add($"被拒时 `LaunchCount` 不该涨（{launchesBefore} → {drive.LaunchCount}）。");
                 }
 
-                if (!drive.LastLaunchRespawnedCueBall)
+                if (drive.RefusedPendingPlacementCount != refusedBefore + 1)
                 {
-                    failures.Add("`LastLaunchRespawnedCueBall` 应为 true —— 犯规留痕**必须可观测**（不许静默）。");
+                    failures.Add($"被拒**必须留痕**（`RefusedPendingPlacementCount` 应 +1），"
+                                 + $"实测 {refusedBefore} → {drive.RefusedPendingPlacementCount}。");
                 }
 
-                Assert.IsFalse(drive.PendingCueBallPlacement, "T70b：兜底出杆后应退出待放态。");
-                Assert.IsEmpty(failures, "T70b 兜底路径失败：\n" + string.Join("\n", failures));
+                if (!drive.PendingCueBallPlacement)
+                {
+                    failures.Add("被拒后应**仍在待放态**。");
+                }
 
-                TestContext.WriteLine($"T70b: 待放球期间直接出杆 ⇒ 兜底回 {RVec(cueHome)}，"
-                                      + "`LastLaunchRespawnedCueBall` = true ✓");
+                if (drive.Simulator.IsBallInPlay(0))
+                {
+                    failures.Add("被拒后白球**仍不应在场上**（不许偷偷归位代打）。");
+                }
+
+                // **悬浮出口**：待放态下必须能读到世界坐标，且**离台面有高度**（贴地就看不出「悬浮」）
+                Vector3 floatWorld = drive.CueBallFloatWorldPosition;
+                if (floatWorld.y <= PhysicsTestDrive.CueBallFloatHeightMeters * 0.5f)
+                {
+                    failures.Add($"待放态悬浮高度应≈{PhysicsTestDrive.CueBallFloatHeightMeters:F3} m，实测 y={floatWorld.y:F3}。");
+                }
+
+                Assert.IsEmpty(failures, "T70b 待放态拒绝路径失败：\n" + string.Join("\n", failures));
+
+                // **显式出路：不硬卡死**（玩家按 Esc 放回开球点后必须能正常出杆）
+                drive.ReturnCueBallToHome();
+                Assert.IsFalse(drive.PendingCueBallPlacement, "T70b：放回开球点后应退出待放态。");
+                // ⚠ `PlaceBall` 会把"静止计数"清零 ⇒ 必须再推到静止，否则这一杆会被 `TableAtRest` 门拒
+                //   （那会与"待放态不许出杆"混成同一个症状，判据就分不清是哪道门了）。
+                AdvanceToRest(drive, RestCap);
+                Assert.Greater(drive.Launch().magnitude, 0f, "T70b：放回开球点后应能**正常出杆**（不硬卡死）。");
 
                 // ── **F1 状态泄漏负路径**（独立复核抓出；可达路径：白球落袋 ⇒ 按 `R`（无门拦 R）⇒ 卡开 ⇒ `Play again`）──
                 // 断言：`ReloadRack()` **必须复位本批两个新状态**；否则 ① 新局误报"待放球"、第一次左键被当成放球
@@ -1528,15 +1550,8 @@ namespace Billiards.Tests
                         stripeRemaining = 7,
                         isBreak = false,
                     };
-                    // ⚠ **次序（实测踩过）**：`SetTurn(Player)` 是**回合边界**，会把 `calledPocket` 清回 -1
-                    //（= 玩家回合不得复用上一杆的选择）⇒ 指定袋必须在**回合边界之后**、并走**唯一写入口**
-                    // `TryCallPocket`。旧版把 `calledPocket` 写在 `ruleState` 初值里、再 `SetTurn(Player)`
-                    // ⇒ 被清成 -1 ⇒ `Launch()` 撞上「未指定 ⇒ 拒杆」⇒ 判据红在「前提不成立」（不是产品缺陷）。
+                    // ⚠ D3（指定袋）已按用户要求取消（P8-C）⇒ 这里**不再需要**叫袋，黑 8 进任意袋都算。
                     sd.SetTurn(ShotTurn.Player);
-                    if (!sd.TryCallPocket(potPocket))   // D3：指定袋 == 实际进的那个袋
-                    {
-                        failures.Add("(⑨) 前提不成立：打黑 8 指定袋写入失败。");
-                    }
 
                     AiShotContext sctx = sd.BuildAiContext();
                     sd.aimDegrees = EightBallAi.AimDegreesForPocket(sctx.cueBallPosition, sctx.ballPositions[8],
@@ -1595,491 +1610,12 @@ namespace Billiards.Tests
                     Object.DestroyImmediate(settleGo);
                 }
 
-                // ── 指定袋（D3）判据 ②③④（①「指定袋进该袋⇒胜」已由上面 ⑨ 覆盖）──
-                var callGo = new GameObject("T145Call");
-                try
-                {
-                    PhysicsTestDrive cd = NewAiDrive(callGo, rackSeed: 7);
-                    int p1 = FirstCornerPocket(cd.tableConfig);
-                    int p2 = cd.tableConfig.PocketCount > 1 ? (p1 + 1) % cd.tableConfig.PocketCount : p1;
-
-                    // ④ 非法索引 ⇒ false 且**状态不变**
-                    cd.ruleState = new RuleState { groupState = GroupState.Solid, solidRemaining = 0,
-                                                   stripeRemaining = 7, calledPocket = -1, isBreak = false };
-                    if (cd.TryCallPocket(-1) || cd.TryCallPocket(999) || cd.TryCallPocket(cd.tableConfig.PocketCount))
-                    {
-                        failures.Add("(④) 非法袋索引（-1 / 999 / PocketCount）应返回 false。");
-                    }
-
-                    if (cd.CalledPocket != -1)
-                    {
-                        failures.Add($"(④) 非法索引**不得**改状态（`CalledPocket` 应仍为 -1），实测 {cd.CalledPocket}。");
-                    }
-
-                    if (!cd.TryCallPocket(p1) || cd.CalledPocket != p1)
-                    {
-                        failures.Add($"(④) 合法索引 {p1} 应写入成功，实测 CalledPocket={cd.CalledPocket}。");
-                    }
-
-                    // ③ 未指定 ⇒ 打黑 8 那杆被拒；**普通杆不受影响**（正反都断）
-                    cd.ClearCalledPocket();
-                    SetUpCleanPot(cd, 8, p1, cd.Simulator.Balls.Count);
-                    AdvanceToRest(cd, RestCap);
-                    int refusedBefore = cd.RefusedCallPocketCount;
-                    if (cd.Launch().magnitude > 0f)
-                    {
-                        failures.Add("(③) **打黑 8 却未指定袋** ⇒ 出杆必须被拒，实测打出去了。");
-                    }
-
-                    if (cd.RefusedCallPocketCount != refusedBefore + 1)
-                    {
-                        failures.Add($"(③) 被拒应留痕（`RefusedCallPocketCount` 应 +1），实测 "
-                                     + $"{refusedBefore} → {cd.RefusedCallPocketCount}。");
-                    }
-
-                    // 正：同一局面，指定袋后就该放行
-                    if (!cd.TryCallPocket(p1))
-                    {
-                        failures.Add("(③) 指定合法袋应成功。");
-                    }
-                    else if (cd.Launch().magnitude <= 0f)
-                    {
-                        failures.Add("(③) 已指定袋 ⇒ 打黑 8 那一杆应放行，实测被拒。");
-                    }
-
-                    AdvanceToRest(cd, RestCap);
-
-                    // ③反：**普通杆**（本方组未清完）不得被这道门拦住
-                    PhysicsTestDrive nd = NewAiDrive(new GameObject("T145Normal"), rackSeed: 8);
-                    nd.ruleState = new RuleState { groupState = GroupState.Solid, solidRemaining = 3,
-                                                   stripeRemaining = 7, calledPocket = -1, isBreak = false };
-                    AdvanceToRest(nd, RestCap);
-                    if (nd.Launch().magnitude <= 0f)
-                    {
-                        failures.Add("(③) **普通杆不得被「未指定袋」这道门拦住**（否则整个游戏卡死）。");
-                    }
-
-                    // ② 指定了袋、却进**别的**袋 ⇒ `EightBallWrongPocket` 判负
-                    var wrongGo = new GameObject("T145Wrong");
-                    try
-                    {
-                        PhysicsTestDrive wd = NewAiDrive(wrongGo, rackSeed: 9);
-                        int w1 = FirstCornerPocket(wd.tableConfig);
-                        int w2 = wd.tableConfig.PocketCount > 1 ? (w1 + 1) % wd.tableConfig.PocketCount : w1;
-                        SetUpCleanPot(wd, 8, w1, wd.Simulator.Balls.Count);   // 球实际会进 w1
-                        AdvanceToRest(wd, RestCap);
-                        wd.ruleState = new RuleState { groupState = GroupState.Solid, solidRemaining = 0,
-                                                       stripeRemaining = 7,
-                                                       isBreak = false };
-                        wd.SetTurn(ShotTurn.Player);   // 回合边界先清（见 ⑨ 的次序说明）
-                        if (!wd.TryCallPocket(w2))     // ← 回合边界**之后**指定**别的**袋
-                        {
-                            failures.Add("(②) 前提不成立：指定袋写入失败。");
-                        }
-                        AiShotContext wctx = wd.BuildAiContext();
-                        wd.aimDegrees = EightBallAi.AimDegreesForPocket(wctx.cueBallPosition, wctx.ballPositions[8],
-                            wctx.pocketCenters[w1]);
-                        wd.power = 0.5f;
-                        if (wd.Launch().magnitude <= 0f)
-                        {
-                            failures.Add("(②) 前提不成立：指定错袋那一杆没打出去。");
-                        }
-                        else
-                        {
-                            AdvanceToRest(wd, RestCap);
-                            if (!wd.MatchOver || wd.EndReason != ShotOutcomeKind.EightBallWrongPocket)
-                            {
-                                failures.Add($"(②) 进**非指定袋**应判负且原因为 `EightBallWrongPocket`，实测 "
-                                             + $"MatchOver={wd.MatchOver} / EndReason={wd.EndReason}"
-                                             + $"（指定 {w2}、实际进 {w1}）。");
-                            }
-                            else if (wd.Winner != ShotTurn.Ai)
-                            {
-                                failures.Add($"(②) 进错袋应由**对手**胜，实测 {wd.Winner}。");
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        Object.DestroyImmediate(wrongGo);
-                    }
-                }
-                finally
-                {
-                    Object.DestroyImmediate(callGo);
-                }
-
-                // ── AI 指定袋（P6 功能级，**折进本用例，不新开**）：判据 ①②③ ──
-                // 动机：AI 打黑 8 时必须**自己指定袋**；否则会撞上"未指定 ⇒ 拒杆"的闸门 ⇒ **对局卡死**
-                //（"AI 会被闸门卡死"的实证 = 下面的注入 6：删掉 `TryLaunchAiShot` 里那段 ⇒ ① 必红）。
-                var aiCallGo = new GameObject("T145AiCall");
-                try
-                {
-                    PhysicsTestDrive ad = NewAiDrive(aiCallGo, rackSeed: 11);
-                    int aiPocket = FirstCornerPocket(ad.tableConfig);
-                    SetUpCleanPot(ad, 8, aiPocket, ad.Simulator.Balls.Count);   // 只剩黑 8 在场、正对角袋
-                    AdvanceToRest(ad, RestCap);
-
-                    // "打黑 8"的口径：本方组已清完（`IsEightBallShot == true`）
-                    ad.ruleState = new RuleState
-                    {
-                        groupState = GroupState.Solid,
-                        solidRemaining = 0,
-                        stripeRemaining = 7,
-                        calledPocket = -1,
-                        isBreak = false,
-                    };
-                    ad.SetTurn(ShotTurn.Ai);   // AI 回合
-
-                    // ── ① AI 回合 + 打黑 8 ⇒ 出杆**不被拒**（`RefusedCallPocketCount` 不涨）
-                    //    且 `CalledPocket == intent.pocketIndex` ──
-                    int refusedBeforeAi = ad.RefusedCallPocketCount;
-                    Vector2 aiCallVelocity = ad.TryLaunchAiShot(AiDifficulty.Club, 31337);
-                    AiShotIntent aiIntent = ad.LastAiShotIntent;
-
-                    if (aiCallVelocity.magnitude <= 0f)
-                    {
-                        failures.Add("(AI①) AI 打黑 8 应能出杆（`TryLaunchAiShot` 返回非零），实测被拒 —— "
-                                     + "多半是 AI 没在打黑 8 时调 `TryCallPocket`，撞上了「未指定 ⇒ 拒杆」的闸门"
-                                     + "（后果 = 对局卡死）。");
-                    }
-
-                    if (ad.RefusedCallPocketCount != refusedBeforeAi)
-                    {
-                        failures.Add($"(AI①) AI 打黑 8 出杆**不得**被「未指定袋」这道门拒"
-                                     + $"（`RefusedCallPocketCount` 应保持 {refusedBeforeAi}），实测 "
-                                     + $"{refusedBeforeAi} → {ad.RefusedCallPocketCount}。");
-                    }
-
-                    if (ad.CalledPocket != aiIntent.pocketIndex)
-                    {
-                        failures.Add($"(AI①) AI 打黑 8 应把自己的目标袋写进 `CalledPocket`"
-                                     + $"（应 == intent.pocketIndex = {aiIntent.pocketIndex}），实测 {ad.CalledPocket}。");
-                    }
-
-                    // ── ③ 回合边界：`SetTurn(Ai)` **不得**清；`SetTurn(Player)` ⇒ 清回 -1（**正反都断**）──
-                    ad.SetTurn(ShotTurn.Ai);
-                    if (ad.CalledPocket != aiIntent.pocketIndex)
-                    {
-                        failures.Add($"(AI③反) `SetTurn(Ai)` **不得**清除 `calledPocket`"
-                                     + $"（应仍为 {aiIntent.pocketIndex}），实测 {ad.CalledPocket}。");
-                    }
-
-                    ad.SetTurn(ShotTurn.Player);
-                    if (ad.CalledPocket != -1)
-                    {
-                        failures.Add($"(AI③正) `SetTurn(Player)` 应把 `calledPocket` 清回 -1"
-                                     + $"（回合边界单点），实测 {ad.CalledPocket}。");
-                    }
-                }
-                finally
-                {
-                    Object.DestroyImmediate(aiCallGo);
-                }
-
-                // ── ② AI 的**普通杆**（本方组未清完）不得写 `calledPocket`（保持 -1）──
-                var aiNormalGo = new GameObject("T145AiNormal");
-                try
-                {
-                    PhysicsTestDrive an = NewAiDrive(aiNormalGo, rackSeed: 12);
-                    int anPocket = FirstCornerPocket(an.tableConfig);
-                    SetUpCleanPot(an, AiCleanTargetBall, anPocket, an.Simulator.Balls.Count);   // 只剩 1 颗实色目标球
-                    AdvanceToRest(an, RestCap);
-                    an.ruleState = new RuleState
-                    {
-                        groupState = GroupState.Solid,
-                        solidRemaining = 3,   // 未清完 ⇒ **不是**"打黑 8 那杆"
-                        stripeRemaining = 7,
-                        calledPocket = -1,
-                        isBreak = false,
-                    };
-                    an.SetTurn(ShotTurn.Ai);
-                    Vector2 normalVelocity = an.TryLaunchAiShot(AiDifficulty.Club, 4242);
-                    int calledAfterNormalShot = an.CalledPocket;   // 取"出杆后、任何人清它之前"的值
-
-                    // ⚠ **前提（QA Major-2）**：这一杆必须**真的打出去了**。
-                    //   否则 AI 整杆不出 ⇒ `CalledPocket` 恒为 -1 ⇒ 下面那条断言是**真空绿**
-                    //   （AI 彻底坏掉它照样绿）⇒ 必须先断"前提成立"，再断"没写 calledPocket"。
-                    if (normalVelocity.magnitude <= 0f)
-                    {
-                        failures.Add("(AI②) **前提不成立**：AI 普通杆没有真的打出去（`TryLaunchAiShot` 返回零向量）"
-                                     + " ⇒ 「普通杆不得写 `calledPocket`」这条会**真空通过**，不能算证据。");
-                    }
-                    else
-                    {
-                        // 前提②（更强一档）：白球**真的位移过** —— 防"返回非零但球没动"。
-                        Vector2 cueBeforeNormal = an.Simulator.Balls[0].position;
-                        for (int i = 0; i < 120; i++)
-                        {
-                            an.Advance(PoolSimulator.FixedDeltaTime);
-                        }
-
-                        if ((an.Simulator.Balls[0].position - cueBeforeNormal).magnitude <= 0.01f)
-                        {
-                            failures.Add("(AI②) **前提不成立**：AI 普通杆返回了非零初速，但白球在 120 步内"
-                                         + "位移 ≤ 0.01 m ⇒ 球没真的动。");
-                        }
-                    }
-
-                    if (calledAfterNormalShot != -1)
-                    {
-                        failures.Add($"(AI②) AI 的**普通杆**（本方组未清完）**不得**写 `calledPocket`"
-                                     + $"（应保持 -1），实测 {calledAfterNormalShot}。");
-                    }
-                }
-                finally
-                {
-                    Object.DestroyImmediate(aiNormalGo);
-                }
-
-                // ── AI 回合驱动器（P6 收口）：① 真的出手 ② 一回合只出一杆 ②b 未静止不出杆
-                //    ③ 玩家回合不出手 ④ 结算后不出手 ⑤ 不死锁（无法出杆 ⇒ 显式让位）──
-                // 动机（用户实机）：`TryLaunchAiShot` 在**运行期零调用者** ⇒ 轮到 AI 就僵住
-                //（"怎么没有 AI 和我对战"）。本节钉住"轮到 AI ⇒ 停顿一拍 ⇒ 自己出一杆"真的发生。
-                var turnGo = new GameObject("T145AiTurn");
-                try
-                {
-                    PhysicsTestDrive td = NewAiDrive(turnGo, rackSeed: 21);
-                    int tp = FirstCornerPocket(td.tableConfig);
-                    SetUpCleanPot(td, AiCleanTargetBall, tp, td.Simulator.Balls.Count);   // 只剩 1 颗实色目标球
-                    AdvanceToRest(td, RestCap);
-                    td.ruleState = new RuleState
-                    {
-                        groupState = GroupState.Solid,
-                        solidRemaining = 3,   // 普通杆（不是打黑 8）
-                        stripeRemaining = 7,
-                        calledPocket = -1,
-                        isBreak = false,
-                    };
-                    td.SetTurn(ShotTurn.Ai);
-                    td.aiThinkSeconds = 0.2f;   // ⚠ **可配置** ⇒ 判据用固定 dt 推进，不 sleep
-
-                    // ── ②b 台面**未静止** ⇒ 不得出杆、也不得因误判而"让位" ──
-                    //    ⚠ 专钉"静止门"：去掉它 ⇒ 球还在滚时计时继续累加，到点就去出杆，
-                    //      而 `Launch()` 会拒 ⇒ 直接被判成「AI 无法出杆」⇒ 白送一次让位。
-                    td.Simulator.PlaceBall(AiCleanTargetBall,
-                        td.Simulator.Balls[AiCleanTargetBall].position, new Vector2(0.8f, 0f));
-                    int launchesBeforeMoving = td.LaunchCount;
-                    int yieldsBeforeMoving = td.AiTurnYieldedCount;
-                    for (int i = 0; i < 24; i++)   // 0.2 s：**刚好**越过 `aiThinkSeconds`
-                    {
-                        td.Advance(PoolSimulator.FixedDeltaTime);
-                    }
-
-                    if (td.LaunchCount != launchesBeforeMoving)
-                    {
-                        failures.Add("(AI驱动②b) 台面**未静止**时 AI 不得出杆（静止门失效 ⇒ 球还在滚就开打）。");
-                    }
-
-                    if (td.AiTurnYieldedCount != yieldsBeforeMoving)
-                    {
-                        failures.Add("(AI驱动②b) 台面未静止时**不得**误判「AI 无法出杆」而让位"
-                                     + "（那会把回合白送玩家），实测让位计数 "
-                                     + $"{yieldsBeforeMoving} → {td.AiTurnYieldedCount}。");
-                    }
-
-                    // 把干净局面摆回去（那颗被推走的球归位），再跑真正的一回合
-                    SetUpCleanPot(td, AiCleanTargetBall, tp, td.Simulator.Balls.Count);
-                    AdvanceToRest(td, RestCap);
-                    td.SetTurn(ShotTurn.Ai);
-
-                    // ── ① AI **真的出手**：用固定 dt 推进过 `aiThinkSeconds` ──
-                    int launchesBefore = td.LaunchCount;
-                    Vector2 cueBeforeTurn = td.Simulator.Balls[0].position;
-                    for (int i = 0; i < 300 && td.LaunchCount == launchesBefore; i++)
-                    {
-                        td.Advance(PoolSimulator.FixedDeltaTime);
-                    }
-
-                    if (td.LaunchCount == launchesBefore)
-                    {
-                        failures.Add("(AI驱动①) **前提不成立**：推进 300 步（2.5 s，> `aiThinkSeconds` 0.2 s）"
-                                     + "AI 仍未出杆 ⇒ 回合驱动器没接上"
-                                     + "（`IsAiTurn` 长期为真 + 台面静止 + 没人出杆 = 对局僵住）。");
-                    }
-                    else
-                    {
-                        // ── ② 一回合只出一杆：出手后再推 5 帧 ⇒ `LaunchCount` 不得再涨 ──
-                        for (int i = 0; i < 5; i++)
-                        {
-                            td.Advance(PoolSimulator.FixedDeltaTime);
-                        }
-
-                        if (td.LaunchCount != launchesBefore + 1)
-                        {
-                            failures.Add($"(AI驱动②) 同一次出手窗口内**不得**出现第二杆，实测 `LaunchCount` "
-                                         + $"{launchesBefore} → {td.LaunchCount}。");
-                        }
-
-                        // ① 续：白球**真的动了**（不是"没报错"）——
-                        //   `LaunchCount` 只在 `Launch()` 走到真出杆那一步才自增 ⇒ 它是
-                        //   「`_shotInFlight` 曾为真」的等价可观测出口。
-                        for (int i = 0; i < 120; i++)
-                        {
-                            td.Advance(PoolSimulator.FixedDeltaTime);
-                        }
-
-                        float moved = (td.Simulator.Balls[0].position - cueBeforeTurn).magnitude;
-                        if (moved <= 0.05f)
-                        {
-                            failures.Add($"(AI驱动①) AI 出杆后白球位移应 > 0.05 m，实测 {moved:F4} m"
-                                         + " ⇒ `LaunchCount` 涨了但球没动（不是真出杆）。");
-                        }
-                    }
-                }
-                finally
-                {
-                    Object.DestroyImmediate(turnGo);
-                }
-
-                // ── ③ **玩家回合**绝不出手 ──
-                var playerTurnGo = new GameObject("T145AiTurnPlayer");
-                try
-                {
-                    PhysicsTestDrive pd = NewAiDrive(playerTurnGo, rackSeed: 22);
-                    int pp = FirstCornerPocket(pd.tableConfig);
-                    SetUpCleanPot(pd, AiCleanTargetBall, pp, pd.Simulator.Balls.Count);
-                    AdvanceToRest(pd, RestCap);
-                    pd.ruleState = new RuleState
-                    {
-                        groupState = GroupState.Solid,
-                        solidRemaining = 3,
-                        stripeRemaining = 7,
-                        calledPocket = -1,
-                        isBreak = false,
-                    };
-                    // `CurrentTurn` 默认 = Player（**玩家回合**）
-                    pd.aiThinkSeconds = 0.1f;
-                    int launchesBeforePlayer = pd.LaunchCount;
-                    Vector2 cueBeforePlayer = pd.Simulator.Balls[0].position;
-                    for (int i = 0; i < 120; i++)   // 1 s = 10 × `aiThinkSeconds`
-                    {
-                        pd.Advance(PoolSimulator.FixedDeltaTime);
-                    }
-
-                    if (pd.LaunchCount != launchesBeforePlayer)
-                    {
-                        failures.Add($"(AI驱动③) **玩家回合**绝不许 AI 出杆，实测 `LaunchCount` "
-                                     + $"{launchesBeforePlayer} → {pd.LaunchCount}。");
-                    }
-
-                    if ((pd.Simulator.Balls[0].position - cueBeforePlayer).magnitude > 0.001f)
-                    {
-                        failures.Add("(AI驱动③) 玩家回合白球不得自发位移。");
-                    }
-                }
-                finally
-                {
-                    Object.DestroyImmediate(playerTurnGo);
-                }
-
-                // ── ④ **结算后**绝不出手（`MatchOver` 制住后续杆）──
-                var overGo = new GameObject("T145AiTurnOver");
-                try
-                {
-                    PhysicsTestDrive od = NewAiDrive(overGo, rackSeed: 23);
-                    int op = FirstCornerPocket(od.tableConfig);
-                    SetUpCleanPot(od, AiCleanTargetBall, op, od.Simulator.Balls.Count);
-                    AdvanceToRest(od, RestCap);
-                    od.ruleState = new RuleState
-                    {
-                        groupState = GroupState.Solid,
-                        solidRemaining = 3,
-                        stripeRemaining = 7,
-                        calledPocket = -1,
-                        isBreak = false,
-                    };
-                    od.SetTurn(ShotTurn.Ai);
-                    od.aiThinkSeconds = 0.1f;
-                    od.ApplyVerdict(new RuleVerdict
-                    {
-                        gameOver = true,
-                        winner = ShotTurn.Player,
-                        nextTurn = ShotTurn.Ai,   // 回合仍指向 AI ⇒ **只有 `MatchOver` 能拦住**
-                        outcome = ShotOutcomeKind.LegalEightBallPotted,
-                    });
-                    od.TryConsumeSettlement();   // 把"待结算"清掉 ⇒ 只剩 `MatchOver` 这一道门
-                    int launchesBeforeOver = od.LaunchCount;
-                    for (int i = 0; i < 120; i++)
-                    {
-                        od.Advance(PoolSimulator.FixedDeltaTime);
-                    }
-
-                    if (!od.MatchOver)
-                    {
-                        failures.Add("(AI驱动④) 前提：`ApplyVerdict(gameOver)` 之后 `MatchOver` 应为 true。");
-                    }
-
-                    if (od.LaunchCount != launchesBeforeOver)
-                    {
-                        failures.Add($"(AI驱动④) **结算后**（`MatchOver == true`）绝不许再出杆（一局定胜负被破坏），"
-                                     + $"实测 `LaunchCount` {launchesBeforeOver} → {od.LaunchCount}。");
-                    }
-                }
-                finally
-                {
-                    Object.DestroyImmediate(overGo);
-                }
-
-                // ── ⑤ **不死锁**：AI 无法出杆 ⇒ 必须**显式让位**（不许静默僵住）──
-                var stuckGo = new GameObject("T145AiTurnStuck");
-                try
-                {
-                    PhysicsTestDrive sd2 = NewAiDrive(stuckGo, rackSeed: 24);
-                    // 把所有**目标球**挪到台外 ⇒ AI 没有任何合法目标 ⇒ `Plan` 报"没打算"
-                    // ⇒ `TryLaunchAiShot` 返回零向量 ⇒ 驱动器**必须**让位。
-                    for (int ball = 0; ball < sd2.Simulator.Balls.Count; ball++)
-                    {
-                        if (ball == 0)
-                        {
-                            continue;
-                        }
-
-                        sd2.Simulator.PlaceBall(ball, new Vector2(0f, 50f + ball * 0.5f), Vector2.zero);
-                    }
-
-                    AdvanceToRest(sd2, RestCap);
-                    sd2.ruleState = new RuleState
-                    {
-                        groupState = GroupState.OpenTable,
-                        solidRemaining = 7,
-                        stripeRemaining = 7,
-                        calledPocket = -1,
-                        isBreak = false,
-                    };
-                    sd2.SetTurn(ShotTurn.Ai);
-                    sd2.aiThinkSeconds = 0.1f;
-                    int yieldsBeforeStuck = sd2.AiTurnYieldedCount;
-                    int launchesBeforeStuck = sd2.LaunchCount;
-                    for (int i = 0; i < 240; i++)   // 2 s = 20 × `aiThinkSeconds`
-                    {
-                        sd2.Advance(PoolSimulator.FixedDeltaTime);
-                    }
-
-                    if (sd2.LaunchCount != launchesBeforeStuck)
-                    {
-                        failures.Add("(AI驱动⑤) 前提：没有任何目标球时 AI 不可能真的出杆（`LaunchCount` 不该涨）。");
-                    }
-
-                    if (sd2.AiTurnYieldedCount != yieldsBeforeStuck + 1)
-                    {
-                        failures.Add($"(AI驱动⑤) AI **无法出杆**时必须**显式让位**（`AiTurnYieldedCount` 应 +1），"
-                                     + $"实测 {yieldsBeforeStuck} → {sd2.AiTurnYieldedCount} —— 否则就是"
-                                     + "「`IsAiTurn` 长期为真 + 台面静止 + 没人出杆」的僵局。");
-                    }
-
-                    if (sd2.CurrentTurn != ShotTurn.Player)
-                    {
-                        failures.Add($"(AI驱动⑤) 让位后回合应回到**玩家**，实测 {sd2.CurrentTurn}。");
-                    }
-                }
-                finally
-                {
-                    Object.DestroyImmediate(stuckGo);
-                }
+                // ── 指定袋（D3）判据 ②③④ 与 AI 叫袋 ①②③ **已随 D3 一起删除（P8-C）** ──
+                //   用户撤销理由：「取消最后呼叫球袋黑8，黑8最后打进哪个袋都行」⇒ 不再有
+                //   `CalledPocket` / `RefusedCallPocketCount` / `IsEightBallShot` / `WrongPocket` 这些出口。
 
                 // ── P7 规则（Runtime 侧）：`RuleVerdict` 的七个字段**一个都不许丢** ──
-                // ① 定组（含 ⑦ `IsEightBallShot` 真的变 true）② 首碰违规 ⇒ 犯规 + 换手（含 ⑤ 对手拿全场自由球）
+                // ① 定组（含 ⑦ 剩余数由球台重算）② 首碰违规 ⇒ 犯规 + 换手（含 ⑤ 对手拿全场自由球）
                 // ③ 合法但没进本方球 ⇒ 换手 ④ 合法开球没进球 ⇒ 换手
                 // ⑤(b) 自由球形态 / 头区落点 / 前向门 ⑥ 开球进黑 8 ⇒ 复位回 footSpot
                 var p7GroupGo = new GameObject("T145P7Group");
@@ -2137,13 +1673,12 @@ namespace Billiards.Tests
                                 failures.Add("(P7①) 进了本方球应**续杆**（仍是玩家回合）。");
                             }
 
-                            // ⑦：本方球清完 ⇒ `IsEightBallShot` 必须真的变 true
-                            //    （这正是"进黑 8 必判负"的根因：它恒 false ⇒ 从不要求指定袋 + `wrongPocket` 恒真）
-                            if (!g1.IsEightBallShot)
+                            // ⑦ 本方球清完 ⇒ **剩余数必须由球台重算为 0**（P8 起 `IsEightBallShot` 已随 D3 删除，
+                            //    这里直接断"剩余数与球台同步"这个根因 —— 它正是"黑 8 能不能合法打"的输入）。
+                            if (g1.ruleState.solidRemaining != 0)
                             {
-                                failures.Add($"(P7⑦) 本方球已清完（solidRemaining={g1.ruleState.solidRemaining}）"
-                                             + " ⇒ `IsEightBallShot` 应为 **true**，实测 false"
-                                             + "（`solidRemaining` 没重算 ⇒ 组别/剩余数与球台脱节）。");
+                                failures.Add($"(P7⑦) 本方球已清完 ⇒ `solidRemaining` 应被重算为 0，"
+                                             + $"实测 {g1.ruleState.solidRemaining}（组别/剩余数与球台脱节）。");
                             }
                         }
                     }
@@ -2177,7 +1712,6 @@ namespace Billiards.Tests
                         groupState = GroupState.Solid,
                         solidRemaining = 7,
                         stripeRemaining = 1,   // 场上只有一颗花色
-                        calledPocket = -1,
                         isBreak = false,
                     };
                     f1.SetTurn(ShotTurn.Player);
@@ -2239,7 +1773,6 @@ namespace Billiards.Tests
                         groupState = GroupState.Solid,
                         solidRemaining = 1,
                         stripeRemaining = 0,
-                        calledPocket = -1,
                         isBreak = false,
                     };
                     n1.SetTurn(ShotTurn.Player);
@@ -2293,7 +1826,6 @@ namespace Billiards.Tests
                         groupState = GroupState.OpenTable,
                         solidRemaining = 7,
                         stripeRemaining = 0,
-                        calledPocket = -1,
                         isBreak = true,
                     };
                     b1.SetTurn(ShotTurn.Player);
@@ -2446,34 +1978,33 @@ namespace Billiards.Tests
                     Object.DestroyImmediate(p7RespotGo);
                 }
 
-                // ── P7⑧ 球杆在「杆在飞」期间**不跟着白球跑**（用户实机反馈）+ 接线守卫 ──
-                Vector3 cueW = new Vector3(0.1f, 0f, 0.2f);
-                Vector3 strikeW = new Vector3(-0.3f, 0f, 0.4f);
-                if ((CueStickController.StickAnchorPosition(true, cueW, strikeW) - strikeW).sqrMagnitude > 1e-8f)
+                // ── P8-D 球杆：**出杆后（球在滚的整段时间）整根隐藏**（用户：「AI 击玩球，画面上的球杆也要暂时消失」）──
+                // ⚠ P7 的"冻结在击球位"方案已按用户要求**换掉**：他要的是"暂时消失"，不是"停在那儿"。
+                if (CueStickController.ShouldShowStick(true, true, false, false, shotInFlight: true))
                 {
-                    failures.Add("(P7⑧) 出杆后球杆锚点应**冻结在击球位置**（`ShotInFlight` ⇒ 用 strike 点），"
-                                 + "实测没冻结 ⇒ 杆会跟着白球飞。");
+                    failures.Add("(P8⑧) **出杆期间球杆必须不可见**（`shotInFlight == true` ⇒ false），实测仍返回可见。");
                 }
 
-                if ((CueStickController.StickAnchorPosition(false, cueW, strikeW) - cueW).sqrMagnitude > 1e-8f)
+                if (!CueStickController.ShouldShowStick(true, true, false, false, shotInFlight: false))
                 {
-                    failures.Add("(P7⑧) 没在飞时应**跟着白球**（否则瞄准时杆不贴球）。");
+                    failures.Add("(P8⑧) **回到瞄准时球杆必须可见**（`shotInFlight == false` ⇒ true），实测返回不可见。");
                 }
 
-                // **接线守卫**（纯函数绿 ≠ 真的用上了）：源码里必须有**调用点**，且把 `drive.ShotInFlight` 喂进去
+                // **接线守卫**（纯函数绿 ≠ 真的用上了）：源码里必须把 `drive.ShotInFlight` 喂进可见性判定，
+                // 并且 P7 的 `StickAnchorPosition`（冻结方案）**必须已删除**（不许留死函数）。
                 string stickSource = File.ReadAllText(Path.Combine(
                     Path.GetDirectoryName(Application.dataPath) ?? ".", CueStickSourcePath));
                 string stickNoComment = StripCommentLines(stickSource);
-                if (CountOccurrences(stickNoComment, "StickAnchorPosition(") < 2)
-                {
-                    failures.Add("(P7⑧) `CueStickController` 里找不到 `StickAnchorPosition(` 的**调用点**"
-                                 + " ⇒ 冻结没接线（纯函数在、但没人用）。");
-                }
-
                 if (CountOccurrences(stickNoComment, "drive.ShotInFlight") < 1)
                 {
-                    failures.Add("(P7⑧) `CueStickController` 没有把 `drive.ShotInFlight` 喂给锚点函数"
-                                 + " ⇒ 冻结永远不生效。");
+                    failures.Add("(P8⑧) `CueStickController` 没有把 `drive.ShotInFlight` 喂给可见性判定"
+                                 + " ⇒ 出杆后球杆不会消失。");
+                }
+
+                if (CountOccurrences(stickNoComment, "StickAnchorPosition") != 0)
+                {
+                    failures.Add("(P8⑧) `StickAnchorPosition`（P7 的「冻结」方案）**应已删除**，"
+                                 + "实测源码里仍有引用 ⇒ 两套方案并存。");
                 }
 
                 // ── P7⑨ AI 出杆**分阶段**（瞄准 → 拉杆 → 击出），不是一次性 aim+power+Launch ──
@@ -2489,7 +2020,6 @@ namespace Billiards.Tests
                         groupState = GroupState.Solid,
                         solidRemaining = 3,
                         stripeRemaining = 7,
-                        calledPocket = -1,
                         isBreak = false,
                     };
                     a2.SetTurn(ShotTurn.Ai);
@@ -2567,7 +2097,6 @@ namespace Billiards.Tests
                         groupState = GroupState.OpenTable,
                         solidRemaining = 7,
                         stripeRemaining = 0,
-                        calledPocket = -1,
                         isBreak = true,
                     };
                     k1.SetTurn(ShotTurn.Player);
@@ -2653,7 +2182,6 @@ namespace Billiards.Tests
                         groupState = GroupState.Solid,
                         solidRemaining = 3,
                         stripeRemaining = 7,
-                        calledPocket = -1,
                         isBreak = false,
                     };
                     v1.SetTurn(ShotTurn.Ai);

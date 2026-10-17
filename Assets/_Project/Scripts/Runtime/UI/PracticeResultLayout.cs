@@ -52,7 +52,7 @@ namespace Billiards.UI
         public static readonly Rect ReasonLocal = new Rect(0.06f, 0.495f, 0.88f, 0.045f);   // 0.521 → 0.495：把"为什么"行**下移** 16.5 px，给加高后的标题腾缝（标题底 0.568，仍留 17.8 px）；下方统计区顶边 0.445 ⇒ 仍有 31.8 px（T148(f)）
 
         /// <summary>三列统计的容器（内部再竖分"大数字 / 8 px 标签"）。</summary>
-        public static readonly Rect StatsLocal = new Rect(0.06f, 0.300f, 0.88f, 0.145f);   // 0.315/0.130 → 0.300/0.145（=92.1 px）：统计**数值**占该区 0.58 ⇒ 53.4 px ≥ 27×1.9=51.3（原 47.9 装不下）；上下仍留 35.6 / 31.7 px（T148(e)）
+        public static readonly Rect StatsLocal = new Rect(0.06f, 0.294f, 0.88f, 0.151f);   // 0.300/0.145 → 0.294/0.151（=95.9 px）：① 数值带 0.58 ⇒ 55.6 px ≥ 27×1.9=51.3；② **上下留白**均为 **0.050（31.7 px）** —— 上接"为什么"行(底 0.495)、下接主键(顶 0.244)，用户要求"留白等差"（T148(e)）
 
         /// <summary>统计区上边线的卡内 y（设计稿 `.result-stats { border-top }`）。</summary>
         public const float StatsTopLineY = 0.465f;

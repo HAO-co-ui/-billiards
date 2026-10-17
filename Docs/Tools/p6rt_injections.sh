@@ -11,6 +11,22 @@
 #  ④ **注入态的结果 XML 必须当轮就留档到仓外**：`unity_batch.sh` 每次都先删旧 XML ⇒
 #     不留档就没有"注入那一轮"的独立证据。
 #
+# ⚠ **四条"看起来是文本、其实是代码"的血泪**（编号接着上面；都是真实事故，别删）：
+#  ⑤ **sha1 一律从工具输出粘贴**（40 位、去掉 `sha1sum` 的 `*`、正斜杠）：**不手抄、不截断、不凭记忆补全**。
+#     实测：一次报成 38 位（漏 2 字符）、两次**凭记忆编前缀**（`dfb6f2b0…` / `e2f6c1a4…` 与真值完全不符）
+#     ⇒ 下游机械核对白报 FAIL，后人还会误以为"文件被改过"。
+#  ⑥ **`echo "…"` 的双引号里不能出现反引号**：会被当**命令替换**执行。
+#     实测：`echo "...（`release` 由调用方...）"` ⇒ 运行时报 `release: command not found`。
+#  ⑦ **每新增一个"我要改的文件"，必须同步加进 `EXPECT_ARGS`**：否则预检把**自己的改动**当成别人的挡住。
+#     实测两次：`CueStickController.cs`、`EightBallRulesTests.cs`。
+#  ⑧ **判据必须断言"它扫的是哪些文件"**：否则 `T148(h)` 那种「实测 0」会被人当成「代码缺了」，
+#     而实际是**被扫列表里没有那个文件**（`HomeView.cs` 实有 4 处 `applyGlobalScale: false`）。
+#     ⇒ 属**覆盖面族**：文件覆盖面 / 字节干净度 / 时间覆盖面 / **被扫覆盖面**。
+#  ⑨ **删除符号链接 / 目录联接（junction）一律用 `rmdir`（或先解链再删目录），永不 `rm -rf`**：
+#     `rm -rf` 一个 junction 会把**目标目录的内容**一起删 —— **推导上**会删掉主仓 `Library/`
+#     （几万文件 + `ScriptAssemblies`，真发生就是整仓重导）。**本次并未真的执行过 `rm -rf`**：
+#     是先判断、再用 `rmdir` 只删链接，并在前后核了主仓 `Library` 顶层条目 **48 → 48**。
+#
 # ⚠ **基线不写死字面量**（这是本脚本与 `p6ui_injections.sh` 的唯一结构差异）：
 #   本轮改完源码基线就变了 ⇒ 用「**首次运行写入 `baseline.sha1` / 之后运行时读取**」：
 #     · 缺条目 ⇒ 把**当前** sha1 记为基线（打印 `首次记录`）；
@@ -27,9 +43,8 @@
 #   settle-unwire          ① 删 `Advance` 里的 `SettleShotIfAtRest();`          ⇒ T145 ⑨ 红
 #   rest-gate-drop         ② 去掉静止门                                         ⇒ T145 ⑨ 红
 #   settlement-gate-break  ③ 结算闸门改坏（消费结算卡时清 MatchOver）          ⇒ UI T146(d③) 红（+ T145 ⑤ 连带）
-#   callpocket-gate-drop   ④ 删「未指定袋 ⇒ 拒杆」那道门                        ⇒ T145 ③ 红（+ T147 连带）
-#   eightpocket-freeze     ⑤ `ExtractFacts` 里把 `eightBallPocket` 写死 -1      ⇒ T145 ② 红
-#   ai-callpocket-drop     ⑥ 删「AI 打黑 8 自己指定袋」那一步                    ⇒ T145 (AI①) 红
+#   ⚠ ④/⑤/⑥（callpocket-gate-drop / eightpocket-freeze / ai-callpocket-drop）**已退役（P8-C）**：
+#     D3（指定袋）整块删除后它们的靶代码不存在了 ⇒ 删掉而不是留着；替代品见文件末尾的 P8 两条。
 #   ai-never-launch        ⑦ `TryLaunchAiShot` 永不启动                         ⇒ T145 (AI②)「前提不成立」红
 #   ai-turn-player-guard-drop ⑧ 去掉「玩家回合不出手」守卫                      ⇒ T145 (AI驱动③) 红
 #   ai-turn-rest-gate-drop    ⑨ 去掉「台面静止」守卫                            ⇒ T145 (AI驱动②b) 红
@@ -51,11 +66,11 @@ OUT="$OUT_ROOT/inj_$TAG"
 
 # ── tag → 目标文件（多个 tag 可指向同一文件；基线按"文件"记，不按 tag）──────────
 case "$TAG" in
-  settle-unwire|rest-gate-drop|settlement-gate-break|callpocket-gate-drop|ai-callpocket-drop|ai-never-launch|ai-turn-player-guard-drop|ai-turn-rest-gate-drop|ai-turn-yield-drop|p7-group-drop|p7-ballinhand-drop|p7-ai-one-shot|p7-isbreak-never-clear|p7-ai-autoplace-drop)
+  settle-unwire|rest-gate-drop|settlement-gate-break|ai-never-launch|ai-turn-player-guard-drop|ai-turn-rest-gate-drop|ai-turn-yield-drop|p7-group-drop|p7-ballinhand-drop|p7-ai-one-shot|p7-isbreak-never-clear|p7-ai-autoplace-drop|p8-pending-launch-gate-drop)
                     REL="Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs" ;;
-  eightpocket-freeze|p7-no-pot-turn)
+  p7-no-pot-turn)
                     REL="Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs" ;;
-  p7-stick-follow)
+  p8-cue-visible-in-flight)
                     REL="Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs" ;;
   *) echo "未登记的 tag：$TAG（见本文件头部的 tag 列表）" >&2; exit 2 ;;
 esac
@@ -81,6 +96,7 @@ for _p in \
   "Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs" \
   "Assets/_Project/Scripts/Runtime/Rules/EightBallAi.cs" \
   "Assets/_Project/Tests/EditMode/PhysicsTestDriveLaunchStateTests.cs" \
+  "Assets/_Project/Tests/EditMode/EightBallRulesTests.cs" \
   "Assets/_Project/Tests/EditMode/EightBallAiTests.cs" \
   "Docs/Tools/p6rt_*.sh" \
   "Docs/Tools/p6rt_*.py" \
@@ -215,7 +231,7 @@ if grep -q "INJ-P6RT" "$TARGET"; then
   exit 3
 fi
 echo "[$TAG] ✓ 还原后 sha1 与基线**逐字节一致**，且 INJ 残留 = 0"
-echo "[$TAG] 脚本结束 = $(now)（`release` 由调用方在脚本返回后立即执行）"
+echo "[$TAG] 脚本结束 = $(now)（release 由调用方在脚本返回后立即执行）"
 
 # ── ⑥ 汇总（**判成败只认 XML 的 failed 与 mtime**，不看 unity rc）──────────────
 grep -E "results mtime" "$OUT/run.log" || true

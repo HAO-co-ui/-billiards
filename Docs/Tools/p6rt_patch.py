@@ -75,49 +75,6 @@ PATCHES = {
             ),
         ],
     ),
-    # ④ 删掉「**未指定袋 ⇒ 拒杆**」这道门 ⇒ 打黑 8 不选袋也能出杆
-    "callpocket-gate-drop": (
-        PTD,
-        [
-            (
-                "            if (IsEightBallShot && ruleState.calledPocket < 0)\n"
-                "            {\n"
-                "                RefusedCallPocketCount++;\n"
-                "                return Vector2.zero;\n"
-                "            }\n",
-                "            // INJ-P6RT-4：**删掉「未指定袋 ⇒ 拒杆」这道门**（预期指定袋判据 ③ 必红）\n",
-            ),
-        ],
-    ),
-    # ⑤ 把「黑 8 进了哪个袋」写死为 -1 ⇒ 规则层判不出"进错袋"
-    "eightpocket-freeze": (
-        RULES,
-        [
-            (
-                "            facts.eightBallPocket = (afterPocketIndex != null && afterPocketIndex.Count > EightBall)\n"
-                "                ? (facts.pottedBalls.Contains(EightBall) ? afterPocketIndex[EightBall] : -1)\n"
-                "                : -1;\n",
-                "            // INJ-P6RT-5：**把「黑 8 进了哪个袋」写死为 -1**（预期指定袋判据 ② 必红）\n"
-                "            facts.eightBallPocket = -1;\n",
-            ),
-        ],
-    ),
-    # ⑥ 删掉「**AI 打黑 8 自己指定袋**」那一步 ⇒ AI 撞上"未指定 ⇒ 拒杆"闸门 ⇒ 对局卡死
-    "ai-callpocket-drop": (
-        PTD,
-        [
-            (
-                "            if (IsEightBallShot)\n"
-                "            {\n"
-                "                if (intent.pocketIndex < 0 || !TryCallPocket(intent.pocketIndex))\n"
-                "                {\n"
-                "                    return Vector2.zero;   // 袋号非法（不该发生）⇒ 不出杆，绝不带着错的指定袋开打\n"
-                "                }\n"
-                "            }\n",
-                "            // INJ-P6RT-6：**删掉\"AI 打黑 8 自己指定袋\"这一步**（预期 AI 判据 ① 必红 = AI 被闸门卡死）\n",
-            ),
-        ],
-    ),
     # ⑦ **QA Major-2 的专属注入**：`TryLaunchAiShot` **永不启动那一杆**
     #    ⇒ AI 判据② 若没补"前提成立"，就会**真空绿**；补了之后必红在「前提不成立」那条。
     "ai-never-launch": (
@@ -234,13 +191,31 @@ PATCHES = {
         ],
     ),
     # ⑭ **让球杆在飞行期间仍跟着白球** ⇒ P7 判据⑧ 必红（用户实机反馈"杆跟着球飞"）
-    "p7-stick-follow": (
+    # ⚠ **`p7-stick-follow` 已退役（P8-D）**：它打的是 `StickAnchorPosition`（P7 的"冻结"方案），
+    #   而该函数已按用户要求**整块删除**（改为"出杆期间整根隐藏"）⇒ 旧注入没有锚点了。
+    #   替代者是下面的 `p8-cue-visible-in-flight`（同一条用户反馈的新形态）。
+    # ⑯ **出杆期间球杆仍可见**（删 `!shotInFlight`）⇒ P8 判据⑧ 必红（用户要"暂时消失"）
+    "p8-cue-visible-in-flight": (
         "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
         [
             (
-                "            return shotInFlight ? strikeCueBallWorld : cueBallWorld;\n",
-                "            // INJ-P7-4：**取消冻结** ⇒ 出杆后杆继续跟着白球跑\n"
-                "            return cueBallWorld;\n",
+                "            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen && !shotInFlight;\n",
+                "            // INJ-P8-1：**出杆期间仍可见**（删掉 `!shotInFlight`）\n"
+                "            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen;\n",
+            ),
+        ],
+    ),
+    # ⑰ **删掉「待放置 ⇒ 不许出杆」那道门** ⇒ T70b 必红（白球会"自动代打"回去）
+    "p8-pending-launch-gate-drop": (
+        PTD,
+        [
+            (
+                "            if (cueOffTable)\n"
+                "            {\n"
+                "                RefusedPendingPlacementCount++;\n"
+                "                return Vector2.zero;\n"
+                "            }\n",
+                "            // INJ-P8-2：**删掉「待放置 ⇒ 不许出杆」那道门**（预期 T70b 必红）\n",
             ),
         ],
     ),

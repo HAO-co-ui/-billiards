@@ -16,21 +16,34 @@ import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 被引用的兄弟程序集 → (替换后的 HintPath, 替换后的程序集名)
+# 被引用的兄弟程序集 → (改写成什么, 程序集名)
 #
-# 为什么要把 `ProjectReference` 全换成**直接引用 DLL**：
+# 为什么**不能**保留指向**原工程**的 `ProjectReference`：
 # `Billiards.Editor.csproj` / `Billiards.Tests.EditMode.csproj` 通过 `ProjectReference`
 # 引用 `Billiards.Runtime.csproj`，而 MSBuild 会去编译那个**原文件** ——
 # 原文件里没有本轮新增的 `.cs` ⇒ 编译必然以 `CS0246` 失败，
 # 而且失败信息会把责任推到**原工程**上（看起来像是"我的代码错了"）。
-# 换成引用验证版产物 DLL 之后，引用链与 Unity 的编译顺序一致，错误才指向真实位置。
 #
-# 注：`Library/ScriptAssemblies/*.dll` 是 Unity 上一次成功编译的产物；
-# 本轮**未改动**的程序集（如 `Billiards.Diagnostics`）直接引用它是正确的（内容未变）。
+# ⚠ **P8 修的一个真缺口（2026-10-17；此前被误登记为"假信号"）**：
+# 旧版把这三条改成**直接引 DLL**（`HintPath` 指 `Temp\bin\Verify\*.dll`）。
+# 那条路只有在"你**先手工按顺序**编过 Runtime、再编 Editor、最后编 Tests"时才成立；
+# **单编 Tests** 时那两个 DLL 还不存在 ⇒ MSBuild **不报缺引用**、只是拿不到类型
+# ⇒ 满屏 `CS0234 命名空间 Billiards 中不存在 EditorTools`（16 条），**看起来像代码错**。
+# ⇒ 现在改成指向**验证版工程**的 `ProjectReference`（`_verify_*.csproj`）：
+#   MSBuild 会自动按依赖顺序把它们编出来 ⇒ **单命令 `dotnet build _verify_Billiards.Tests.EditMode.csproj`
+#   就能得到 0 error**，与"先编谁"无关。
+#   注意：指向的是 `_verify_*`（含本轮新增文件），**不是**原工程 ⇒ 仍保留"不编原工程"的好处。
+# `Billiards.Diagnostics` 本轮未改动 ⇒ 继续直接引 `Library/ScriptAssemblies` 的产物。
 REFERENCE_MAP = {
-    "Billiards.Runtime.csproj": (r"Temp\bin\Verify\Billiards.Runtime-verify.dll", "Billiards.Runtime-verify"),
-    "Billiards.Editor.csproj": (r"Temp\bin\Verify\Billiards.Editor-verify.dll", "Billiards.Editor-verify"),
-    "Billiards.Diagnostics.csproj": (r"Library\ScriptAssemblies\Billiards.Diagnostics.dll", "Billiards.Diagnostics"),
+    "Billiards.Runtime.csproj": ("_verify_Billiards.Runtime.csproj", "Billiards.Runtime-verify"),
+    "Billiards.Editor.csproj": ("_verify_Billiards.Editor.csproj", "Billiards.Editor-verify"),
+    "Billiards.Diagnostics.csproj": (None, "Billiards.Diagnostics"),
+}
+
+# `None` 那一档（未改动的程序集）仍按 **HintPath 直接引 DLL**
+DLL_FALLBACK = {
+    "Billiards.Diagnostics.csproj": (r"Library\ScriptAssemblies\Billiards.Diagnostics.dll",
+                                     "Billiards.Diagnostics"),
 }
 
 # (原 csproj, 验证用 AssemblyName, 追加的 Compile Include 列表)
@@ -68,8 +81,14 @@ def rewrite_references(text: str) -> str:
         included = match.group(1)
         if included not in REFERENCE_MAP:
             raise SystemExit(f"未登记的 ProjectReference：{included}")
-        hint, name = REFERENCE_MAP[included]
-        return (f'\n    <Reference Include="{name}">\n'
+        verify_proj, name = REFERENCE_MAP[included]
+        if verify_proj:
+            # **指向验证版工程的** ProjectReference ⇒ MSBuild 自动按依赖顺序编，单命令即可 0 error
+            return (f'\n    <ProjectReference Include="{verify_proj}">\n'
+                    f'      <Name>{name}</Name>\n'
+                    f'    </ProjectReference>')
+        hint, dll_name = DLL_FALLBACK[included]
+        return (f'\n    <Reference Include="{dll_name}">\n'
                 f'      <HintPath>{hint}</HintPath>\n'
                 f'      <Private>false</Private>\n'
                 f'    </Reference>')

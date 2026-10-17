@@ -15,7 +15,7 @@ namespace Billiards.Tests
     /// </summary>
     public class EightBallRulesTests
     {
-        private static RuleFacts Facts(int firstContact, int[] cushion, int[] potted, int[] offTable, int eightPocket = -1)
+        private static RuleFacts Facts(int firstContact, int[] cushion, int[] potted, int[] offTable)
         {
             return new RuleFacts
             {
@@ -25,12 +25,11 @@ namespace Billiards.Tests
                 offTableBalls = new List<int>(offTable ?? new int[0]),
                 cueBallPottedOrOff = System.Array.IndexOf(potted ?? new int[0], 0) >= 0
                                      || System.Array.IndexOf(offTable ?? new int[0], 0) >= 0,
-                eightBallPocket = eightPocket,
             };
         }
 
         private static RuleState State(bool isBreak, GroupState group = GroupState.OpenTable, ShotTurn turn = ShotTurn.Player,
-            int solidRemaining = 7, int stripeRemaining = 7, int calledPocket = -1)
+            int solidRemaining = 7, int stripeRemaining = 7)
         {
             return new RuleState
             {
@@ -39,7 +38,6 @@ namespace Billiards.Tests
                 turn = turn,
                 solidRemaining = solidRemaining,
                 stripeRemaining = stripeRemaining,
-                calledPocket = calledPocket,
             };
         }
 
@@ -136,7 +134,7 @@ namespace Billiards.Tests
             }
 
             // (b③) **开球进黑 8 ⇒ 拿回、不算赢、继续**
-            RuleVerdict b3 = EightBallRules.Judge(State(isBreak: true), Facts(1, new[] { 1 }, new[] { 8 }, null, eightPocket: 0));
+            RuleVerdict b3 = EightBallRules.Judge(State(isBreak: true), Facts(1, new[] { 1 }, new[] { 8 }, null));
             if (b3.gameOver)
             {
                 failures.Add("(b③) **开球进黑 8 不算赢**（`gameOver` 必须为 false）。");
@@ -178,45 +176,57 @@ namespace Billiards.Tests
             }
 
             // (c③) **未清完就打进黑 8 ⇒ 判负**（对手胜）
-            RuleVerdict c3 = EightBallRules.Judge(solid, Facts(3, new[] { 3 }, new[] { 8 }, null, eightPocket: 0));
+            RuleVerdict c3 = EightBallRules.Judge(solid, Facts(3, new[] { 3 }, new[] { 8 }, null));
             if (!c3.gameOver || c3.winner != ShotTurn.Ai)
             {
                 failures.Add($"(c③) **未清完打黑 8 ⇒ 判负**（winner 应为 Ai），实测 gameOver={c3.gameOver} winner={c3.winner}。");
             }
 
-            // (c④) **清完 + 合法 + 指定袋 ⇒ 胜**
-            RuleState cleared = State(isBreak: false, group: GroupState.Solid, solidRemaining: 0, calledPocket: 0);
-            RuleVerdict c4 = EightBallRules.Judge(cleared, Facts(8, new[] { 8 }, new[] { 8 }, null, eightPocket: 0));
+            // (c④) **清完 + 合法 ⇒ 胜**（P8 起 D3 取消：黑 8 进**任意**袋都有效）
+            RuleState cleared = State(isBreak: false, group: GroupState.Solid, solidRemaining: 0);
+            RuleVerdict c4 = EightBallRules.Judge(cleared, Facts(8, new[] { 8 }, new[] { 8 }, null));
             if (!c4.gameOver || c4.winner != ShotTurn.Player || c4.foul)
             {
-                failures.Add($"(c④) 清完 + 合法进黑 8（指定 0 号袋）⇒ **本局胜**，实测 gameOver={c4.gameOver} "
+                failures.Add($"(c④) 清完 + 合法进黑 8 ⇒ **本局胜**，实测 gameOver={c4.gameOver} "
                              + $"winner={c4.winner} foul={c4.foul}。");
             }
 
-            // (c⑤) **黑 8 进非指定袋 ⇒ 判负**
-            RuleVerdict c5 = EightBallRules.Judge(cleared, Facts(8, new[] { 8 }, new[] { 8 }, null, eightPocket: 3));
-            if (!c5.gameOver || c5.winner != ShotTurn.Ai)
+            // (c⑤) **结局枚举里不许再有"进错袋"**（P8：D3 已整块摘除）——
+            //   这是**结构级反向守卫**：谁把"指定袋 / 进错袋"偷偷加回来，这里立刻红。
+            //   ⚠ 不能写成"换一个袋号 ⇒ 结论相同"：`RuleFacts` 里**已经没有"黑 8 进哪个袋"这个事实**了
+            //     （它本来就是 D3 的输入）⇒ 那种断言在现在的结构下是**恒真**的（真空绿）。
+            var expectedOutcomes = new[]
             {
-                failures.Add($"(c⑤) **黑 8 进非指定袋（指定 0、实进 3）⇒ 判负**，实测 winner={c5.winner}。");
+                nameof(ShotOutcomeKind.Ongoing),
+                nameof(ShotOutcomeKind.LegalEightBallPotted),
+                nameof(ShotOutcomeKind.EightBallPottedTooEarly),
+                nameof(ShotOutcomeKind.EightBallOffTable),
+                nameof(ShotOutcomeKind.EightBallRespot),
+            };
+            var actualOutcomes = new List<string>();
+            foreach (ShotOutcomeKind kind in System.Enum.GetValues(typeof(ShotOutcomeKind)))
+            {
+                actualOutcomes.Add(kind.ToString());
             }
 
-            // (c⑥) **未指定（-1）却进黑 8 ⇒ 也必须判负（不许静默放过）**
-            RuleState noCall = State(isBreak: false, group: GroupState.Solid, solidRemaining: 0, calledPocket: -1);
-            RuleVerdict c6 = EightBallRules.Judge(noCall, Facts(8, new[] { 8 }, new[] { 8 }, null, eightPocket: 2));
-            if (!c6.gameOver || c6.winner != ShotTurn.Ai)
+            if (string.Join(",", actualOutcomes) != string.Join(",", expectedOutcomes))
             {
-                failures.Add($"(c⑥) **未指定袋却进黑 8 ⇒ 判负并留痕**，实测 winner={c6.winner}。");
+                failures.Add($"(c⑤) `ShotOutcomeKind` 应恰为 [{string.Join(", ", expectedOutcomes)}]，"
+                             + $"实测 [{string.Join(", ", actualOutcomes)}] —— 多出来的多半是 `EightBallWrongPocket`"
+                             + "（D3 已按用户要求取消：黑 8 进任意袋都算）。");
             }
 
-            // (c⑦) **对照（由 ④⑤ 两条规则推出，不是"我以为应该不同"）**：
-            //   ④ 的期望 = 本队胜（指定袋**一致** ⇒ 合法取胜）；⑤ 的期望 = **对手**胜（进非指定袋 ⇒ 判负）
-            //   ⇒ **两者必然给出不同胜者** ⇒ 相等才是异常（D3 未生效）。
-            //   ⚠ 本条第一版把判据写反了（ 时才报错）⇒ **恒红**（这正是上一轮那条残留失败）。
-            if (c4.winner == c5.winner)
+            // (c⑥) **清完 + 犯规（白球落袋）却进黑 8 ⇒ 判负**（与 c④ 形成正反两面）
+            RuleVerdict c6 = EightBallRules.Judge(cleared, Facts(8, new[] { 8 }, new[] { 8, 0 }, null));
+            if (!c6.gameOver || c6.winner != ShotTurn.Ai || !c6.foul)
             {
-                failures.Add($"(c⑦) ④ 与 ⑤ 应给出**不同**胜者（指定袋一致 ⇒ 本队胜；进非指定袋 ⇒ 对手胜），"
-                             + $"实测两次同为 {c4.winner} —— 说明 D3 判负未生效。");
+                failures.Add($"(c⑥) 清完但**本杆犯规**（白球落袋）却进黑 8 ⇒ 应判负，实测 "
+                             + $"gameOver={c6.gameOver} winner={c6.winner} foul={c6.foul}。");
             }
+
+            // (c⑦) **已随 D3 一起删除**（P8）：它原来断言"指定袋一致 ⇒ 本队胜 / 进非指定袋 ⇒ 对手胜"两向不同，
+            //   而 D3 取消后"袋号"不再是判定输入 ⇒ 那条对照**没有意义**（也不该留着误导后人）。
+            //   现在"黑 8 的袋"这件事由 (c⑤) 的**枚举级守卫**兜住（不许再有 `EightBallWrongPocket`）。
 
             // ══ 两分支共用：**黑 8 离台 ⇒ 直接判负** ═══════════════════════════════════
             RuleVerdict d1 = EightBallRules.Judge(solid, Facts(3, new[] { 3 }, null, new[] { 8 }));
@@ -301,7 +311,7 @@ namespace Billiards.Tests
             }
 
             // (f④) **开球黑 8 复位出口**：`gameOver == false` **且** `respotEightBall == true`
-            RuleVerdict f4v = EightBallRules.Judge(State(isBreak: true), Facts(1, new[] { 1 }, new[] { 8 }, null, eightPocket: 0));
+            RuleVerdict f4v = EightBallRules.Judge(State(isBreak: true), Facts(1, new[] { 1 }, new[] { 8 }, null));
             if (f4v.gameOver)
             {
                 failures.Add("(f④) 开球进黑 8 **不算赢**（`gameOver` 必须为 false）。");

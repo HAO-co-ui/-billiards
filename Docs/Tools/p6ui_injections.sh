@@ -69,7 +69,7 @@ case "$TAG" in
                             BASE="7e55e457ab09fde9d970390301533bbaa9a712ec" ;;
   # ── 字号整体放大（FontScale）一条 ──────────────────────────────────────────
   p9-font-scale-twice)      REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
-                            BASE="a4cc71a8fa52e2367e33e528847ce473544ca968" ;;
+                            BASE="333c458ad816656f438e26c63321a61b0065d829" ;;
   p9-title-band-shrink)     REL="Assets/_Project/Scripts/Runtime/UI/HomeLayout.cs"
                             BASE="b571e5b14e758c7f1a6498ab85a39d42fa25d24f" ;;
   *) echo "未登记的 tag：$TAG" >&2; exit 2 ;;
@@ -119,7 +119,8 @@ fi
 EXPECT_ARGS=(--expect "Assets/_Project/Scripts/Runtime/UI/*.cs"
              --expect "Assets/_Project/Tests/EditMode/ClubUiTests.cs"
              --expect "Docs/Tools/p6ui_*"
-             --expect "Docs/Tools/check_verify_dll.py")
+             --expect "Docs/Tools/check_verify_dll.py"
+             --expect "Docs/Tools/make_verify_csproj.py")
 ACCEPT_ARGS=(--accept-foreign "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs"
              --accept-foreign "Assets/_Project/Scripts/Runtime/Rules/EightBall*.cs"
              --accept-foreign "Assets/_Project/Tests/EditMode/PhysicsTestDriveLaunchStateTests.cs"
