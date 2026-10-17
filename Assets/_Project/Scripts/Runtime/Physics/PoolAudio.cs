@@ -588,7 +588,7 @@ namespace Billiards.Physics
         private const float UiClickMinIntervalSeconds = 0.05f;
 
         /// <summary>点击按钮的音量（dB）。比击球轻一档，避免"点一下比打球还响"。</summary>
-        private const float UiClickGainDb = -3f;
+        private const float UiClickGainDb = 0f;
 
         /// <summary>胜/负结算音的音量（dB）。要压过环境但不刺耳。</summary>
         private const float OutcomeGainDb = 0f;

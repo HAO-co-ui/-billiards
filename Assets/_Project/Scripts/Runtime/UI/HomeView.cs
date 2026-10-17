@@ -358,7 +358,11 @@ namespace Billiards.UI
 
             var button = frame.gameObject.AddComponent<Button>();
             button.targetGraphic = hit;
-            button.onClick.AddListener(action);
+            button.onClick.AddListener(() =>
+            {
+                PlayUiClick();
+                action();
+            });
         }
 
 
@@ -542,7 +546,11 @@ namespace Billiards.UI
 
             var button = frame.gameObject.AddComponent<Button>();
             button.targetGraphic = hit;
-            button.onClick.AddListener(action);
+            button.onClick.AddListener(() =>
+            {
+                PlayUiClick();
+                action();
+            });
         }
 
         /// <summary>把一个绝对视口矩形换算成"相对 <paramref name="outer"/>"的锚点（子物体用）。</summary>
@@ -664,7 +672,11 @@ namespace Billiards.UI
 
             var button = frame.gameObject.AddComponent<Button>();
             button.targetGraphic = hit;
-            button.onClick.AddListener(action);
+            button.onClick.AddListener(() =>
+            {
+                PlayUiClick();
+                action();
+            });
             return glyph.GetComponent<Image>();
         }
 
@@ -735,6 +747,22 @@ namespace Billiards.UI
         }
 
         /// <summary>`Practice`：关闭首页、交回玩法（练习入口）。</summary>
+        /// <summary>点击任意按钮的短音（唯一入口；音频组件未接线时现找一次并缓存）。</summary>
+        private void PlayUiClick()
+        {
+            if (_poolAudio == null)
+            {
+                _poolAudio = Object.FindObjectOfType<PoolAudio>();
+            }
+
+            if (_poolAudio != null)
+            {
+                _poolAudio.PlayUiClick();
+            }
+        }
+
+        private PoolAudio _poolAudio;
+
         public void OnStartPractice()
         {
             IsAiMatchSession = false;   // **置位点 ①**（练习）
@@ -794,6 +822,7 @@ namespace Billiards.UI
         /// <summary>档位按钮（三格各自绑 `index`）：写进 `MatchSetup` 并刷新表现。</summary>
         public void OnSelectTier(int index)
         {
+            PlayUiClick();   // 点击音放在方法内：**不改**上面那行接线文本（`T144④` 按字面守它）
             MatchSetup.Select(MatchSetup.TierAt(index));
             RefreshMatchIntro();
         }

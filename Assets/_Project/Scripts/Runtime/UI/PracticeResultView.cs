@@ -296,7 +296,17 @@ namespace Billiards.UI
 
             var button = rect.gameObject.AddComponent<Button>();
             button.targetGraphic = hit;
-            button.onClick.AddListener(action);
+            // 结算卡的按钮也出声（与首页/设置同一入口，避免"有的按钮响、有的不响"）。
+            button.onClick.AddListener(() =>
+            {
+                PoolAudio audio = poolAudio != null ? poolAudio : Object.FindObjectOfType<PoolAudio>();
+                if (audio != null)
+                {
+                    audio.PlayUiClick();
+                }
+
+                action();
+            });
             return text;
         }
 
