@@ -2194,10 +2194,15 @@ namespace Billiards.Tests
                         }
                     }
 
+                    // 内容两种合法形态：**齿轮位图**（`Glyph` 有 sprite）或**文本兜底**（`Label` == `SET`）。
+                    // 二者必须至少有其一 —— 否则就是个空按钮（看得见、点下去也不知道是什么）。
                     var label = toggle.Find("Label")?.GetComponent<TMPro.TextMeshProUGUI>();
-                    if (label == null || label.text != PracticeHudState.ButtonSettings)
+                    var glyph = toggle.Find("Glyph")?.GetComponent<UnityEngine.UI.Image>();
+                    bool hasGear = glyph != null && glyph.sprite != null;
+                    bool hasText = label != null && label.text == PracticeHudState.ButtonSettings;
+                    if (!hasGear && !hasText)
                     {
-                        failures.Add($"T156① 按钮文案应为 `{PracticeHudState.ButtonSettings}`，实测 `{label?.text}`。");
+                        failures.Add("T156① 设置按钮既没有齿轮位图、也没有 `SET` 文案 ⇒ 空按钮。");
                     }
                 }
 

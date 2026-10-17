@@ -28,6 +28,13 @@ namespace Billiards.EditorTools
         /// <summary>图标与形状目录（与 <c>ClubUiSprites.Directory</c> 同值）。</summary>
         public const string IconsDirectory = "Assets/_Project/UI/Icons/";
 
+        /// <summary>
+        /// 运行时 `Resources` 目录里的图标（**程序化生成的补充图标**，例如设置齿轮）。
+        /// 与 `Icons/` 走**同一套导入规则**（Sprite / 不压缩 / Clamp / 128 上限），
+        /// 区别只在于运行时用 `Resources.Load` 取，**不需要改场景的图标数组**。
+        /// </summary>
+        public const string ResourcesIconsDirectory = "Assets/_Project/Resources/";
+
         /// <summary>迷你球贴片目录（与 <c>ClubBallChips.Directory</c> 同值）。</summary>
         public const string BallChipsDirectory = "Assets/_Project/UI/Balls/";
 
@@ -58,7 +65,7 @@ namespace Billiards.EditorTools
                 return;
             }
 
-            bool isIcon = assetPath.StartsWith(IconsDirectory);
+            bool isIcon = assetPath.StartsWith(IconsDirectory) || assetPath.StartsWith(ResourcesIconsDirectory);
             bool isBallChip = assetPath.StartsWith(BallChipsDirectory);
             if (!isIcon && !isBallChip)
             {
