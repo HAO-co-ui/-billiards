@@ -736,6 +736,570 @@ namespace Billiards.Tests
         // ══════════════════ T70a / T70b 白球入袋 ⇒ **全场自由球**（可观测）════════════
 
         /// <summary>把白球确定性打进一个中袋（`T70a`/`T70b`/`T141` 共用）。</summary>
+        /// <summary>
+        /// **`T149`：瞄准白线的渲染口径一致性扫描**（P10-D）—— **只读**。
+        /// 4320 杆 = 12 起点 × 360 方向；数据源只许 `ShotPredictor.Predict` + **渲染真正用的那对**
+        /// （`AimAssistView.VisiblePathVertexCount` / `prediction.VisiblePathEnd`）。
+        /// **G1** 末段强接 >5cm；**G2** drawnLength<5cm 且 |起点−end|>20cm；**G3** >1mm
+        /// （球-球只用 `|end − GhostBall|`，`FirstContactPosition` 是两球中点、拿它量必假红）；
+        /// **G4** |path[0] − 起点| > 1mm。
+        /// ⚠ 自证覆盖面：`scanned+skipped == 4320` 且 `contactCases > 0`，否则"0 命中"是**空扫**。
+        /// </summary>
+        [Test]
+        public void T149a_AimPath_RenderConsistency_Scan_144()
+        {
+            var failures = new List<string>();
+            var go = new GameObject("T149Scan");
+            try
+            {
+                PhysicsTestDrive drive = NewAiDrive(go, rackSeed: 71);
+                AdvanceToRest(drive, RestCap);
+
+                string viewSrc = File.ReadAllText(Path.Combine(
+                    Path.GetDirectoryName(Application.dataPath) ?? ".",
+                    "Assets/_Project/Scripts/Runtime/Physics/AimAssistView.cs"));
+                if (!viewSrc.Contains("path[use - 1] != end"))
+                {
+                    failures.Add("(P10-D) 源码守卫失败：`SyncPathLine` 里的 `path[use - 1] != end`（补末点判定）不见了"
+                                 + " ⇒ 判据的 drawnLength 与渲染画的不再同一口径。");
+                }
+
+                // ── **扫描规模：默认小网格（常驻），分段跑满（按需）** ────────────────────
+                // ⚠ 为什么必须分开：满扫 = 12 起点 × 360 方向 × `maxSteps(4000)` ⇒ 会让**任何人**跑全套时超窗口
+                //   （实测被工具上限 SIGTERM 掐断、无 XML ⇒ 只能靠"没跑完"来发现，极危险）。
+                //   ⇒ 常驻只用 12 × 12（30° 步长）= 144 杆；要满扫时设 `P10D_SEG=0..11`，
+                //     每段 = 12 起点 × 30 方向（1° 步长）= 360 杆，**12 段合计 4320**。
+                //   ⚠ 每段**只自证自己那 360**；"合计 4320"由**跨段聚合**断言（单段不许声称全扫过）。
+                string segEnv = System.Environment.GetEnvironmentVariable("P10D_SEG");
+                bool segmented = !string.IsNullOrEmpty(segEnv);
+                int segIndex = 0;
+                int dirCount = 12;
+                int dirStepDeg = 30;
+                if (segmented && (!int.TryParse(segEnv, out segIndex) || segIndex < 0 || segIndex > 11))
+                {
+                    Assert.Fail($"P10-D：`P10D_SEG` 取值非法（应为 0..11），实测 {segEnv}。");
+                }
+
+                if (segmented)
+                {
+                    dirCount = 30;
+                    dirStepDeg = 1;
+                }
+
+                int degBase = segmented ? segIndex * 30 : 0;
+
+                // **步数上限对齐产品**：`AimAssistController.maxPredictSteps = 240`（`P10D_MAXSTEPS` 可设压力档）。
+                // ⚠ 用 4000 测出来的耗时**不能代表产品**：真机冒烟 600 帧 / 361 次预测 / 帧时上限 7.05 ms / 掉帧 0
+                //   ⇒ 单次预测远小于编辑器侧 Stopwatch 读数（Mono 未优化 + 4 参重载每次新建工作区）。
+                int maxSteps = 240;
+                string maxStepsEnv = System.Environment.GetEnvironmentVariable("P10D_MAXSTEPS");
+                int maxStepsParsed;
+                if (!string.IsNullOrEmpty(maxStepsEnv) && int.TryParse(maxStepsEnv, out maxStepsParsed) && maxStepsParsed > 0)
+                {
+                    maxSteps = maxStepsParsed;
+                }
+
+                Vector2[] starts =
+                {
+                    new Vector2(-0.80f, 0.30f), new Vector2(-0.60f, -0.25f), new Vector2(-0.40f, 0.45f),
+                    new Vector2(-0.20f, -0.45f), new Vector2(0.00f, 0.30f), new Vector2(0.20f, -0.30f),
+                    new Vector2(0.40f, 0.45f), new Vector2(0.60f, -0.20f), new Vector2(0.80f, 0.30f),
+                    new Vector2(-0.90f, -0.40f), new Vector2(0.90f, -0.40f), new Vector2(0.00f, 0.00f),
+                };
+
+                int expectedTotal = dirCount * starts.Length;
+
+                int g1 = 0, g2 = 0, g3 = 0, g4 = 0, scanned = 0, skipped = 0, contactCases = 0, stepsHitCap = 0;
+                var worst = new List<(float err, string line)>();
+                const float speed = 5.0f;
+                float twoR = 2f * PoolConstants.BallRadius;
+                // 一个采样步长（m）与其 1.5 倍上界 —— G1 / 输出的共同口径（**可推导，不是魔法常数**）
+                float stepMeters = speed * PoolSimulator.FixedDeltaTime;
+                float g1Limit = 1.5f * stepMeters;
+
+                for (int si = 0; si < starts.Length; si++)
+                {
+                    bool overlap = false;
+                    for (int b = 1; b < drive.Simulator.Balls.Count; b++)
+                    {
+                        if (drive.Simulator.IsBallInPlay(b)
+                            && (drive.Simulator.Balls[b].position - starts[si]).magnitude < twoR)
+                        {
+                            overlap = true;
+                            break;
+                        }
+                    }
+
+                    if (overlap)
+                    {
+                        skipped += dirCount;
+                        continue;
+                    }
+
+                    drive.Simulator.PlaceBall(0, starts[si], Vector2.zero);
+                    for (int k = 0; k < dirCount; k++)
+                    {
+                        int deg = (degBase + k * dirStepDeg) % 360;
+                        float rad = deg * Mathf.Deg2Rad;
+                        Vector2 v = new Vector2(-Mathf.Cos(rad), -Mathf.Sin(rad)) * speed;
+                        ShotPrediction pred = ShotPredictor.Predict(drive.tableConfig, drive.Simulator, v, maxSteps);
+                        IReadOnlyList<Vector2> path = pred.CueWorldPath;
+                        if (path == null || path.Count == 0)
+                        {
+                            skipped++;
+                            continue;
+                        }
+
+                        scanned++;
+                        if (pred.HasFirstContact)
+                        {
+                            contactCases++;
+                        }
+
+                        // ⚠ 跑到步数上限 = **成本信号**，**不是**"线被硬切"：多见于只撞库、没有球-球接触的杆
+                        //   （循环只等球-球接触，见 `ShotPredictor.cs` 的 `while (steps < maxSteps && !probe.HasBallBallContact)`）。
+                        //   真机冒烟 600 帧里 361 次预测、帧时上限 7.05 ms、掉帧 0 ⇒ 这条不影响观感，别据此改产品。
+                        if (pred.StepsSimulated >= maxSteps)
+                        {
+                            stepsHitCap++;
+                        }
+
+                        int use = AimAssistView.VisiblePathVertexCount(pred, path);
+                        Vector2 end = pred.VisiblePathEnd;
+                        float drawn = 0f;
+                        for (int i = 1; i < use; i++)
+                        {
+                            drawn += (path[i] - path[i - 1]).magnitude;
+                        }
+
+                        if (use < path.Count && path[use - 1] != end)
+                        {
+                            drawn += (end - path[use - 1]).magnitude;
+                        }
+
+                        float g1d = use < path.Count ? (path[use - 1] - end).magnitude : 0f;
+                        float g2d = (starts[si] - end).magnitude;
+                        float g3d = 0f;
+                        // ⚠ 别再用 `-`：`HasFirstContact` 走**球-球**口径，只撞库时为 false，印成 `-` 会看起来像"空杆"
+                        //   （实测 `!HasFirstContactEvent` 为 0 ⇒ 根本没有"什么都没碰到"的杆）。
+                        string g3kind = pred.HasFirstContactEvent ? "event" : "none";
+                        if (pred.HasFirstContact)
+                        {
+                            if (pred.FirstContactKind == ContactKind.BallBall)
+                            {
+                                g3d = (end - pred.GhostBall).magnitude;
+                                g3kind = "ball";
+                            }
+                            else
+                            {
+                                g3d = (end - pred.FirstContactPosition).magnitude;
+                                g3kind = "cushion";
+                            }
+                        }
+
+                        float g4d = (path[0] - starts[si]).magnitude;
+                        // **G1 的可推导上界**（`g1Limit` = 1.5 × 一个采样步长，见上方声明）：
+                        //   前缀停在接触前最后一个采样顶点 ⇒ 末段长度 ≈ 一个步长（实测 40.1 mm @ 5 m/s、20.4 mm @ 2.5 m/s）。
+                        //   ⚠ **不要**用魔法常数（例如 35.7 mm）：那会把所有正常杆判成缺陷，再逼人去加密采样点。
+                        if (g1d > g1Limit) { g1++; }
+                        if (drawn < 0.05f && g2d > 0.2f) { g2++; }
+                        if (g3d > 0.001f) { g3++; }
+                        if (g4d > 0.001f) { g4++; }
+
+                        float worstErr = Mathf.Max(Mathf.Max(g1d * 1000f, g3d * 1000f), g4d * 1000f);
+                        if (worstErr > 1f)
+                        {
+                            worst.Add((worstErr,
+                                $"起点#{si} {deg}° use={use}/{path.Count} 首碰={g3kind} "
+                                + $"G1={g1d * 1000f:F1}mm G2drawn={drawn * 1000f:F1}mm G3={g3d * 1000f:F1}mm "
+                                + $"G4={g4d * 1000f:F1}mm |起点−end|={g2d * 1000f:F1}mm"));
+                        }
+                    }
+                }
+
+                worst.Sort((a, b) => b.err.CompareTo(a.err));
+                var sb = new StringBuilder();
+                sb.Append($"[P10-D] seg={(segmented ? segIndex.ToString() : "a")} maxSteps={maxSteps} scanned={scanned} skipped={skipped} contactCases={contactCases} "
+                          + $"合计={scanned + skipped}（应 {expectedTotal}）⇒ G1={g1} G2={g2} G3={g3} G4={g4} stepsHitCap={stepsHitCap} "
+                          + $"stepMm={stepMeters * 1000f:F1}mm g1Limit={g1Limit * 1000f:F1}mm");
+                for (int i = 0; i < Mathf.Min(10, worst.Count); i++)
+                {
+                    sb.Append("\n  ").Append(worst[i].line);
+                }
+
+                TestContext.WriteLine(sb.ToString());
+
+                if (scanned + skipped != expectedTotal)
+                {
+                    failures.Add($"P10-D 覆盖面失败：scanned+skipped 应 == {expectedTotal}"
+                                 + $"（seg={(segmented ? segIndex.ToString() : "a")}；12×12 常驻 / 每段 12×30）"
+                                 + $"，实测 {scanned}+{skipped}。");
+                }
+
+                if (contactCases <= 0)
+                {
+                    failures.Add("P10-D 覆盖面失败：**没有任何一杆产生首接触** ⇒ 0 命中是**空扫**，不能当证据。");
+                }
+
+                Assert.IsEmpty(failures, "T149 失败：\n" + string.Join("\n", failures));
+                drive.Simulator.PlaceBall(0, PhysicsTestDrive.CueBallHomePosition(Table().footSpot), Vector2.zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>
+        /// **`T149c`：白线末段"一个采样步长"假说的可证伪检验 + 4001 步的定性取证**（P10-D，只读）。
+        ///
+        /// 假说（主理人）：`G1` 量到的 ~40 mm **不是断裂**，而是**一个采样步长** `speed × FixedDeltaTime`
+        /// （5 m/s × 1/120 = 41.7 mm）。⇒ 可证伪：**速度减半时它应近似减半（≈20 mm）**。
+        /// 若 2.5 m/s 下仍是 ~40 mm ⇒ 假说错，转查几何。
+        ///
+        /// 另给 4001 步那类的五个数（判"预测截断"是否**真是用户看到的线的截断**）。
+        /// </summary>
+        [Test]
+        public void T149c_SampleStepHypothesis_And_TruncationDiagnostics()
+        {
+            // **观测用例（默认跳过）**：两档速度全网格 ≈ 93 s，会把全套从 ~1 min 拖到 ~4 min。
+            // 它不是判据、只是"末段长度 = 一个采样步长"的取证工具 ⇒ 设 `P10_PERF=1` 才跑。
+            if (System.Environment.GetEnvironmentVariable("P10_PERF") != "1")
+            {
+                Assert.Ignore("观测用例：设 P10_PERF=1 运行（默认跳过以免拖慢全套）");
+            }
+
+            var sb = new StringBuilder();
+            var go = new GameObject("T149c");
+            try
+            {
+                PhysicsTestDrive drive = NewAiDrive(go, rackSeed: 71);
+                AdvanceToRest(drive, RestCap);
+                float dt = PoolSimulator.FixedDeltaTime;
+
+                Vector2[] starts =
+                {
+                    new Vector2(-0.80f, 0.30f), new Vector2(-0.60f, -0.25f), new Vector2(-0.40f, 0.45f),
+                    new Vector2(-0.20f, -0.45f), new Vector2(0.00f, 0.30f), new Vector2(0.20f, -0.30f),
+                    new Vector2(0.40f, 0.45f), new Vector2(0.60f, -0.20f), new Vector2(0.80f, 0.30f),
+                    new Vector2(-0.90f, -0.40f), new Vector2(0.90f, -0.40f), new Vector2(0.00f, 0.00f),
+                };
+
+                sb.Append($"FixedDeltaTime={dt * 1000f:F2}ms\n");
+                foreach (float speed in new[] { 5.0f, 2.5f })
+                {
+                    float maxG1 = 0f;
+                    int cap = 0, noEvent = 0, capSmallCount = 0;
+                    var capUse = new List<int>();
+                    for (int si = 0; si < starts.Length; si++)
+                    {
+                        drive.Simulator.PlaceBall(0, starts[si], Vector2.zero);
+                        for (int deg = 0; deg < 360; deg += 30)
+                        {
+                            float rad = deg * Mathf.Deg2Rad;
+                            Vector2 v = new Vector2(-Mathf.Cos(rad), -Mathf.Sin(rad)) * speed;
+                            ShotPrediction pred = ShotPredictor.Predict(drive.tableConfig, drive.Simulator, v, 4000);
+                            IReadOnlyList<Vector2> path = pred.CueWorldPath;
+                            if (path == null || path.Count == 0)
+                            {
+                                continue;
+                            }
+
+                            int use = AimAssistView.VisiblePathVertexCount(pred, path);
+                            float g1 = use < path.Count ? (path[use - 1] - pred.VisiblePathEnd).magnitude : 0f;
+                            if (g1 > maxG1)
+                            {
+                                maxG1 = g1;
+                            }
+
+                            if (pred.StepsSimulated >= 4000)
+                            {
+                                cap++;
+                                capUse.Add(pred.VisiblePathCount);
+                                if (!pred.HasFirstContactEvent)
+                                {
+                                    noEvent++;
+                                }
+
+                                if (pred.VisiblePathCount <= 100)
+                                {
+                                    capSmallCount++;
+                                }
+                            }
+                        }
+                    }
+
+                    sb.Append($"[speed={speed}] maxG1={maxG1 * 1000f:F1}mm  理论步长={speed * dt * 1000f:F1}mm  "
+                              + $"上限(1.5×)=${speed * dt * 1000f * 1.5f:F1}mm  "
+                              + $"stepsHitCap={cap}  其中!HasFirstContactEvent={noEvent}  其中VisiblePathCount<=100={capSmallCount}\n");
+                    if (capUse.Count > 0)
+                    {
+                        capUse.Sort();
+                        sb.Append($"  cap 的 VisiblePathCount：min={capUse[0]} 中位={capUse[capUse.Count / 2]} max={capUse[capUse.Count - 1]}\n");
+                    }
+                }
+
+                // 4001 步那一例的五个数（起点#9 / 90°）
+                drive.Simulator.PlaceBall(0, starts[9], Vector2.zero);
+                float r90 = 90f * Mathf.Deg2Rad;
+                ShotPrediction odd = ShotPredictor.Predict(drive.tableConfig, drive.Simulator,
+                    new Vector2(-Mathf.Cos(r90), -Mathf.Sin(r90)) * 5.0f, 4000);
+                Vector2 oddEnd = odd.VisiblePathEnd;
+                float nearestCushion = float.MaxValue;
+                for (int pi = 0; pi < drive.tableConfig.PocketCount; pi++)
+                {
+                    // 用库边矩形近似：到四条库边的最近距离
+                }
+
+                float halfLen = 1.27f;
+                float halfWid = 0.635f;
+                nearestCushion = Mathf.Min(
+                    Mathf.Min(halfLen - Mathf.Abs(oddEnd.x), halfWid - Mathf.Abs(oddEnd.y)),
+                    999f);
+                sb.Append($"[odd] VisiblePathCount={odd.VisiblePathCount} path.Count={odd.CueWorldPath.Count} "
+                          + $"end=({oddEnd.x:F3},{oddEnd.y:F3}) |起点−end|={(starts[9] - oddEnd).magnitude * 1000f:F1}mm "
+                          + $"到最近库边(近似)={nearestCushion * 1000f:F1}mm "
+                          + $"HasCushionFirstContact={odd.HasCushionFirstContact} HasFirstContactEvent={odd.HasFirstContactEvent} "
+                          + $"StepsSimulated={odd.StepsSimulated}");
+
+                TestContext.WriteLine(sb.ToString());
+                drive.Simulator.PlaceBall(0, PhysicsTestDrive.CueBallHomePosition(Table().footSpot), Vector2.zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>**`T150`：同一杆连续预测 200 次必须逐位相同**（P10-D 确定性；只读）。</summary>
+        [Test]
+        public void T150_Prediction_SameShot_200x_IsBitIdentical()
+        {
+            var failures = new List<string>();
+            var go = new GameObject("T150");
+            try
+            {
+                PhysicsTestDrive drive = NewAiDrive(go, rackSeed: 71);
+                AdvanceToRest(drive, RestCap);
+                Vector2 start = new Vector2(-0.80f, 0.30f);
+                drive.Simulator.PlaceBall(0, start, Vector2.zero);
+                Vector2 v = new Vector2(-Mathf.Cos(0.7f), -Mathf.Sin(0.7f)) * 5.0f;
+
+                ShotPrediction first = ShotPredictor.Predict(drive.tableConfig, drive.Simulator, v, 4000);
+                string refKey = PathKey(first);
+                int compared = 0;
+                for (int i = 0; i < 200; i++)
+                {
+                    ShotPrediction p = ShotPredictor.Predict(drive.tableConfig, drive.Simulator, v, 4000);
+                    compared++;
+                    if (PathKey(p) != refKey)
+                    {
+                        failures.Add($"(T150) 第 {i} 次预测与首次**不一致**（path/end/count/kind 任一不同）⇒ 预测不确定。");
+                        break;
+                    }
+                }
+
+                if (compared != 200)
+                {
+                    failures.Add($"(T150) 覆盖面失败：应比较 200 次，实测 {compared}。");
+                }
+
+                if (first.CueWorldPath == null || first.CueWorldPath.Count == 0)
+                {
+                    failures.Add("(T150) 覆盖面失败：path.Count == 0 ⇒ 空扫。");
+                }
+
+                TestContext.WriteLine($"[P10-D/T150] compared={compared} pathCount={first.CueWorldPath.Count} "
+                                      + $"visibleCount={first.VisiblePathCount} ok={failures.Count == 0}");
+                Assert.IsEmpty(failures, "T150 失败：\n" + string.Join("\n", failures));
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>**`T151`：交错预测 A,B,A,B… 各 100 轮，A/B 各自结果必须完全一致**（抓"上一杆污染下一杆"）。</summary>
+        [Test]
+        public void T151_Prediction_Interleaved_AB_NoCrossContamination()
+        {
+            // **观测用例（默认跳过）**：100 轮 A/B 交错 ≈ 51 s。确定性判据由 `T150`（同一杆 200 次逐位相同）
+            // 承担；本条是"跨杆污染"的加严取证 ⇒ 设 `P10_PERF=1` 才跑。
+            if (System.Environment.GetEnvironmentVariable("P10_PERF") != "1")
+            {
+                Assert.Ignore("观测用例：设 P10_PERF=1 运行（默认跳过以免拖慢全套）");
+            }
+
+            var failures = new List<string>();
+            var go = new GameObject("T151");
+            try
+            {
+                PhysicsTestDrive drive = NewAiDrive(go, rackSeed: 71);
+                AdvanceToRest(drive, RestCap);
+
+                Vector2 sa = new Vector2(-0.80f, 0.30f);
+                Vector2 sb = new Vector2(0.40f, 0.45f);
+                Vector2 va = new Vector2(-Mathf.Cos(0.7f), -Mathf.Sin(0.7f)) * 5.0f;
+                Vector2 vb = new Vector2(-Mathf.Cos(2.1f), -Mathf.Sin(2.1f)) * 3.0f;
+
+                drive.Simulator.PlaceBall(0, sa, Vector2.zero);
+                string refA = PathKey(ShotPredictor.Predict(drive.tableConfig, drive.Simulator, va, 4000));
+                drive.Simulator.PlaceBall(0, sb, Vector2.zero);
+                string refB = PathKey(ShotPredictor.Predict(drive.tableConfig, drive.Simulator, vb, 4000));
+
+                int roundsA = 0, roundsB = 0;
+                for (int i = 0; i < 100; i++)
+                {
+                    drive.Simulator.PlaceBall(0, sa, Vector2.zero);
+                    if (PathKey(ShotPredictor.Predict(drive.tableConfig, drive.Simulator, va, 4000)) == refA)
+                    {
+                        roundsA++;
+                    }
+
+                    drive.Simulator.PlaceBall(0, sb, Vector2.zero);
+                    if (PathKey(ShotPredictor.Predict(drive.tableConfig, drive.Simulator, vb, 4000)) == refB)
+                    {
+                        roundsB++;
+                    }
+                }
+
+                if (roundsA != 100 || roundsB != 100)
+                {
+                    failures.Add($"(T151) 交错预测出现**交叉污染**：A 一致 {roundsA}/100、B 一致 {roundsB}/100。");
+                }
+
+                TestContext.WriteLine($"[P10-D/T151] roundsA={roundsA} roundsB={roundsB} ok={failures.Count == 0}");
+                Assert.IsEmpty(failures, "T151 失败：\n" + string.Join("\n", failures));
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        /// <summary>
+        /// **把一次预测压成一个哈希**（P10-D：**整条路径逐位**比较，不取前 64 点）。
+        /// `path.Count` + `VisiblePathCount` + 端点位模式 + 首碰三个布尔 + **整条 `CueWorldPath` 的 x/y 位模式**
+        /// 依次滚 **FNV-1a**（`System.BitConverter.SingleToInt32Bits`）⇒ O(n) 数值运算、无字符串分配。
+        /// ⚠ 返回串里带 `path.Count`，因为**哈希相等必须同时长度相等**（不同长度可能碰撞）。
+        /// ⚠ `in` 参数**不能**被局部函数捕获，所以 `Mix` 用 `ref` 传哈希。
+        /// </summary>
+        private static string PathKey(in ShotPrediction p)
+        {
+            uint h = 2166136261u;
+            IReadOnlyList<Vector2> path = p.CueWorldPath;
+            Mix(ref h, path == null ? -1 : path.Count);
+            Mix(ref h, p.VisiblePathCount);
+            Mix(ref h, System.BitConverter.SingleToInt32Bits(p.VisiblePathEnd.x));
+            Mix(ref h, System.BitConverter.SingleToInt32Bits(p.VisiblePathEnd.y));
+            Mix(ref h, (int)p.FirstContactKind);
+            Mix(ref h, (p.HasFirstContact ? 1 : 0) | (p.HasCushionFirstContact ? 2 : 0) | (p.HasFirstContactEvent ? 4 : 0));
+            if (path != null)
+            {
+                for (int i = 0; i < path.Count; i++)   // **整条**
+                {
+                    Mix(ref h, System.BitConverter.SingleToInt32Bits(path[i].x));
+                    Mix(ref h, System.BitConverter.SingleToInt32Bits(path[i].y));
+                }
+            }
+
+            return $"{h:X8}/{path?.Count ?? -1}";
+        }
+
+        /// <summary>FNV-1a 滚一步（`ref` 传哈希，避免在带 `in` 参数的方法里被局部函数捕获）。</summary>
+        private static void Mix(ref uint h, int v)
+        {
+            unchecked
+            {
+                h ^= (uint)v;
+                h *= 16777619u;
+            }
+        }
+
+        /// <summary>**`T152b`：E-1 用**产品参数 `maxSteps=240`** 重测（只读）** —— 与 `T152` 的 4000 压力档分开。</summary>
+        [Test]
+        public void T152b_CostProfile_ProductMaxSteps240()
+        {
+            // **观测用例（默认跳过）**：约 9 s，且量的是**编辑器侧**耗时 —— 已用真机冒烟证伪"预测是瓶颈"，
+            //   这条只作留档，**不得驱动产品改动**（详见 `Docs/测试数基线台账.md` 的 P10-J 段）。
+            if (System.Environment.GetEnvironmentVariable("P10_PERF") != "1")
+            {
+                Assert.Ignore("观测用例：设 P10_PERF=1 运行（默认跳过以免拖慢全套）");
+            }
+
+            var go = new GameObject("T152b");
+            try
+            {
+                PhysicsTestDrive drive = NewAiDrive(go, rackSeed: 71);
+                AdvanceToRest(drive, RestCap);
+                const int productMaxSteps = 240;   // = AimAssistController.maxPredictSteps
+
+                Vector2[] starts =
+                {
+                    new Vector2(-0.80f, 0.30f), new Vector2(-0.60f, -0.25f), new Vector2(-0.40f, 0.45f),
+                    new Vector2(-0.20f, -0.45f), new Vector2(0.00f, 0.30f), new Vector2(0.20f, -0.30f),
+                    new Vector2(0.40f, 0.45f), new Vector2(0.60f, -0.20f), new Vector2(0.80f, 0.30f),
+                    new Vector2(-0.90f, -0.40f), new Vector2(0.90f, -0.40f), new Vector2(0.00f, 0.00f),
+                };
+
+                var ratios = new List<float>();
+                int n = 0, cap = 0;
+                for (int si = 0; si < starts.Length; si++)
+                {
+                    drive.Simulator.PlaceBall(0, starts[si], Vector2.zero);
+                    for (int deg = 0; deg < 360; deg += 30)
+                    {
+                        float rad = deg * Mathf.Deg2Rad;
+                        Vector2 v = new Vector2(-Mathf.Cos(rad), -Mathf.Sin(rad)) * 5.0f;
+                        ShotPrediction p = ShotPredictor.Predict(drive.tableConfig, drive.Simulator, v, productMaxSteps);
+                        if (p.CueWorldPath == null || p.CueWorldPath.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        n++;
+                        if (p.StepsSimulated >= productMaxSteps)
+                        {
+                            cap++;
+                        }
+
+                        ratios.Add(p.StepsSimulated / (float)Mathf.Max(1, p.VisiblePathCount));
+                    }
+                }
+
+                ratios.Sort();
+                float med = ratios.Count > 0 ? ratios[ratios.Count / 2] : 0f;
+                float max = ratios.Count > 0 ? ratios[ratios.Count - 1] : 0f;
+
+                drive.Simulator.PlaceBall(0, starts[0], Vector2.zero);
+                Vector2 tv = new Vector2(-Mathf.Cos(0.7f), -Mathf.Sin(0.7f)) * 5.0f;
+                const int reps = 200;
+                var ms = new List<float>(reps);
+                for (int i = 0; i < reps; i++)
+                {
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    ShotPredictor.Predict(drive.tableConfig, drive.Simulator, tv, productMaxSteps);
+                    sw.Stop();
+                    ms.Add((float)sw.Elapsed.TotalMilliseconds);
+                }
+
+                ms.Sort();
+                TestContext.WriteLine($"[P10-E1/240] n={n} cap={cap} 浪费比 中位={med:F1} 最大={max:F1} "
+                                      + $"| Predict 中位={ms[reps / 2]:F3}ms p90={ms[(int)(reps * 0.9)]:F3}ms "
+                                      + $"（节流周期 33.33ms）");
+                if (n != 144)
+                {
+                    Assert.Fail($"T152b 覆盖面失败：应扫 144 杆，实测 {n}。");
+                }
+
+                drive.Simulator.PlaceBall(0, PhysicsTestDrive.CueBallHomePosition(Table().footSpot), Vector2.zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
         private static void PotCueBall(PhysicsTestDrive drive)
         {
             Pocket pocket = SidePocket(Table());

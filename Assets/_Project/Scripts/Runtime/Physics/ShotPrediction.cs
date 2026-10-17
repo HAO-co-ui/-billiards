@@ -47,7 +47,7 @@ namespace Billiards.Physics
         /// <summary>首次接触**之前**白球与库边（含袋角弧段）发生的接触次数（Step 粒度；见 <see cref="ShotPredictor"/> 的盲带说明）。</summary>
         public int CushionBounceCountBeforeContact;
 
-        /// <summary>白球路径折线（规范坐标）：`[CueStart, …每步白球位置…, GhostBall]`。末点 == <see cref="GhostBall"/>（有接触时）。</summary>
+        /// <summary>白球路径折线（规范坐标）：`[CueStart, …每步白球位置…, GhostBall]`。末点 == <see cref="GhostBall"/>（**仅球-球首碰时**；**撞库情形末点是库边接触点**）。</summary>
         public IReadOnlyList<Vector2> CueWorldPath;
 
         /// <summary>
@@ -56,7 +56,7 @@ namespace Billiards.Physics
         /// **用户实机反馈**：「白色瞄准线碰到台球桌边就不**用**反射了」——本字段就是那条需求：
         /// **首次库边接触之前的最后一个顶点之后不再画** ⇒ 白线**不显示折返段**。
         ///
-        /// ⚠ **它只影响绘制，不改预测结果**：`CueWorldPath` 本体（含"末点 == <see cref="GhostBall"/>"这条被
+        /// ⚠ **它只影响绘制，不改预测结果**：`CueWorldPath` 本体（含"末点 == <see cref="GhostBall"/>"**仅球-球首碰成立**这条被
         /// `ShotPredictorTests` **逐位钉死**的性质）**一个字节都不改** ⇒ 幽灵球 / 首碰判定 /
         /// <see cref="CushionBounceCountBeforeContact"/> 全部与截断**无关**。
         ///

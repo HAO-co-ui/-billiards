@@ -569,7 +569,9 @@ namespace Billiards.Physics
         /// `path[0 .. VisiblePathCount-1]` 是**接触前**的采样前缀；其后由 `VisiblePathEnd`（**精确接触点**）收尾。
         /// ⚠ 非法/越界一律夹到 `[0, path.Count]`。
         /// </summary>
-        private static int VisiblePathVertexCount(in ShotPrediction prediction, IReadOnlyList<Vector2> path)
+        /// <summary>**可见前缀的顶点数**（`<=0` 或 `>= Count` ⇒ 整条）。P10-D 判据**必须**用这一份口径
+        /// （private → public 只为让判据**和渲染读同一个函数**，不另写一份）。</summary>
+        public static int VisiblePathVertexCount(in ShotPrediction prediction, IReadOnlyList<Vector2> path)
         {
             if (path == null || path.Count == 0)
             {
@@ -638,7 +640,7 @@ namespace Billiards.Physics
         ///
         /// **为什么需要它**（用户实机反馈"白色瞄准线碰到台球桌边就不用反射了"）：
         /// 白线取 <see cref="ShotPrediction.VisiblePathCount"/> 作前缀 ⇒ **不画折返段**。
-        /// ⚠ 截断**只发生在绘制侧** —— `CueWorldPath` 本体不变（其"末点 == 幽灵球"被判据**逐位钉死**）。
+        /// ⚠ 截断**只发生在绘制侧** —— `CueWorldPath` 本体不变（其"末点 == 幽灵球"**仅在球-球首碰时**成立、被 `ShotPredictorTests` 逐位钉死；**撞库情形末点是库边接触点**）。
         /// </summary>
         public static void AppendPolylineDashSegments(IReadOnlyList<Vector2> path, float dashLength, float gapLength,
             List<(Vector2 a, Vector2 b)> buffer, int visibleCount)

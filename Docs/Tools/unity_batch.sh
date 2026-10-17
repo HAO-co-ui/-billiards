@@ -103,10 +103,17 @@ case "$step" in
       "$@"
     echo "unity rc=$?"
     "$PY" -c "import os,sys,time
+import xml.etree.ElementTree as ET
 p=sys.argv[1]
 if not os.path.exists(p):
     print('NO XML —— 跑批没有落盘（不得引用任何\"通过数\"）'); raise SystemExit(3)
-print('results mtime = ' + time.strftime('%H:%M:%S', time.localtime(os.path.getmtime(p))) + '  size=' + str(os.path.getsize(p)))" "$results"
+print('results mtime = ' + time.strftime('%H:%M:%S', time.localtime(os.path.getmtime(p))) + '  size=' + str(os.path.getsize(p)))
+r=ET.parse(p).getroot()
+t=int(r.get('total') or 0); ps=int(r.get('passed') or 0); f=int(r.get('failed') or 0)
+print('total=%d passed=%d failed=%d' % (t,ps,f))
+if t==0:
+    print('STOP total==0: no test case ran at all (test assembly failed to compile or load) -> this is NOT a pass; grep tests.log for error CS first')
+    raise SystemExit(4)" "$results"
     ;;
 
   validators)
