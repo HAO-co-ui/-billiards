@@ -84,6 +84,12 @@ namespace Billiards.Physics
 
         /// <summary>发光宽度 = 主线宽 × 本系数（约 2.6 倍 ⇒ 边缘一圈柔光）。</summary>
         private const float GlowWidthFactor = 2.6f;
+
+        /// <summary>
+        /// 白线**抬离台布的高度**（米）。线原本与台呢共面 ⇒ 深度测试打架 ⇒ 实机看到断续的"一段段"。
+        /// 2 mm 足以稳定压过台呢，又不会让线看起来"浮在半空"。
+        /// </summary>
+        private const float AimLineLiftMeters = 0.002f;
         private static readonly Color GhostColor = new Color(1.00f, 1.00f, 1.00f, 0.60f);
         private static readonly Color TargetColor = new Color(1.00f, 0.85f, 0.25f, 0.95f);
         private static readonly Color CueDeflectColor = new Color(0.55f, 0.85f, 1.00f, 0.80f);
@@ -469,6 +475,9 @@ namespace Billiards.Physics
             SyncRenderers(System.Array.Empty<(Vector2 a, Vector2 b)>());
 
             HideLine(_pathLine);
+            // ⚠ **新增渲染载体必须同时进清理路径**：只藏主线会让发光条永久留在台布上
+            //   （用户截图："台球桌上留下痕迹"）。这条纪律已记在台账的"渲染载体验证清单"里。
+            HideLine(_pathGlow);
             HideLine(_ghostCircle);
             HideLine(_cushionCircle);
             HideLine(_targetLine);
@@ -642,14 +651,18 @@ namespace Billiards.Physics
             _pathGlow.positionCount = count;
             for (int i = 0; i < use; i++)
             {
-                Vector3 point = DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(path[i]));
+                // **抬离台布 2 mm**：白线原来与台呢共面 ⇒ 深度打架 ⇒ 实机看到"一段段的"。
+                //   只抬线、不动物理坐标。
+                Vector3 point = DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(path[i]))
+                               + Vector3.up * AimLineLiftMeters;
                 _pathLine.SetPosition(i, point);
                 _pathGlow.SetPosition(i, point);
             }
 
             if (extraEnd)
             {
-                Vector3 point = DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(end));
+                Vector3 point = DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(end))
+                               + Vector3.up * AimLineLiftMeters;
                 _pathLine.SetPosition(use, point);
                 _pathGlow.SetPosition(use, point);
             }

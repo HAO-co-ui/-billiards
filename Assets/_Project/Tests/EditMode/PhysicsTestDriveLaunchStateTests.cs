@@ -3656,6 +3656,20 @@ namespace Billiards.Tests
                 {
                     failures.Add("T157 发光宽度系数（`GlowWidthFactor`）不存在 ⇒ 发光宽度无处可调。");
                 }
+
+                // ⚠ **新增渲染载体必须进清理路径**：只藏主线会让发光条永久留在台布上
+                //   （用户截图："台球桌上留下痕迹"）。这条断言正是那一类 bug 的守卫。
+                if (!viewText.Contains("HideLine(_pathGlow)"))
+                {
+                    failures.Add("T157 `HideAllAimVisuals` 没清理发光条（`HideLine(_pathGlow)`）"
+                                 + " ⇒ 出杆后白线会**留在台布上**。");
+                }
+
+                // 白线必须**抬离台布**（与台呢共面会深度打架 ⇒ 实机看到断续的"一段段"）。
+                if (!viewText.Contains("AimLineLiftMeters"))
+                {
+                    failures.Add("T157 白线没有抬离台布（`AimLineLiftMeters` 缺失）⇒ 会与台呢 z-fighting、显示成一段段。");
+                }
             }
 
             Assert.IsEmpty(failures, "T157（AI 回合输入门 / 瞄准线质感）失败：\n" + string.Join("\n", failures));
