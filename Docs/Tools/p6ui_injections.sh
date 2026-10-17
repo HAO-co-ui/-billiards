@@ -56,6 +56,17 @@ case "$TAG" in
                      BASE="6def82276f0ab88d1061d855b29f8774f26c0cd8" ;;
   p7-slot-count)     REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudLayout.cs"
                      BASE="b9dad47c28eaa5d44a65559b7b293e67f3481dfe" ;;
+  # ── P6 第 4 小段（对手叫袋那一行）五条 ──────────────────────────────────
+  p8-ai-called-always)      REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudState.cs"
+                            BASE="b861e49a598d9a53f6549acdd03d5b697fb9e3f1" ;;
+  p8-ai-called-no-guard)    REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudState.cs"
+                            BASE="b861e49a598d9a53f6549acdd03d5b697fb9e3f1" ;;
+  p8-ai-called-player-copy) REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudState.cs"
+                            BASE="b861e49a598d9a53f6549acdd03d5b697fb9e3f1" ;;
+  p8-ai-called-state-gate-drop) REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudState.cs"
+                            BASE="b861e49a598d9a53f6549acdd03d5b697fb9e3f1" ;;
+  p8-ai-called-view-feed)   REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
+                            BASE="7e55e457ab09fde9d970390301533bbaa9a712ec" ;;
   *) echo "未登记的 tag：$TAG" >&2; exit 2 ;;
 esac
 

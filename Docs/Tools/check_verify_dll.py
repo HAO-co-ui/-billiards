@@ -45,6 +45,11 @@ CHECKS = [
         "CalledPocketLine",         # PracticeHudState 的"已指定哪个袋"单点
         "CallPocketButtonRect",     # PracticeHudLayout 的选袋条几何
         "CallPocketZone",           # 选袋条的容器矩形
+        # 35-C P6 第 4 小段（对手叫袋那一行）
+        "ShowOpponentCalledPocket",     # "AI 叫袋"该不该显示的唯一判定点
+        "CalledPocketLineForOpponent",  # 对手那一行的文案单点
+        "TryDescribePocket",            # 袋号 → 角袋/边袋（玩家/对手两条共用）
+        "OpponentCalledPrefix",         # `AI called` 前缀
         "ResolveVisualState",       # PracticeHudState 的状态求解
         "UnreachableStates",        # PracticeHudState 的不可达登记
         "PlayAgainButtonLocal",     # PracticeResultLayout 的卡内矩形

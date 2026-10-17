@@ -176,6 +176,62 @@ PATCHES = {
             ),
         ],
     ),
+    # ⑮ **把"轮到 AI"那道闸去掉**（P6 第 4 小段注入①）：玩家回合也会走进对手那行
+    #    ⇒ (e3)「玩家回合绝不出现 AI 那行（防串台）」必须红
+    "p8-ai-called-always": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudState.cs",
+        [
+            (
+                "return state == HudVisualState.AiTurn && isAiTurn && calledPocket >= 0;",
+                "return state == HudVisualState.AiTurn && calledPocket >= 0;",
+            ),
+        ],
+    ),
+    # ⑯ **去掉 `CalledPocket >= 0` 守卫**（注入②）：AI 没叫袋时说明行会变成**空串**
+    #    ⇒ (e2)「没叫袋必须回落常驻说明（不是空串）」必须红
+    "p8-ai-called-no-guard": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudState.cs",
+        [
+            (
+                "return state == HudVisualState.AiTurn && isAiTurn && calledPocket >= 0;",
+                "return state == HudVisualState.AiTurn && isAiTurn;",
+            ),
+        ],
+    ),
+    # ⑰ **让对手那行套用玩家文案**（注入③）：`AI called · …` 变成 `Called · …`
+    #    ⇒ (e1)「不复用玩家那条文案」必须红
+    "p8-ai-called-player-copy": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudState.cs",
+        [
+            (
+                "            return OpponentCalledPrefix + \" · pocket \" + (calledPocket + 1).ToString()\n"
+                "                   + \" (\" + PocketKindLabel(isCorner) + \")\";",
+                "            return CalledPocketLine(calledPocket, isCorner);",
+            ),
+        ],
+    ),
+    # ⑱ **去掉"状态必须是 ai-turn"那道闸**（注入④）：`foul` / `moving` / `result` 档会被这一行顶掉
+    #    ⇒ (e3) 的反向（`state = Aim` 时出现）与 (e2) 的闸表必须红
+    "p8-ai-called-state-gate-drop": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudState.cs",
+        [
+            (
+                "return state == HudVisualState.AiTurn && isAiTurn && calledPocket >= 0;",
+                "return isAiTurn && calledPocket >= 0;",
+            ),
+        ],
+    ),
+    # ⑲ **视图把"轮到 AI"喂成恒真**（注入⑤）：纯函数判据看不到它 ⇒ 由 `T146(h)` 的**整行赋值**断言兜
+    #    （实测教训：只 `Contains("drive.IsAiTurn")` 时该注入**全绿**，因为 `callPocket` 那行也含它）
+    "p8-ai-called-view-feed": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudView.cs",
+        [
+            (
+                "bool aiTurn = drive != null && drive.IsAiTurn;",
+                "bool aiTurn = drive != null;",
+            ),
+        ],
+    ),
     # ⑭ **选袋槽位数被改小**（QA 修复轮 B10）：6 → 5
     #    ⇒ "槽位数 == 6"与"== TableConfig.PocketCount"两条独立断言必须红（旧写法是自指的、跟着绿）
     "p7-slot-count": (

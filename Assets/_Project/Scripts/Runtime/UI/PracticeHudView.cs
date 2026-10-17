@@ -1,5 +1,4 @@
 using Billiards.Physics;
-using Billiards.Table;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -851,7 +850,7 @@ namespace Billiards.UI
                 callPocket);
 
             RefreshStatusBar(state, awaitingPlacement, placementRefusedWindow, opponentBlockedWindow,
-                callPocketRefusedWindow);
+                callPocketRefusedWindow, aiTurn);
             RefreshCallPocketPicker(state == HudVisualState.CallPocket);
             RefreshPower(phase);
             RefreshCounters();
@@ -859,7 +858,7 @@ namespace Billiards.UI
         }
 
         private void RefreshStatusBar(HudVisualState state, bool awaitingPlacement, bool placementRefused,
-                                      bool opponentBlocked, bool callPocketRefused)
+                                      bool opponentBlocked, bool callPocketRefused, bool aiTurn)
         {
             Color32 symbol = PracticeHudState.SymbolColor(state);
             Color32 edge = PracticeHudState.EdgeColor(state);
@@ -910,17 +909,17 @@ namespace Billiards.UI
                 // 本方法只负责"喂事实"，不自己判"哪句优先"：自由球有三个子情形（待放球 / 已回到台上 /
                 // **落点被拒**）共用同一档状态与配色，优先级必须有个**可被判据钉住**的单一实现点。
                 // ⚠ P6 追加："已指定哪个袋"那两参也从这里喂 —— 判据仍然只驱动 `CaptionLine`。
+                // ⚠ P6 第 4 小段：袋号 → 角袋/边袋走 `PracticeHudState.TryDescribePocket`
+                //   （**单点**：玩家那条 `call-pocket` 行与对手那条 "AI called" 行**共用**这一个判定）。
                 int calledPocket = drive != null ? drive.CalledPocket : -1;
                 bool calledPocketIsCorner = false;
-                if (drive != null && drive.tableConfig != null && calledPocket >= 0
-                    && calledPocket < drive.tableConfig.PocketCount)
+                if (drive != null)
                 {
-                    Pocket pocket = drive.tableConfig.GetPocket(calledPocket);
-                    calledPocketIsCorner = pocket != null && pocket.IsCorner;
+                    PracticeHudState.TryDescribePocket(drive.tableConfig, calledPocket, out calledPocketIsCorner);
                 }
 
                 _stateCaption.text = PracticeHudState.CaptionLine(state, awaitingPlacement, placementRefused,
-                    opponentBlocked, calledPocket, calledPocketIsCorner, callPocketRefused);
+                    opponentBlocked, calledPocket, calledPocketIsCorner, callPocketRefused, aiTurn);
             }
 
             if (_shotInfoValue != null)

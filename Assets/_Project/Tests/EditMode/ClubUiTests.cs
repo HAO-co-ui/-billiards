@@ -1487,10 +1487,14 @@ namespace Billiards.Tests
 
                 // (h) `ai-turn` 的**真接线**：喂的是 `PhysicsTestDrive.IsAiTurn`，不是从球位/相位反推。
                 //     ⇒ 少了这一参，对手回合期间状态条会回落成 `aim`（"轮到你了"= 假陈述）。
-                if (!hudSource.Contains("drive.IsAiTurn"))
+                // ⚠ **必须断整行赋值**，不能只 `Contains("drive.IsAiTurn")`：P6 第 4 小段之后
+                //   `drive.IsAiTurn` 在视图里**出现两次**（这里 + `callPocket` 那行）⇒ 只查子串的话，
+                //   把这一行改成恒真仍会绿（实测踩过：注入 `aiTurn = drive != null` 时全绿）。
+                if (!hudSource.Contains("bool aiTurn = drive != null && drive.IsAiTurn;"))
                 {
                     failures.Add("T146(h) `PracticeHudView` 没有把 `drive.IsAiTurn` 喂给状态求解"
-                                 + " ⇒ 对手回合期间状态条回落成 `aim`（嘴上说\"轮到你了\"）。");
+                                 + "（要求整行 `bool aiTurn = drive != null && drive.IsAiTurn;`）"
+                                 + " ⇒ 对手回合期间状态条回落成 `aim`，或轮次判定被改成恒真。");
                 }
             }
 
@@ -1792,10 +1796,30 @@ namespace Billiards.Tests
         ///     球号/球位/剩余数再算一遍）；写只走 `TryCallPocket` / `ClearCalledPocket`；
         ///     读只读 `CalledPocket`；被拒上升沿必须被消费。
         ///
+        /// ── (e) 对手（AI）叫袋那一行（P6 第 4 小段）────────────────────────────────
+        /// (e1) AI 回合 + 已叫袋 ⇒ **出现**、袋号 = **索引 + 1**、且**不复用**玩家那条文案；
+        /// (e2) AI 回合但**没叫袋** ⇒ **回落常驻说明**（不是空串；`IsAiTurn && CalledPocket >= 0` 是唯一条件）；
+        /// (e3) **玩家回合 + `CalledPocket >= 0` ⇒ 绝不出现**（防串台，最容易写漏）；
+        /// (e4) `SetTurn(Player)` 后消失 —— 且是**因为 `CalledPocket` 被清回 -1**，不是 UI 自己记的；
+        /// (e5) 袋号 → 种类走**单点** `TryDescribePocket`（与玩家那条共用）且与 `TableConfig` 几何一致。
+        /// ⚠ **时序事实（别当 bug）**：`TryLaunchAiShot` 在**出杆那一刻**才叫袋 ⇒ 可见窗口是
+        ///   「AI 出杆后 → 回合切回前」（球还在滚的几秒）。**判据不要求"出杆前就能看见"** —— 那要改
+        ///   `Runtime/Physics` 的 `TryLaunchAiShot` / `PlanAiShot`，属另一域。
+        ///
         /// **怎么打死它（注入，均已实测）**：① 把进入条件改成**恒真**（`drive.IsEightBallShot` → `true`）
         /// ⇒ (d) 红；② 把**被拒上升沿的消费删掉** ⇒ (d) 红（玩家扣了扳机没有任何反馈）；
         /// ③ 把 `PracticeHudLayout.CallPocketSlots` 改小（`p7-slot-count`）⇒ (b0) 红
-        /// （槽位数是**独立断言**，不是让"循环次数"自己证明自己）。
+        /// （槽位数是**独立断言**，不是让"循环次数"自己证明自己）；
+        /// ④ 把"轮到 AI"那道闸去掉（`p8-ai-called-always`）⇒ **(e3) 红**（玩家回合串台）；
+        /// ⑤ 去掉 `CalledPocket >= 0` 那道守卫（`p8-ai-called-no-guard`）⇒ **(e2) 红**
+        ///   （没叫袋时说明行变空串，而不是回落常驻说明）；
+        /// ⑥ 让对手那行**套用玩家文案**（`p8-ai-called-player-copy`）⇒ **(e1) 红**；
+        /// ⑦ 去掉"状态必须是 `ai-turn`"那道闸（`p8-ai-called-state-gate-drop`）⇒ **(e2)/(e3) 红**
+        ///   （`foul` / `moving` / `result` 那些档会被这一行顶掉）；
+        /// ⑧ **视图把 `aiTurn` 喂成恒真**（`p8-ai-called-view-feed`）⇒ **`T146(h)` 红**。
+        ///   ⚠ 这条是**实测教训**：纯函数判据看不到视图侧的喂参，而 `T146(h)` 原先只 `Contains("drive.IsAiTurn")`
+        ///   —— P6 第 4 小段之后该串在视图里**出现两次**（`aiTurn` 那行 + `callPocket` 那行）
+        ///   ⇒ 只查子串时该注入**全绿**（第一轮实测 `237/237` 抓到的）。现改成**整行赋值**断言。
         ///
         /// ── 盲带（如实）────────────────────────────────────────────────────────
         /// · **3D 袋口高亮没做**（它要"桌上袋口 → 屏幕"的投影与场景接线，属表现层增量）⇒ 选袋条与桌上
@@ -1934,6 +1958,73 @@ namespace Billiards.Tests
                 failures.Add("T147(b2) 越界 / 零槽位的按钮矩形应为**空矩形**（不对越界位置作任何主张）。");
             }
 
+            // ── (e) 对手（AI）叫袋那一行（P6 第 4 小段）──────────────────────────
+            // ⚠ **时序事实（别当 bug 修）**：`TryLaunchAiShot` 在**出杆那一刻**才 `TryCallPocket` ⇒
+            //   可见窗口 =「AI 出杆之后 → 回合切回玩家之前」（= 球还在滚的那几秒）。
+            //   判据**不要求**"出杆前就能看见"（那要改 Runtime，属另一域）；这里只锁**显示条件与文案**。
+            string opponentLine = PracticeHudState.CalledPocketLineForOpponent(3, true);
+
+            // (e1) AI 回合 + 叫了袋 ⇒ 出现；袋号 = **索引 + 1**；**不复用**玩家文案
+            string shownOnAiTurn = PracticeHudState.CaptionLine(
+                HudVisualState.AiTurn, false, false, false, 3, true, false, true);
+
+            if (shownOnAiTurn != opponentLine)
+            {
+                failures.Add($"T147(e1) AI 回合 + `CalledPocket = 3` 应显示 \"{opponentLine}\"，"
+                             + $"实测 \"{shownOnAiTurn}\"。");
+            }
+
+            if (!shownOnAiTurn.Contains("4"))
+            {
+                failures.Add("T147(e1) 那一行的袋号必须是**索引 + 1**（索引 3 ⇒ 显示 4），"
+                             + "否则与玩家那条口径分叉。");
+            }
+
+            if (shownOnAiTurn == PracticeHudState.CalledPocketLine(3, true))
+            {
+                failures.Add("T147(e1) 对手那一行**不得**复用玩家那条文案"
+                             + "（`Pick the pocket for the 8 ball` 对 AI 没有意义）。");
+            }
+
+            // (e2) AI 回合但**没叫袋** ⇒ 回落**常驻说明**（不是空串，也不是那一行）
+            string shownWhenNotCalled = PracticeHudState.CaptionLine(
+                HudVisualState.AiTurn, false, false, false, -1, false, false, true);
+
+            if (shownWhenNotCalled != PracticeHudState.StateDetail(HudVisualState.AiTurn))
+            {
+                failures.Add("T147(e2) AI 没叫袋时应回落常驻说明 "
+                             + $"\"{PracticeHudState.StateDetail(HudVisualState.AiTurn)}\"，"
+                             + $"实测 \"{shownWhenNotCalled}\"。");
+            }
+
+            // (e2) 显示条件的**三道闸**逐道钉住（状态 / 轮次 / 有没有叫）
+            bool gateOk =
+                PracticeHudState.ShowOpponentCalledPocket(HudVisualState.AiTurn, true, -1) == false   // 没叫袋
+                && PracticeHudState.ShowOpponentCalledPocket(HudVisualState.AiTurn, true, 0) == true  // 正例
+                && PracticeHudState.ShowOpponentCalledPocket(HudVisualState.AiTurn, false, 3) == false // 玩家回合
+                && PracticeHudState.ShowOpponentCalledPocket(HudVisualState.Aim, true, 3) == false    // 状态不是 ai-turn
+                && PracticeHudState.ShowOpponentCalledPocket(HudVisualState.Foul, true, 3) == false;  // 犯规档自己的话
+
+            if (!gateOk)
+            {
+                failures.Add("T147(e2) 显示条件必须**恰好**是「`state == AiTurn` **且** `IsAiTurn` **且** "
+                             + "`CalledPocket >= 0`」这三道闸（玩家回合 / 非 ai-turn 档 / 没叫袋，一律不许显示）。");
+            }
+
+            // (e3) **玩家回合**（`aiTurn = false`）+ `CalledPocket >= 0` ⇒ 绝不出现 AI 那行（防串台）
+            //      ⚠ 两向都断：① `state` 仍是 `AiTurn`（状态/轮次**不一致**时的串台）；② `state` 是玩家档。
+            foreach (HudVisualState playerState in new[] { HudVisualState.AiTurn, HudVisualState.Aim, HudVisualState.CallPocket })
+            {
+                string onPlayerTurn = PracticeHudState.CaptionLine(
+                    playerState, false, false, false, 3, true, false, false);
+
+                if (onPlayerTurn == opponentLine)
+                {
+                    failures.Add($"T147(e3) **玩家回合**（state = {playerState}、`IsAiTurn` = false）"
+                                 + "不得出现 AI 那一行 ⇒ 串台了。");
+                }
+            }
+
             // ── (c) 未指定 ⇒ 出杆被拒 + 不许静默 ─────────────────────────────
             if (PracticeHudState.CallPocketRefusedDetail == PracticeHudState.CallPocketDetail)
             {
@@ -2031,6 +2122,81 @@ namespace Billiards.Tests
                     {
                         failures.Add("T147(c) `ClearCalledPocket` 之后应回到 -1（未指定）。");
                     }
+
+                    // ── (e4) 回合切换即消失（**行为级**）：靠 `SetTurn(Player)` 清 `CalledPocket`，
+                    //   不是靠 UI 另存"刚才 AI 叫了哪个袋" ──
+                    if (!callDrive.TryCallPocket(0))
+                    {
+                        failures.Add("T147(e4) 前提：指定袋号 0 应成功。");
+                    }
+                    else
+                    {
+                        callDrive.SetTurn(ShotTurn.Ai);
+                        bool aiTurnNow = callDrive.IsAiTurn;
+                        int calledOnAiTurn = callDrive.CalledPocket;
+
+                        if (!aiTurnNow || calledOnAiTurn != 0)
+                        {
+                            failures.Add($"T147(e4) 前提：`SetTurn(Ai)` 后应 `IsAiTurn` 且 `CalledPocket == 0`，"
+                                         + $"实测 {aiTurnNow} / {calledOnAiTurn}。");
+                        }
+                        else
+                        {
+                            string onAiTurn = PracticeHudState.CaptionLine(
+                                HudVisualState.AiTurn, false, false, false, calledOnAiTurn, true, false, aiTurnNow);
+                            if (onAiTurn != PracticeHudState.CalledPocketLineForOpponent(0, true))
+                            {
+                                failures.Add("T147(e4) AI 回合 + 已叫袋应显示对手那一行，"
+                                             + $"实测 \"{onAiTurn}\"。");
+                            }
+                        }
+
+                        callDrive.SetTurn(ShotTurn.Player);
+                        bool aiTurnAfter = callDrive.IsAiTurn;
+                        int calledAfter = callDrive.CalledPocket;
+
+                        if (aiTurnAfter)
+                        {
+                            failures.Add("T147(e4) `SetTurn(Player)` 后 `IsAiTurn` 应为 false。");
+                        }
+
+                        if (calledAfter != -1)
+                        {
+                            failures.Add($"T147(e4) `SetTurn(Player)` 应把 `CalledPocket` 清回 -1，实测 {calledAfter}"
+                                         + " —— 那一行必须靠这个**自动消失**；UI 不许另存\"刚才 AI 叫了哪个袋\"。");
+                        }
+
+                        string onPlayerTurn = PracticeHudState.CaptionLine(
+                            HudVisualState.Aim, false, false, false, calledAfter, true, false, aiTurnAfter);
+                        if (onPlayerTurn == PracticeHudState.CalledPocketLineForOpponent(0, true))
+                        {
+                            failures.Add("T147(e4) 回合切回玩家后**不得**仍显示 AI 那一行。");
+                        }
+                    }
+
+                    // ── (e5) 袋号 → 种类：**单点** `TryDescribePocket` 与资产几何一致（两处共用）──
+                    for (int i = 0; i < callDrive.tableConfig.PocketCount; i++)
+                    {
+                        if (!PracticeHudState.TryDescribePocket(callDrive.tableConfig, i, out bool isCorner))
+                        {
+                            failures.Add($"T147(e5) `TryDescribePocket` 对合法索引 {i} 应返回 true。");
+                            continue;
+                        }
+
+                        if (isCorner != callDrive.tableConfig.GetPocket(i).IsCorner)
+                        {
+                            failures.Add($"T147(e5) 袋 {i} 的种类判定与 `TableConfig` 不一致"
+                                         + " ⇒ 玩家那条与对手那条会给出不同的 corner/side。");
+                        }
+                    }
+
+                    if (PracticeHudState.TryDescribePocket(callDrive.tableConfig, -1, out _)
+                        || PracticeHudState.TryDescribePocket(
+                               callDrive.tableConfig, callDrive.tableConfig.PocketCount, out _)
+                        || PracticeHudState.TryDescribePocket(null, 0, out _))
+                    {
+                        failures.Add("T147(e5) 越界索引 / 空资产时 `TryDescribePocket` 应返回 **false**（不抛）。");
+                    }
                 }
             }
             catch (System.Exception exception)
@@ -2078,7 +2244,9 @@ namespace Billiards.Tests
             TestContext.WriteLine("T147: 进入时机两向 ✓；6 袋 × 2 种\"已指定\"行互不相同 ✓；"
                                   + "选袋条几何在球桌主区之外（且越界给空矩形）✓；未指定 ⇒ 被拒 + 留痕 + 已指定放行 ✓；"
                                   + "视图侧：`IsEightBallShot` / `TryCallPocket` / `ClearCalledPocket` / "
-                                  + "`CalledPocket` / 被拒上升沿 接线 ✓；3D 袋口高亮**未做**（登记盲带）");
+                                  + "`CalledPocket` / 被拒上升沿 接线 ✓；"
+                                  + "对手叫袋行（AI 回合出现 / 玩家回合不串台 / 未叫袋回落常驻说明 / 换手即消失 / 种类单点）✓；"
+                                  + "3D 袋口高亮**未做**（登记盲带）");
         }
     }
 }
