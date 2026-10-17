@@ -255,6 +255,17 @@ PATCHES = {
             ),
         ],
     ),
+    # ㉒ **对战 HUD 不刷新**（P11 注入）：chip 一旦显示就永不再隐藏 ⇒ "进一颗消一颗"失效
+    #    ⇒ `T144(e)` 的"打掉一颗该号消失"必红；①②⑤ 不受影响
+    "p11-hud-stale": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudView.cs",
+        [
+            (
+                "                chips[i].gameObject.SetActive(number >= 0);",
+                "                chips[i].gameObject.SetActive(chips[i].gameObject.activeSelf || number >= 0);",
+            ),
+        ],
+    ),
     # ⑭ **选袋槽位数被改小**（QA 修复轮 B10）：6 → 5
     #    ⇒ "槽位数 == 6"与"== TableConfig.PocketCount"两条独立断言必须红（旧写法是自指的、跟着绿）
     "p7-slot-count": (

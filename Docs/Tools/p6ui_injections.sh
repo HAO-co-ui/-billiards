@@ -72,6 +72,8 @@ case "$TAG" in
                             BASE="333c458ad816656f438e26c63321a61b0065d829" ;;
   p9-title-band-shrink)     REL="Assets/_Project/Scripts/Runtime/UI/HomeLayout.cs"
                             BASE="b571e5b14e758c7f1a6498ab85a39d42fa25d24f" ;;
+  p11-hud-stale)            REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
+                            BASE="8e45223ab3274aa7352f41a169eb58585d17db7c" ;;
   *) echo "未登记的 tag：$TAG" >&2; exit 2 ;;
 esac
 

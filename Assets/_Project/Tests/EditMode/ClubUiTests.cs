@@ -980,6 +980,111 @@ namespace Billiards.Tests
                 }
             }
 
+            // ── (g) 对战 HUD：两侧剩余球 chip（**视图级**：建树后读 activeSelf 集合）──
+            //  为什么必须读视图：用户要的是"进一颗消一颗"这个**行为**，只驱动纯函数等于没测。
+            //  ⚠ 建树方式照 `T95b` 的先例（EditMode 下 `AddComponent` 不触发 `Awake` ⇒ 显式 `EnsureBuilt`）。
+            var hudGo = new GameObject("T144HudProbe");
+            try
+            {
+                var hud = hudGo.AddComponent<PracticeHudView>();
+                hud.EnsureBuilt();
+
+                // ① 开放球局 ⇒ 两侧零 chip
+                var none = new int[0];
+                hud.ApplyMatchHud(true, GroupState.OpenTable, GroupState.OpenTable, false, none, none);
+                if (hud.VisibleGroupChips(true).Length != 0 || hud.VisibleGroupChips(false).Length != 0)
+                {
+                    failures.Add("T144(g) 开放球局时两侧球号 chip 必须**全不可见**（用户：一开始是空的）。");
+                }
+
+                // ④ 对战模式 ⇒ 练习那排（`POCKETED` / `BALLS LEFT`）不可见
+                if (hud.PracticeBallRowVisible)
+                {
+                    failures.Add("T144(g) 对战模式下 `BALLS LEFT` + 15 颗球行必须不可见（两种模式 UI 要不一样）。");
+                }
+
+                // ② 定组后 ⇒ 玩家侧可见号码集合 == 传入集合（顺序无关）
+                int[] yours = { 1, 3, 5 };
+                int[] opp = { 10, 12 };
+                hud.ApplyMatchHud(true, GroupState.Solid, GroupState.Stripe, false, yours, opp);
+                if (!SameNumberSet(hud.VisibleGroupChips(true), yours)
+                    || !SameNumberSet(hud.VisibleGroupChips(false), opp))
+                {
+                    failures.Add("T144(g) 定组后两侧可见号码必须等于 `*RemainingNumbers`，实测 我方 ["
+                                 + string.Join(",", hud.VisibleGroupChips(true)) + "] / 对手 ["
+                                 + string.Join(",", hud.VisibleGroupChips(false)) + "]。");
+                }
+
+                // ③ 推进一杆打掉 3 号 ⇒ 只有 3 号消失，其余不变
+                int[] after = { 1, 5 };
+                hud.ApplyMatchHud(true, GroupState.Solid, GroupState.Stripe, false, after, opp);
+                int[] shownAfter = hud.VisibleGroupChips(true);
+                // ⚠ **同时断言"可见个数"**（只数 `activeSelf`、不读缓存）：这是 P11 注入 `p11-hud-stale`
+                //   暴露的教训 —— 原判据只看"缓存里的号码集合"，而缓存与可见性**同源更新** ⇒
+                //   "只增不减"的注入被视为正常。个数断言能把它逼出来（3 vs 2）。
+                if (System.Array.IndexOf(shownAfter, 3) >= 0
+                    || !SameNumberSet(shownAfter, after)
+                    || !SameNumberSet(hud.VisibleGroupChips(false), opp)
+                    || hud.VisibleChipCount(true) != after.Length
+                    || hud.VisibleChipCount(false) != opp.Length)
+                {
+                    failures.Add("T144(g) 进一颗必须**只**消对应那颗（3 号）：期望 我方 "
+                                 + after.Length + " 个 / 对手 " + opp.Length + " 个，实测 我方 "
+                                 + hud.VisibleChipCount(true) + " 个 [" + string.Join(",", shownAfter)
+                                 + "] / 对手 " + hud.VisibleChipCount(false) + " 个。");
+                }
+
+                // ⑤ 练习模式 ⇒ 球行恢复可见、两侧 chip 全隐藏（防"顺手改坏"）
+                hud.ApplyMatchHud(false, GroupState.OpenTable, GroupState.OpenTable, false, none, none);
+                if (!hud.PracticeBallRowVisible)
+                {
+                    failures.Add("T144(g) 练习模式下 `BALLS LEFT` + 球行必须**仍然可见**。");
+                }
+
+                if (hud.VisibleGroupChips(true).Length != 0 || hud.VisibleGroupChips(false).Length != 0)
+                {
+                    failures.Add("T144(g) 练习模式下两侧对战球号 chip 必须全隐藏。");
+                }
+
+                // ⑥ 开放球局 ⇒ **组别小标签也不可见**（零字形；不只是 chip）
+                hud.ApplyMatchHud(true, GroupState.OpenTable, GroupState.OpenTable, false, none, none);
+                if (!string.IsNullOrEmpty(hud.YourGroupTagText) || !string.IsNullOrEmpty(hud.OppGroupTagText))
+                {
+                    failures.Add("T144(g) 开放球局时组别小标签必须是**空串**（用户：一开始是空的，不写待定）。");
+                }
+
+                // ⑦ 定组后 ⇒ 标签 == `Solids`/`Stripes`；⑦' 中栏 = `RACK 1` + 轮次（真信息）
+                hud.ApplyMatchHud(true, GroupState.Solid, GroupState.Stripe, true, yours, opp);
+                if (hud.YourGroupTagText != PracticeHudState.SolidGroupTag
+                    || hud.OppGroupTagText != PracticeHudState.StripeGroupTag)
+                {
+                    failures.Add("T144(g) 定组后组别标签应为 `Solids`/`Stripes`，实测 "
+                                 + hud.YourGroupTagText + " / " + hud.OppGroupTagText + "。");
+                }
+
+                if (hud.CenterRackText != PracticeHudState.RackLabel
+                    || hud.CenterTurnText != PracticeHudState.OpponentTurnLabel)
+                {
+                    failures.Add("T144(g) 中栏应显示 `RACK 1` + 当前轮次（AI 回合 = `AI`），实测 "
+                                 + hud.CenterRackText + " / " + hud.CenterTurnText + "。");
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(hudGo);
+            }
+
+            // ⑧ **防假陈述守卫**：参考图里那三样在本工程**没有接线**（一局定胜负 / D3 已撤销 / 局中切模式），
+            //   视图源码里一律不许出现（这是"防止照抄参考图"的守卫，不是文案测试）。
+            foreach (string forbidden in new[] { "BEST OF THREE", "of 3", "Call a pocket" })
+            {
+                string hudSource = StripComments(ReadSourceOrNull(PracticeHudViewSourcePath));
+                if (hudSource != null && hudSource.Contains(forbidden))
+                {
+                    failures.Add($"T144(g) 视图里出现「{forbidden}」—— 参考图有、本工程**未接线**（假陈述）。");
+                }
+            }
+
             Assert.IsEmpty(failures, "T144 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine("T144: 默认档 Club（与 Runtime 同源）✓；三档切换且选中唯一 ✓；"
                                   + "对手回合被拒有可见提示 + 可判定出口（计数/原因/边沿）✓；"
@@ -1686,6 +1791,17 @@ namespace Billiards.Tests
         private static bool Same(Color32 a, Color32 b)
         {
             return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+        }
+
+        /// <summary>两个号码集合是否相同（**顺序无关**；用于"可见 chip 集合 == 剩余球号"）。</summary>
+        private static bool SameNumberSet(int[] actual, int[] expected)
+        {
+            if (actual == null || expected == null || actual.Length != expected.Length)
+            {
+                return false;
+            }
+
+            return new HashSet<int>(actual).SetEquals(expected);
         }
 
         // ════════════════ T148 全局字号倍率（单点）+ 关键块不挤 ═══════════════

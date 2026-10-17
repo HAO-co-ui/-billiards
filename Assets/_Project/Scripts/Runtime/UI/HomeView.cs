@@ -112,6 +112,17 @@ namespace Billiards.UI
         private Image[] _introTierFills;
         private TextMeshProUGUI[] _introTierLabels;
 
+        /// <summary>
+        /// **本局是不是 AI 对战**（**UI 侧单一真源**）。`PracticeHudView` 只读它决定 HUD 形态。
+        ///
+        /// 为什么在 UI 侧：`PhysicsTestDrive` **没有**"本局模式"出口（只有 `MatchOver` / `Difficulty`），
+        /// 而"对战 HUD ≠ 练习 HUD"是**纯显示**问题 ⇒ 由**发起方**（首页两个入口）置位。
+        /// ⚠ **只许在两处置位**：`OnBeginMatch()` = `true`、`OnStartPractice()` = `false`（两个写入口必然分叉）。
+        /// ⚠ 它**只表示"是不是对战"**；球号数据仍只来自
+        /// `PhysicsTestDrive.PlayerRemainingNumbers` / `OpponentRemainingNumbers`（不许在此再挂一份球号状态）。
+        /// </summary>
+        public static bool IsAiMatchSession { get; private set; }
+
         private void Awake()
         {
             EnsureBuilt();
@@ -726,6 +737,7 @@ namespace Billiards.UI
         /// <summary>`Practice`：关闭首页、交回玩法（练习入口）。</summary>
         public void OnStartPractice()
         {
+            IsAiMatchSession = false;   // **置位点 ①**（练习）
             Hide();
         }
 
@@ -765,6 +777,7 @@ namespace Billiards.UI
                 return;
             }
 
+            IsAiMatchSession = true;    // **置位点 ②**（对战；只在真的开局成功之后置位）
             HideMatchIntro();
             Hide();
         }

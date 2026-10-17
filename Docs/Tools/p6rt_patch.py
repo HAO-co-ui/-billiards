@@ -401,6 +401,36 @@ PATCHES = {
         ],
     ),
     # ㉔ **把悬浮过渡时长设为 0**（瞬移）⇒ P10-C 的"中途夹在两端之间"必红
+    # ㉗ **`StickTipGapMeters = 0`** ⇒ 静止时杆尖贴到球面（P11 判据① 必红）
+    "p11-tipgap-zero": (
+        "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
+        [
+            (
+                "        public const float StickTipGapMeters = 0.002f;\n",
+                "        public const float StickTipGapMeters = 0f;   // INJ：静止间隙归零\n",
+            ),
+        ],
+    ),
+    # ㉘ **删掉击球前冲**（Shooting 相位不再前进）⇒ 击球帧离球面仍 2 mm（判据② 必红）
+    "p11-no-strike-advance": (
+        "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
+        [
+            (
+                "? StickTipGapMeters : 0f;\n",
+                "? 0f : 0f;   // INJ：删掉击球前冲\n",
+            ),
+        ],
+    ),
+    # ㉙ **击球前冲过量（2×）** ⇒ 杆尖戳进球里（判据③ 必红）
+    "p11-strike-overshoot": (
+        "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
+        [
+            (
+                "? StickTipGapMeters : 0f;\n",
+                "? StickTipGapMeters * 2f : 0f;   // INJ：前冲过量\n",
+            ),
+        ],
+    ),
     "p10-float-instant": (
         PTD,
         [

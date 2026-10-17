@@ -1300,6 +1300,76 @@ namespace Billiards.Tests
             }
         }
 
+        /// <summary>
+        /// **`T154`：杆尖间隙三判据**（P11）—— 纯函数驱动，不依赖状态机。
+        /// ① 静止（Aim，pullback=0，**无前冲**）⇒ `|tip−球心| − R ≈ StickTipGapMeters`（2 mm）。
+        /// ② 击球帧（`strikeAdvance = StickTipGapMeters`，pullback=0）⇒ `|tip−球心| − R ≈ 0`（**真碰到**）。
+        /// ③ 全程不穿模：`pullback × strikeAdvance` 全组合 ⇒ `|tip−球心| ≥ R − 0.5 mm`（**前冲过量的安全带**）。
+        /// ④ Charging 单调：`pullback` 增大 ⇒ `|tip−球心|` **严格递增且斜率 1.0**（后拉关系不被前冲污染）。
+        /// ⚠ 断言一律写成"**到球心减去 R**"，不从常量反推（否则是用实现验证实现）。
+        /// </summary>
+        [Test]
+        public void T154_StickTip_Gap_StrikeFrame_NoPenetration_Monotonic()
+        {
+            var failures = new List<string>();
+            Vector3 cue = new Vector3(0.12f, 0f, -0.34f);
+            Vector3 aim = new Vector3(1f, 0f, 0.25f).normalized;
+            float r = PoolConstants.BallRadius;
+            const float gap = 0.002f;   // **字面量**：不读实现常量（否则注入置 0 时两边同时为 0 ⇒ 恒真）
+
+            // ① 静止：到表面 = gap
+            float restSurface = (CueStickController.StickTipPositionForPhase(cue, aim, 0f, 0f, ShotPhase.Aim) - cue).magnitude - r;
+            if (Mathf.Abs(restSurface - gap) > 2e-4f)
+            {
+                failures.Add($"(P11-①) 静止时杆尖到**球表面**应为 {gap * 1000f:F1} mm，实测 {restSurface * 1000f:F2} mm。");
+            }
+
+            // ② 击球帧：前冲 = gap ⇒ 到表面 ≈ 0
+            float strikeSurface = (CueStickController.StickTipPositionForPhase(cue, aim, 0f, 0f, ShotPhase.Shooting) - cue).magnitude - r;
+            if (Mathf.Abs(strikeSurface) > 5e-4f)
+            {
+                failures.Add($"(P11-②) **击球帧**杆尖应贴到球表面（≤0.5 mm），实测 {strikeSurface * 1000f:F2} mm。");
+            }
+
+            // ③ 全程不穿模（含前冲过量那种写法：用 2×gap 也必须被这条挡住）
+            for (int i = 0; i <= 9; i++)
+            {
+                float pull = CueStickController.MaxPullback * i / 9f;
+                foreach (ShotPhase ph in new[] { ShotPhase.Aim, ShotPhase.Shooting })   // 产品可达相位；2*gap 属注入档，不进本判据域
+                {
+                    float d = (CueStickController.StickTipPositionForPhase(cue, aim, pull, 0f, ph) - cue).magnitude;
+                    if (d < r - 5e-4f)
+                    {
+                        failures.Add($"(P11-③) **穿模**：pullback={pull:F3} phase={ph} ⇒ 到球心 {d:F5} < R−0.5mm（{r - 5e-4f:F5}）。");
+                        break;
+                    }
+                }
+            }
+
+            // ④ Charging 单调且 1:1
+            float prev = -1f;
+            for (int i = 0; i <= 9; i++)
+            {
+                float pull = CueStickController.MaxPullback * i / 9f;
+                float d = (CueStickController.StickTipPositionForPhase(cue, aim, pull, 0f, ShotPhase.Aim) - cue).magnitude;
+                if (i > 0 && !(d > prev + 1e-4f))
+                {
+                    failures.Add($"(P11-④) 后拉 {pull:F3} 时到球心未**严格递增**（{prev:F5} → {d:F5}）。");
+                }
+
+                if (i > 0 && Mathf.Abs((d - prev) - (CueStickController.MaxPullback / 9f)) > 1e-3f)
+                {
+                    failures.Add($"(P11-④) 后拉增量应 **1:1**（每次 {(CueStickController.MaxPullback / 9f):F4} m），实测增量 {d - prev:F4}。");
+                }
+
+                prev = d;
+            }
+
+            TestContext.WriteLine($"[P11] restSurface={restSurface * 1000f:F2}mm strikeSurface={strikeSurface * 1000f:F2}mm "
+                                  + $"gap={gap * 1000f:F1}mm ok={failures.Count == 0}");
+            Assert.IsEmpty(failures, "T154 失败：\n" + string.Join("\n", failures));
+        }
+
         private static void PotCueBall(PhysicsTestDrive drive)
         {
             Pocket pocket = SidePocket(Table());

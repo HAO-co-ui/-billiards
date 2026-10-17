@@ -24,8 +24,8 @@ namespace Billiards.Physics
     [AddComponentMenu("Billiards/Cue Stick Controller")]
     public sealed class CueStickController : MonoBehaviour
     {
-        /// <summary>杆尖与白球心的静止间隙（米）——瞄准时杆尖贴白球但不穿模。</summary>
-        public const float TipGap = 0.01f;
+        /// <summary>杆尖与**白球表面**的静止间隙（米）——瞄准时留一丝缝，**只有击球帧才真正碰到球**。</summary>
+        public const float StickTipGapMeters = 0.002f;
 
         /// <summary>拉满力度时杆的后拉量（米）——蓄力期后拉 = 力度 × 本值（1:1）。取值偏大以强化"拉满"的视觉反馈（用户实测：0.15 无感）。</summary>
         public const float MaxPullback = 0.45f;
@@ -71,18 +71,30 @@ namespace Billiards.Physics
         /// 症状：**球在右边库附近蓄力时，杆整根穿过木库边**（截图里杆在库边两侧都可见）。
         /// 根因：抬升角 `θ` 按**球位**反解（`StickElevationDegreesFor`：要求杆身在跨过台面外缘处
         /// 下表面高于库顶），该反解的前提是**杆身落在过球心那条直线上**；而旧实现把后拉量沿
-        /// **水平方向**加 ⇒ 杆身整体向库边平移 `(TipGap+pullback)`，却一点额外高度都不带
-        /// ⇒ 跨库处实际高度比设计值低 `(TipGap+pullback)·tanθ`。
+        /// **水平方向**加 ⇒ 杆身整体向库边平移 `(R + StickTipGapMeters + pullback)`，却一点额外高度都不带
+        /// ⇒ 跨库处实际高度比设计值低 `(R + StickTipGapMeters + pullback)·tanθ`。
         /// 实测（用户截图姿态）：球离库 0.62 m、后拉 0.45 m、θ 取最小的 4° ⇒ 杆身在跨库处
         /// 只抬 0.016 m，而需求 0.0324 m ⇒ 必然整根穿库。
         /// **沿轴线后拉**则杆身**恒在过球心的直线上** ⇒ 抬升角的保证对**任意后拉量**都成立。
         ///
         /// `elevationDegrees = 0`（默认）⇒ 退化为"水平后拉"，与历史逐位一致（`T88` 锁这条 1:1）。
         /// </summary>
+        /// <summary>**相位 → 击球前冲量**（**单一真源**；`SyncStick` 与判据都走它）。</summary>
+        public static float StrikeAdvanceFor(ShotPhase phase)
+            => phase == ShotPhase.Shooting ? StickTipGapMeters : 0f;
+
+        /// <summary>**按相位取杆尖位置**（`SyncStick` 的唯一入口；判据也走这一条 ⇒ 注入能被打中）。</summary>
+        public static Vector3 StickTipPositionForPhase(Vector3 cueBallWorld, Vector3 aimDirectionWorld,
+            float pullback, float elevationDegrees, ShotPhase phase)
+            => StickTipPosition(cueBallWorld, aimDirectionWorld, pullback, elevationDegrees, StrikeAdvanceFor(phase));
+
         public static Vector3 StickTipPosition(Vector3 cueBallWorld, Vector3 aimDirectionWorld, float pullback,
-            float elevationDegrees = 0f)
+            float elevationDegrees = 0f, float strikeAdvance = 0f)
         {
-            return cueBallWorld + StickDirection(aimDirectionWorld, elevationDegrees) * (TipGap + pullback);
+            // ⚠ `TipGap` 旧口径是"到**球心** 0.01 m" ⇒ 杆尖埋进球里 R−0.01 = 18.575 mm（用户："球杆不见了"）。
+            //   现口径 = **球半径 + 到表面的缝**；`strikeAdvance` 只在击球帧把缝压到 0（"只有松手后才碰到白球"）。
+            return cueBallWorld + StickDirection(aimDirectionWorld, elevationDegrees)
+                   * (PoolConstants.BallRadius + StickTipGapMeters - strikeAdvance + pullback);
         }
 
         private void Update()
@@ -228,7 +240,9 @@ namespace Billiards.Physics
 
             // ★ 杆尖**沿杆身轴线**后拉（`elevation` 必须先进来）—— 否则杆身整体向库边平移却不抬高，
             //   抬升角的保证失效 ⇒ 蓄力时整根穿库（见 `StickTipPosition` 的推导）。
-            _stick.position = StickTipPosition(cueBallWorld, aimDir, pullback, elevation);
+            // ★ **击球前冲**：只有 Shooting 相位把 2 mm 的缝压到 0（用户："只有蓄力松手后才能碰到白球"）；
+            //   其余相位恒 0 ⇒ 瞄准/蓄力时杆尖**不进球**。
+            _stick.position = StickTipPositionForPhase(cueBallWorld, aimDir, pullback, elevation, _flow.Phase);
 
             // 杆身 +Z 从杆尾指向杆尖 = **抬升后的方向**（杆从库边上方过；长度恒为 `StickLength`）。
             _stick.rotation = Quaternion.LookRotation(StickDirection(aimDir, elevation), Vector3.up);

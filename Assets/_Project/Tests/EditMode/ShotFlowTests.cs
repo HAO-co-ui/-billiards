@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Billiards.Core;
 using Billiards.Physics;
 using NUnit.Framework;
 using UnityEngine;
@@ -148,9 +149,9 @@ namespace Billiards.Tests
             // (a) 贴球：pullback = 0 ⇒ 杆尖到白球距离恰为 TipGap，且在瞄准**反**方向一侧
             Vector3 tip0 = CueStickController.StickTipPosition(cue, aimDir, 0f);
             float gap0 = Vector3.Distance(tip0, cue);
-            if (Mathf.Abs(gap0 - CueStickController.TipGap) > 1e-6f)
+            if (Mathf.Abs(gap0 - (PoolConstants.BallRadius + CueStickController.StickTipGapMeters)) > 1e-6f)
             {
-                failures.Add($"(a) 静止间隙应恰为 TipGap（{CueStickController.TipGap:R}），实际 {gap0:R}。");
+                failures.Add($"(a) 静止时杆尖到球心应为 R+StickTipGapMeters（{PoolConstants.BallRadius + CueStickController.StickTipGapMeters:R}），实际 {gap0:R}。");
             }
 
             if (Vector3.Dot(tip0 - cue, aimDir) >= 0f)
@@ -158,13 +159,13 @@ namespace Billiards.Tests
                 failures.Add("(a) 杆尖应在瞄准反方向一侧（杆在白球后面）。");
             }
 
-            // (b) 后拉 1:1：pullback = 0.075 ⇒ 距离恰为 TipGap + 0.075（闭式，与被测实现无关）
+            // (b) 后拉 1:1：pullback = 0.075 ⇒ 距离恰为 R + StickTipGapMeters + 0.075（闭式，与被测实现无关）
             const float pullback = 0.075f;
             Vector3 tip1 = CueStickController.StickTipPosition(cue, aimDir, pullback);
             float gap1 = Vector3.Distance(tip1, cue);
-            if (Mathf.Abs(gap1 - (CueStickController.TipGap + pullback)) > 1e-6f)
+            if (Mathf.Abs(gap1 - (PoolConstants.BallRadius + CueStickController.StickTipGapMeters + pullback)) > 1e-6f)
             {
-                failures.Add($"(b) 后拉 1:1：距离应为 {CueStickController.TipGap + pullback:R}，实际 {gap1:R}。");
+                failures.Add($"(b) 后拉 1:1：距离应为 {PoolConstants.BallRadius + CueStickController.StickTipGapMeters + pullback:R}，实际 {gap1:R}。");
             }
 
             // (c) 线性：两档后拉的位移差恰等于后拉差（无惯性 / 无平方项）

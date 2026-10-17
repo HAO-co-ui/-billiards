@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using Billiards.Physics;
+using Billiards.Rules;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -95,6 +97,18 @@ namespace Billiards.UI
         private TextMeshProUGUI _scoreValue;
         private TextMeshProUGUI _playerStats;
         private Image[] _ballChips;
+        // 对战 HUD：左右两侧的剩余球号 chip（`-1` = 隐藏；映射走 `PracticeHudState.GroupChipNumbers`）。
+        private Image[] _yourGroupChips;
+        private Image[] _oppGroupChips;
+        private int[] _yourShownNumbers;
+        private int[] _oppShownNumbers;
+        private TextMeshProUGUI _ballsLabel;
+        private TextMeshProUGUI _scoreLabel;
+        private TextMeshProUGUI _goalText;
+        private TextMeshProUGUI _yourGroupLabel;
+        private TextMeshProUGUI _oppGroupLabel;
+        private TextMeshProUGUI _oppName;
+        private RectTransform _oppAvatar;
 
         // ── 状态条 ───────────────────────────────────────────────────────────
         private Image _statusFrame;
@@ -406,34 +420,64 @@ namespace Billiards.UI
                 TextAlignmentOptions.BottomLeft, new Vector2(0.152f, 0.62f), new Vector2(0.345f, 1f))
                 .text = PracticeHudState.LabelYou;
 
-            CreateText(board, "PlayerMode", bodyFont, ClubUiTokens.FontSmall, ClubUiTokens.Muted,
-                TextAlignmentOptions.Left, new Vector2(0.152f, 0.36f), new Vector2(0.345f, 0.60f))
-                .text = PracticeHudState.ModePractice;
+            // 组别小标签（`Solids`/`Stripes`）：**开放球局是空串（零字形）**，定组后才出现。
+            _yourGroupLabel = CreateText(board, "PlayerGroupTag", bodyFont, ClubUiTokens.FontSmall,
+                ClubUiTokens.Muted, TextAlignmentOptions.Left,
+                new Vector2(0.152f, 0.36f), new Vector2(0.345f, 0.60f));
+            _yourGroupLabel.text = string.Empty;
 
             _playerStats = CreateText(board, "PlayerStats", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Label,
                 TextAlignmentOptions.TopLeft, new Vector2(0.152f, 0.04f), new Vector2(0.345f, 0.36f));
 
             // 中栏：`POCKETED` + 大数字 + 目标说明（设计稿 `.score-center`）
-            CreateText(board, "ScoreLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
-                TextAlignmentOptions.Bottom, new Vector2(0.36f, 0.80f), new Vector2(0.66f, 1f))
-                .text = PracticeHudState.LabelPocketed;
+            _scoreLabel = CreateText(board, "ScoreLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
+                TextAlignmentOptions.Bottom, new Vector2(0.36f, 0.80f), new Vector2(0.66f, 1f));
+            _scoreLabel.text = PracticeHudState.RackLabel;
 
             _scoreValue = CreateText(board, "ScoreValue", titleFont, ClubUiTokens.FontScore, ClubUiTokens.Text,
                 TextAlignmentOptions.Center, new Vector2(0.36f, 0.38f), new Vector2(0.66f, 0.80f));
-            _scoreValue.text = PracticeHudState.PocketedLabel(0, 0);
+            // 大字 = **当前该谁打**（不是比分 —— 本工程是一局定胜负，0—0 是假信息）。
+            _scoreValue.text = PracticeHudState.YourShotLabel;
 
             _playerStats.text = PracticeHudState.LabelShots + " 0   " + PracticeHudState.LabelFouls + " 0";
 
-            CreateText(board, "GoalText", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
-                TextAlignmentOptions.Top, new Vector2(0.34f, 0.04f), new Vector2(0.68f, 0.34f))
-                .text = PracticeHudState.CaptionIdle;
+            _goalText = CreateText(board, "GoalText", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
+                TextAlignmentOptions.Top, new Vector2(0.34f, 0.04f), new Vector2(0.68f, 0.34f));
+            _goalText.text = PracticeHudState.CaptionIdle;
 
             // 右栏：球行（未进亮、已进 20% 透明 ⇒ 一眼看出还剩哪些）
-            CreateText(board, "BallsLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
-                TextAlignmentOptions.BottomRight, new Vector2(0.70f, 0.80f), new Vector2(0.955f, 1f))
-                .text = PracticeHudState.LabelBallsLeft;
+            _ballsLabel = CreateText(board, "BallsLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
+                TextAlignmentOptions.BottomRight, new Vector2(0.70f, 0.80f), new Vector2(0.955f, 1f));
+            _ballsLabel.text = PracticeHudState.LabelBallsLeft;
 
             BuildBallRow(board);
+            // **对手头像**（对战模式才显示）：复用既有 `Disc`+`Ring`+`Robot` 精灵 ⇒ **零新增材质**
+            // （美术包里没有任何人物/头像资源：`02_Characters_人物` 只有"不适用说明.md"）。
+            _oppAvatar = AddFixed(board, "OppAvatar", ClubUiSprites.UiSprite.Disc, ClubUiTokens.AvatarFill,
+                new Vector2(0.925f, 0.66f), new Vector2(ClubUiTokens.AvatarSize, ClubUiTokens.AvatarSize));
+            AddFixed(_oppAvatar, "OppAvatarRing", ClubUiSprites.UiSprite.Ring, ClubUiTokens.AvatarEdge,
+                new Vector2(0.5f, 0.5f), new Vector2(ClubUiTokens.AvatarSize, ClubUiTokens.AvatarSize));
+            AddFixed(_oppAvatar, "OppAvatarGlyph", ClubUiSprites.UiSprite.Robot, ClubUiTokens.AvatarIcon,
+                new Vector2(0.5f, 0.5f), new Vector2(ClubUiTokens.AvatarIconSize, ClubUiTokens.AvatarIconSize));
+            _oppAvatar.gameObject.SetActive(false);
+
+            // 右栏文字（镜像左栏）：`Expert AI` + 组别小标签；开放球局时组别为空。
+            _oppName = CreateText(board, "OppName", bodyFont, ClubUiTokens.FontLabel, ClubUiTokens.Text,
+                TextAlignmentOptions.BottomRight, new Vector2(0.78f, 0.62f), new Vector2(0.90f, 1f));
+            _oppName.text = PracticeHudState.OpponentDisplayName;
+            _oppGroupLabel = CreateText(board, "OppGroupTag", bodyFont, ClubUiTokens.FontSmall,
+                ClubUiTokens.Muted, TextAlignmentOptions.Right, new Vector2(0.78f, 0.36f), new Vector2(0.90f, 0.60f));
+            _oppGroupLabel.text = string.Empty;
+            BuildGroupChipRow(board, "YourGroupChips", 0.21f, 0.37f, 0.42f, out _yourGroupChips);
+            BuildGroupChipRow(board, "OppGroupChips", 0.62f, 0.78f, 0.42f, out _oppGroupChips);
+            // 判据缓存：**必须在建树时初始化**（否则第一次 `ApplyGroupChips` 收到 null ⇒ 判据永远读空）。
+            _yourShownNumbers = new int[PracticeHudState.MatchGroupChipSlots];
+            _oppShownNumbers = new int[PracticeHudState.MatchGroupChipSlots];
+            for (int c = 0; c < _yourShownNumbers.Length; c++)
+            {
+                _yourShownNumbers[c] = -1;
+                _oppShownNumbers[c] = -1;
+            }
         }
 
         /// <summary>
@@ -875,12 +919,236 @@ namespace Billiards.UI
             // 结算卡的三列与 HUD 的记分牌共用同一份口径，不存在两处各数一遍。
             PracticeSession.CountBalls(drive.Simulator, out int pocketed, out int totalObjects);
 
-            if (_scoreValue != null)
+            if (_scoreValue != null && !HomeView.IsAiMatchSession)
             {
                 _scoreValue.text = PracticeHudState.PocketedLabel(pocketed, totalObjects);
             }
 
             RefreshBallRow();
+            RefreshGroupChips();
+        }
+
+        /// <summary>
+        /// **对战 HUD 的球号行**：一侧一行，最多 `MatchGroupChipSlots` 个 chip，**默认全部隐藏**
+        /// （开放球局 = 零 chip、零字形 —— 用户原话"一开始是空的"）。
+        /// ⚠ 头像没有美术资源（`02_Characters_人物` 只有"不适用说明.md"）⇒ 复用既有
+        ///   `UiSprite.Player` / `UiSprite.Robot` 精灵，**不新增材质**（材质 30/30 零余量）。
+        /// </summary>
+        private void BuildGroupChipRow(RectTransform board, string name, float left, float right, float bottom,
+                                       out Image[] chips)
+        {
+            RectTransform row = AddRect(board, name, new Vector2(left, bottom), new Vector2(right, bottom + 0.14f));
+            chips = new Image[PracticeHudState.MatchGroupChipSlots];
+            for (int i = 0; i < chips.Length; i++)
+            {
+                float x = (i + 0.5f) / chips.Length;
+                RectTransform chip = AddFixed(row, "Chip" + (i + 1), ClubUiSprites.UiSprite.Disc,
+                    ClubBallChips.PaletteColor(1), new Vector2(x, 0.5f),
+                    new Vector2(ClubUiTokens.MiniBallSize, ClubUiTokens.MiniBallSize));
+                chips[i] = chip.GetComponent<Image>();
+                chips[i].gameObject.SetActive(false);
+            }
+        }
+
+        /// <summary>
+        /// 按**模式**与**两侧剩余球号**刷两行 chip；练习形态则还原原来的 15 颗球行。
+        /// 单一真源：模式只读 `HomeView.IsAiMatchSession`；球号只来自
+        /// `PhysicsTestDrive.PlayerRemainingNumbers` / `OpponentRemainingNumbers`（**不在 UI 里再记一份**）。
+        /// </summary>
+        /// <summary>
+        /// **对战 HUD 的应用口**（判据 `T144(g)` 直接调用它 —— 与运行时刷新走**同一条路径**，
+        /// 否则"进一颗消一颗"只能被纯函数层断言，注入打不中）。
+        /// `aiMatch=false` ⇒ 还原练习形态（15 颗球行 + `BALLS LEFT` 可见、两侧球号全隐藏）。
+        /// </summary>
+        /// <summary>**判据用**：某一侧"当前可见"的球号（隐藏槽位不入列）。</summary>
+        public int[] VisibleGroupChips(bool yours)
+        {
+            int[] cache = yours ? _yourShownNumbers : _oppShownNumbers;
+            if (cache == null)
+            {
+                return new int[0];
+            }
+
+            var list = new System.Collections.Generic.List<int>();
+            for (int i = 0; i < cache.Length; i++)
+            {
+                // ⚠ **必须同时看 `activeSelf`**：只看缓存会让"注入了不刷新"照样读到新号码
+                //   （判据就变成"测缓存"而不是"测显示"）。
+                Image[] chips = yours ? _yourGroupChips : _oppGroupChips;
+                if (cache[i] >= 0 && chips != null && chips[i] != null && chips[i].gameObject.activeSelf)
+                {
+                    list.Add(cache[i]);
+                }
+            }
+
+            return list.ToArray();
+        }
+
+        /// <summary>
+        /// **判据用**：某一侧**当前真正可见**的 chip 个数 —— **只数 `activeSelf`，不读任何缓存**。
+        ///
+        /// ⚠ 这是 P11 注入 `p11-hud-stale` 暴露出的教训：原读取器同时看"末次写入的号码（cache）"
+        ///   与 `activeSelf`，而两者**由同一条刷新路径更新** ⇒ 注入"不刷新"时**两者一起失效**，
+        ///   判据看不到脏状态（"载体被同源污染"的变体）。⇒ 判据必须读**视图上真实的东西**，
+        ///   并且**不许为此再存第二份状态**。
+        /// </summary>
+        public int VisibleChipCount(bool yours)
+        {
+            Image[] chips = yours ? _yourGroupChips : _oppGroupChips;
+            if (chips == null)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int i = 0; i < chips.Length; i++)
+            {
+                if (chips[i] != null && chips[i].gameObject.activeSelf)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        /// <summary>**判据用**：玩家侧组别小标签的当前文本（`Solids`/`Stripes`/空串）。</summary>
+        public string YourGroupTagText => _yourGroupLabel != null ? _yourGroupLabel.text : null;
+
+        /// <summary>**判据用**：对手侧组别小标签的当前文本。</summary>
+        public string OppGroupTagText => _oppGroupLabel != null ? _oppGroupLabel.text : null;
+
+        /// <summary>**判据用**：中栏大字（`YOUR SHOT` / `AI`）。</summary>
+        public string CenterTurnText => _scoreValue != null ? _scoreValue.text : null;
+
+        /// <summary>**判据用**：中栏小字（`RACK 1`）。</summary>
+        public string CenterRackText => _scoreLabel != null ? _scoreLabel.text : null;
+
+        /// <summary>**判据用**：练习形态那排（`BALLS LEFT` + 15 颗球）此刻是否可见。</summary>
+        public bool PracticeBallRowVisible => _ballsLabel != null && _ballsLabel.gameObject.activeSelf;
+
+        public void ApplyMatchHud(bool aiMatch, GroupState yourGroup, GroupState oppGroup, bool aiTurn,
+                                  IReadOnlyList<int> yourNumbers, IReadOnlyList<int> oppNumbers)
+        {
+            // 组别小标签：**开放球局是空串**（零字形，不写 "Open"/"?"/占位）。
+            if (_yourGroupLabel != null)
+            {
+                _yourGroupLabel.text = aiMatch ? PracticeHudState.GroupTag(yourGroup) : string.Empty;
+            }
+
+            if (_oppGroupLabel != null)
+            {
+                _oppGroupLabel.text = aiMatch ? PracticeHudState.GroupTag(oppGroup) : string.Empty;
+            }
+
+            if (_oppName != null)
+            {
+                _oppName.gameObject.SetActive(aiMatch);
+            }
+
+            // 中栏：小字 `RACK 1`（单局，不写 of 3）、大字 = **当前该谁打**。
+            if (_scoreLabel != null && aiMatch)
+            {
+                _scoreLabel.text = PracticeHudState.RackLabel;
+            }
+
+            if (_scoreValue != null && aiMatch)
+            {
+                _scoreValue.text = aiTurn ? PracticeHudState.OpponentTurnLabel : PracticeHudState.YourShotLabel;
+            }
+
+            // **对战模式隐藏中栏**（`POCKETED` 大数字 + 目标说明）把宽度让给两侧；练习模式原样。
+            if (_scoreLabel != null)
+            {
+                _scoreLabel.gameObject.SetActive(!aiMatch);
+            }
+
+            if (_scoreValue != null)
+            {
+                _scoreValue.gameObject.SetActive(!aiMatch);
+            }
+
+            if (_goalText != null)
+            {
+                _goalText.gameObject.SetActive(!aiMatch);
+            }
+
+            if (_playerStats != null)
+            {
+                _playerStats.gameObject.SetActive(!aiMatch);
+            }
+
+            // 对手头像只在対戦出现（左侧玩家头像一直在）。
+            if (_oppAvatar != null)
+            {
+                _oppAvatar.gameObject.SetActive(aiMatch);
+            }
+
+            if (_ballsLabel != null)
+            {
+                _ballsLabel.gameObject.SetActive(!aiMatch);
+            }
+
+            if (_ballChips != null)
+            {
+                for (int i = 0; i < _ballChips.Length; i++)
+                {
+                    if (_ballChips[i] != null)
+                    {
+                        _ballChips[i].gameObject.SetActive(!aiMatch);
+                    }
+                }
+            }
+
+            ApplyGroupChips(_yourGroupChips, _yourShownNumbers, aiMatch ? yourNumbers : null);
+            ApplyGroupChips(_oppGroupChips, _oppShownNumbers, aiMatch ? oppNumbers : null);
+        }
+
+        private void RefreshGroupChips()
+        {
+            bool ai = HomeView.IsAiMatchSession;
+            ApplyMatchHud(ai,
+                drive != null ? drive.PlayerGroup : GroupState.OpenTable,
+                drive != null ? drive.OpponentGroup : GroupState.OpenTable,
+                drive != null && drive.IsAiTurn,
+                drive != null ? drive.PlayerRemainingNumbers : null,
+                drive != null ? drive.OpponentRemainingNumbers : null);
+        }
+
+        private void ApplyGroupChips(Image[] chips, int[] cache, IReadOnlyList<int> numbers)
+        {
+            if (chips == null)
+            {
+                return;
+            }
+
+            int[] shown = PracticeHudState.GroupChipNumbers(numbers, chips.Length);
+            for (int i = 0; i < chips.Length; i++)
+            {
+                if (chips[i] == null)
+                {
+                    continue;
+                }
+
+                int number = shown[i];
+                chips[i].gameObject.SetActive(number >= 0);
+                if (number < 0)
+                {
+                    continue;
+                }
+
+                Sprite face = ClubBallChips.Resolve(ballChips, number);
+                chips[i].sprite = face != null ? face : ClubUiSprites.Resolve(uiSprites, ClubUiSprites.UiSprite.Disc);
+                chips[i].color = face != null ? ClubUiTokens.Opaque : ClubBallChips.PaletteColor(number);
+            }
+            if (cache != null)
+            {
+                for (int c = 0; c < cache.Length; c++)
+                {
+                    cache[c] = c < shown.Length ? shown[c] : -1;
+                }
+            }
+
         }
 
         /// <summary>

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Billiards.Physics;
 using Billiards.Rules;
 using UnityEngine;
@@ -167,6 +168,56 @@ namespace Billiards.UI
 
         // ── 标签与按钮（记分牌 / 力度块）───────────────────────────────────────
         /// <summary>记分牌右侧球行的标签（未进的球亮、已进球的 20% 透明 ⇒ 字面就是"还剩多少"）。</summary>
+        /// <summary>对战 HUD 每一侧最多几个球号 chip（= 一组球上限 7）。</summary>
+        public const int MatchGroupChipSlots = 7;
+
+        /// <summary>
+        /// **剩余球号 → 固定槽位的 chip 号**（纯函数；`-1` = 该槽**不显示**）。
+        ///
+        /// ⚠ **空列表 ⇒ 全 `-1`** = 用户要的「一开始是空的」：开放球局两块**零 chip、零字形**，
+        ///   **不写 "Open table" 之类占位**（用户原话："也不要'待定'字样"）。
+        /// ⚠ 黑 8 不在输入里（`*RemainingNumbers` 天然不含）⇒ 无需特判。
+        /// </summary>
+        public static int[] GroupChipNumbers(IReadOnlyList<int> numbers, int slots)
+        {
+            var shown = new int[slots];
+            for (int i = 0; i < slots; i++)
+            {
+                shown[i] = numbers != null && i < numbers.Count ? numbers[i] : -1;
+            }
+
+            return shown;
+        }
+
+        /// <summary>对战 HUD 中栏：单局编号（**恒为 1**，不写 `of 3` —— 本工程是一局定胜负）。</summary>
+        public const string RackLabel = "RACK 1";
+
+        /// <summary>对战 HUD 中栏大字：轮到玩家。</summary>
+        public const string YourShotLabel = "YOUR SHOT";
+
+        /// <summary>对战 HUD 中栏大字：轮到对手。</summary>
+        public const string OpponentTurnLabel = "AI";
+
+        /// <summary>组别小标签：全色球（玩家的 `Solids`）。</summary>
+        public const string SolidGroupTag = "Solids";
+
+        /// <summary>组别小标签：花色球（`Stripes`）。</summary>
+        public const string StripeGroupTag = "Stripes";
+
+        /// <summary>对手名（对战 HUD 右栏；与 `OpponentName(MatchSetup)` 方法区分）。</summary>
+        public const string OpponentDisplayName = "Expert AI";
+
+        /// <summary>`GroupState` → 组别小标签；**开放球局返回空串**（零字形，用户原话"一开始是空的"）。</summary>
+        public static string GroupTag(GroupState group)
+        {
+            switch (group)
+            {
+                case GroupState.Solid: return SolidGroupTag;
+                case GroupState.Stripe: return StripeGroupTag;
+                default: return string.Empty;
+            }
+        }
+
         public const string LabelBallsLeft = "BALLS LEFT";
 
         /// <summary>玩家名下的一行实时统计标签（与 `FOULS` 同处一行）。</summary>
