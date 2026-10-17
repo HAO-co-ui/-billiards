@@ -1453,6 +1453,39 @@ namespace Billiards.Tests
                 Object.DestroyImmediate(go2);
             }
 
+            // ③ **源码级守卫**：Runtime 目录里 `SetAiOpponentEnabledForDiagnostics` **只允许出现 1 次**（定义处）。
+            //    ⚠ 必须**打印实际计数与被扫路径**，否则"0 命中"也可能是"一个文件都没扫到"（空扫）。
+            string scriptsRoot = Path.Combine(
+                Path.GetDirectoryName(Application.dataPath) ?? ".", "Assets/_Project/Scripts");
+            string[] csFiles = Directory.GetFiles(scriptsRoot, "*.cs", SearchOption.AllDirectories);
+            int hits = 0, hitFiles = 0;
+            foreach (string f in csFiles)
+            {
+                string txt = File.ReadAllText(f);
+                int idx = 0, c = 0;
+                while ((idx = txt.IndexOf("SetAiOpponentEnabledForDiagnostics", idx, System.StringComparison.Ordinal)) >= 0)
+                {
+                    c++;
+                    idx += 38;
+                }
+
+                if (c > 0)
+                {
+                    hits += c;
+                    hitFiles++;
+                }
+            }
+
+            if (csFiles.Length == 0)
+            {
+                failures.Add($"(P12-③) **空扫**：{scriptsRoot} 下没扫到任何 .cs（路径可能算错）。");
+            }
+            else if (hits != 1)
+            {
+                failures.Add($"(P12-③) 源码级守卫失败：`SetAiOpponentEnabledForDiagnostics` 在 {scriptsRoot} 下出现 "
+                             + $"{hits} 次（应 == 1，仅定义处）；被扫 {csFiles.Length} 个 .cs，命中 {hitFiles} 个文件。");
+            }
+
             Assert.IsEmpty(failures, "T155 失败：\n" + string.Join("\n", failures));
         }
 
