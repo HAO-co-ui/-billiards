@@ -130,6 +130,9 @@ namespace Billiards.UI
         private Image _shootArrow;
         private TextMeshProUGUI _shotInfoValue;
 
+        /// <summary>`Shoot` 下方的 `YOUR SHOT` 小标（对战形态隐藏 —— 中栏已有轮次信息，重复会叠在按钮上）。</summary>
+        private TextMeshProUGUI _shotInfoLabel;
+
         // ── 开关 ─────────────────────────────────────────────────────────────
         private Image _vfxIcon;
         private Image _sfxIcon;
@@ -160,6 +163,9 @@ namespace Billiards.UI
         /// **刻意不序列化**（无 `[SerializeField]`）⇒ 不改场景、不需要重生成场景。
         /// </summary>
         private CanvasGroup[] _chromeGroups;
+
+        /// <summary>记分牌专用分区（全宽，见 `EnsureBuilt`）。**必须进 `_chromeGroups`** —— 否则首页盖上来时它不会让位。</summary>
+        private RectTransform _boardZone;
 
         /// <summary>
         /// HUD 画布的根 `RectTransform`。**结算卡挂这里而不是自建第二个画布** ——
@@ -231,7 +237,7 @@ namespace Billiards.UI
                 return _chromeGroups;
             }
 
-            RectTransform[] zones = { _counters, _status, _power };
+            RectTransform[] zones = { _counters, _status, _power, _boardZone };
             _chromeGroups = new CanvasGroup[zones.Length];
             for (int i = 0; i < zones.Length; i++)
             {
@@ -341,9 +347,9 @@ namespace Billiards.UI
             _power = CreateZone(canvasGo.transform, zones.power, "Power");
 
             BuildScoreboard(_counters,
-                // **记分牌独占一条全宽分区**：它早前被塞进 `CountersZone`（屏宽 28%）⇒ 头像 46 px 就占 23%，
-                // 名字必然折行、组别标签与 chip 行必然叠（用户实机截图的 `Expe/rt AI`、`Solids` 压 chip）。
-                CreateZone(canvasGo.transform, new Rect(0.020f, 0.780f, 0.960f, 0.202f), "Board"));
+                // **记分牌独占一条分区**：宽度到 0.690 为止 —— 右侧 `0.700–0.980` 是力度块。
+                // ⚠ 之前给到 0.960 ⇒ **右块被力度块整片盖住**（用户实机截图：`Expert AI`/`Stripes` 压在 `Shoot` 上）。
+                _boardZone = CreateZone(canvasGo.transform, new Rect(0.020f, 0.780f, 0.670f, 0.202f), "Board"));
             BuildStatusBar(_status);
             BuildShotbar(_power);
 
@@ -441,7 +447,8 @@ namespace Billiards.UI
             // 中栏：`POCKETED` + 大数字 + 目标说明（设计稿 `.score-center`）
             _scoreLabel = CreateText(board, "ScoreLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
                 TextAlignmentOptions.Bottom, new Vector2(0.36f, 0.80f), new Vector2(0.66f, 1f));
-            _scoreLabel.text = PracticeHudState.RackLabel;
+            // 练习形态：小字 = `POCKETED`（对战形态由 `ApplyMatchHud` 换成 `RACK 1`）。
+            _scoreLabel.text = PracticeHudState.LabelPocketed;
 
             _scoreValue = CreateText(board, "ScoreValue", titleFont, ClubUiTokens.FontScore, ClubUiTokens.Text,
                 TextAlignmentOptions.Center, new Vector2(0.36f, 0.38f), new Vector2(0.66f, 0.80f));
@@ -566,28 +573,10 @@ namespace Billiards.UI
 
         private void BuildStatusBar(RectTransform zone)
         {
-            // ── 模式切换（设计稿 `.mode-switch`：外框 radius 3 + padding 3，内钮 radius 1）──
-            RectTransform segment = AddFramed(zone, "ModeSwitch",
-                new Vector2(0.16f, 0.79f), new Vector2(0.84f, 0.79f),
-                ClubUiTokens.Line, ClubUiTokens.PanelSegment, ClubUiTokens.RadiusSegment);
-            segment.offsetMin = new Vector2(0f, -ClubUiTokens.SegmentHeight * 0.5f);
-            segment.offsetMax = new Vector2(0f, ClubUiTokens.SegmentHeight * 0.5f);
-
-            RectTransform inner = AddRect(segment, "Padding", Vector2.zero, Vector2.one);
-            inner.offsetMin = new Vector2(ClubUiTokens.SegmentPadding, ClubUiTokens.SegmentPadding);
-            inner.offsetMax = new Vector2(-ClubUiTokens.SegmentPadding, -ClubUiTokens.SegmentPadding);
-
-            RectTransform active = AddRect(inner, "Practice", new Vector2(0f, 0f), new Vector2(0.5f, 1f));
-            SetImage(active.gameObject.AddComponent<Image>(),
-                ClubUiSprites.PanelForRadius(ClubUiTokens.RadiusSegmentInner), ClubUiTokens.ButtonFill);
-            CreateText(active, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.SegmentActiveText,
-                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = PracticeHudState.ModePractice;
-
-            RectTransform idle = AddRect(inner, "AiMatch", new Vector2(0.5f, 0f), new Vector2(1f, 1f));
-            TextMeshProUGUI idleLabel = CreateText(idle, "Label", bodyFont, ClubUiTokens.FontBody,
-                ClubUiTokens.SegmentIdleText, TextAlignmentOptions.Center, Vector2.zero, Vector2.one);
-            idleLabel.text = PracticeHudState.ModeAiMatch;
-            idleLabel.alpha = ClubUiTokens.DisabledOpacity;   // 35-A 无 AI 对手 ⇒ 如实禁用，不做假入口
+            // ── 模式切换（`.mode-switch`）**已按用户要求整块移除** ──────────────
+            // 用户实机截图圈出顶部 `Practice | AI Match` 并明确要求去掉。
+            // ⇒ 不再建这个控件（它也只是"看起来能切"的静态段：本工程没有局中切模式的接线，
+            //   留着就是假可点态）。模式改由**首页入口**决定，HUD 只用文案表达当前模式。
 
             // ── 状态条（设计稿 `.status-bar`：12 px 正文 + 圆点 + 图标 + 可换边线色）──
             RectTransform bar = AddFramed(zone, "StatusBar",
@@ -686,9 +675,9 @@ namespace Billiards.UI
             _shootArrow = arrow.GetComponent<Image>();
 
             // 出杆信息（设计稿 `.shot-info`）
-            CreateText(bar, "ShotInfoLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
-                TextAlignmentOptions.Bottom, new Vector2(0.045f, 0.19f), new Vector2(0.955f, 0.28f))
-                .text = PracticeHudState.LabelYourShot;
+            _shotInfoLabel = CreateText(bar, "ShotInfoLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
+                TextAlignmentOptions.Bottom, new Vector2(0.045f, 0.19f), new Vector2(0.955f, 0.28f));
+            _shotInfoLabel.text = PracticeHudState.LabelYourShot;
 
             _shotInfoValue = CreateText(bar, "ShotInfoValue", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
                 TextAlignmentOptions.Top, new Vector2(0.045f, 0.06f), new Vector2(0.955f, 0.19f));
@@ -1061,10 +1050,10 @@ namespace Billiards.UI
                 _oppName.gameObject.SetActive(aiMatch);
             }
 
-            // 中栏：小字 `RACK 1`（单局，不写 of 3）、大字 = **当前该谁打**。
-            if (_scoreLabel != null && aiMatch)
+            // 中栏：小字 `RACK 1`（单局，不写 of 3）、大字 = **当前该谁打**；退回练习形态时恢复 `POCKETED`。
+            if (_scoreLabel != null)
             {
-                _scoreLabel.text = PracticeHudState.RackLabel;
+                _scoreLabel.text = aiMatch ? PracticeHudState.RackLabel : PracticeHudState.LabelPocketed;
             }
 
             if (_scoreValue != null && aiMatch)
@@ -1125,6 +1114,18 @@ namespace Billiards.UI
             if (_ballsLabel != null)
             {
                 _ballsLabel.gameObject.SetActive(!aiMatch);
+            }
+
+            // `Shoot` 下方那两行（`YOUR SHOT` / 状态）在对战形态隐藏：中栏已经表达轮次，
+            // 重复一遍会压在 `Shoot` 按钮上（用户实机截图：`Ball in hand` 叠着按钮）。
+            if (_shotInfoLabel != null)
+            {
+                _shotInfoLabel.gameObject.SetActive(!aiMatch);
+            }
+
+            if (_shotInfoValue != null)
+            {
+                _shotInfoValue.gameObject.SetActive(!aiMatch);
             }
 
             if (_ballChips != null)
