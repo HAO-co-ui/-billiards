@@ -249,6 +249,21 @@ namespace Billiards.Physics
         public bool IsWaitingForPlacement => PendingCueBallPlacement;
 
         /// <summary>
+        /// **必须先把白球放好才能出杆**（**单一真源**，驱动 **球杆 / 瞄准线 / 悬浮 / 拒杆** 四处）。
+        ///
+        /// 判据：待放置 **且**（球已离台 **或** 当前位置不合法）。
+        /// ⇒ 球**在台上且位置合法** ⇒ `false` ⇒ **允许直接出杆**（真实 8 球里 ball-in-hand 是"**可以**重放"，
+        ///   不是"必须重放"；强制重放会让"每杆无碰库无进球就犯规"的练习模式变成**每杆点一下**）。
+        /// ⚠ 合法性**复用** <see cref="CanPlaceCueBall"/>（与 `TryPlaceCueBall` 同一套：全台 / 厨房），
+        ///   绝不另写一份 —— 否则"能放"和"必须放"会各说一套。
+        /// </summary>
+        public bool MustPlaceCueBallBeforeShooting =>
+            IsWaitingForPlacement
+            && (_simulator == null
+                || !_simulator.IsBallInPlay(0)
+                || !CanPlaceCueBall(_simulator.Balls[0].position));
+
+        /// <summary>
         /// **待放置期间被拒的出杆次数**（只读出口）。
         /// ⚠ P8 起"白球离台 ⇒ 自动回开球位帮玩家代打"的兜底**已删除**（用户要"等他放置"）⇒
         /// 未放好之前出杆必须**被拒**，而且**拒绝要留痕**（不许静默无反应）。
@@ -1991,7 +2006,7 @@ namespace Billiards.Physics
             //    （不另立 `PendingCueBallPlacement` / `IsBallInPlay(0)` 的第二套判据）。
             //    理由：待放期白球是"**拿在手上**"的（视觉离台 12 cm；犯规自由球那种在模拟器里还在台上），
             //    此时开杆等于"用一只悬空的球击球" ⇒ 语义不通；且待放期左键语义是"放球"，开杆也没有入口。
-            if (IsWaitingForPlacement)
+            if (MustPlaceCueBallBeforeShooting)
             {
                 RefusedLaunchWhileAwaitingCount++;
                 return Vector2.zero;
@@ -2043,7 +2058,10 @@ namespace Billiards.Physics
 
             // **P7：一开打，"放球窗口"就结束**（自由球不能用两次；否则 `PendingCueBallPlacement`
             // 会一直挂着，下一杆还会被当成"待放球"）。
+            // **P10 补**：**直接出杆**（球在台上且位置合法那种）也必须把自由球**消耗掉** ——
+            //   否则标志还在 ⇒ 用户会觉得"球老在飘"、下一杆又被当待放。
             PendingCueBallPlacement = false;
+            BallInHand = BallInHandKind.None;
 
             // 只清**每杆计数**；逐球入袋记录是跨杆状态，**不得**在此抹掉（否则入袋球会复活）。
             _simulator.ResetDiagnostics();
@@ -2096,7 +2114,7 @@ namespace Billiards.Physics
                     {
                         // 抬不抬只看"是否待放"；**横向位置按来源分**：
                         //   落袋 ⇒ "重新拿出来"的固定落点；犯规 ⇒ **它自己的位置**（否则会莫名瞬移到台心）。
-                        bool awaiting = PendingCueBallPlacement;
+                        bool awaiting = MustPlaceCueBallBeforeShooting;   // P10：单点真源
                         bool offTable = !_simulator.IsBallInPlay(0);
                         Vector2 xy = awaiting
                             ? (offTable ? CueBallFloatPhysicsPosition : balls[0].position)
@@ -2135,7 +2153,7 @@ namespace Billiards.Physics
             // **A2 定稿（主理人裁定）**：抬不抬**只看"是否待放"** —— 犯规自由球那种"白球还在台上"的待放
             // **也必须抬**（那正是 ball-in-hand 的**重放入口**：待放期左键语义已是"放球"，
             // 不抬的话画面上**零信号**，玩家想瞄一按就把球挪走了）。
-            bool awaiting = PendingCueBallPlacement;
+            bool awaiting = MustPlaceCueBallBeforeShooting;   // P10：单点真源（球在台上且合法 ⇒ 不抬）
             float target = awaiting ? CueBallFloatHeightMeters : PoolConstants.BallRadius;
             float speed = CueBallFloatHeightMeters / Mathf.Max(1e-4f, CueFloatTransitionSeconds);
             _cueFloatHeight = Mathf.MoveTowards(_cueFloatHeight, target, speed * dt);

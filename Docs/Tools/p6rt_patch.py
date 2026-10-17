@@ -328,15 +328,15 @@ PATCHES = {
             ),
         ],
     ),
-    # ㉓ **INJ-A2-a**：把 `awaiting` 收窄回「待放 **且** 白球不在场上」
-    #     ⇒ 犯规自由球（球在台上）不再悬浮 ⇒ **只有 P10-A2① 红**（② 仍绿：横向本来就用自己的位置）
+    # ㉓ **重钉（P10 甲方案后）**：`awaiting` 改成"只看待放"（= 回到"两种待放都抬"）
+    #     ⇒ **只有 ② 红**（犯规+球在台上+位置合法时不该抬）
     "p10-float-any-pending": (
         PTD,
         [
             (
-                "            bool awaiting = PendingCueBallPlacement;\n"
+                "            bool awaiting = MustPlaceCueBallBeforeShooting;   // P10：单点真源（球在台上且合法 ⇒ 不抬）\n"
                 "            float target = awaiting ? CueBallFloatHeightMeters : PoolConstants.BallRadius;\n",
-                "            bool awaiting = PendingCueBallPlacement && !_simulator.IsBallInPlay(0);\n"
+                "            bool awaiting = PendingCueBallPlacement;   // INJ：**任何待放都抬**\n"
                 "            float target = awaiting ? CueBallFloatHeightMeters : PoolConstants.BallRadius;\n",
             ),
         ],
@@ -347,7 +347,7 @@ PATCHES = {
         PTD,
         [
             (
-                "            if (IsWaitingForPlacement)\n"
+                "            if (MustPlaceCueBallBeforeShooting)\n"
                 "            {\n"
                 "                RefusedLaunchWhileAwaitingCount++;\n"
                 "                return Vector2.zero;\n"
@@ -361,7 +361,7 @@ PATCHES = {
         PTD,
         [
             (
-                "            if (IsWaitingForPlacement)\n",
+                "            if (MustPlaceCueBallBeforeShooting)\n",
                 "            if (true)   // INJ-P10-6：**恒真 ⇒ 连开球也拒**（预期 P10-拒杆① 必红）\n",
             ),
         ],
@@ -374,6 +374,29 @@ PATCHES = {
                 "                            ? (offTable ? CueBallFloatPhysicsPosition : balls[0].position)\n"
                 "                            : balls[0].position;\n",
                 "                        Vector2 xy = awaiting ? CueBallFloatPhysicsPosition : balls[0].position;\n",
+            ),
+        ],
+    ),
+    # ㉕ **`MustPlaceCueBallBeforeShooting` 恒等于 `IsWaitingForPlacement`**（回到"两种待放都强制"）
+    #     ⇒ **只有 ② 红**（该直接出杆的被拒）
+    "p10-must-place-stuck": (
+        PTD,
+        [
+            (
+                "        public bool MustPlaceCueBallBeforeShooting =>\n",
+                "        public bool MustPlaceCueBallBeforeShooting => IsWaitingForPlacement;   // INJ：回到\"两种待放都强制\"\n"
+                "        private bool Unused_MustPlace() =>\n",
+            ),
+        ],
+    ),
+    # ㉖ **`MustPlaceCueBallBeforeShooting` 恒 false**（永不要求放球）⇒ **只有 ① 红**
+    "p10-must-place-off": (
+        PTD,
+        [
+            (
+                "        public bool MustPlaceCueBallBeforeShooting =>\n",
+                "        public bool MustPlaceCueBallBeforeShooting => false;   // INJ：永不要求放球\n"
+                "        private bool Unused_MustPlace() =>\n",
             ),
         ],
     ),
