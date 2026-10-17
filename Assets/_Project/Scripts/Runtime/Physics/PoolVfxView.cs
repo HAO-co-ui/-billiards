@@ -216,6 +216,9 @@ namespace Billiards.Physics
         private int _lastBallBall;
         private int _lastSegment;
         private int _lastPocket;
+
+        /// <summary>每颗球**已处理过的入袋袋号**（−1 = 未入袋）。用于"只在真正新入袋时生成一次特效"。</summary>
+        private int[] _seenCapturedPocket;
         private int _lastScratch;
         private Vector2 _lastPocketCenter;
         private bool _lastPocketWasEight;
@@ -749,6 +752,25 @@ namespace Billiards.Physics
         }
 
         /// <summary>把四个计数基准对齐到当前值（用于"重新开启"时跳过关闭期间的事件）。</summary>
+        /// <summary>把某颗球的入袋袋号记为"已处理"（按需扩容）。</summary>
+        private void MarkCapturedSeen(int ballIndex, int pocketIndex)
+        {
+            if (_seenCapturedPocket == null)
+            {
+                int n = drive != null && drive.Simulator != null ? drive.Simulator.Balls.Count : ballIndex + 1;
+                _seenCapturedPocket = new int[n];
+                for (int i = 0; i < _seenCapturedPocket.Length; i++)
+                {
+                    _seenCapturedPocket[i] = -1;
+                }
+            }
+
+            if (ballIndex >= 0 && ballIndex < _seenCapturedPocket.Length)
+            {
+                _seenCapturedPocket[ballIndex] = pocketIndex;
+            }
+        }
+
         private void SyncCounters()
         {
             PoolSimulator sim = drive.Simulator;
@@ -757,6 +779,17 @@ namespace Billiards.Physics
             _lastSegment = sim != null ? sim.TotalContactCount - sim.BallBallContactCount : 0;
             _lastPocket = sim != null ? sim.CapturedBallCount : 0;
             _lastScratch = drive.ScratchCount;
+
+            // 入袋快照对齐：开/重开时把"已经在袋里的球"记为已处理，避免补闪一次。
+            _seenCapturedPocket = null;
+            if (sim != null)
+            {
+                _seenCapturedPocket = new int[sim.Balls.Count];
+                for (int i = 0; i < _seenCapturedPocket.Length; i++)
+                {
+                    _seenCapturedPocket[i] = sim.CapturedPocketIndex(i);
+                }
+            }
         }
 
         private void SpawnStrike()
@@ -846,42 +879,42 @@ namespace Billiards.Physics
                 return;
             }
 
-            // 找"刚离台"的球（本帧事件 ⇒ 在离台球里取第一个），推到最近的袋喉中心并向袋内偏 0.013。
-            Vector2 anchor = Vector2.zero;
-            bool hasAnchor = false;
-            int pottedIndex = -1;
+            // **用模拟器记录的真实袋号**（`CapturedPocketIndex`）定位，不再"按离球最近的袋口猜"。
+            //   ⚠ 旧实现取"第一颗不在场的球 + 最近袋喉" ⇒ 球被记录入袋后位置不可靠，
+            //     特效会跑到**别的口袋**（用户实机反馈）。逐球记录才是唯一真源。
             IReadOnlyList<BallState> balls = sim.Balls;
+            int pottedIndex = -1;
+            int pottedPocket = -1;
             for (int i = 0; i < balls.Count; i++)
             {
-                if (!sim.IsBallInPlay(i))
+                int captured = sim.CapturedPocketIndex(i);
+                if (captured < 0)
                 {
-                    anchor = balls[i].position;
+                    continue;
+                }
+
+                bool alreadySeen = _seenCapturedPocket != null
+                                   && i < _seenCapturedPocket.Length
+                                   && _seenCapturedPocket[i] == captured;
+                if (!alreadySeen)
+                {
                     pottedIndex = i;
-                    hasAnchor = true;
+                    pottedPocket = captured;
                     break;
                 }
             }
 
-            if (!hasAnchor)
+            if (pottedIndex < 0 || pottedPocket < 0 || pottedPocket >= tableConfig.pockets.Count)
             {
+                // 没有任何"新入袋"的球（例如计数被外部对齐）⇒ 不生成，避免在错误位置闪一下。
                 return;
             }
 
-            float bestDist = float.MaxValue;
-            Vector2 center = anchor;
-            float inwardDeg = 0f;
-            for (int p = 0; p < tableConfig.pockets.Count; p++)
-            {
-                Pocket pocket = tableConfig.GetPocket(p);
-                float d = (pocket.throatCenter - anchor).magnitude;
-                if (d < bestDist)
-                {
-                    bestDist = d;
-                    Vector2 tn = pocket.throatNormal;
-                    center = pocket.throatCenter + tn * PocketInset;
-                    inwardDeg = Mathf.Atan2(tn.y, tn.x) * Mathf.Rad2Deg;
-                }
-            }
+            MarkCapturedSeen(pottedIndex, pottedPocket);
+
+            Pocket pocket = tableConfig.GetPocket(pottedPocket);
+            Vector2 center = pocket.throatCenter + pocket.throatNormal * PocketInset;
+            float inwardDeg = Mathf.Atan2(pocket.throatNormal.y, pocket.throatNormal.x) * Mathf.Rad2Deg;
 
             // 黑八落袋 ⇒ 外环延长到 0.45 s（设计说明 §VFX 逐字："黑八延长至 0.45 秒"）。
             bool isEightBall = pottedIndex == EightBallIndex;
