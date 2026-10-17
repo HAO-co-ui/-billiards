@@ -124,7 +124,10 @@ namespace Billiards.Physics
             new[] { 0f, -6f },   // Strike：L2 短"闷体"  −6 dB
             new[] { 0f, -5f },   // Hit   ：L2 高频脆点  −5 dB
             new[] { 0f, -4f },   // Rail  ：L2 中频 body −4 dB
-            new[] { 0f, -8f },   // Pocket：L2 落网收尾  −8 dB
+            // **落袋尾音加强（用户反馈"进袋不够爽"）**：L2 由 −8 提到 −6 dB。
+            // ⚠ 主层**保持 0 dB**：层内总功率须 ≤ 类目标（R-L 契约），0/−6 的功率和 = +0.97 dB，
+            //   与 strike 那档同水平；若把 L1 抬到 +2 会到 +2.6 dB ⇒ **越界**。
+            new[] { 0f, -6f },   // Pocket：L2 落网收尾  −6 dB
         };
 
         private void Start()

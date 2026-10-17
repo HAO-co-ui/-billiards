@@ -660,9 +660,11 @@ namespace Billiards.Tests
                 || Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Strike, 1) - (-6f)) > 1e-6f
                 || Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Hit, 1) - (-5f)) > 1e-6f
                 || Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Rail, 1) - (-4f)) > 1e-6f
-                || Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Pocket, 1) - (-8f)) > 1e-6f)
+                || Mathf.Abs(PoolAudio.LayerGainDb(PoolAudio.AudioCue.Pocket, 1) - (-6f)) > 1e-6f)
             {
-                failures.Add("(L4) 层相对电平应 strike[0,−6]/hit[0,−5]/rail[0,−4]/pocket[0,−8]。");
+                // 用户实机反馈"进袋不够爽" ⇒ pocket 尾音层由 −8 提到 −6 dB（**规格变更**，
+                // 已同步 `Docs/35-A_音频反馈强化_spec.md` 的层表；主层仍 0 dB 以守住 R-L 契约）。
+                failures.Add("(L4) 层相对电平应 strike[0,−6]/hit[0,−5]/rail[0,−4]/pocket[0,−6]。");
             }
 
             // (L5) 层内功率归一化：Σvol_i² ≤ 1（strike 两层 ⇒ 恰 = 1），L1 实得 ≈ −0.97 dB
