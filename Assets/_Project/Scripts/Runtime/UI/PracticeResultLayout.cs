@@ -19,8 +19,11 @@ namespace Billiards.UI
     /// ── 卡内两键（同样从参考稿量）────────────────────────────────────────────
     /// `Play again`：截图 `x∈[393, 679]`、`y∈[428, 453]`；`Back to club`：`y∈[466, 491]`。
     /// 换算成**卡内比例**（卡宽 328 / 卡高 357）得下方四个常量。
-    /// ⚠ **第二个键换了功能**（规格 §4.3 已登记）：参考的 `Back to club` 在本工程无处可去（没有首页场景）
-    /// ⇒ 改为 **`Export data`**，正好承接排期任务 3 的"一键导出"。
+    /// ⚠ **第二个键的功能按形态分派**（P6；规格 §4.3 已登记，本句按事实重写过一次）：
+    /// 参考稿的 `Back to club` **现在还真的能回首页**（`HomeSeams` 接缝 + `HomeView` 注册）；
+    /// **比赛形态**用它（`Back to club`），**练习形态**仍用 `Export data`（历史记录的唯一 UI 导出入口）。
+    /// ⇒ 旧文案「参考的 `Back to club` 在本工程无处可去（没有首页场景）」**已为假**，不得再被引用。
+    /// 两个槽位（`PlayAgainButtonLocal` / `ExportButtonLocal`）的**几何**仍逐项照参考稿量，与本条无关。
     /// </summary>
     public static class PracticeResultLayout
     {

@@ -385,8 +385,11 @@ namespace Billiards.Tests
         /// 断言：
         /// ① 八个视觉状态 ↔ 八个设计 token，**逐字**（`aim`/`ai-turn`/`moving`/`ball-in-hand`/
         ///    `call-pocket`/`foul`/`paused`/`result`），且互不重复；
-        /// ② 不可达集合**恰好**是 `{ai-turn, call-pocket, paused}`（本卡无 AI / 无规则引擎 / 无暂停）
+        /// ② 不可达集合**恰好**是 `{paused}`（P6 两小步按事实收窄：`ai-turn` 与 `call-pocket` 都已接线可达，
+        ///    各自的三方出口见 `PracticeHudState.UnreachableStates` 的注释；只剩 `paused` 因为**本卡没有暂停系统**）
         ///    —— 既不许悄悄缩小（做了却没登记），也不许悄悄扩大（少做了却声称"设计没有"）；
+        ///    ②' **反证**：把 `ResolveVisualState` 的参数空间穷举，断言"登记为可达的**必须真能产出**、
+        ///    登记为不可达的**必须产不出**"（只断集合相等会**真空**：删掉某一支时集合没变、断言仍绿）；
         /// ③ 每个状态都有非空且**互不相同**的标题与说明，图标也互不相同（防复制粘贴时漏改）；
         /// ③' **兜底键 `Esc` 必须在"待放球"文案里出现**（`Esc` 只存在于文案里 ⇒ 删掉它就等于兜底不存在）；
         /// ④ **酒红只给犯规/失败、亮青只给指定袋**：双向断言（该用的必须用、不该用的一个都不许用）；
@@ -801,8 +804,10 @@ namespace Billiards.Tests
         ///    `AI Match` 行可点 + 有回调、`Start match` 必须走 `MatchSeams.TryStartMatch`
         ///    （**未接线不得假装开局**）、`Back to club` 有回调、三格各挂 `Button`。
         ///
-        /// **怎么打死它**：① 把 `MatchSetup.ResetToDefault` 改成 `Casual` ⇒ ① 红；
-        /// ② 把 `Tiers` 的次序调换成 `Club|Casual|Expert` ⇒ ② 红；
+        /// **怎么打死它（注入，均已实测；① / ②' 是 QA 修复轮补的两条）**：
+        /// ① 把 `EightBallAi.DefaultDifficulty` 改成 `Casual`（`p7-default-drift`）⇒ ① 的**两条独立字面量**都红；
+        /// ② 把 `Tiers` 的次序调换成 `Club|Casual|Expert`（`p7-tier-order`）⇒ ② 红；
+        /// ②' 把 `TierLabel(Casual)` 的返回值改成 `"Rookie"`（`p7-tier-name`）⇒ ② 的档位名/对手名**字面量**红；
         /// ③ 把 `MatchTurnNotice.RequestBlock` 改成**静默 `return`** ⇒ ③ 红（计数恒 0 = 静默无反馈）；
         /// ④ 把 `AI Match` 那行的 `primary: true` 去掉 ⇒ ④ 红（那意味着又变回压暗的假入口）。
         /// </summary>
@@ -812,15 +817,21 @@ namespace Billiards.Tests
             var failures = new List<string>();
 
             // ── ① 默认档 ──
+            // ⚠ **QA 修复轮（A1）：两条独立的字面量期望，不是"赋进去的 == 赋进去的"**。
+            //   旧断言是 `Selected == EightBallAi.DefaultDifficulty`，而 `ResetToDefault()` 的实现
+            //   就是 `Selected = EightBallAi.DefaultDifficulty`（`MatchSetup.cs`）⇒ 恒真，
+            //   **抓不到它声称防的"两处默认漂移"**。现在把**契约值 `Club`（用户拍板）写死在断言里**：
+            //   任一处（UI 侧 `MatchSetup` / Runtime 侧 `EightBallAi.DefaultDifficulty`）被改动，都各自红。
             MatchSetup.ResetToDefault();
             if (MatchSetup.Selected != AiDifficulty.Club)
             {
-                failures.Add($"T144① 默认档应为 `Club`（用户拍板），实际 {MatchSetup.Selected}。");
+                failures.Add($"T144① UI 侧默认档应为 `Club`（用户拍板），实际 {MatchSetup.Selected}。");
             }
 
-            if (MatchSetup.Selected != EightBallAi.DefaultDifficulty)
+            if (EightBallAi.DefaultDifficulty != AiDifficulty.Club)
             {
-                failures.Add("T144① UI 默认档必须 = `EightBallAi.DefaultDifficulty` —— 两处默认值不得漂移。");
+                failures.Add("T144① Runtime 侧默认档 `EightBallAi.DefaultDifficulty` 应为 `Club`"
+                             + $"（两处默认值不得漂移），实际 {EightBallAi.DefaultDifficulty}。");
             }
 
             // ── ② 三档可切换 + 选中态唯一（次序 = 参考稿 casual|club|expert）──
@@ -862,12 +873,29 @@ namespace Billiards.Tests
                 }
             }
 
-            // 档位名与对手名：与参考稿逐字（`Club` / `Club AI`）
-            if (PracticeHudState.TierLabel(AiDifficulty.Club) != PracticeHudState.HomeDifficultyClub
-                || PracticeHudState.OpponentName(AiDifficulty.Club) != PracticeHudState.HomeDifficultyClub
-                                                                       + PracticeHudState.OpponentNameSuffix)
+            // 档位名与对手名：**字面量**（QA 修复轮 A2）。
+            // ⚠ 旧断言写成 `OpponentName ≡ TierLabel + 后缀`，两边都读自己的实现 ⇒ 恒真；
+            //   而这两串文案**短且稳定**（参考稿 `data-home-difficulty` / `<difficulty> AI`）⇒ 直接写死。
+            var expectedTierNames = new (AiDifficulty Tier, string Label, string Opponent)[]
             {
-                failures.Add("T144② 档位名/对手名必须复用同一套文案（`Club` / `Club AI`）。");
+                (AiDifficulty.Casual, "Casual", "Casual AI"),
+                (AiDifficulty.Club, "Club", "Club AI"),
+                (AiDifficulty.Expert, "Expert", "Expert AI"),
+            };
+
+            foreach ((AiDifficulty tier, string label, string opponent) in expectedTierNames)
+            {
+                if (PracticeHudState.TierLabel(tier) != label)
+                {
+                    failures.Add($"T144② {tier} 的档位名应为 \"{label}\"，"
+                                 + $"实际 \"{PracticeHudState.TierLabel(tier)}\"。");
+                }
+
+                if (PracticeHudState.OpponentName(tier) != opponent)
+                {
+                    failures.Add($"T144② {tier} 的对手名应为 \"{opponent}\"，"
+                                 + $"实际 \"{PracticeHudState.OpponentName(tier)}\"。");
+                }
             }
 
             MatchSetup.ResetToDefault();
@@ -1122,6 +1150,10 @@ namespace Billiards.Tests
         /// <summary>`PracticeResultView` 的源码路径（`T146` 白盒接线断言用；**从 <see cref="ViewSourceFiles"/> 取**，不另写字面量）。</summary>
         private static readonly string PracticeResultViewSourcePath = ViewSourceFiles[1];
 
+        /// <summary>`MatchResultCopy` 的源码路径（`T146(b)` 的"配色单一真源"断言用）。</summary>
+        private const string MatchResultCopySourcePath =
+            "Assets/_Project/Scripts/Runtime/UI/MatchResultCopy.cs";
+
         private const string PointerAimControllerSourcePath =
             "Assets/_Project/Scripts/Runtime/Physics/PointerAimController.cs";
 
@@ -1132,12 +1164,13 @@ namespace Billiards.Tests
         /// **`T146`：一局定胜负的结算卡 —— 两形态**必须真的不同**、结算出口**以 Runtime 为准**、
         /// 三条流程收口**逐条可判定**、界面无假陈述**。
         ///
-        /// ── 断言六组 ────────────────────────────────────────────────────────────
+        /// ── 断言八组 ────────────────────────────────────────────────────────────
         /// **(a) 形态映射**：`ShotTurn.Player ⇒ Win`、`ShotTurn.Ai ⇒ Lose`，且**穷举** `ShotTurn`
         ///     （新增枚举值不得落到 `None` = 悄悄没有形态）。
-        /// **(b) 两形态的关键差异项真的不同**：标题不同 + 徽章不同（**两处独立文案**）+ 四个配色令牌
-        ///     逐对不同；且**负局那一侧必须落在酒红族**、**胜局那一侧不得借酒红**
-        ///     （设计说明 §一：酒红只用于犯规和失败）。⚠ 这一组是"两形态不是只差一个词"的**机器形态**。
+        /// **(b) 两形态的关键差异项真的不同**：标题不同 + 徽章不同（**两处独立文案**）+ 四个配色 accessor
+        ///     逐对**不同**、负局那一侧必须落**酒红族**、胜局那一侧不得借酒红，
+        ///     **且配色只有单一真源**（源码级：视图四个场合都经 `MatchResultCopy.<Xxx>Color(win)`、
+        ///     四个 accessor 各自引具名令牌）。⚠ 这一组是"两形态不是只差一个词"的**机器形态**。
         /// **(c) "为什么"一行穷举**：逐 `ShotOutcomeKind` 值都要有**非空**且**互不相同**的原因；
         ///     且"能成为结算原因"的集合**恰好**是那 4 种结局杆（新增枚举值 ⇒ 这里必红）。
         /// **(d) 三条流程收口**：① 面板打开 ⇒ 出杆输入让位（**复用既有 `IsOpen` 单点**，源码级）；
@@ -1160,7 +1193,9 @@ namespace Billiards.Tests
         /// ③ 把结算卡的"弹一次"闸门**去掉**（不再问 `TryConsumeSettlement`）⇒ (f) 红；
         /// ④ 把**结算边界的记录调用删掉** ⇒ (f)(g) 红；
         /// ⑤ 把记录口改成"从空历史起算"（复现覆盖缺陷）⇒ (g) 红（累积那条）；
-        /// ⑥ 把 `ResolveVisualState` 的 `aiTurn` 那一支删掉 ⇒ `T125②'` 红（登记为可达却产出不了）。
+        /// ⑥ 把 `ResolveVisualState` 的 `aiTurn` 那一支删掉 ⇒ `T125②'` 红（登记为可达却产出不了）；
+        /// ⑦ 把视图顶部色条绕过 accessor 直接引令牌（`p7-color-single-source`）⇒ (b) **单一真源**红；
+        /// ⑧ 把 `MatchResultCopy.FormFor` 改成无条件返回 `Win`（`p7-win-cause`）⇒ (a) + (c) 红。
         ///
         /// ── 盲带（如实）────────────────────────────────────────────────────────
         /// · **不判"两个面板不会同时出现"** —— 单卡结构下那是**恒真**（同一棵树只有一个 `_card`），
@@ -1239,36 +1274,26 @@ namespace Billiards.Tests
                 }
             }
 
-            // 四对配色逐对（胜 = 黄铜族；负 = 酒红族且 == 设计稿的那几个值）
-            var colorPairs = new (string Name, Color32 Win, Color32 Lose, Color32 ExpectedWin, Color32 ExpectedLose)[]
+            // ── 四对配色：**两形态不同 + 负局落酒红族 + 单一真源**（QA 修复轮 A3）──
+            // ⚠ 旧断言是 `MatchResultCopy.EdgeColor(true) == ClubUiTokens.ResultWinEdge` —— 期望值取的
+            //   正是 accessor 返回的**同一个令牌** ⇒ **X == X（恒真）**。
+            // ⚠ **不许把颜色 hex 写进测试**（那会造第二真源；"令牌 ↔ 设计稿"由 `T125④` 负责）。
+            //   ⇒ 改成**源码级"只认单一真源"**：视图四个场合都必须经 `MatchResultCopy.<Xxx>Color(win)`；
+            //     四个 accessor 必须各自引**具名令牌**（`ResultWinEdge` / `ResultLoseEdge` / …）。
+            //   并**保留** `win != lose`（两形态真不同）与 `ClaretFamily`（酒红只给失败）两条**行为**断言。
+            var colorPairs = new (string Name, Color32 Win, Color32 Lose)[]
             {
-                ("顶部色条", MatchResultCopy.EdgeColor(true), MatchResultCopy.EdgeColor(false),
-                    ClubUiTokens.ResultWinEdge, ClubUiTokens.ResultLoseEdge),
-                ("徽章图标", MatchResultCopy.IconColor(true), MatchResultCopy.IconColor(false),
-                    ClubUiTokens.Accent, ClubUiTokens.ResultLoseIcon),
-                ("徽章环", MatchResultCopy.IconEdgeColor(true), MatchResultCopy.IconEdgeColor(false),
-                    ClubUiTokens.ResultWinEdge, ClubUiTokens.ResultLoseIconEdge),
-                ("徽章 chip 边线", MatchResultCopy.BadgeEdgeColor(true), MatchResultCopy.BadgeEdgeColor(false),
-                    ClubUiTokens.LineBadge, ClubUiTokens.ResultLoseBadgeEdge),
+                ("顶部色条", MatchResultCopy.EdgeColor(true), MatchResultCopy.EdgeColor(false)),
+                ("徽章图标", MatchResultCopy.IconColor(true), MatchResultCopy.IconColor(false)),
+                ("徽章环", MatchResultCopy.IconEdgeColor(true), MatchResultCopy.IconEdgeColor(false)),
+                ("徽章 chip 边线", MatchResultCopy.BadgeEdgeColor(true), MatchResultCopy.BadgeEdgeColor(false)),
             };
 
-            foreach ((string name, Color32 win, Color32 lose, Color32 expectedWin, Color32 expectedLose) in colorPairs)
+            foreach ((string name, Color32 win, Color32 lose) in colorPairs)
             {
                 if (Same(win, lose))
                 {
                     failures.Add($"T146(b) {name}：两形态用了同一个色 ⇒ 形态只差在文字上。");
-                }
-
-                if (!Same(win, expectedWin))
-                {
-                    failures.Add($"T146(b) {name}：胜局应为 {ClubUiTokens.ToHexRgba(expectedWin)}，"
-                                 + $"实际 {ClubUiTokens.ToHexRgba(win)}。");
-                }
-
-                if (!Same(lose, expectedLose))
-                {
-                    failures.Add($"T146(b) {name}：负局应为 {ClubUiTokens.ToHexRgba(expectedLose)}，"
-                                 + $"实际 {ClubUiTokens.ToHexRgba(lose)}。");
                 }
 
                 if (!InFamily(ClubUiTokens.ClaretFamily, lose))
@@ -1279,6 +1304,46 @@ namespace Billiards.Tests
                 if (InFamily(ClubUiTokens.ClaretFamily, win))
                 {
                     failures.Add($"T146(b) {name}：胜局借用了酒红 —— 酒红只许给犯规与失败。");
+                }
+            }
+
+            // 单一真源（源码级）。⚠ **盲带（如实）**：这里**不判**"哪个 accessor 对应哪个视觉部位"
+            // （那要读像素/读控件）⇒ 只判"**没有第二个真源**"：视图不自己二选一、accessor 引具名令牌。
+            string resultViewSourceForColor = StripComments(ReadSourceOrNull(PracticeResultViewSourcePath));
+            string copySourceForColor = StripComments(ReadSourceOrNull(MatchResultCopySourcePath));
+
+            if (string.IsNullOrEmpty(resultViewSourceForColor) || string.IsNullOrEmpty(copySourceForColor))
+            {
+                failures.Add("T146(b) 读不到 `PracticeResultView.cs` / `MatchResultCopy.cs` 的磁盘文本"
+                             + " ⇒ 配色单一真源守卫失效。");
+            }
+            else
+            {
+                foreach (string call in new[]
+                         {
+                             "MatchResultCopy.EdgeColor(win)", "MatchResultCopy.IconColor(win)",
+                             "MatchResultCopy.IconEdgeColor(win)", "MatchResultCopy.BadgeEdgeColor(win)",
+                         })
+                {
+                    if (!resultViewSourceForColor.Contains(call))
+                    {
+                        failures.Add($"T146(b) 视图没有经 `{call}` 取色 ⇒ 配色出现了**第二个真源**"
+                                     + "（改令牌会漏改视图）。");
+                    }
+                }
+
+                foreach (string token in new[]
+                         {
+                             "ClubUiTokens.ResultWinEdge", "ClubUiTokens.ResultLoseEdge", "ClubUiTokens.Accent",
+                             "ClubUiTokens.ResultLoseIcon", "ClubUiTokens.ResultLoseIconEdge",
+                             "ClubUiTokens.LineBadge", "ClubUiTokens.ResultLoseBadgeEdge",
+                         })
+                {
+                    if (!copySourceForColor.Contains(token))
+                    {
+                        failures.Add($"T146(b) `MatchResultCopy` 里找不到具名令牌 `{token}`"
+                                     + " ⇒ 形态配色不再来自令牌表。");
+                    }
                 }
             }
 
@@ -1333,12 +1398,48 @@ namespace Billiards.Tests
                 }
             }
 
-            // 胜局的唯一原因必须是"合法进黑 8"（规则层的结论与卡上的解释必须同源）
-            if (reasons[ShotOutcomeKind.LegalEightBallPotted] != MatchResultCopy.ReasonLegalEightBall
-                || MatchResultCopy.IsEndingOutcome(ShotOutcomeKind.EightBallRespot)
+            // 胜因映射（QA 修复轮 A4）：**测试自己拥有**期望表，再拿它**驱动实现的 `FormFor`**
+            // ⚠ 旧断言是 `reasons[Legal] != MatchResultCopy.ReasonLegalEightBall` —— 右值就是该分支 `return`
+            //   的那个常量 ⇒ 恒假（那半句是死的、永远不红）。现在改成**真检查**：
+            //   ① 期望表写在这里（**不读实现的返回值**）：四种结局杆里**恰好一个**胜因，且是"合法进黑 8"；
+            //   ② 把期望折成"胜者"→ **走实现的** `MatchResultCopy.FormFor` ⇒ 只有胜因能落到 `Win` 形态。
+            var expectedWinByKind = new Dictionary<ShotOutcomeKind, bool>
+            {
+                [ShotOutcomeKind.LegalEightBallPotted] = true,     // 本方组清完 + 本杆合法 + 进指定袋
+                [ShotOutcomeKind.EightBallPottedTooEarly] = false, // 提前进黑 8
+                [ShotOutcomeKind.EightBallWrongPocket] = false,    // 进错袋（D3）
+                [ShotOutcomeKind.EightBallOffTable] = false,       // 黑 8 非入袋离台
+            };
+
+            int winCauses = 0;
+            foreach (KeyValuePair<ShotOutcomeKind, bool> expected in expectedWinByKind)
+            {
+                if (expected.Value)
+                {
+                    winCauses++;
+                }
+
+                ShotTurn expectedWinner = expected.Value ? ShotTurn.Player : ShotTurn.Ai;
+                bool formSaysWin = MatchResultCopy.IsWin(MatchResultCopy.FormFor(expectedWinner));
+
+                if (formSaysWin != expected.Value)
+                {
+                    failures.Add($"T146(c) 期望 `{expected.Key}` " + (expected.Value ? "是胜因" : "不是胜因")
+                                 + $"，但 `FormFor({expectedWinner})` 给出的形态是 "
+                                 + (formSaysWin ? "`Win`" : "`Lose`") + " ⇒ 卡的形态与胜负**相反**。");
+                }
+            }
+
+            if (winCauses != 1 || !expectedWinByKind[ShotOutcomeKind.LegalEightBallPotted])
+            {
+                failures.Add("T146(c) 四种结局杆里应**恰好一个**胜因，且必须是\"合法进黑 8\"（本期望表不得被悄悄放宽）。");
+            }
+
+            if (MatchResultCopy.IsEndingOutcome(ShotOutcomeKind.EightBallRespot)
                 || MatchResultCopy.IsEndingOutcome(ShotOutcomeKind.Ongoing))
             {
-                failures.Add("T146(c) 结局归类与文案不自洽（合法进黑 8 是唯一的胜因；复位 / 进行中不是结局）。");
+                failures.Add("T146(c) \"复位\"与\"进行中\"不是结局"
+                             + "（`IsEndingOutcome` 不得把它们算进结算原因）。");
             }
 
             // ── (d) 三条流程收口 ──
@@ -1679,7 +1780,8 @@ namespace Billiards.Tests
         /// ── 用户口径（逐条落成断言）──────────────────────────────────────────────
         /// · **只在打黑 8 那一杆**要指定袋 ⇒ (a) 两向都断：`callPocket: true ⇒ CallPocket`；
         ///   **普通杆（`false`）在任何相位/窗口组合下都不得进入 `call-pocket`**；
-        /// · **明确显示已指定哪个袋** ⇒ (b) 六个袋号**逐号可分辨**、未指定时是"请你选"、
+        /// · **明确显示已指定哪个袋** ⇒ (b0) 选袋条**槽位数 == 6** 且与 `TableConfig.PocketCount` 对齐；
+        ///   (b) 六个袋号**逐号可分辨**、未指定时是"请你选"、
         ///   已指定时是"已指定 · pocket N (kind)"，两句**必须不同**；
         /// · **未指定 ⇒ 出杆被拒 + 可见反馈（不许静默）** ⇒ (c) 行为级：`IsEightBallShot && CalledPocket < 0`
         ///   时 `Launch()` 必须被拒且 `RefusedCallPocketCount` **+1**；视图必须**消费这个上升沿**开窗口；
@@ -1691,7 +1793,9 @@ namespace Billiards.Tests
         ///     读只读 `CalledPocket`；被拒上升沿必须被消费。
         ///
         /// **怎么打死它（注入，均已实测）**：① 把进入条件改成**恒真**（`drive.IsEightBallShot` → `true`）
-        /// ⇒ (d) 红；② 把**被拒上升沿的消费删掉** ⇒ (d) 红（玩家扣了扳机没有任何反馈）。
+        /// ⇒ (d) 红；② 把**被拒上升沿的消费删掉** ⇒ (d) 红（玩家扣了扳机没有任何反馈）；
+        /// ③ 把 `PracticeHudLayout.CallPocketSlots` 改小（`p7-slot-count`）⇒ (b0) 红
+        /// （槽位数是**独立断言**，不是让"循环次数"自己证明自己）。
         ///
         /// ── 盲带（如实）────────────────────────────────────────────────────────
         /// · **3D 袋口高亮没做**（它要"桌上袋口 → 屏幕"的投影与场景接线，属表现层增量）⇒ 选袋条与桌上
@@ -1738,6 +1842,15 @@ namespace Billiards.Tests
                         }
                     }
                 }
+            }
+
+            // ── (b0) 选袋条的**槽位数**（QA 修复轮 B10）──
+            // ⚠ 旧断言里 `lines.Count != CallPocketSlots * 2` 是**自指**的：把 `CallPocketSlots` 改小，
+            //   期望值跟着一起变、照样绿。⇒ 槽位数必须**独立断言**（界面口径 = 六个袋）。
+            if (PracticeHudLayout.CallPocketSlots != 6)
+            {
+                failures.Add($"T147(b0) 选袋条槽位数应为 **6**（六个袋），实际 {PracticeHudLayout.CallPocketSlots}"
+                             + " —— 槽位数是界面契约，不能让\"循环次数\"自己证明自己。");
             }
 
             // ── (b) "已指定哪个袋"要逐号可分辨 ──
@@ -1847,6 +1960,14 @@ namespace Billiards.Tests
                 }
                 else
                 {
+                    // 槽位数必须与**规则层的袋数**对齐（否则界面上的 1..6 与 `TryCallPocket` 的索引错位）
+                    if (PracticeHudLayout.CallPocketSlots != callDrive.tableConfig.PocketCount)
+                    {
+                        failures.Add($"T147(c) 选袋条槽位 {PracticeHudLayout.CallPocketSlots} "
+                                     + $"≠ `TableConfig.PocketCount` {callDrive.tableConfig.PocketCount}"
+                                     + " ⇒ 界面上的袋号与规则层索引对不上。");
+                    }
+
                     callDrive.Initialize();
 
                     // **前提：整盘静止**（`Launch()` 的第一道门控就是 `TableAtRest`；刚 `Initialize()` 还没满

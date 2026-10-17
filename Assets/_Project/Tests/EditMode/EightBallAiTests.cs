@@ -237,7 +237,6 @@ namespace Billiards.Tests
                 ballPositions = positions,
                 ballInPlay = inPlay,
                 groupState = GroupState.Solid,
-                calledPocket = -1,
                 pocketCenters = new[] { new Vector2(1.20f, 0.60f) },
             };
         }
@@ -472,7 +471,6 @@ namespace Billiards.Tests
                     ballPositions = positions,
                     ballInPlay = inPlay,
                     groupState = GroupState.Solid,
-                    calledPocket = -1,
                     pocketCenters = PocketCenters(table),
                 },
             };

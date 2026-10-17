@@ -18,7 +18,11 @@ set -uo pipefail
 
 PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PY="${PY:-C:/Users/hp/.workbuddy/binaries/python/envs/default/Scripts/python.exe}"
-TAG="${1:?用法：p6ui_injections.sh <form-swap|input-gate|one-pop>}"
+TAG="${1:?用法：p6ui_injections.sh <tag> [lock-owner]}"
+
+# ⚠ **锁的 owner 必须参数化**（QA 修复轮 C11）：写死 `home-ui2` 会让"换个人重跑"必须改脚本，
+#   而改脚本 = 改证据产生器本身。优先级：第 2 个位置参数 > 环境变量 `P6UI_OWNER` > 默认 `home-ui2`。
+OWNER="${2:-${P6UI_OWNER:-home-ui2}}"
 OUT="${TEMP:-/tmp}/homeui_p6/inj_$TAG"
 
 # 各条注入的目标文件与**基线 sha1**（跑批前实测记录；apply 前必须逐字节一致）
@@ -39,6 +43,19 @@ case "$TAG" in
                     BASE="528208bb3bc7250f3421d01bc468afdd253d8b53" ;;
   callpocket-silent) REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
                     BASE="528208bb3bc7250f3421d01bc468afdd253d8b53" ;;
+  # ── QA 修复轮（"有牙化"六条；每条对应一处被改写的判据）────────────────────
+  p7-default-drift)  REL="Assets/_Project/Scripts/Runtime/Rules/EightBallAi.cs"
+                     BASE="ef54df10e31d1b80f9c20e91a9314eab2c88e950" ;;
+  p7-tier-name)      REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudState.cs"
+                     BASE="58499ac9f0de8539ddd1f56fd2a894fc5d505b08" ;;
+  p7-color-single-source) REL="Assets/_Project/Scripts/Runtime/UI/PracticeResultView.cs"
+                     BASE="c58a90a415bcd66b14ee41184baddc76bf8c128c" ;;
+  p7-win-cause)      REL="Assets/_Project/Scripts/Runtime/UI/MatchResultCopy.cs"
+                     BASE="938c94018b1eebcc0c67bb9c5fbf115faecbeec0" ;;
+  p7-tier-order)     REL="Assets/_Project/Scripts/Runtime/UI/MatchSetup.cs"
+                     BASE="6def82276f0ab88d1061d855b29f8774f26c0cd8" ;;
+  p7-slot-count)     REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudLayout.cs"
+                     BASE="b9dad47c28eaa5d44a65559b7b293e67f3481dfe" ;;
   *) echo "未登记的 tag：$TAG" >&2; exit 2 ;;
 esac
 
@@ -50,8 +67,8 @@ sha1_of() { sha1sum "$1" | cut -d' ' -f1; }
 #   里有 `释放 home-ui2|… by billiards-runtime`）⇒ 两个 Unity 会争同一个结果 XML = **假证据**。
 #   故每次跑批前**机械断言**锁还在自己手上；不在 ⇒ 退 4（**让路**，不产出任何数字）。
 LOCK="${TEMP:-/tmp}/billiards_batch/BATCH_LOCK"
-if [ ! -f "$LOCK" ] || [ "$(cut -d'|' -f1 < "$LOCK")" != "home-ui2" ]; then
-  echo "⛔ [$TAG] 锁不在 home-ui2 手上（当前：$(cat "$LOCK" 2>/dev/null || echo '无锁')）⇒ **让路，不跑批**" >&2
+if [ ! -f "$LOCK" ] || [ "$(cut -d'|' -f1 < "$LOCK")" != "$OWNER" ]; then
+  echo "⛔ [$TAG] 锁不在 $OWNER 手上（当前：$(cat "$LOCK" 2>/dev/null || echo '无锁')）⇒ **让路，不跑批**" >&2
   exit 4
 fi
 
@@ -86,7 +103,7 @@ RC=$?
 # ⚠ 跑批结束后**再断言一次锁**：TTL 内没人能合法接管，但**别人可以显式 release**
 #   （本轮实测过）⇒ 锁若已不在我手上，这次的结果**不得被引用为有效证据**。
 LOCK_OWNER_AFTER="$(cut -d'|' -f1 < "$LOCK" 2>/dev/null || echo missing)"
-if [ "$LOCK_OWNER_AFTER" != "home-ui2" ]; then
+if [ "$LOCK_OWNER_AFTER" != "$OWNER" ]; then
   echo "⛔ [$TAG] 跑批期间锁被改过（现在：$LOCK_OWNER_AFTER）⇒ **本轮结果作废**，需重跑" >&2
   LOCK_LOST=1
 fi

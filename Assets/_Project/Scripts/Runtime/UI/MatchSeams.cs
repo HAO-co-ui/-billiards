@@ -44,7 +44,11 @@ namespace Billiards.UI
     /// </summary>
     public static class MatchSeams
     {
-        /// <summary>Runtime 侧在 `Awake` 里注册（或置 `null` 注销）。</summary>
+        /// <summary>
+        /// Runtime 侧在 **`PhysicsTestDrive.Initialize()`** 里注册（`Awake` 只调 `Initialize()`，
+        /// ⚠ **不能写成"在 `Awake` 里注册"**：EditMode 下 `AddComponent` **不触发 `Awake`** ⇒ 那样判据根本跑不到注册）；
+        /// 注销走 `UnregisterMatchHost()`（**只注销自己**）。
+        /// </summary>
         public static IMatchHost Host { get; set; }
 
         /// <summary>是否已接线（判据/日志用）。</summary>

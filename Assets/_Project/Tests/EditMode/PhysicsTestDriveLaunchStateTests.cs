@@ -1366,7 +1366,8 @@ namespace Billiards.Tests
                 //   否则会像首版那样打错对象（判据红，但红的是"我打错了"，不是产品缺陷）。
                 if (!Billiards.UI.MatchSeams.HasHost)
                 {
-                    failures.Add("(⑤) `PhysicsTestDrive.Awake` 应把驱动器注册为 `MatchSeams.Host`（实测未注册）。");
+                    failures.Add("(⑤) `PhysicsTestDrive.Initialize()` 应把驱动器注册为 `MatchSeams.Host`（实测未注册）"
+                                 + " —— ⚠ 注册点**不能**放 `Awake`：EditMode 下 `AddComponent` **不调 `Awake`**。");
                 }
 
                 var hostGo = new GameObject("T145Host");
@@ -1790,11 +1791,37 @@ namespace Billiards.Tests
                         isBreak = false,
                     };
                     an.SetTurn(ShotTurn.Ai);
-                    an.TryLaunchAiShot(AiDifficulty.Club, 4242);
-                    if (an.CalledPocket != -1)
+                    Vector2 normalVelocity = an.TryLaunchAiShot(AiDifficulty.Club, 4242);
+                    int calledAfterNormalShot = an.CalledPocket;   // 取"出杆后、任何人清它之前"的值
+
+                    // ⚠ **前提（QA Major-2）**：这一杆必须**真的打出去了**。
+                    //   否则 AI 整杆不出 ⇒ `CalledPocket` 恒为 -1 ⇒ 下面那条断言是**真空绿**
+                    //   （AI 彻底坏掉它照样绿）⇒ 必须先断"前提成立"，再断"没写 calledPocket"。
+                    if (normalVelocity.magnitude <= 0f)
+                    {
+                        failures.Add("(AI②) **前提不成立**：AI 普通杆没有真的打出去（`TryLaunchAiShot` 返回零向量）"
+                                     + " ⇒ 「普通杆不得写 `calledPocket`」这条会**真空通过**，不能算证据。");
+                    }
+                    else
+                    {
+                        // 前提②（更强一档）：白球**真的位移过** —— 防"返回非零但球没动"。
+                        Vector2 cueBeforeNormal = an.Simulator.Balls[0].position;
+                        for (int i = 0; i < 120; i++)
+                        {
+                            an.Advance(PoolSimulator.FixedDeltaTime);
+                        }
+
+                        if ((an.Simulator.Balls[0].position - cueBeforeNormal).magnitude <= 0.01f)
+                        {
+                            failures.Add("(AI②) **前提不成立**：AI 普通杆返回了非零初速，但白球在 120 步内"
+                                         + "位移 ≤ 0.01 m ⇒ 球没真的动。");
+                        }
+                    }
+
+                    if (calledAfterNormalShot != -1)
                     {
                         failures.Add($"(AI②) AI 的**普通杆**（本方组未清完）**不得**写 `calledPocket`"
-                                     + $"（应保持 -1），实测 {an.CalledPocket}。");
+                                     + $"（应保持 -1），实测 {calledAfterNormalShot}。");
                     }
                 }
                 finally

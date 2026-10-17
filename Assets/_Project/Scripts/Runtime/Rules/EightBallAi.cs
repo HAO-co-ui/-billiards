@@ -72,9 +72,6 @@ namespace Billiards.Rules
         /// <summary>本方当前分组状态（开放球局 / 实色 / 花色）。</summary>
         public GroupState groupState;
 
-        /// <summary>**指定的袋号**（D3；`-1` = 未指定）。仅打黑 8 那一杆有意义。</summary>
-        public int calledPocket;
-
         /// <summary>袋口坐标（下标 = 袋号；与内核 <c>CapturedPocketIndex</c> 同一编号）。</summary>
         public Vector2[] pocketCenters;
     }

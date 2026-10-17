@@ -122,6 +122,71 @@ PATCHES = {
             ),
         ],
     ),
+    # ⑨ **默认档漂移**（QA 修复轮 A1）：Runtime 侧默认档 `Club` → `Casual`
+    #    ⇒ 两条独立字面量（UI 侧 / Runtime 侧各一条）都必须红 —— 这是"两处默认不得漂移"的**机器形态**
+    "p7-default-drift": (
+        r"Assets\_Project\Scripts\Runtime\Rules\EightBallAi.cs",
+        [
+            (
+                "public const AiDifficulty DefaultDifficulty = AiDifficulty.Club;",
+                "public const AiDifficulty DefaultDifficulty = AiDifficulty.Casual;",
+            ),
+        ],
+    ),
+    # ⑩ **档位名文案漂移**（QA 修复轮 A2）：Casual 的显示名 `Casual` → `Rookie`
+    #    ⇒ 字面量断言必须红（旧写法 `OpponentName ≡ TierLabel + 后缀` 恒真、抓不到）
+    "p7-tier-name": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudState.cs",
+        [
+            (
+                "case AiDifficulty.Casual: return HomeDifficultyCasual;",
+                "case AiDifficulty.Casual: return \"Rookie\";",
+            ),
+        ],
+    ),
+    # ⑪ **配色出现第二个真源**（QA 修复轮 A3）：视图顶部色条绕过 accessor、直接引令牌
+    #    ⇒ 单一真源断言必须红（负局会拿黄铜条 = 形态只差在文字上）
+    "p7-color-single-source": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeResultView.cs",
+        [
+            (
+                "                _topEdge.color = MatchResultCopy.EdgeColor(win);",
+                "                _topEdge.color = ClubUiTokens.ResultWinEdge;",
+            ),
+        ],
+    ),
+    # ⑫ **胜负映射反了**（QA 修复轮 A4）：`FormFor` 无条件返回 `Win`
+    #    ⇒ 胜因表的"只有胜因能落到 Win"必须红（旧写法 `reasons[Legal] != ReasonLegal…` 恒假、永不红）
+    "p7-win-cause": (
+        r"Assets\_Project\Scripts\Runtime\UI\MatchResultCopy.cs",
+        [
+            (
+                "            return winner == ShotTurn.Player ? MatchResultForm.Win : MatchResultForm.Lose;",
+                "            return MatchResultForm.Win;",
+            ),
+        ],
+    ),
+    # ⑬ **三档次序被调换**（QA 修复轮 B5：T144 注释里承诺的那条注入，此前**脚本里没有**）
+    "p7-tier-order": (
+        r"Assets\_Project\Scripts\Runtime\UI\MatchSetup.cs",
+        [
+            (
+                "            AiDifficulty.Casual,\n            AiDifficulty.Club,\n            AiDifficulty.Expert,",
+                "            AiDifficulty.Club,\n            AiDifficulty.Casual,\n            AiDifficulty.Expert,",
+            ),
+        ],
+    ),
+    # ⑭ **选袋槽位数被改小**（QA 修复轮 B10）：6 → 5
+    #    ⇒ "槽位数 == 6"与"== TableConfig.PocketCount"两条独立断言必须红（旧写法是自指的、跟着绿）
+    "p7-slot-count": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudLayout.cs",
+        [
+            (
+                "        public const int CallPocketSlots = 6;",
+                "        public const int CallPocketSlots = 5;",
+            ),
+        ],
+    ),
 }
 
 

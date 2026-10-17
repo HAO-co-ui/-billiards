@@ -903,10 +903,11 @@ namespace Billiards.Physics
                 ballPositions = positions,
                 ballInPlay = inPlay,
                 groupState = aiGroupState,
-                calledPocket = -1,          // ⚠ **AI 决策侧尚未接 D3**：这里恒为 -1（= AI 不指定袋）。
-                                            //   规则层已支持（`RuleState.calledPocket` + `ShotOutcomeKind.EightBallWrongPocket`），
-                                            //   玩家侧的设置口是 `TryCallPocket(int)` / `CalledPocket`；
-                                            //   要不要让 **AI 打黑 8 时也读 `CalledPocket`** 尚待 team-lead 裁定。
+                // **AI 打黑 8 也自己指定袋**（D3）：`TryLaunchAiShot` 在 `IsEightBallShot` 时，用本方法喂出的
+                // 局面让 `Plan` 选出 `intent.pocketIndex`，再走**唯一写入口** `TryCallPocket(int)` 写进
+                // `RuleState.calledPocket`；**袋号非法 ⇒ 不出杆**（绝不带着错的指定袋开打）。
+                // 之后由规则层据此判"进错袋 ⇒ 负"（`ShotOutcomeKind.EightBallWrongPocket`）；
+                // `SetTurn(Player)` 在**回合边界**把它清回 `-1`（玩家回合不复用上一杆的选择）。
                 pocketCenters = PocketCenters(),
             };
         }
