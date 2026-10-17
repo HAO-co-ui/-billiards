@@ -77,28 +77,6 @@ namespace Billiards.UI
         /// <summary>`Export data`（**练习形态**的次键：本工程既有的"一键导出"）。</summary>
         public const string ExportLabel = "Export data";
 
-        // ── "为什么"一行（穷举 `ShotOutcomeKind`；分隔符一律 `·` U+00B7）────────────
-
-        /// <summary>合法进黑 8（本方组已清完 + 本杆合法 + 进的是指定袋）⇒ 胜。</summary>
-        public const string ReasonLegalEightBall =
-            "Your group was cleared · the 8 ball dropped in the pocket you called";
-
-        /// <summary>黑 8 提前进袋 ⇒ 负。</summary>
-        public const string ReasonEightBallTooEarly =
-            "The 8 ball dropped before your group was cleared";
-
-        /// <summary>黑 8 非入袋离台 ⇒ 负。</summary>
-        public const string ReasonEightBallOffTable =
-            "The 8 ball left the table";
-
-        /// <summary>开球进黑 8 ⇒ **复位**（唯一"进袋但没结局"的分支；正常不会出现在结算卡上）。</summary>
-        public const string ReasonEightBallRespot =
-            "The 8 ball was respotted · the rack goes on";
-
-        /// <summary>本杆没有达成任何结局（正常不会出现在结算卡上）。</summary>
-        public const string ReasonOngoing =
-            "The rack is still running";
-
         // ════════════════ 形态 ↔ 胜者（判据的**主靶**）═══════════════════════════
 
         /// <summary>
@@ -161,24 +139,6 @@ namespace Billiards.UI
                 case MatchResultForm.Win: return BadgeWin;
                 case MatchResultForm.Lose: return BadgeLose;
                 default: return BadgePractice;
-            }
-        }
-
-        /// <summary>
-        /// 结算原因（"为什么"那一行）。**穷举** <see cref="ShotOutcomeKind"/>：
-        /// 新增枚举值**必须**在这里补一句（否则 `T146 (c)` 的红名单会指出它），
-        /// 而这里的 `default` 只是"未知结局"的保守措辞，**不是**某个结局的兜底归类。
-        /// </summary>
-        public static string Reason(ShotOutcomeKind kind)
-        {
-            switch (kind)
-            {
-                case ShotOutcomeKind.LegalEightBallPotted: return ReasonLegalEightBall;
-                case ShotOutcomeKind.EightBallPottedTooEarly: return ReasonEightBallTooEarly;
-                case ShotOutcomeKind.EightBallOffTable: return ReasonEightBallOffTable;
-                case ShotOutcomeKind.EightBallRespot: return ReasonEightBallRespot;
-                case ShotOutcomeKind.Ongoing: return ReasonOngoing;
-                default: return string.Empty;
             }
         }
 

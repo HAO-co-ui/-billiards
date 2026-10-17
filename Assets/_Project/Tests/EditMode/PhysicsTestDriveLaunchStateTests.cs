@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Billiards.Core;
 using Billiards.Physics;
@@ -2229,6 +2230,156 @@ namespace Billiards.Tests
                 finally
                 {
                     Object.DestroyImmediate(p7AiPlaceGo);
+                }
+
+                // ── P9-B 给 UI 的**玩家视角**分组/剩余球出口：定组前空 / 定组后并集 / **进一颗少一颗** ──
+                var p9Go = new GameObject("T145P9Roster");
+                try
+                {
+                    PhysicsTestDrive r1 = NewAiDrive(p9Go, rackSeed: 61);
+                    int p9Pocket = FirstCornerPocket(r1.tableConfig);
+                    SetUpCleanPot(r1, 3, p9Pocket, r1.Simulator.Balls.Count);
+                    // 再放一颗**安全位置**的实色 5（不在任何袋口线上）⇒ 定组后应出现在"玩家剩余球号"里
+                    r1.Simulator.PlaceBall(5, new Vector2(0.60f, 0.45f), Vector2.zero);
+                    AdvanceToRest(r1, RestCap);
+                    r1.SetTurn(ShotTurn.Player);
+
+                    if (r1.PlayerGroup != GroupState.OpenTable
+                        || r1.PlayerRemainingNumbers.Count != 0
+                        || r1.OpponentRemainingNumbers.Count != 0)
+                    {
+                        failures.Add($"(P9-B①) 开放球局时：`PlayerGroup` 应 `OpenTable`、两个剩余球号列表应**都为空**，"
+                                     + $"实测 {r1.PlayerGroup} / {r1.PlayerRemainingNumbers.Count} / {r1.OpponentRemainingNumbers.Count}。");
+                    }
+
+                    AiShotContext p9ctx = r1.BuildAiContext();
+                    r1.aimDegrees = EightBallAi.AimDegreesForPocket(p9ctx.cueBallPosition, p9ctx.ballPositions[3],
+                        p9ctx.pocketCenters[p9Pocket]);
+                    r1.power = 0.5f;
+                    if (r1.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(P9-B) 前提不成立：定组那一杆没打出去。");
+                    }
+                    else
+                    {
+                        AdvanceToRest(r1, RestCap);
+
+                        if (r1.Simulator.IsBallInPlay(3))
+                        {
+                            failures.Add("(P9-B) 前提不成立：3 号没进袋（定组无从判定）。");
+                        }
+                        else
+                        {
+                            // ② 定组后：玩家=Solid、对手=Stripe，玩家列表应含 5（不含黑 8、不含已进的 3）
+                            if (r1.PlayerGroup != GroupState.Solid || r1.OpponentGroup != GroupState.Stripe)
+                            {
+                                failures.Add($"(P9-B②) 定组后：玩家应 `Solid`、对手应 `Stripe`，"
+                                             + $"实测 {r1.PlayerGroup} / {r1.OpponentGroup}。");
+                            }
+
+                            bool hasFive = false;
+                            foreach (int ball in r1.PlayerRemainingNumbers)
+                            {
+                                if (ball == 5)
+                                {
+                                    hasFive = true;
+                                }
+                            }
+
+                            if (!hasFive || r1.PlayerRemainingNumbers.Count != 1)
+                            {
+                                failures.Add($"(P9-B②) 定组后玩家剩余球号应恰为 [5]，实测 "
+                                             + $"[{string.Join(",", r1.PlayerRemainingNumbers)}]。");
+                            }
+
+                            if (r1.PlayerRemainingNumbers.Contains(3))
+                            {
+                                failures.Add("(P9-B②) **已进袋的 3 号不该还在**玩家剩余球号里。");
+                            }
+
+                            // ③ 进一颗少一颗：再把 5 打进 ⇒ 玩家列表应变空
+                            int p9Pocket2 = FirstCornerPocket(r1.tableConfig);
+                            SetUpCleanPot(r1, 5, p9Pocket2, r1.Simulator.Balls.Count);
+                            AdvanceToRest(r1, RestCap);
+                            r1.SetTurn(ShotTurn.Player);
+                            AiShotContext p9ctx2 = r1.BuildAiContext();
+                            r1.aimDegrees = EightBallAi.AimDegreesForPocket(p9ctx2.cueBallPosition,
+                                p9ctx2.ballPositions[5], p9ctx2.pocketCenters[p9Pocket2]);
+                            r1.power = 0.5f;
+                            if (r1.Launch().magnitude <= 0f)
+                            {
+                                failures.Add("(P9-B) 前提不成立：第二杆没打出去。");
+                            }
+                            else
+                            {
+                                AdvanceToRest(r1, RestCap);
+                                if (r1.Simulator.IsBallInPlay(5))
+                                {
+                                    failures.Add("(P9-B) 前提不成立：5 号没进袋（「进一颗少一颗」无从判定）。");
+                                }
+                                else if (r1.PlayerRemainingNumbers.Count != 0)
+                                {
+                                    failures.Add($"(P9-B③) **进一颗少一颗**：5 号进袋后玩家剩余球号应变空，"
+                                                 + $"实测 [{string.Join(",", r1.PlayerRemainingNumbers)}]。");
+                                }
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p9Go);
+                }
+
+                // ── P9-D 白球待放置时**真的被抬起来**（世界 Y = 台面 + 0.12 m）；放好后落回台面且可出杆 ──
+                var p9dGo = new GameObject("T145P9Float");
+                try
+                {
+                    PhysicsTestDrive f1 = NewAiDrive(p9dGo, rackSeed: 62);
+                    var cueVisual = new GameObject("P9CueVisual").transform;
+                    f1.ballVisuals = new[] { cueVisual };   // 运行期逐帧同步的那个可视物
+
+                    int fp = FirstCornerPocket(f1.tableConfig);
+                    SetUpCleanPot(f1, 3, fp, f1.Simulator.Balls.Count);
+                    AdvanceToRest(f1, RestCap);
+                    PotCueBall(f1);
+                    AdvanceToRest(f1, RestCap);
+
+                    if (!f1.PendingCueBallPlacement)
+                    {
+                        failures.Add("(P9-D) 前提不成立：白球入袋后应处于待放态。");
+                    }
+                    else
+                    {
+                        float floatY = PhysicsTestDrive.CueBallFloatHeightMeters;
+                        if (Mathf.Abs(cueVisual.localPosition.y - floatY) > 1e-3f)
+                        {
+                            failures.Add($"(P9-D) 待放态白球应被**抬到悬浮位**（世界 Y ≈ {floatY:F2} m，离台 12 cm），"
+                                         + $"实测 localY={cueVisual.localPosition.y:F4} ⇒ 白球还躺在台布上（用户看不到「拿起来」）。");
+                        }
+
+                        if (!f1.TryPlaceCueBall(Vector2.zero))
+                        {
+                            failures.Add("(P9-D) 前提不成立：原点应是合法落点。");
+                        }
+                        else
+                        {
+                            if (Mathf.Abs(cueVisual.localPosition.y - floatY) < 1e-3f)
+                            {
+                                failures.Add("(P9-D) 放好之后白球应**落回台面**（不应还停在悬浮高度）。");
+                            }
+
+                            AdvanceToRest(f1, RestCap);
+                            if (f1.Launch().magnitude <= 0f)
+                            {
+                                failures.Add("(P9-D) 放好之后应能**正常出杆**。");
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p9dGo);
                 }
 
                 Assert.IsEmpty(failures, "T145（AI 出杆入口）失败：\n" + string.Join("\n", failures));

@@ -699,7 +699,7 @@ namespace Billiards.Physics
                 GroupState shooterGroup = EightBallRules.IsSolid(verdict.groupBall)
                     ? GroupState.Solid
                     : GroupState.Stripe;
-                _playerGroup = CurrentTurn == ShotTurn.Player ? shooterGroup : OpponentGroup(shooterGroup);
+                _playerGroup = CurrentTurn == ShotTurn.Player ? shooterGroup : ComplementGroup(shooterGroup);
             }
 
             // ③ **自由球**：记形态 + 打开"待放球"闸门（玩家拖动放 / AI 自动放，见 `TickAiTurn`）。
@@ -740,7 +740,7 @@ namespace Billiards.Physics
             _settlementPending = true;
         }
 
-        private static GroupState OpponentGroup(GroupState group) => group switch
+        private static GroupState ComplementGroup(GroupState group) => group switch
         {
             GroupState.Solid => GroupState.Stripe,
             GroupState.Stripe => GroupState.Solid,
@@ -755,9 +755,83 @@ namespace Billiards.Physics
         {
             GroupState aiGroup = _playerGroup == GroupState.OpenTable
                 ? GroupState.OpenTable
-                : OpponentGroup(_playerGroup);
+                : ComplementGroup(_playerGroup);
             ruleState.groupState = CurrentTurn == ShotTurn.Player ? _playerGroup : aiGroup;
             aiGroupState = aiGroup;
+        }
+
+        // ── **玩家视角**的分组 / 剩余球 —— 给 UI 的只读出口（P9-B）─────────────────
+        // ⚠ 与 `ruleState.groupState` 的**击球方相对**口径**不同**：UI 要的是「我的球 / 对手的球」，
+        //   **不随轮次翻转** ⇒ 一律以 `_playerGroup`（单一真源）为基准派生，**别新造第二套分组真源**。
+
+        /// <summary>**玩家**的组别（`OpenTable` = 还没定组）。只读出口。</summary>
+        public GroupState PlayerGroup => _playerGroup;
+
+        /// <summary>**对手**的组别（玩家的互补；开放球局 ⇒ `OpenTable`）。只读出口。</summary>
+        public GroupState OpponentGroup => ComplementGroup(_playerGroup);
+
+        /// <summary>场上还剩的**实色球**数（与 `ruleState.solidRemaining` 同源、由球台重算）。只读出口。</summary>
+        public int SolidRemaining => ruleState.solidRemaining;
+
+        /// <summary>场上还剩的**花色球**数。只读出口。</summary>
+        public int StripeRemaining => ruleState.stripeRemaining;
+
+        private readonly List<int> _playerRemainingNumbers = new List<int>();
+        private readonly List<int> _opponentRemainingNumbers = new List<int>();
+
+        /// <summary>
+        /// **玩家还要打的球号**（升序；**已进的不在里面**；开放球局 ⇒ **空**）。
+        /// ⚠ **不含黑 8**：8 号不算任何一组的"组球"，清完组球后才轮到它（由规则层判，不在这里混进来）。
+        /// </summary>
+        public IReadOnlyList<int> PlayerRemainingNumbers => _playerRemainingNumbers;
+
+        /// <summary>**对手还要打的球号**（同上口径）。</summary>
+        public IReadOnlyList<int> OpponentRemainingNumbers => _opponentRemainingNumbers;
+
+        /// <summary>
+        /// 重建两个"剩余球号"列表（**单一重建点**，只在 <see cref="RefreshRemainingCounts"/> 末尾调）。
+        /// ⇒ 每进一颗球、每局装球、每杆结算后都会跟着刷新 ⇒ **"进一个消一个"**。
+        /// </summary>
+        private void RebuildRemainingNumbers()
+        {
+            _playerRemainingNumbers.Clear();
+            _opponentRemainingNumbers.Clear();
+            if (_simulator == null || _playerGroup == GroupState.OpenTable)
+            {
+                return;   // 开放球局 ⇒ **两边都空**（还没定组，不该给 UI 任何"我的球"）
+            }
+
+            int count = _simulator.Balls.Count;
+            for (int ball = 1; ball <= 15 && ball < count; ball++)
+            {
+                if (ball == EightBallRules.EightBall || !_simulator.IsBallInPlay(ball))
+                {
+                    continue;
+                }
+
+                if (EightBallRules.IsSolid(ball))
+                {
+                    if (_playerGroup == GroupState.Solid)
+                    {
+                        _playerRemainingNumbers.Add(ball);
+                    }
+                    else
+                    {
+                        _opponentRemainingNumbers.Add(ball);
+                    }
+                }
+                else if (EightBallRules.IsStripe(ball))
+                {
+                    if (_playerGroup == GroupState.Stripe)
+                    {
+                        _playerRemainingNumbers.Add(ball);
+                    }
+                    else
+                    {
+                        _opponentRemainingNumbers.Add(ball);
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -794,6 +868,9 @@ namespace Billiards.Physics
 
             ruleState.solidRemaining = solid;
             ruleState.stripeRemaining = stripe;
+
+            // **同一个重建点**：剩余球号列表与上面两个计数**同源、同时刷新**（P9-B）。
+            RebuildRemainingNumbers();
         }
 
         /// <summary>**把黑 8 放回 `footSpot`**（开球进黑 8 的既有口径：复位、继续打、不算赢）。</summary>
@@ -1971,6 +2048,15 @@ namespace Billiards.Physics
                 int n = Mathf.Min(ballVisuals.Length, balls.Count);
                 for (int i = 0; i < n; i++)
                 {
+                    // **P9-D（用户要求）**：白球**待放置**时把它**抬到悬浮位**（"重新拿出来悬浮在空中等放置"）。
+                    // ⚠ 白球此刻**不在场上**，模拟器里没有"它该在哪" ⇒ 只能由这一处**显式**抬起来；
+                    //   而 `ballVisuals` 是**运行期逐帧同步**的对象（场景/预制体里搜坐标 0 命中）⇒ 也只能在这里做。
+                    if (i == 0 && PendingCueBallPlacement)
+                    {
+                        SyncFloatingCueBall(ballVisuals[i], CueBallFloatWorldPosition);
+                        continue;
+                    }
+
                     SyncBallVisual(ballVisuals[i], i, PoolGeometry.PhysicsBallToUnity(balls[i].position));
                 }
 
@@ -1983,6 +2069,44 @@ namespace Billiards.Physics
                 SyncBallVisual(ballVisual, 0, PoolGeometry.PhysicsBallToUnity(balls[0].position));
                 _hasLastVisualPositions = true;
             }
+        }
+
+        /// <summary>
+        /// **待放置时的白球可视物**（P9-D）：抬到 <see cref="CueBallFloatWorldPosition"/>（**世界 Y = 台面 + 0.12 m**）、
+        /// **强制可见 + 恢复基准缩放**。
+        /// ⚠ 为什么必须绕开 <see cref="ApplyPocketSink"/>：白球在模拟器里"不在场上" ⇒ 那条下沉动画会把它
+        /// **缩小到 0 并隐藏** ⇒ 用户看到的不是"被拿起来悬在空中"，而是"球没了"。
+        /// </summary>
+        private void SyncFloatingCueBall(Transform visual, Vector3 canonicalPosition)
+        {
+            EnsureSinkArrays(0);
+            if (_ballBaseScales[0] == Vector3.zero)
+            {
+                _ballBaseScales[0] = visual.localScale;
+            }
+
+            // 退出"下沉"状态（否则缩放还停在动画末值上）。
+            _pocketSinkStart[0] = -1f;
+            _pocketSinkOrigin[0] = Vector3.zero;
+            _pocketSinkHole[0] = Vector3.zero;
+
+            visual.localScale = _ballBaseScales[0];
+            visual.localPosition = canonicalPosition;
+            if (!visual.gameObject.activeSelf)
+            {
+                visual.gameObject.SetActive(true);
+            }
+
+            if (_lastVisualPositions == null)
+            {
+                _lastVisualPositions = new Vector3[4];
+            }
+            else if (_lastVisualPositions.Length == 0)
+            {
+                _lastVisualPositions = new Vector3[4];
+            }
+
+            _lastVisualPositions[0] = canonicalPosition;
         }
 
         /// <summary>清空"上一帧世界位置"跟踪 ⇒ 下一次 <see cref="SyncVisual"/> 只落位、不自转。</summary>

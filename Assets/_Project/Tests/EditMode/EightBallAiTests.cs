@@ -49,6 +49,13 @@ namespace Billiards.Tests
         private const int CueBall = 0;
         private const int ObjectBall = 3;                 // 实色 3 号（组别 = 实色）
         private const int ShotsPerScenario = 12;
+
+        /// <summary>
+        /// **P9-A③ 的差距下限**（单位：杆，分母 = 3 场景 × `ShotsPerScenario` = 36）。
+        /// 实测基线 `Casual 10 / Club 17 / Expert 26` ⇒ 差 **16 杆**；取下限 **10 杆** 留余量。
+        /// ⚠ 注意是**杆数**不是百分比（3 场景各自的杆数不等权，用杆最直观）。
+        /// </summary>
+        private const int MinTierGapShots = 10;
         private const int MaxRollSteps = 8000;
         private const int CueBallIndexInSim = 0;
 
@@ -120,7 +127,7 @@ namespace Billiards.Tests
             // 三档参数表逐字段比对（§4.3 字面量）
             CheckParams(failures, AiDifficulty.Casual, 6.0f, 2.0f, 3, 4.0f, 0.25f, 5, 16);
             CheckParams(failures, AiDifficulty.Club, 4.0f, 1.0f, 4, 2.2f, 0.14f, 3, 32);
-            CheckParams(failures, AiDifficulty.Expert, 2.0f, 0.5f, 6, 0.8f, 0.06f, 1, 64);
+            CheckParams(failures, AiDifficulty.Expert, 2.0f, 0.5f, 8, 0.6f, 0.055f, 1, 64);   // P9：Expert 加强（仍守上界）
         }
 
         private static float ExpertPowerSigmaFloorPercent() => EightBallAi.ExpertPowerSigmaFloorFraction * 100f;
@@ -367,6 +374,21 @@ namespace Billiards.Tests
             {
                 failures.Add("J2 失败：真内核成功率未严格递增 —— " + string.Join(" ｜ ", rateLines));
             }
+
+            // **P9-A③：差距必须"打得出来"** —— 只断"不相等"太弱（差 1 杆也算过，用户手感上分不出来）。
+            // 阈值来源（**实测**，不是拍的）：本判据 3 场景 × 12 杆 = 36 杆里
+            //   `Casual 10 / Club 17 / Expert 26` ⇒ **Expert − Casual = 16 杆**。
+            // 取 **10 杆**（≈28 个百分点）作下限 ⇒ 留 6 杆余量（允许小幅调参），
+            // 但任何"把三档调成同一组 / 只差一点点"的改动都会在这里红。
+            int tierGap = potted[2] - potted[0];
+            if (tierGap < MinTierGapShots)
+            {
+                failures.Add($"J2 失败：**Expert 与 Casual 的差距不够**（应 ≥ {MinTierGapShots} 杆 / "
+                             + $"{ShotsPerScenario * scenarios.Count} 杆），实测差 {tierGap} 杆 —— "
+                             + string.Join(" ｜ ", rateLines));
+            }
+
+            TestContext.WriteLine($"[J2 差距] Expert − Casual = {tierGap} 杆（下限 {MinTierGapShots}）");
         }
 
         // ── 真内核：候选求值器 ───────────────────────────────────────────────

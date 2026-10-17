@@ -669,8 +669,6 @@ namespace Billiards.UI
                 MatchResultCopy.TitleWin, MatchResultCopy.TitleLose,
                 MatchResultCopy.BadgePractice, MatchResultCopy.BadgeWin, MatchResultCopy.BadgeLose,
                 MatchResultCopy.PlayAgainLabel, MatchResultCopy.ExportLabel,
-                MatchResultCopy.ReasonLegalEightBall, MatchResultCopy.ReasonEightBallTooEarly,
-                MatchResultCopy.ReasonEightBallRespot, MatchResultCopy.ReasonOngoing,
                 PowerLabel(0f), PowerLabel(0.45f), PowerLabel(1f),
                 PocketedLabel(0, 15), PocketedLabel(15, 15),
                 "0123456789");

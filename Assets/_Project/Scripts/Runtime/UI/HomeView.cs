@@ -268,10 +268,7 @@ namespace Billiards.UI
             // 第二行：`Practice` —— 次按钮（深底描边），一直是真入口。
             BuildActionRow("ActionPractice", HomeLayout.ActionPractice, PracticeHudState.ModePractice, true, OnStartPractice);
 
-            CreateHomeText("DifficultyLabel", hud.bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.HomeHint,
-                TextAlignmentOptions.Left, HomeLayout.DifficultyLabel).text = PracticeHudState.HomeDifficultyLabel;
 
-            BuildDifficultySegment();
         }
 
         /// <summary>标题行：左侧细线 + `TABLE 01` + 右侧细线（参考稿 `.home-heading-rule` 的 `flex:1` 两侧线）。</summary>
@@ -353,54 +350,6 @@ namespace Billiards.UI
             button.onClick.AddListener(action);
         }
 
-        /// <summary>
-        /// 难度分段控件。**整段禁用**（见类注释偏离②）：保留参考稿的几何与 `Club` 选中配色，
-        /// 但套一层 `CanvasGroup` 压到禁用不透明度、且三个格都不挂 `Button`。
-        /// </summary>
-        private void BuildDifficultySegment()
-        {
-            RectTransform segment = hud.AddFramed(_root, "DifficultySegment",
-                Min(HomeLayout.DifficultySegment), Max(HomeLayout.DifficultySegment),
-                ClubUiTokens.Line, ClubUiTokens.PanelSegment, ClubUiTokens.RadiusSegment);
-
-            RectTransform inner = PracticeHudView.AddRect(segment, "Padding", Vector2.zero, Vector2.one);
-            inner.offsetMin = new Vector2(ClubUiTokens.SegmentPadding, ClubUiTokens.SegmentPadding);
-            inner.offsetMax = new Vector2(-ClubUiTokens.SegmentPadding, -ClubUiTokens.SegmentPadding);
-
-            string[] labels =
-            {
-                PracticeHudState.HomeDifficultyCasual,
-                PracticeHudState.HomeDifficultyClub,
-                PracticeHudState.HomeDifficultyExpert,
-            };
-
-            for (int i = 0; i < labels.Length; i++)
-            {
-                RectTransform cell = PracticeHudView.AddRect(inner, labels[i],
-                    new Vector2(i / (float)labels.Length, 0f), new Vector2((i + 1) / (float)labels.Length, 1f));
-
-                // 参考稿的选中项是 `Club`（`.club-segment .active`）：选中 = 黄铜实底 + 深色文字。
-                bool active = i == 1;
-                if (active)
-                {
-                    hud.SetImage(cell.gameObject.AddComponent<Image>(),
-                        ClubUiSprites.PanelForRadius(ClubUiTokens.RadiusSegmentInner), ClubUiTokens.ButtonFill);
-                }
-
-                PracticeHudView.CreateText(cell, "Label", hud.bodyFont, ClubUiTokens.FontBodySmall,
-                    active ? ClubUiTokens.SegmentActiveText : ClubUiTokens.SegmentIdleText,
-                    TextAlignmentOptions.Center, Vector2.zero, Vector2.one,
-                    applyGlobalScale: false).text = labels[i];
-            }
-
-            // 整段禁用：压暗 + 不接收射线 + 三格都不挂 `Button`（见类注释偏离②）。
-            // 用一个 `CanvasGroup` 而不是逐个改色：一次就把"这一段是死的"表达清楚，
-            // 且将来难度真的接上了（35-B）只要移除这一层即可。
-            var disabled = segment.gameObject.AddComponent<CanvasGroup>();
-            disabled.alpha = ClubUiTokens.DisabledOpacity;
-            disabled.interactable = false;
-            disabled.blocksRaycasts = false;
-        }
 
         // ════════════════ P5-B：赛前屏（模态）════════════════════════════════
         //

@@ -1185,7 +1185,8 @@ namespace Billiards.Tests
         ///     （未接线时 `TryShow()` 返回 false）、次键标签随形态改写（**显示与行为一致**）、
         ///     赛前屏不得再写"三局两胜"（本工程是一局定胜负）。
         /// **(f) "只弹一次"以 Runtime 闸门为准 + 结算卡的白盒接线**：`drive.TryConsumeSettlement()`、
-        ///     `MatchResultCopy.FormFor(drive.Winner)`、`drive.EndReason`、次键标签改写、`CurrentForm` 出口。
+        ///     `MatchResultCopy.FormFor(drive.Winner)`、次键标签改写、`CurrentForm` 出口。
+        ///     （`drive.EndReason` 已**不再**接线：用户要求删掉结算卡的"解释行"⇒ `T146(f)` 对应断言作废。）
         /// **(g) 结算边界记一局**：记录与"导出按钮"**解耦** —— 历史 **+1 且只 +1 且累积**
         ///     （旧口径把两者绑在按钮上、且从空历史起算 ⇒ **AI 对局永不写历史 + 会把累积历史覆盖成单条**
         ///     = 首页三项统计静默做死）；"一次结算恰好一条"由**记录口在结算卡里只出现 2 次**（声明 1 + 调用 1）钉住。
@@ -1351,99 +1352,6 @@ namespace Billiards.Tests
                 }
             }
 
-            // ── (c) "为什么"一行：穷举、非空、互不相同 ──
-            var endingOutcomes = new List<ShotOutcomeKind>();
-            var reasons = new Dictionary<ShotOutcomeKind, string>();
-
-            foreach (ShotOutcomeKind kind in (ShotOutcomeKind[])System.Enum.GetValues(typeof(ShotOutcomeKind)))
-            {
-                string reason = MatchResultCopy.Reason(kind);
-                if (string.IsNullOrWhiteSpace(reason))
-                {
-                    failures.Add($"T146(c) `ShotOutcomeKind.{kind}` 没有对应的\"为什么\"一行"
-                                 + " ⇒ 新增结局会静默显示空副标题。");
-                }
-
-                reasons[kind] = reason;
-
-                if (MatchResultCopy.IsEndingOutcome(kind))
-                {
-                    endingOutcomes.Add(kind);
-                }
-            }
-
-            var expectedEnding = new HashSet<ShotOutcomeKind>
-            {
-                ShotOutcomeKind.LegalEightBallPotted,
-                ShotOutcomeKind.EightBallPottedTooEarly,
-                ShotOutcomeKind.EightBallOffTable,
-            };
-
-            if (endingOutcomes.Count != expectedEnding.Count
-                || !expectedEnding.SetEquals(new HashSet<ShotOutcomeKind>(endingOutcomes)))
-            {
-                failures.Add("T146(c) \"能成为结算原因\"的集合应为 "
-                             + $"{string.Join("/", expectedEnding)}，实际 {string.Join("/", endingOutcomes)}。");
-            }
-
-            // 结局原因两两不同（否则两件不同的违规在卡上说同一句 = 玩家分不出为什么输）
-            var seenReasons = new Dictionary<string, ShotOutcomeKind>();
-            foreach (ShotOutcomeKind kind in expectedEnding)
-            {
-                if (seenReasons.TryGetValue(reasons[kind], out ShotOutcomeKind other))
-                {
-                    failures.Add($"T146(c) `{kind}` 与 `{other}` 的\"为什么\"一行相同（\"{reasons[kind]}\"）"
-                                 + " ⇒ 两种不同的输法在卡上无法分辨。");
-                }
-                else
-                {
-                    seenReasons[reasons[kind]] = kind;
-                }
-            }
-
-            // 胜因映射（QA 修复轮 A4）：**测试自己拥有**期望表，再拿它**驱动实现的 `FormFor`**
-            // ⚠ 旧断言是 `reasons[Legal] != MatchResultCopy.ReasonLegalEightBall` —— 右值就是该分支 `return`
-            //   的那个常量 ⇒ 恒假（那半句是死的、永远不红）。现在改成**真检查**：
-            //   ① 期望表写在这里（**不读实现的返回值**）：四种结局杆里**恰好一个**胜因，且是"合法进黑 8"；
-            //   ② 把期望折成"胜者"→ **走实现的** `MatchResultCopy.FormFor` ⇒ 只有胜因能落到 `Win` 形态。
-            var expectedWinByKind = new Dictionary<ShotOutcomeKind, bool>
-            {
-                [ShotOutcomeKind.LegalEightBallPotted] = true,     // 本方组清完 + 本杆合法 + 进指定袋
-                [ShotOutcomeKind.EightBallPottedTooEarly] = false, // 提前进黑 8
-                [ShotOutcomeKind.EightBallOffTable] = false,       // 黑 8 非入袋离台
-            };
-
-            int winCauses = 0;
-            foreach (KeyValuePair<ShotOutcomeKind, bool> expected in expectedWinByKind)
-            {
-                if (expected.Value)
-                {
-                    winCauses++;
-                }
-
-                ShotTurn expectedWinner = expected.Value ? ShotTurn.Player : ShotTurn.Ai;
-                bool formSaysWin = MatchResultCopy.IsWin(MatchResultCopy.FormFor(expectedWinner));
-
-                if (formSaysWin != expected.Value)
-                {
-                    failures.Add($"T146(c) 期望 `{expected.Key}` " + (expected.Value ? "是胜因" : "不是胜因")
-                                 + $"，但 `FormFor({expectedWinner})` 给出的形态是 "
-                                 + (formSaysWin ? "`Win`" : "`Lose`") + " ⇒ 卡的形态与胜负**相反**。");
-                }
-            }
-
-            if (winCauses != 1 || !expectedWinByKind[ShotOutcomeKind.LegalEightBallPotted])
-            {
-                failures.Add("T146(c) 四种结局杆里应**恰好一个**胜因，且必须是\"合法进黑 8\"（本期望表不得被悄悄放宽）。");
-            }
-
-            if (MatchResultCopy.IsEndingOutcome(ShotOutcomeKind.EightBallRespot)
-                || MatchResultCopy.IsEndingOutcome(ShotOutcomeKind.Ongoing))
-            {
-                failures.Add("T146(c) \"复位\"与\"进行中\"不是结局"
-                             + "（`IsEndingOutcome` 不得把它们算进结算原因）。");
-            }
-
             // ── (d) 三条流程收口 ──
 
             // ① 面板打开 ⇒ 出杆输入让位（**复用既有单点**：两个输入控制器都读 `PracticeResultView.IsOpen`）
@@ -1595,8 +1503,10 @@ namespace Billiards.Tests
                                  "结算的\"只弹一次\"必须以 Runtime 的显式闸门为准（UI 自己记的状态守不住）"),
                              ("MatchResultCopy.FormFor(drive.Winner)",
                                  "形态必须由 Runtime 的胜者解出（不许 UI 自己定谁赢）"),
-                             ("drive.EndReason",
-                                 "\"为什么\"一行必须取规则层的结局枚举（不许 UI 从球位反推）"),
+                             // ⚠ **已作废**：原有一条 `("drive.EndReason", "\"为什么\"一行必须取规则层的结局枚举")`
+                             //   —— **用户第四轮要求删除结算卡那句解释**（"不管输赢，这句都不要"）
+                             //   ⇒ 那一行与它的渲染/文案都已删除，这条断言于是变成"要求存在一个我们**故意删掉**的东西"，
+                             //   属**假要求**，随行删除。★ 这是**因用户要求而作废**，不是放宽。
                              ("if (drive.MatchOver)",
                                  "本局结束后练习局的\"清台/重摆\"判定必须整体让位（否则会自己开下一局）"),
                              ("MatchResultCopy.EdgeColor(win)",
@@ -1765,7 +1675,7 @@ namespace Billiards.Tests
 
             Assert.IsEmpty(failures, "T146 失败：\n" + string.Join("\n", failures));
             TestContext.WriteLine("T146: 形态映射穷举 ✓；两形态标题/徽章/四配色逐对不同且负局落酒红族 ✓；"
-                                  + $"\"为什么\"穷举 {endingOutcomes.Count} 种结局且互不相同 ✓；"
+                                  // 用户第四轮：结算卡不再显示"为什么"那一行 ⇒ (c) 整组连同这句自述一起删除。
                                   + "出杆让位 / 对手回合提示优先级 / 不自动进下一局 三条收口 ✓；"
                                   + "Play again 走 MatchSeams、Back to club 走 HomeSeams（未接线不假装）✓；"
                                   + "结算边界记一局（+1、只 +1、且累积；首页口径 = 历史求和）✓；"
@@ -1913,8 +1823,6 @@ namespace Billiards.Tests
                     ClubUiTokens.FontResultTitle),
                 ("结算卡徽章", PracticeResultLayout.BadgeLocal.height * PracticeResultLayout.CardHeightPx,
                     ClubUiTokens.FontCaption),
-                ("结算卡\"为什么\"行", PracticeResultLayout.ReasonLocal.height * PracticeResultLayout.CardHeightPx,
-                    ClubUiTokens.FontResultBody),
                 // ↓ 本轮的 +6（12 → 18）：用户点名"结算卡字体也不够大" ⇒ 把卡内**四处**全纳入
                 //   （标题/徽章/"为什么"上面已有），再加两个键的文案、统计数值、统计标签；
                 //   另两块是核算时发现同样临界的**赛前屏己方名/对手名**（12 px 字号、带高 18 ⇒ 19.2 装不下），
@@ -1944,14 +1852,6 @@ namespace Billiards.Tests
                 }
             }
 
-            // ── (f) 结算卡标题带不得压住"为什么"行（放大后重算过的缝）──
-            float titleBottom = PracticeResultLayout.TitleLocal.yMin;
-            float reasonTop = PracticeResultLayout.ReasonLocal.yMax;
-            if (titleBottom < reasonTop)
-            {
-                failures.Add($"T148(f) 结算卡标题（yMin {titleBottom:R}）压住了\"为什么\"行（yMax {reasonTop:R}）"
-                             + " ⇒ 放大字号后必须**加高/下移**标题带。");
-            }
 
             // ── (g) 绝对像素可读下限（阈值来自"用户两轮反馈看不清"）──
             //  1080p（CanvasScale = 1）：正文 12 px × 1.6 = **19.2 px** ≥ 18 px；标签 9 px × 1.6 = **14.4 px** ≥ 13 px。
@@ -1986,10 +1886,14 @@ namespace Billiards.Tests
             {
                 // ⚠ **恰好 4 处**（不是"≥ 4"）：只断下界的话，将来在 HUD 里也偷偷 opt-out 同样能过
                 //   —— 而"只有首页可以不吃倍率"才是用户的要求（HUD 正是要放大的那部分）。
+                // ⚠ **恰好 3 处**（原 4 处）：用户第四轮要求**删掉首页 `OPPONENT` 那一行**
+                //   （`Casual|Club|Expert` 三个 chip 整块移除，难度选择只留在赛前屏）⇒ opt-out 从 4 → 3。
+                //   这是**因用户要求而重钉**，不是放宽：三处散点 = 桌号 / 两个主键标签 / `CreateHomeText` 单点。
                 int optOut = Regex.Matches(homeSource, @"applyGlobalScale: *false").Count;
-                if (optOut != 4)
+                if (optOut != 3)
                 {
-                    failures.Add($"T148(h) **首页应恰好 4 处** `applyGlobalScale: false`（三处散点 + `CreateHomeText` 单点），"
+                    failures.Add($"T148(h) **首页应恰好 3 处** `applyGlobalScale: false`（桌号 / 两个主键标签 / `CreateHomeText` 单点；"
+                                 + "原第 4 处是已按用户要求删除的首页难度 chip），"
                                  + $"实测 {optOut} ⇒ 多一处是别处偷偷退出倍率、少一处是首页会被带歪。");
                 }
 

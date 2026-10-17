@@ -171,9 +171,11 @@ namespace Billiards.Rules
                         difficulty = AiDifficulty.Expert,
                         aimStepCoarseDeg = 2.0f,
                         aimStepFineDeg = 0.5f,
-                        powerLevelCount = 6,
-                        aimSigmaDeg = 0.8f,
-                        powerSigmaFraction = 0.06f,
+                        // **P9：用户拍板只加强 Expert**（Casual / Club 不动）。三处都在**上界守之上**：
+                        //   σ 0.6° ≥ 0.5°、力度 0.055 ≥ 0.05 ⇒ 仍不是「神」；力度档 6 → 8（更细）。
+                        powerLevelCount = 8,
+                        aimSigmaDeg = 0.6f,
+                        powerSigmaFraction = 0.055f,
                         topKPick = 1,          // 取最优
                         weakPositionScoring = true,
                         candidateBudget = 64,

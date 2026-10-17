@@ -293,13 +293,7 @@ namespace Billiards.UI
             MarginLeft, HeadingRuleTop + HeadingRuleHeight + HeadingRuleBottomGap + ActionHeight + ActionGap,
             MenuWidth, ActionHeight);
 
-        /// <summary>难度小标签 `OPPONENT`（8 px Inter）。</summary>
-        public static readonly Rect DifficultyLabel = Px(
-            MarginLeft, PracticeActionTop + ActionHeight + DifficultyTopGap, MenuWidth, 10f);
 
-        /// <summary>难度分段控件（`Casual | Club | Expert`）。</summary>
-        public static readonly Rect DifficultySegment = Px(
-            MarginLeft, DifficultyLabelTop + 10f + DifficultyLabelGap, MenuWidth, ClubUiTokens.SegmentHeight);
 
         /// <summary>底部统计行（三项）—— 容器（含上细线）的矩形。</summary>
         public static readonly Rect Records = Px(
@@ -443,7 +437,6 @@ namespace Billiards.UI
             {
                 Crest, ClubName, ClubSub,
                 MenuEyebrow, MenuTitle, HeadingRule, ActionAiMatch, ActionPractice,
-                DifficultyLabel, DifficultySegment,
                 Records, RecordsRule, HouseLabel, Track, Tools,
                 HouseText, HouseRule, HouseNumber, TrackGlyph, TrackText,
                 RecordsValue(0), RecordsValue(1), RecordsValue(2),

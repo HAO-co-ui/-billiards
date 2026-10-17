@@ -116,7 +116,6 @@ namespace Billiards.UI
         private RectTransform _badgeFrame;
         private TextMeshProUGUI _badgeText;
         private TextMeshProUGUI _title;
-        private TextMeshProUGUI _reason;
         private TextMeshProUGUI[] _statValues;
         private TextMeshProUGUI _secondaryLabel;
         private TextMeshProUGUI _toast;
@@ -192,11 +191,6 @@ namespace Billiards.UI
                 ClubUiTokens.Text, TextAlignmentOptions.Center,
                 new Vector2(PracticeResultLayout.TitleLocal.xMin, PracticeResultLayout.TitleLocal.yMin),
                 new Vector2(PracticeResultLayout.TitleLocal.xMax, PracticeResultLayout.TitleLocal.yMax));
-
-            _reason = PracticeHudView.CreateText(_card, "Reason", hud.bodyFont, ClubUiTokens.FontResultBody,
-                ClubUiTokens.Body, TextAlignmentOptions.Center,
-                new Vector2(PracticeResultLayout.ReasonLocal.xMin, PracticeResultLayout.ReasonLocal.yMin),
-                new Vector2(PracticeResultLayout.ReasonLocal.xMax, PracticeResultLayout.ReasonLocal.yMax));
 
             BuildStatsRow();
 
@@ -353,7 +347,7 @@ namespace Billiards.UI
             // ⇒ "只弹一次"这条性质**不靠 UI 自己记状态**（UI 记的状态正是判据守不住的那类东西）。
             if (drive.TryConsumeSettlement())
             {
-                ShowMatchResult(MatchResultCopy.FormFor(drive.Winner), drive.EndReason);
+                ShowMatchResult(MatchResultCopy.FormFor(drive.Winner));
                 return;
             }
 
@@ -406,22 +400,22 @@ namespace Billiards.UI
             PracticeSessionSnapshot snapshot = _tracker.Snapshot();
             RackOutcome outcome = snapshot.outcome;
 
+            // **用户要求：不管输赢都不显示"为什么"那一行** ⇒ 只剩 标题 / 徽章 / 次键标签。
             Present(MatchResultForm.None, outcome == RackOutcome.TableCleared,
-                PracticeSession.OutcomeTitle(outcome), MatchResultCopy.BadgePractice,
-                PracticeSession.OutcomeReason(outcome));
+                PracticeSession.OutcomeTitle(outcome), MatchResultCopy.BadgePractice);
             ApplyStats(snapshot);
         }
 
         /// <summary>
         /// 显示结算卡（**比赛结算**：一局定胜负）并冻结本局。
         /// `form` 由 <see cref="MatchResultCopy.FormFor"/> 从 `PhysicsTestDrive.Winner` 解出；
-        /// `reason` 取 `PhysicsTestDrive.EndReason`（规则层**原样映射**，UI **不从球位反推**）。
+        /// ⚠ 不再有 `reason` 参数（用户第四轮反馈：「那句解释不要」）——`EndReason` 仍在 Runtime，UI 不再展示它。
         /// </summary>
-        public void ShowMatchResult(MatchResultForm form, ShotOutcomeKind reason)
+        public void ShowMatchResult(MatchResultForm form)
         {
             EnsureBuilt();
             Present(form, MatchResultCopy.IsWin(form),
-                MatchResultCopy.Title(form), MatchResultCopy.Badge(form), MatchResultCopy.Reason(reason));
+                MatchResultCopy.Title(form), MatchResultCopy.Badge(form));
             ApplyStats(_tracker.Snapshot());
         }
 
@@ -429,7 +423,7 @@ namespace Billiards.UI
         /// **唯一的落笔点**：四样东西（标题 / 徽章 / 说明 / 次键标签）与配色一起写 → 置 <see cref="IsOpen"/>。
         /// 两条展示路径**只能**经它写卡 —— 这样"两形态的差异项算全了吗"只有一个地方要审。
         /// </summary>
-        private void Present(MatchResultForm form, bool win, string title, string badge, string reason)
+        private void Present(MatchResultForm form, bool win, string title, string badge)
         {
             if (_card == null)
             {
@@ -439,7 +433,6 @@ namespace Billiards.UI
             CurrentForm = form;
             _title.text = title;
             _badgeText.text = badge;
-            _reason.text = reason;
 
             // 次键标签**如实描述它此刻的动作**（练习 ⇒ Export data；比赛 ⇒ Back to club）。
             if (_secondaryLabel != null)

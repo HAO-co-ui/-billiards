@@ -22,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 PTD = "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs"
 RULES = "Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs"
+AI = "Assets/_Project/Scripts/Runtime/Rules/EightBallAi.cs"
 
 # tag -> (相对路径, [(anchor, replacement), ...])
 #
@@ -170,7 +171,7 @@ PATCHES = {
                 "                GroupState shooterGroup = EightBallRules.IsSolid(verdict.groupBall)\n"
                 "                    ? GroupState.Solid\n"
                 "                    : GroupState.Stripe;\n"
-                "                _playerGroup = CurrentTurn == ShotTurn.Player ? shooterGroup : OpponentGroup(shooterGroup);\n"
+                "                _playerGroup = CurrentTurn == ShotTurn.Player ? shooterGroup : ComplementGroup(shooterGroup);\n"
                 "            }\n",
                 "            // INJ-P7-2：**删掉 `reassignGroup` 的施加**（组别永远停在 OpenTable）\n",
             ),
@@ -264,6 +265,46 @@ PATCHES = {
                 "                        return;\n"
                 "                    }\n",
                 "                    // INJ-P7-6：**删掉 AI 的自由球自动放置**（预期 P7⑪ 必红）\n",
+            ),
+        ],
+    ),
+    # ⑱ **剩余球号列表不随进球刷新** ⇒ 定组后仍为空（P9-B 判据② 必红）
+    "p9-roster-stale": (
+        PTD,
+        [
+            (
+                "            RebuildRemainingNumbers();\n",
+                "            // INJ-P9-1：**删掉剩余球号的重建**（列表不随进球更新）\n",
+            ),
+        ],
+    ),
+    # ⑲ **三档参数全改成同一组**（都走 Club）⇒ 差距塌成 0（P9-A③ 必红）
+    "p9-tiers-flatten": (
+        AI,
+        [
+            (
+                "        public static AiDifficultyParameters Parameters(AiDifficulty difficulty)\n"
+                "        {\n"
+                "            switch (difficulty)\n",
+                "        public static AiDifficultyParameters Parameters(AiDifficulty difficulty)\n"
+                "        {\n"
+                "            // INJ-P9-2：**三档参数全改成同一组**（都走 Club）⇒ 难度无差别\n"
+                "            difficulty = AiDifficulty.Club;\n"
+                "            switch (difficulty)\n",
+            ),
+        ],
+    ),
+    # ⑳ **删掉「待放态把白球抬到悬浮位」** ⇒ 白球仍躺在台布上（P9-D 判据必红）
+    "p9-cue-float-drop": (
+        PTD,
+        [
+            (
+                "                    if (i == 0 && PendingCueBallPlacement)\n"
+                "                    {\n"
+                "                        SyncFloatingCueBall(ballVisuals[i], CueBallFloatWorldPosition);\n"
+                "                        continue;\n"
+                "                    }\n",
+                "                    // INJ-P9-3：**删掉「待放态把白球抬起来」**（预期 T145 (P9-D) 必红）\n",
             ),
         ],
     ),

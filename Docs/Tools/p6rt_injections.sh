@@ -70,12 +70,14 @@ OUT="$OUT_ROOT/inj_$TAG"
 
 # ── tag → 目标文件（多个 tag 可指向同一文件；基线按"文件"记，不按 tag）──────────
 case "$TAG" in
-  settle-unwire|rest-gate-drop|settlement-gate-break|ai-never-launch|ai-turn-player-guard-drop|ai-turn-rest-gate-drop|ai-turn-yield-drop|p7-group-drop|p7-ballinhand-drop|p7-ai-one-shot|p7-isbreak-never-clear|p7-ai-autoplace-drop|p8-pending-launch-gate-drop)
+  settle-unwire|rest-gate-drop|settlement-gate-break|ai-never-launch|ai-turn-player-guard-drop|ai-turn-rest-gate-drop|ai-turn-yield-drop|p7-group-drop|p7-ballinhand-drop|p7-ai-one-shot|p7-isbreak-never-clear|p7-ai-autoplace-drop|p8-pending-launch-gate-drop|p9-roster-stale|p9-cue-float-drop)
                     REL="Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs" ;;
   p7-no-pot-turn)
                     REL="Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs" ;;
   p8-cue-visible-in-flight)
                     REL="Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs" ;;
+  p9-tiers-flatten)
+                    REL="Assets/_Project/Scripts/Runtime/Rules/EightBallAi.cs" ;;
   *) echo "未登记的 tag：$TAG（见本文件头部的 tag 列表）" >&2; exit 2 ;;
 esac
 

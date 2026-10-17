@@ -49,7 +49,6 @@ namespace Billiards.UI
         public static readonly Rect TitleLocal = new Rect(0.06f, 0.550f, 0.88f, 0.118f);   // 0.550/0.118（=74.9 px）：38 px × FontScale 1.9 = 72.2 ⇒ 带高 ≥；顶边仍 0.668、与徽章(0.712)留 27.9 px、与"为什么"行(顶 0.540)留 6.4 px（T148(e)(f)）
 
         /// <summary>副标题（失败原因，11 px 静音灰）。</summary>
-        public static readonly Rect ReasonLocal = new Rect(0.06f, 0.495f, 0.88f, 0.045f);   // 0.521 → 0.495：把"为什么"行**下移** 16.5 px，给加高后的标题腾缝（标题底 0.568，仍留 17.8 px）；下方统计区顶边 0.445 ⇒ 仍有 31.8 px（T148(f)）
 
         /// <summary>三列统计的容器（内部再竖分"大数字 / 8 px 标签"）。</summary>
         public static readonly Rect StatsLocal = new Rect(0.06f, 0.294f, 0.88f, 0.151f);   // 0.300/0.145 → 0.294/0.151（=95.9 px）：① 数值带 0.58 ⇒ 55.6 px ≥ 27×1.9=51.3；② **上下留白**均为 **0.050（31.7 px）** —— 上接"为什么"行(底 0.495)、下接主键(顶 0.244)，用户要求"留白等差"（T148(e)）
