@@ -27,6 +27,12 @@ namespace Billiards.Physics
         /// <summary>杆尖与**白球表面**的静止间隙（米）——瞄准时留一丝缝，**只有击球帧才真正碰到球**。</summary>
         public const float StickTipGapMeters = 0.002f;
 
+        /// <summary>**杆的抬升高度**（米，世界 Y）——把整根杆抬到**球顶之上**，
+        /// 避免杆身与台面上其它球**共面**（俯视看就是"穿过球"，用户实机截图）。
+        /// 取值 = `2R + 杆半径` ≈ 0.0572 + 0.004 = **0.062**。
+        /// ⚠ 只抬 Y、不动 XZ ⇒ 水平瞄准语义与物理完全不变。</summary>
+        public const float StickLiftMeters = 0.062f;
+
         /// <summary>拉满力度时杆的后拉量（米）——蓄力期后拉 = 力度 × 本值（1:1）。取值偏大以强化"拉满"的视觉反馈（用户实测：0.15 无感）。</summary>
         public const float MaxPullback = 0.45f;
 
@@ -94,7 +100,8 @@ namespace Billiards.Physics
             // ⚠ `TipGap` 旧口径是"到**球心** 0.01 m" ⇒ 杆尖埋进球里 R−0.01 = 18.575 mm（用户："球杆不见了"）。
             //   现口径 = **球半径 + 到表面的缝**；`strikeAdvance` 只在击球帧把缝压到 0（"只有松手后才碰到白球"）。
             return cueBallWorld + StickDirection(aimDirectionWorld, elevationDegrees)
-                   * (PoolConstants.BallRadius + StickTipGapMeters - strikeAdvance + pullback);
+                   * (PoolConstants.BallRadius + StickTipGapMeters - strikeAdvance + pullback)
+                   + Vector3.up * StickLiftMeters;
         }
 
         private void Update()

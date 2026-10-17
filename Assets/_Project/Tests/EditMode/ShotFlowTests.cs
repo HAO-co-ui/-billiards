@@ -148,7 +148,8 @@ namespace Billiards.Tests
 
             // (a) 贴球：pullback = 0 ⇒ 杆尖到白球距离恰为 TipGap，且在瞄准**反**方向一侧
             Vector3 tip0 = CueStickController.StickTipPosition(cue, aimDir, 0f);
-            float gap0 = Vector3.Distance(tip0, cue);
+            // **水平距离**（杆已抬到球顶之上，三维距离含抬升量）
+            float gap0 = new Vector2(tip0.x - cue.x, tip0.z - cue.z).magnitude;
             if (Mathf.Abs(gap0 - (PoolConstants.BallRadius + CueStickController.StickTipGapMeters)) > 1e-6f)
             {
                 failures.Add($"(a) 静止时杆尖到球心应为 R+StickTipGapMeters（{PoolConstants.BallRadius + CueStickController.StickTipGapMeters:R}），实际 {gap0:R}。");
@@ -162,7 +163,7 @@ namespace Billiards.Tests
             // (b) 后拉 1:1：pullback = 0.075 ⇒ 距离恰为 R + StickTipGapMeters + 0.075（闭式，与被测实现无关）
             const float pullback = 0.075f;
             Vector3 tip1 = CueStickController.StickTipPosition(cue, aimDir, pullback);
-            float gap1 = Vector3.Distance(tip1, cue);
+            float gap1 = new Vector2(tip1.x - cue.x, tip1.z - cue.z).magnitude;   // 同样只取水平投影
             if (Mathf.Abs(gap1 - (PoolConstants.BallRadius + CueStickController.StickTipGapMeters + pullback)) > 1e-6f)
             {
                 failures.Add($"(b) 后拉 1:1：距离应为 {PoolConstants.BallRadius + CueStickController.StickTipGapMeters + pullback:R}，实际 {gap1:R}。");

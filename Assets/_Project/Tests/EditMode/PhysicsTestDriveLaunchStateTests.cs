@@ -1315,20 +1315,30 @@ namespace Billiards.Tests
             Vector3 cue = new Vector3(0.12f, 0f, -0.34f);
             Vector3 aim = new Vector3(1f, 0f, 0.25f).normalized;
             float r = PoolConstants.BallRadius;
+            // **水平距离**（只看 XZ）：杆已抬到球顶之上，三维距离不再代表"到球面"的间隙
+            static float Horiz(Vector3 tip, Vector3 center)
+                => new Vector2(tip.x - center.x, tip.z - center.z).magnitude;
             const float gap = 0.002f;   // **字面量**：不读实现常量（否则注入置 0 时两边同时为 0 ⇒ 恒真）
 
             // ① 静止：到表面 = gap
-            float restSurface = (CueStickController.StickTipPositionForPhase(cue, aim, 0f, 0f, ShotPhase.Aim) - cue).magnitude - r;
+            float restSurface = Horiz(CueStickController.StickTipPositionForPhase(cue, aim, 0f, 0f, ShotPhase.Aim), cue) - r;
             if (Mathf.Abs(restSurface - gap) > 2e-4f)
             {
                 failures.Add($"(P11-①) 静止时杆尖到**球表面**应为 {gap * 1000f:F1} mm，实测 {restSurface * 1000f:F2} mm。");
             }
 
             // ② 击球帧：前冲 = gap ⇒ 到表面 ≈ 0
-            float strikeSurface = (CueStickController.StickTipPositionForPhase(cue, aim, 0f, 0f, ShotPhase.Shooting) - cue).magnitude - r;
+            float strikeSurface = Horiz(CueStickController.StickTipPositionForPhase(cue, aim, 0f, 0f, ShotPhase.Shooting), cue) - r;
             if (Mathf.Abs(strikeSurface) > 5e-4f)
             {
                 failures.Add($"(P11-②) **击球帧**杆尖应贴到球表面（≤0.5 mm），实测 {strikeSurface * 1000f:F2} mm。");
+            }
+
+            // ⑤ **抬升**：杆必须抬到**球顶之上**（钉住抬升量本身；删掉它 ⇒ 穿模会静默回归）
+            float lift = CueStickController.StickTipPositionForPhase(cue, aim, 0f, 0f, ShotPhase.Aim).y - cue.y;
+            if (Mathf.Abs(lift - 0.062f) > 1e-4f)
+            {
+                failures.Add($"(P11-⑤) 杆应抬到球顶之上（0.062 m），实测 {lift * 1000f:F2} mm。");
             }
 
             // ③ 全程不穿模（含前冲过量那种写法：用 2×gap 也必须被这条挡住）
@@ -1337,7 +1347,7 @@ namespace Billiards.Tests
                 float pull = CueStickController.MaxPullback * i / 9f;
                 foreach (ShotPhase ph in new[] { ShotPhase.Aim, ShotPhase.Shooting })   // 产品可达相位；2*gap 属注入档，不进本判据域
                 {
-                    float d = (CueStickController.StickTipPositionForPhase(cue, aim, pull, 0f, ph) - cue).magnitude;
+                    float d = Horiz(CueStickController.StickTipPositionForPhase(cue, aim, pull, 0f, ph), cue);
                     if (d < r - 5e-4f)
                     {
                         failures.Add($"(P11-③) **穿模**：pullback={pull:F3} phase={ph} ⇒ 到球心 {d:F5} < R−0.5mm（{r - 5e-4f:F5}）。");
@@ -1351,7 +1361,7 @@ namespace Billiards.Tests
             for (int i = 0; i <= 9; i++)
             {
                 float pull = CueStickController.MaxPullback * i / 9f;
-                float d = (CueStickController.StickTipPositionForPhase(cue, aim, pull, 0f, ShotPhase.Aim) - cue).magnitude;
+                float d = Horiz(CueStickController.StickTipPositionForPhase(cue, aim, pull, 0f, ShotPhase.Aim), cue);
                 if (i > 0 && !(d > prev + 1e-4f))
                 {
                     failures.Add($"(P11-④) 后拉 {pull:F3} 时到球心未**严格递增**（{prev:F5} → {d:F5}）。");

@@ -49,7 +49,7 @@ namespace Billiards.UI
         /// （判据 `T95 (b)` 明确禁止 HUD 压球桌）⇒ 右侧只剩 0.05 宽、放不下 150 px 的 `Shoot` 按钮。
         /// 参考稿那种"右侧一列"在本工程会盖住球桌边缘，故保持**顶部右块**。
         /// </summary>
-        public static readonly Rect PowerZone = new Rect(0.700f, 0.780f, 0.280f, 0.202f);
+        public static readonly Rect PowerZone = new Rect(0.745f, 0.792f, 0.235f, 0.190f);
 
         // ── 可读性下限（规格 §4.2）──────────────────────────────────────────
         /// <summary>小标签 / 状态 / 按钮文案的设计字号（1080 域像素）。</summary>

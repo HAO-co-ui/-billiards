@@ -133,6 +133,12 @@ namespace Billiards.UI
         /// <summary>`Shoot` 下方的 `YOUR SHOT` 小标（对战形态隐藏 —— 中栏已有轮次信息，重复会叠在按钮上）。</summary>
         private TextMeshProUGUI _shotInfoLabel;
 
+        /// <summary>品牌小标（`PRACTICE` / `AI Match`）：**随模式切换**（用户实机截图：对战里仍写 `PRACTICE`）。</summary>
+        private TextMeshProUGUI _brandEyebrow;
+
+        /// <summary>对战形态的状态行（`Foul` / `Ball in hand` / `Opponent` …）—— 状态条整块隐藏后的唯一出口。</summary>
+        private TextMeshProUGUI _matchStatus;
+
         // ── 开关 ─────────────────────────────────────────────────────────────
         private Image _vfxIcon;
         private Image _sfxIcon;
@@ -404,9 +410,9 @@ namespace Billiards.UI
                 TextAlignmentOptions.BottomLeft, new Vector2(0.092f, 0.44f), new Vector2(0.70f, 0.98f))
                 .text = PracticeHudState.BrandTitle;
 
-            CreateText(brand, "BrandEyebrow", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Accent,
-                TextAlignmentOptions.TopLeft, new Vector2(0.092f, 0.04f), new Vector2(0.70f, 0.44f))
-                .text = PracticeHudState.BrandEyebrow;
+            _brandEyebrow = CreateText(brand, "BrandEyebrow", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Accent,
+                TextAlignmentOptions.TopLeft, new Vector2(0.092f, 0.04f), new Vector2(0.70f, 0.44f));
+            _brandEyebrow.text = PracticeHudState.BrandEyebrow;
 
             BuildToolButtons(brand);
 
@@ -452,6 +458,14 @@ namespace Billiards.UI
 
             _scoreValue = CreateText(board, "ScoreValue", titleFont, ClubUiTokens.FontScore, ClubUiTokens.Text,
                 TextAlignmentOptions.Center, new Vector2(0.36f, 0.38f), new Vector2(0.66f, 0.80f));
+
+            // **对战状态行**：状态条整块隐藏后，`Foul` / `Ball in hand` / `Opponent` 这些提示必须有出口
+            //   （用户问："犯规提示…AI 对战里现在没有地方设置了"）。
+            // 只在**非 Aim** 时显示 —— 常态不占版面。
+            _matchStatus = CreateText(board, "MatchStatus", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Accent,
+                TextAlignmentOptions.Center, new Vector2(0.36f, 0.08f), new Vector2(0.66f, 0.34f));
+            _matchStatus.text = string.Empty;
+            _matchStatus.gameObject.SetActive(false);
             // 大字 = **当前该谁打**（不是比分 —— 本工程是一局定胜负，0—0 是假信息）。
             _scoreValue.text = PracticeHudState.YourShotLabel;
 
@@ -1061,8 +1075,23 @@ namespace Billiards.UI
                 _scoreValue.text = aiTurn ? PracticeHudState.OpponentTurnLabel : PracticeHudState.YourShotLabel;
             }
 
-            // 中栏在**对战形态要显示**：`RACK 1`（小字）+ `YOUR SHOT`/`AI`（大字）。
-            // ⚠ 早前"对战隐藏中栏、把宽度让给两侧"的口径已被参考稿覆盖 —— 用户实机截图要求中栏有轮次信息，
+            // 品牌小标随模式切换（对战写 `AI Match`、练习写 `PRACTICE`）。
+            if (_brandEyebrow != null)
+            {
+                _brandEyebrow.text = aiMatch ? PracticeHudState.ModeAiMatch : PracticeHudState.BrandEyebrow;
+            }
+
+            // 对战状态行：状态条整块隐藏后，`Foul` / `Ball in hand` / `Opponent` 的**唯一出口**。
+            // `Aim` 是常态，不占版面（否则又会变成"中栏挂一行没用的字"）。
+            if (_matchStatus != null)
+            {
+                string status = _shotInfoValue != null ? _shotInfoValue.text : string.Empty;
+                bool showStatus = aiMatch && !string.IsNullOrEmpty(status) && status != PracticeHudState.StateAim;
+                _matchStatus.gameObject.SetActive(showStatus);
+                _matchStatus.text = showStatus ? status : string.Empty;
+            }
+
+            // 中栏在**对战形态要显示**：`RACK 1`（小字）+ `YOUR SHOT`/`AI`（大字）。            // ⚠ 早前"对战隐藏中栏、把宽度让给两侧"的口径已被参考稿覆盖 —— 用户实机截图要求中栏有轮次信息，
             //   且实测"中栏空着 + 状态条还在"会被当成排版错误。
             if (_scoreLabel != null)
             {

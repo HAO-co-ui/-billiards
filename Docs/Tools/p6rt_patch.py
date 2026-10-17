@@ -402,6 +402,16 @@ PATCHES = {
     ),
     # ㉔ **把悬浮过渡时长设为 0**（瞬移）⇒ P10-C 的"中途夹在两端之间"必红
     # ㉗ **`StickTipGapMeters = 0`** ⇒ 静止时杆尖贴到球面（P11 判据① 必红）
+    # ㉚ **`StickLiftMeters = 0`**（不抬升 ⇒ 杆与球共面、视觉穿模）⇒ P11-⑤ 必红，其余不红
+    "p11-lift-zero": (
+        "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
+        [
+            (
+                "        public const float StickLiftMeters = 0.062f;\n",
+                "        public const float StickLiftMeters = 0f;   // INJ：不抬升\n",
+            ),
+        ],
+    ),
     "p11-tipgap-zero": (
         "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
         [

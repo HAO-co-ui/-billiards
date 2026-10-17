@@ -624,10 +624,34 @@ namespace Billiards.Tests
             Vector3 axis = (axisTail - axisTip).normalized;
             Vector3 ballToTip = axisTip - ballWorld;
             float lateralOffset = (ballToTip - Vector3.Dot(ballToTip, axis) * axis).magnitude;
-            if (lateralOffset > 1e-5f)
+            // **P11 重钉（契约变了，不是放宽）**：杆已抬到**球顶之上**（`StickLiftMeters`），
+            //   杆身轴线**不再穿过球心** —— 这正是用户要的"不穿模"。⇒"三维共线"已不是正确契约，
+            //   拆成**⑤a 水平投影共线** + **⑤b 竖直偏移恰为抬升量** 两条（强度更高：任一侧漂移都会被抓）。
+            Vector2 tipXz = new Vector2(axisTip.x, axisTip.z);
+            Vector2 tailXz = new Vector2(axisTail.x, axisTail.z);
+            Vector2 ballXz = new Vector2(ballWorld.x, ballWorld.z);
+            Vector2 d1 = ballXz - tipXz;
+            Vector2 d2 = tailXz - tipXz;
+            float crossNorm = Mathf.Abs(d1.x * d2.y - d1.y * d2.x) / Mathf.Max(1e-6f, d1.magnitude * d2.magnitude);
+            if (crossNorm > 1e-4f)
             {
-                failures.Add($"(e) ⑤ 杆尖偏离杆身轴线 {lateralOffset:R} m（球心、杆尖、杆尾必须共线；"
-                             + "否则球心处的抬升量推导对杆身不再成立）。");
+                failures.Add($"(e) ⑤a **水平投影**上（球心、杆尖、杆尾）不共线：|叉积|归一化 = {crossNorm:R}（应 ≤ 1e-4）。");
+            }
+
+            // ⑤b-1 **精确档（仰角 0）**：仰角为 0 时 `dir.y == 0` ⇒ 竖直偏移**恰为**纯抬升量（可精确断言）。
+            Vector3 tipNoElev = CueStickController.StickTipPosition(ballWorld, aimWorld, 0f, 0f, 0f);
+            float liftExact = tipNoElev.y - ballWorld.y;
+            if (Mathf.Abs(liftExact - 0.062f) > 1e-4f)
+            {
+                failures.Add($"(e) ⑤b-1 仰角 0 时竖直偏移应恰为抬升量 0.062 m，实测 {liftExact:R} m。");
+            }
+
+            // ⑤b-2 **真实档（带真实仰角）**：仰角是另一条独立机制，只会让杆更高 ⇒ 断**下界**
+            //   "杆始终在球顶之上，无论仰角多少"（上界由 ⑤b-1 的精确档兜住）。
+            float liftReal = axisTip.y - ballWorld.y;
+            if (liftReal < 0.062f - 1e-4f)
+            {
+                failures.Add($"(e) ⑤b-2 带仰角时杆尖仍应**不低于**抬升量（≥ 0.062 m），实测 {liftReal:R} m。");
             }
 
             // ④ 抬升只允许**绕水平轴**抬起，不得把方向绕垂直轴拧歪：水平分量须仍与 −aim **共线**。
