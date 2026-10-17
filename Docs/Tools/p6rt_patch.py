@@ -403,6 +403,21 @@ PATCHES = {
     # ㉔ **把悬浮过渡时长设为 0**（瞬移）⇒ P10-C 的"中途夹在两端之间"必红
     # ㉗ **`StickTipGapMeters = 0`** ⇒ 静止时杆尖贴到球面（P11 判据① 必红）
     # ㉚ **`StickLiftMeters = 0`**（不抬升 ⇒ 杆与球共面、视觉穿模）⇒ P11-⑤ 必红，其余不红
+    # ㉛ **仰角恒 0**（`StickElevationDegreesFor` 直接 return 0）⇒ **靶子 = (e)③ 仰角三条**
+    #     （跨库穿模 θ=0 ⇒ 下表面 0.0206 < 库顶 0.0610；仰角单调 近/中/远 全 0°；最小角 4° 实测 0°）
+    #     ⚠ 原先写的靶子"垂直下界那条"已删除（它对单机制缺失恒真，见 PracticeSessionTests 注释）
+    "p11-elevation-zero": (
+        "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
+        [
+            (
+                "        public static float StickElevationDegreesFor(Vector2 ballPhysics, Vector2 aimPhysics)\n"
+                "        {\n",
+                "        public static float StickElevationDegreesFor(Vector2 ballPhysics, Vector2 aimPhysics)\n"
+                "        {\n"
+                "            return 0f;   // INJ：仰角恒 0（预期只有 ⑤b-2 红）\n",
+            ),
+        ],
+    ),
     "p11-lift-zero": (
         "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
         [
