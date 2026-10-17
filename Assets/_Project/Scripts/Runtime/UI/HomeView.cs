@@ -738,6 +738,15 @@ namespace Billiards.UI
         public void OnStartPractice()
         {
             IsAiMatchSession = false;   // **置位点 ①**（练习）
+
+            // **练习模式没有对手**：必须同时把 Runtime 侧的 AI 开关关掉 ——
+            // 否则规则层照样会把回合判给对方，AI 真的会上场出杆（用户实机反馈：
+            // "练习模式不该有 AI""打着打着球杆没了"，两者是同一个根因）。
+            if (hud != null && hud.drive != null)
+            {
+                hud.drive.EndAiMatchSession();
+            }
+
             Hide();
         }
 

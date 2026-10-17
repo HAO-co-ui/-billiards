@@ -377,6 +377,7 @@ namespace Billiards.Physics
         /// <summary>构造内核并装载白球（开球点 = <see cref="TableConfig.footSpot"/>，初速 0）。</summary>
         public void Initialize()
         {
+            AiOpponentEnabled = false;   // 练习 / 重摆：**默认没有 AI 对手**
             if (tableConfig == null)
             {
                 Debug.LogError("PhysicsTestDrive：未指定 tableConfig，驱动器停用。", this);
@@ -652,6 +653,15 @@ namespace Billiards.Physics
         /// <summary>**本局是否已结束**（`true` ⇒ **不会再有第 2 局**：只有显式再调 `StartMatch` 才开新局）。
         /// （**只读出口**：供 UI 与诊断用；**不参与出杆路径**）</summary>
         public bool MatchOver { get; private set; }
+
+        /// <summary>
+        /// **本局是否存在 AI 对手**（**单一真源**，驱动 <see cref="AiTurnArmed"/>）。
+        /// 练习模式走**同一套规则**（`ApplyVerdict` 照样会把回合交给对方），但**不该有 AI 上场** ⇒
+        /// 只靠 `IsAiTurn` 判断会让"练习里也被 AI 接管"（用户反馈："打着打着球杆没了"）。
+        /// ⇒ `Initialize()`（练习/重摆）置 **false**；`StartMatch(tier)` 置 **true**；`EndAiMatchSession()` 置回 false。
+        /// （**不用 UI 的 `IsAiMatchSession` 反推** —— Runtime 要能自证。）
+        /// </summary>
+        public bool AiOpponentEnabled { get; private set; }
 
         /// <summary>**本局胜者**（`MatchOver == true` 时有效；`ShotTurn.Player` = 玩家胜）。
         /// （**只读出口**：供 UI 与诊断用；**不参与出杆路径**）</summary>
@@ -1034,6 +1044,20 @@ namespace Billiards.Physics
         /// （**每局换摆法归宿主**；`ResolvedRackSeed` 在 <see cref="Initialize"/> 里重掷）；
         /// ④ 重建 15 颗；⑤ **先手交给玩家**（开球）。
         /// </summary>
+        /// <summary>**结束"有 AI 对手"的会话**（回练习 / 回首页时调用）——
+        /// 立即生效：<see cref="AiTurnArmed"/> 是计算属性 ⇒ 本方法返回后它**当帧**就是 false。</summary>
+        /// <summary>**仅供诊断/判据**：显式开关 AI 对手（运行时唯一调用点是 StartMatch / EndAiMatchSession）。
+        /// 用途：判据需要直接驱动 AI 回合，但**不应走 StartMatch**（它会重掷 rackSeed 并重建 15 颗，
+        /// 破坏夹具的确定性）。
+        /// ⚠ **不许当产品开关用** —— 判据 T155 有源码级守卫：Runtime 目录里本方法名**只允许出现 1 次**（就是这里）。</summary>
+        public void SetAiOpponentEnabledForDiagnostics(bool enabled) => AiOpponentEnabled = enabled;
+
+        public void EndAiMatchSession()
+        {
+            AiOpponentEnabled = false;
+            aiGroupState = GroupState.OpenTable;
+        }
+
         public void StartMatch(AiDifficulty tier)
         {
             MatchTier = tier;
@@ -1041,6 +1065,7 @@ namespace Billiards.Physics
             rackSeed = RandomRackSeed;
             Initialize();
             CurrentTurn = ShotTurn.Player;
+            AiOpponentEnabled = true;   // 对战：本局**有** AI 对手（必须在 Initialize 之后置位）
 
             // **一局定胜负**：`StartMatch` 是**唯一**能开新局的口 —— 它把结算位一并清掉
             // （⇒ "结算后不会自动进第 2 局"；要再来一局必须**显式**再调一次本方法）。
@@ -1126,7 +1151,7 @@ namespace Billiards.Physics
         {
             get
             {
-                if (MatchOver || !IsAiTurn || _settlementPending || _shotInFlight)
+                if (!AiOpponentEnabled || MatchOver || !IsAiTurn || _settlementPending || _shotInFlight)
                 {
                     return false;
                 }

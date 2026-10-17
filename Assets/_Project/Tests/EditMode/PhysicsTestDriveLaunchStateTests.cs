@@ -1380,6 +1380,82 @@ namespace Billiards.Tests
             Assert.IsEmpty(failures, "T154 失败：\n" + string.Join("\n", failures));
         }
 
+        /// <summary>
+        /// **`T155`：练习模式**不许**有 AI；对战模式**必须**有 AI**（P12）。
+        /// 负路径双向：① 练习（不调 `StartMatch`）即便规则把回合判给"对手" ⇒ `AiTurnArmed == false` 且 `AiLaunchCount` 不变；
+        /// ② `StartMatch(Club)` ⇒ 5 s 内 `AiLaunchCount` **≥1**（证明开关不是恒假）。
+        /// </summary>
+        [Test]
+        public void T155_PracticeNoAi_MatchHasAi()
+        {
+            var failures = new List<string>();
+            const float dt = 1f / 120f;
+            const int fiveSeconds = 600;
+
+            var go1 = new GameObject("T155Practice");
+            try
+            {
+                PhysicsTestDrive d1 = NewAiDrive(go1, rackSeed: 81);
+                AdvanceToRest(d1, RestCap);
+                if (d1.AiOpponentEnabled)
+                {
+                    failures.Add("(P12-①) 练习模式 `AiOpponentEnabled` 应为 **false**（`Initialize()` 默认无对手）。");
+                }
+
+                d1.SetTurn(ShotTurn.Ai);   // 规则把回合判给"对手"
+                int launch0 = d1.AiLaunchCount;
+                for (int i = 0; i < fiveSeconds; i++)
+                {
+                    d1.Advance(dt);
+                }
+
+                if (d1.AiTurnArmed)
+                {
+                    failures.Add("(P12-①) 练习模式**不许武装 AI**：`AiTurnArmed` 应为 false。");
+                }
+
+                if (d1.AiLaunchCount != launch0)
+                {
+                    failures.Add($"(P12-①) 练习模式**不许 AI 出杆**：`AiLaunchCount` 应保持 {launch0}，实测 {d1.AiLaunchCount}。");
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(go1);
+            }
+
+            var go2 = new GameObject("T155Match");
+            try
+            {
+                PhysicsTestDrive d2 = NewAiDrive(go2, rackSeed: 82);
+                AdvanceToRest(d2, RestCap);
+                d2.StartMatch(AiDifficulty.Club);
+                AdvanceToRest(d2, RestCap);
+                if (!d2.AiOpponentEnabled)
+                {
+                    failures.Add("(P12-②) 对战模式 `AiOpponentEnabled` 应为 **true**（`StartMatch` 置位）。");
+                }
+
+                d2.SetTurn(ShotTurn.Ai);
+                int launch1 = d2.AiLaunchCount;
+                for (int i = 0; i < fiveSeconds; i++)
+                {
+                    d2.Advance(dt);
+                }
+
+                if (d2.AiLaunchCount <= launch1)
+                {
+                    failures.Add($"(P12-②) 对战模式 AI 应**真的出杆**（5 s 内 ≥1），实测 {launch1}→{d2.AiLaunchCount} ⇒ 开关像恒假。");
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(go2);
+            }
+
+            Assert.IsEmpty(failures, "T155 失败：\n" + string.Join("\n", failures));
+        }
+
         private static void PotCueBall(PhysicsTestDrive drive)
         {
             Pocket pocket = SidePocket(Table());
@@ -2678,6 +2754,7 @@ namespace Billiards.Tests
                 try
                 {
                     PhysicsTestDrive a2 = NewAiDrive(p7PhaseGo, rackSeed: 57);
+                    a2.SetAiOpponentEnabledForDiagnostics(true);   // 这些子用例**直接驱动 AI 回合**，但**不走 StartMatch**（它重掷 rack 破坏确定性）
                     int ap = FirstCornerPocket(a2.tableConfig);
                     SetUpCleanPot(a2, AiCleanTargetBall, ap, a2.Simulator.Balls.Count);
                     AdvanceToRest(a2, RestCap);
@@ -2756,6 +2833,7 @@ namespace Billiards.Tests
                 try
                 {
                     PhysicsTestDrive k1 = NewAiDrive(p7BreakFlagGo, rackSeed: 58);
+                    k1.SetAiOpponentEnabledForDiagnostics(true);   // 这些子用例**直接驱动 AI 回合**，但**不走 StartMatch**（它重掷 rack 破坏确定性）
                     PlaceBreakCluster(k1);
                     AdvanceToRest(k1, RestCap);
                     k1.ruleState = new RuleState
@@ -2836,6 +2914,7 @@ namespace Billiards.Tests
                 try
                 {
                     PhysicsTestDrive v1 = NewAiDrive(p7AiPlaceGo, rackSeed: 59);
+                    v1.SetAiOpponentEnabledForDiagnostics(true);   // 这些子用例**直接驱动 AI 回合**，但**不走 StartMatch**（它重掷 rack 破坏确定性）
                     int vp = FirstCornerPocket(v1.tableConfig);
                     SetUpCleanPot(v1, AiCleanTargetBall, vp, v1.Simulator.Balls.Count);
 

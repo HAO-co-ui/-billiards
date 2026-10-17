@@ -1091,7 +1091,14 @@ namespace Billiards.UI
                 _matchStatus.text = showStatus ? status : string.Empty;
             }
 
-            // 中栏在**对战形态要显示**：`RACK 1`（小字）+ `YOUR SHOT`/`AI`（大字）。            // ⚠ 早前"对战隐藏中栏、把宽度让给两侧"的口径已被参考稿覆盖 —— 用户实机截图要求中栏有轮次信息，
+            // 中栏在**对战形态要显示**：`RACK 1`（小字）+ `YOUR SHOT`/`AI`（大字）。
+            // ⚠ 记分牌宽度**按模式切换**：对战 0.690（三段横排），练习 0.280（原三栏布局）。
+            //   练习态若也用宽版，中栏会**正好压在状态条上**（用户实机截图：`POCKETED 5/15` 与
+            //   `Clear the colors, then the 8 ball` 叠字）。
+            if (_boardZone != null)
+            {
+                _boardZone.anchorMax = new Vector2(aiMatch ? 0.690f : 0.300f, _boardZone.anchorMax.y);
+            }            // ⚠ 早前"对战隐藏中栏、把宽度让给两侧"的口径已被参考稿覆盖 —— 用户实机截图要求中栏有轮次信息，
             //   且实测"中栏空着 + 状态条还在"会被当成排版错误。
             if (_scoreLabel != null)
             {

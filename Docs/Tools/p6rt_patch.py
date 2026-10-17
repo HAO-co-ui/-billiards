@@ -406,6 +406,26 @@ PATCHES = {
     # ㉛ **仰角恒 0**（`StickElevationDegreesFor` 直接 return 0）⇒ **靶子 = (e)③ 仰角三条**
     #     （跨库穿模 θ=0 ⇒ 下表面 0.0206 < 库顶 0.0610；仰角单调 近/中/远 全 0°；最小角 4° 实测 0°）
     #     ⚠ 原先写的靶子"垂直下界那条"已删除（它对单机制缺失恒真，见 PracticeSessionTests 注释）
+    # ㉜ **删掉 AI 守卫里的 `!AiOpponentEnabled`** ⇒ 练习模式会被 AI 接管（P12-① 必红）
+    "p12-ai-guard-drop": (
+        PTD,
+        [
+            (
+                "if (!AiOpponentEnabled || MatchOver || !IsAiTurn || _settlementPending || _shotInFlight)",
+                "if (MatchOver || !IsAiTurn || _settlementPending || _shotInFlight)",
+            ),
+        ],
+    ),
+    # ㉝ **把 `!AiOpponentEnabled` 恒写成 `false`**（≠"恒允许"）⇒ 练习模式同样被 AI 接管（P12-① 必红）
+    "p12-ai-always-on": (
+        PTD,
+        [
+            (
+                "if (!AiOpponentEnabled || MatchOver || !IsAiTurn || _settlementPending || _shotInFlight)",
+                "if (false || MatchOver || !IsAiTurn || _settlementPending || _shotInFlight)",
+            ),
+        ],
+    ),
     "p11-elevation-zero": (
         "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
         [
