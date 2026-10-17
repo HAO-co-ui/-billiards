@@ -482,6 +482,32 @@ namespace Billiards.Physics
         /// <summary>**最近一次 AI 决策用的种子**（判据据此复现同一次决策）。（**只读出口**：供判据与诊断用；**不参与出杆路径**）</summary>
         public int LastAiSeed { get; private set; }
 
+        // ── AI 回合驱动（P6 收口：让"轮到 AI ⇒ 自己出一杆"在**运行期**真的发生）──────
+
+        /// <summary>
+        /// **AI"思考"停顿（秒）** —— 让玩家看得见"轮到对手了"。
+        /// ⚠ **可配置**且**走 `Advance(dt)`**（不是 `Update`/`FixedUpdate` 里的 sleep）⇒
+        /// 判据能用固定 dt 把 AI **确定性**推到"出手"那一刻。
+        /// </summary>
+        [Tooltip("AI 出杆前的思考停顿（秒）。")]
+        public float aiThinkSeconds = 1.0f;
+
+        /// <summary>
+        /// **AI 出杆种子的注入位**（照既有 `rackSeed` 的范式）：`>= 0` ⇒ 用
+        /// `aiLaunchSeed + (本局第几杆)`（**每杆都变**且**逐位可复现**）；`-1` ⇒ 每杆取真随机。
+        /// </summary>
+        [Tooltip("AI 出杆种子（-1 = 每杆真随机；>=0 = 可复现的起点种子）。")]
+        public int aiLaunchSeed = RandomRackSeed;
+
+        /// <summary>**AI 因无法出杆而把回合让给玩家的次数**（只读出口：判据不读像素）。</summary>
+        public int AiTurnYieldedCount { get; private set; }
+
+        /// <summary>本局 AI 已经**真的出杆**的次数（种子派生的单调计数；只读出口）。</summary>
+        public int AiLaunchCount => _aiLaunchCount;
+
+        private float _aiThinkElapsed;
+        private int _aiLaunchCount;
+
         // ── 比赛宿主（`Billiards.UI.IMatchHost`，P5-B）──────────────────────────
 
         /// <summary>本局的难度档（`StartMatch` 写入；UI 显示与 AI 决策**共用同一个真源**）。（**只读出口**：供判据与诊断用；**不参与出杆路径**）</summary>
@@ -773,6 +799,81 @@ namespace Billiards.Physics
             power = intent.power;
             SyncAimIndicator();
             return Launch();
+        }
+
+        /// <summary>
+        /// **本帧是否满足"AI 该出杆"的全部前提**（**单一判定点**；驱动器与判据共用，别各写一份）：
+        /// `MatchOver == false` **且** 轮到 AI **且** 没有待结算（`_settlementPending`）
+        /// **且** 没有在飞的杆（`_shotInFlight`）**且** 台面静止（既有 `TableAtRest`）。
+        ///
+        /// ⚠ **五个条件缺一不可**（每条都对应一种真实故障）：
+        /// · 少了 `MatchOver` ⇒ 结算后还在打（一局定胜负被破坏）；
+        /// · 少了 `IsAiTurn` ⇒ **玩家回合 AI 抢杆**（对局完全失控）；
+        /// · 少了 `_settlementPending` ⇒ 结算卡还没弹就被下一杆盖掉；
+        /// · 少了 `_shotInFlight` ⇒ 同一杆期间反复出杆；
+        /// · 少了 `TableAtRest` ⇒ 球还在滚就出杆，`Launch()` 会拒 ⇒ 白送一次"让位"。
+        /// </summary>
+        public bool AiTurnArmed
+        {
+            get
+            {
+                if (MatchOver || !IsAiTurn || _settlementPending || _shotInFlight)
+                {
+                    return false;
+                }
+
+                return _simulator != null && _simulator.TableAtRest;
+            }
+        }
+
+        /// <summary>
+        /// **AI 回合驱动 —— 唯一实现点**：`AiTurnArmed` 期间累计"思考"时间，到点就**只走**
+        /// <see cref="TryLaunchAiShot"/>（叫袋 / 袋号 / 初速全在它里面；本方法**不碰物理**）。
+        ///
+        /// ⚠ **为什么在 `Advance()` 里 tick**（与 `SettleShotIfAtRest()` 同一条理由）：
+        /// EditMode **不跑** `Update`/`FixedUpdate` ⇒ 判据只有靠固定 dt 推进 `Advance`
+        /// 才能**确定性**地把 AI 推到"出手"那一刻。
+        ///
+        /// ⚠ **绝不死锁**（用户实机报的第一硬伤）：`TryLaunchAiShot` 返回零向量
+        ///（意图为空 / 被门控拒）⇒ **显式把回合让给玩家**（`SetTurn(Player)` +
+        /// <see cref="AiTurnYieldedCount"/> +1 + `Debug.LogWarning`）。
+        /// **不允许**出现"`IsAiTurn` 长期为真 + 台面静止 + 没人出杆"。
+        /// </summary>
+        private void TickAiTurn(float elapsed)
+        {
+            if (!AiTurnArmed)
+            {
+                // 前提不成立（玩家回合 / 球还在滚 / 有杆在飞 / 有待结算 / 已结算）⇒ **计时归零**，
+                // 不许把"球在滚的那几帧"攒进去（否则一静止就立刻开打，看不出"思考"）。
+                _aiThinkElapsed = 0f;
+                return;
+            }
+
+            _aiThinkElapsed += elapsed;
+            if (_aiThinkElapsed < aiThinkSeconds)
+            {
+                return;
+            }
+
+            _aiThinkElapsed = 0f;
+
+            // 种子：**注入位**优先（判据可复现）；否则每杆真随机 ⇒ 同一局不会每杆都一样。
+            int seed = aiLaunchSeed >= 0
+                ? aiLaunchSeed + _aiLaunchCount
+                : System.Guid.NewGuid().GetHashCode();
+
+            Vector2 velocity = TryLaunchAiShot(MatchTier, seed);
+            if (velocity.magnitude > 0f)
+            {
+                _aiLaunchCount++;
+                return;
+            }
+
+            // **出路（b）：显式让位** —— 绝不静默卡住。
+            AiTurnYieldedCount++;
+            SetTurn(ShotTurn.Player);
+            Debug.LogWarning($"PhysicsTestDrive：AI 无法出杆（TryLaunchAiShot 返回零向量，seed={seed}）"
+                             + " ⇒ 把回合让给玩家（AiTurnYieldedCount +1）。", this);
         }
 
         /// <summary>
@@ -1093,6 +1194,12 @@ namespace Billiards.Physics
             // ⚠ 放在 `Advance` 里（而不是只放 `Update`/`FixedUpdate`）：**判据要在 EditMode 下确定性驱动它**
             // （EditMode 不跑 `Update`/`FixedUpdate`）—— 与上面 `TrackCueBallScratch()` 同一个理由。
             SettleShotIfAtRest();
+
+            // **AI 回合驱动**（**唯一实现点**）：轮到对手 ⇒ 停顿一拍 ⇒ **自己出一杆**。
+            // ⚠ 与上面 `SettleShotIfAtRest()` 同一条理由放在 `Advance` 里（EditMode 不跑
+            // `Update`/`FixedUpdate`）⇒ 判据能用固定 dt 确定性驱动"轮到 AI ⇒ 真的出手"。
+            // ⚠ 顺序：**先结算再驱动** —— 上一杆的判定可能正好把回合交给 AI。
+            TickAiTurn(elapsed);
 
             SyncVisual();
         }

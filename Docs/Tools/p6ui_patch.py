@@ -232,6 +232,17 @@ PATCHES = {
             ),
         ],
     ),
+    # ⑳ **倍率乘两次**（本轮唯一注入）：`CreateText` 里再乘一遍 `FontScale`
+    #    ⇒ `T148(d)` 的"视图里只准 1 次"必红（同时版式会变成 1.28² ≈ 1.64 倍）
+    "p9-font-scale-twice": (
+        r"Assets\_Project\Scripts\Runtime\UI\PracticeHudView.cs",
+        [
+            (
+                "text.fontSize = size * PracticeHudLayout.FontScale;",
+                "text.fontSize = size * PracticeHudLayout.FontScale * PracticeHudLayout.FontScale;",
+            ),
+        ],
+    ),
     # ⑭ **选袋槽位数被改小**（QA 修复轮 B10）：6 → 5
     #    ⇒ "槽位数 == 6"与"== TableConfig.PocketCount"两条独立断言必须红（旧写法是自指的、跟着绿）
     "p7-slot-count": (

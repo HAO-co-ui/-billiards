@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Billiards.UI
 {
@@ -46,7 +46,7 @@ namespace Billiards.UI
         public static readonly Rect BadgeLocal = new Rect(0.350f, 0.712f, 0.300f, 0.045f);
 
         /// <summary>标题（`Rack ended` / `Table cleared`，Barlow 38 px）。</summary>
-        public static readonly Rect TitleLocal = new Rect(0.06f, 0.593f, 0.88f, 0.075f);
+        public static readonly Rect TitleLocal = new Rect(0.06f, 0.588f, 0.88f, 0.080f);   // 0.593/0.075 → 0.588/0.080：38 px 标题 ×1.28 = 48.6 > 0.075×635=47.6 ⇒ **向下**长到 50.8（顶边 0.668 不变，仍与下面 0.566 的"为什么"行留 0.022 = 14 px 的缝）（T148(e)）
 
         /// <summary>副标题（失败原因，11 px 静音灰）。</summary>
         public static readonly Rect ReasonLocal = new Rect(0.06f, 0.521f, 0.88f, 0.045f);

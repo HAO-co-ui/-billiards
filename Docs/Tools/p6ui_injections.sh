@@ -67,6 +67,9 @@ case "$TAG" in
                             BASE="b861e49a598d9a53f6549acdd03d5b697fb9e3f1" ;;
   p8-ai-called-view-feed)   REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
                             BASE="7e55e457ab09fde9d970390301533bbaa9a712ec" ;;
+  # ── 字号整体放大（FontScale）一条 ──────────────────────────────────────────
+  p9-font-scale-twice)      REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
+                            BASE="c23f0aeccd1ee602ed1ad1a1fe5f43d01d3573e4" ;;
   *) echo "未登记的 tag：$TAG" >&2; exit 2 ;;
 esac
 
@@ -84,6 +87,28 @@ if [ ! -f "$LOCK" ] || [ "$(cut -d'|' -f1 < "$LOCK")" != "$OWNER" ]; then
 fi
 
 mkdir -p "$OUT"
+
+# ── ⓪' **共享预检（紧贴起跑）**：白名单外有"既非 --expect 也非 --accept-foreign"的改动 ⇒ **退 7**
+# ⚠ **位置必须在 `apply` 之前**：本脚本**没有 `trap`** —— 若先注入再被拦下，就必须自己保证还原。
+#   放在这里，窗口只多约 1 秒。
+# ⚠ **白名单只有一份**（在 `batch_precheck.sh` 里），本脚本**不另写一套**，只调用。
+# ⚠ 起因（真实事故）：`billiards-runtime` 11:04 查过 `git status` 是干净的，但 UI 侧 11:06:47
+#   把一个**未跑过**的判据存进工作区，它 11:06:50 起跑 ⇒ 全量把半成品编了进去、红名单里多一条无关红。
+#   ⇒ **「查过一次」不算干净 —— 检查会过期**。
+EXPECT_ARGS=(--expect "Assets/_Project/Scripts/Runtime/UI/*.cs"
+             --expect "Assets/_Project/Tests/EditMode/ClubUiTests.cs"
+             --expect "Docs/Tools/p6ui_*"
+             --expect "Docs/Tools/check_verify_dll.py")
+ACCEPT_ARGS=(--accept-foreign "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs"
+             --accept-foreign "Assets/_Project/Scripts/Runtime/Rules/EightBall*.cs"
+             --accept-foreign "Assets/_Project/Tests/EditMode/PhysicsTestDriveLaunchStateTests.cs"
+             --accept-foreign "Assets/_Project/Tests/EditMode/EightBallAiTests.cs"
+             --accept-foreign "Docs/Tools/p6rt_*"
+             --accept-foreign "Docs/35-C_*.md")
+if ! bash "$PROJECT/Docs/Tools/batch_precheck.sh" "${EXPECT_ARGS[@]}" "${ACCEPT_ARGS[@]}"; then
+  echo "⛔ [$TAG] 跑批前置检查未通过（白名单外有既非 --expect 也非 --accept-foreign 的改动）⇒ **不跑批**" >&2
+  exit 7
+fi
 
 # ── ① 备份（仓外）──────────────────────────────────────────────────────────
 cp "$TARGET" "$OUT/backup"

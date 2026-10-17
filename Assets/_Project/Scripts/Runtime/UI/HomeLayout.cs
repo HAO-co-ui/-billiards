@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Billiards.UI
 {
@@ -80,13 +80,13 @@ namespace Billiards.UI
         public static readonly Rect MatchIntroEyebrow = Px(
             CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX,
             CardTop + 34f,
-            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 12f);
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 16f);   // 12→16：字号整体放大 1.28 后 12 px 字号需要 ≥15.4 px 的带（T148(e)）
 
         /// <summary>大标题 `Tonight's match`（参考稿 35 px）。</summary>
         public static readonly Rect MatchIntroTitle = Px(
             CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX,
             CardTop + 52f,
-            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 46f);
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 50f);   // 46→50：38 px 标题 ×1.28 = 48.6 ⇒ 带高必须 ≥（T148(e)）
 
         /// <summary>己方头像（`You` 一侧）。</summary>
         public static readonly Rect MatchIntroPlayerIcon = Px(
@@ -115,8 +115,8 @@ namespace Billiards.UI
 
         /// <summary>赛制标题行的位置（文案见 `PracticeHudState.MatchIntroFormatTitle` —— **不再抄文案**）。</summary>
         public static readonly Rect MatchIntroFormatTitle = Px(
-            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 232f,
-            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 28f);
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 228f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 32f);   // 232/28 → 228/32：23 px ×1.28 = 29.4 ⇒ 带高 ≥；顶边由 260 不变、避开下面 262 的说明行（T148(e)）
 
         /// <summary>赛制说明行的位置（文案见 `PracticeHudState.MatchIntroFormatDetail` —— **不再抄文案**）。</summary>
         public static readonly Rect MatchIntroFormatDetail = Px(

@@ -190,11 +190,42 @@ namespace Billiards.UI
             return Mathf.Pow(2f, Mathf.Lerp(logWidth, logHeight, MatchWidthOrHeight));
         }
 
-        /// <summary>某设计字号在给定分辨率下的**实际像素高**（"两档可读"的可计算口径）。</summary>
+        /// <summary>
+        /// 某设计字号在给定分辨率下的**实际像素高**（"两档可读"的可计算口径）。
+        /// ⚠ 乘 <see cref="FontScale"/> —— 与 `PracticeHudView.CreateText` **同一个常量、同一处口径**
+        /// （两处不一致 => 这条判据预测的就不是屏幕上真实的东西）。**别在这里乘第二次**（`T148(d)` 守）。
+        /// </summary>
         public static float RenderedFontPixels(float designFontSize, int screenWidth, int screenHeight)
         {
-            return designFontSize * CanvasScale(screenWidth, screenHeight);
+            return designFontSize * CanvasScale(screenWidth, screenHeight) * FontScale;
         }
+
+        /// <summary>
+        /// **全局字号倍率 —— 唯一实现点**（用户实机反馈"字体太小，看不清" ⇒ 整体放大）。
+        ///
+        /// ── 为什么必须是一个常量、而不是逐个字号手调 ──────────────────────────────
+        /// 设计稿给的是**设计像素**（8 / 9 / 11 / 12 / 23 / 38 …），它们散在 `ClubUiTokens` 的字号阶梯里，
+        /// 且同时参与了各块的高度预算。逐个调会立刻散成"这块大一点、那块忘了调"的半新半旧界面
+        /// （与 35-A 重做前"令牌散落在两处视图"是同一类病）。⇒ **一个倍率 × 所有设计字号**。
+        ///
+        /// ── ⚠ 乘在哪：**不是** `RenderedFontPixels`，而是 `PracticeHudView.CreateText` ─────
+        /// 实测事实：`RenderedFontPixels` **全库只有一个调用者**，是**判据**
+        /// （`PracticeHudTests.T95 (e)` 的"1280×720 可读下限"）—— 它算的是"**预测**出来的物理像素高"，
+        /// **不驱动任何渲染**。真正写字号的地方**也只有一个**：`PracticeHudView.CreateText` 的
+        /// `text.fontSize = size`（HUD / 首页 / 赛前屏 / 结算卡 / 选袋条**全部**走它）。
+        /// ⇒ 倍率**必须**乘在 `CreateText`（那才叫"整体放大"）；`RenderedFontPixels` 乘**同一个** `FontScale`，
+        ///   否则它预测的像素高与实渲染不一致 ⇒ 可读性判据会变成**假陈述**。
+        /// ⇒ 两处引用**同一个常量** ⇒ 倍率仍然只有一个真源（判据 `T148(d)` 守"只准乘两次"）。
+        ///
+        /// ── 取值 **1.28** 的由来（不是审美）──────────────────────────────────────
+        /// · **参考分辨率 = 1920×1080**：`CanvasScale(1920,1080) = 1` ⇒ **设计像素 = 物理像素**。
+        ///   所以下面的数字就是"1080p 屏幕上真实多高"。
+        /// · 放大后：正文 `12 → 15.4 px`、标题 `38 → 48.6 px`、标签 `9 → 11.5 px`、结算统计 `27 → 34.6 px`。
+        /// · 排期小档 1280×720（`CanvasScale = 0.667`）：标签 `9 → 7.7 px`、正文 `12 → 10.2 px`
+        ///   —— 与 `MinReadablePixels = 9` 的意图一致（放大前正文只有 8 px）。
+        /// · 不取 1.3：收益仅 +1.6%，却让结算卡标题（635 高的卡里 0.080 的带）更贴边 ⇒ 取 **1.28**。
+        /// </summary>
+        public const float FontScale = 1.28f;
 
         /// <summary>`inner ⊆ outer`（四条边逐条判，容差 0）。</summary>
         public static bool ContainsFully(Rect outer, Rect inner)

@@ -100,6 +100,7 @@ CHECKS = [
         # 35-C P6（结算卡两形态 + 流程收口）
         "T146_MatchResult_TwoForms_FlowClosure_AndNoFalseAffordance",
         "T147_CallPocket_EntryLabelRefusal_AndNoSilence",
+        "T148_FontScale_SinglePoint_AppliedOnce_AndKeyAreasFit",
         "T145_AiShotEntry_PlanLaunchAndDiagnosticPurity",
         # ⚠ `T144_MatchIntro_…_AndNoFalseAffordance`（78 字符）**不列**：本检查按 `[\x20-\x7e]{3,60}`
         #    取"可打印 run" ⇒ 超过 60 字符的名字**不以裸名出现**，列它会**恒假红**（同 `SegmentScreenSkips`）。

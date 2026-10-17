@@ -381,8 +381,20 @@ namespace Billiards.UI
         public const float AvatarSize = 46f;
         public const float AvatarIconSize = 23f;
 
-        /// <summary>迷你球（记分牌里的剩余/已进球小圆）直径 `15`、字 `8`。</summary>
+        /// <summary>迷你球（记分牌里的剩余/已进球小圆）直径 `15`。</summary>
         public const float MiniBallSize = 15f;
+
+        /// <summary>
+        /// 迷你球上的号码字号 `8`（`style.css` `.mini-ball` 的设计值）。
+        ///
+        /// ⚠ **实测：这个常量目前没有任何使用者** —— 记分牌上的 15 个迷你球是**贴片精灵**（`ClubBallChips`），
+        /// 号码**烘在贴图里**、不走 TMP 文字（见 `PracticeHudView.BuildBallRow`）。
+        /// ⇒ 它**不参与** `PracticeHudLayout.FontScale` 的放大，也**不是**"字号例外"：
+        ///   没有文字，就没有可放大的东西。
+        /// ⚠ **将来若要给迷你球加文字**：字号**必须**走 `PracticeHudView.CreateText`（那里乘 `FontScale`）
+        ///   或 `PracticeHudLayout.RenderedFontPixels`，**不许**把这个常量直接写进 `text.fontSize` ——
+        ///   那会造出"全 UI 都放大了、只有这块没放大"的半新半旧界面（判据 `T148(d)` 守单点）。
+        /// </summary>
         public const float MiniBallFontSize = 8f;
 
         /// <summary>回合指示菱形 `5 × 5`。</summary>

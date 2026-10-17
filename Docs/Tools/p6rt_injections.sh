@@ -31,6 +31,9 @@
 #   eightpocket-freeze     ⑤ `ExtractFacts` 里把 `eightBallPocket` 写死 -1      ⇒ T145 ② 红
 #   ai-callpocket-drop     ⑥ 删「AI 打黑 8 自己指定袋」那一步                    ⇒ T145 (AI①) 红
 #   ai-never-launch        ⑦ `TryLaunchAiShot` 永不启动                         ⇒ T145 (AI②)「前提不成立」红
+#   ai-turn-player-guard-drop ⑧ 去掉「玩家回合不出手」守卫                      ⇒ T145 (AI驱动③) 红
+#   ai-turn-rest-gate-drop    ⑨ 去掉「台面静止」守卫                            ⇒ T145 (AI驱动②b) 红
+#   ai-turn-yield-drop        ⑩ 删掉「AI 无法出杆 ⇒ 让位」的出路                ⇒ T145 (AI驱动⑤) 红（= 会卡死）
 set -uo pipefail
 
 PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -48,7 +51,7 @@ OUT="$OUT_ROOT/inj_$TAG"
 
 # ── tag → 目标文件（多个 tag 可指向同一文件；基线按"文件"记，不按 tag）──────────
 case "$TAG" in
-  settle-unwire|rest-gate-drop|settlement-gate-break|callpocket-gate-drop|ai-callpocket-drop|ai-never-launch)
+  settle-unwire|rest-gate-drop|settlement-gate-break|callpocket-gate-drop|ai-callpocket-drop|ai-never-launch|ai-turn-player-guard-drop|ai-turn-rest-gate-drop|ai-turn-yield-drop)
                     REL="Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs" ;;
   eightpocket-freeze)
                     REL="Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs" ;;
@@ -65,6 +68,35 @@ tree_sig() {
   ( cd "$PROJECT" && find Assets -type f -name '*.cs' -print0 | sort -z | xargs -0 sha1sum ) \
     | sha1sum | cut -d' ' -f1
 }
+
+# ── **调用方自己的待提交文件**（交给共享预检）────────────────────────────────
+# ⚠ **噪声白名单只在 `Docs/Tools/batch_precheck.sh` 里维护一份**（`p6ui_*` 也调它）——
+#   这里只声明"**我自己的**改动"，别把噪声也抄进来。
+EXPECT_ARGS=()
+for _p in \
+  "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs" \
+  "Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs" \
+  "Assets/_Project/Scripts/Runtime/Rules/EightBallAi.cs" \
+  "Assets/_Project/Tests/EditMode/PhysicsTestDriveLaunchStateTests.cs" \
+  "Assets/_Project/Tests/EditMode/EightBallAiTests.cs" \
+  "Docs/Tools/p6rt_*.sh" \
+  "Docs/Tools/p6rt_*.py" \
+  "Docs/35-C_AI对战与8球规则_spec.md" ; do
+  EXPECT_ARGS+=(--expect "$_p")
+done
+
+# ── **已知的、对方在途的**文件（`--accept-foreign`）──────────────────────────
+# ⚠ 语义与 `--expect` **不同**（别混）：
+#   · `--expect`        = 「**这些是我要提交的**」
+#   · `--accept-foreign`= 「**这些是别人的、我知道且在途**」⇒ 放行但**留痕**
+# 默认**空**（严格）。两路并行时用 `BATCH_ACCEPT_FOREIGN="<glob> <glob>"` 显式放行，
+# 预检会打「⚠ 已接受外来在途改动：…」一行，被本脚本落进 `run.log` ⇒ 可审计。
+ACCEPT_ARGS=()
+if [ -n "${BATCH_ACCEPT_FOREIGN:-}" ]; then
+  for _g in ${BATCH_ACCEPT_FOREIGN}; do
+    ACCEPT_ARGS+=(--accept-foreign "$_g")
+  done
+fi
 
 mkdir -p "$OUT_ROOT"
 
@@ -118,6 +150,16 @@ if [ "$INJECTED" = "$BASE" ]; then
   exit 2
 fi
 echo "[$TAG] 注入态 sha1 = $INJECTED（基线 $BASE）"
+
+# ── ③.5 **共享前置检查（紧贴起跑）** ────────────────────────────────────────
+# ⚠ 「查过一次」不算干净 —— 别人的未提交改动可能在**你上一次检查之后**才落盘
+#   （实测：我 11:04:13 查过，另一位 11:06:47 才保存，我 11:06:50 起跑被污染，只差 2 分 34 秒）。
+#   ⇒ 检查放在**紧贴跑批**这里，且**机械化**（白名单只有一份，见 `batch_precheck.sh`）。
+if ! bash "$PROJECT/Docs/Tools/batch_precheck.sh" "${EXPECT_ARGS[@]}" ${ACCEPT_ARGS[@]+"${ACCEPT_ARGS[@]}"}; then
+  echo "⛔ [$TAG] 前置检查未通过（白名单外有**别人的未提交改动**）⇒ **不跑批**；" >&2
+  echo "   已注入的内容会由 trap 立即还原。确认可放行：BATCH_ACCEPT_DIRTY=1（会留痕）。" >&2
+  exit 7
+fi
 
 # ── ④ 跑全量（结果只认本次；跑批脚本自己先删旧 XML 并打印 mtime）───────────
 SIG_BEFORE="$(tree_sig)"

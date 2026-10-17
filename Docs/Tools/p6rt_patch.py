@@ -136,6 +136,41 @@ PATCHES = {
             ),
         ],
     ),
+    # ⑧ **去掉「玩家回合不出手」守卫** ⇒ AI 在**玩家回合**也抢杆（对局失控）
+    "ai-turn-player-guard-drop": (
+        PTD,
+        [
+            (
+                "                if (MatchOver || !IsAiTurn || _settlementPending || _shotInFlight)\n",
+                "                // INJ-P6RT-8：**去掉「玩家回合不出手」守卫**（预期 T145 (AI驱动③) 必红）\n"
+                "                if (MatchOver || _settlementPending || _shotInFlight)\n",
+            ),
+        ],
+    ),
+    # ⑨ **去掉「台面静止」守卫** ⇒ 球还在滚就出杆（`Launch()` 拒 ⇒ 白送一次「让位」）
+    "ai-turn-rest-gate-drop": (
+        PTD,
+        [
+            (
+                "                return _simulator != null && _simulator.TableAtRest;\n",
+                "                // INJ-P6RT-9：**去掉「台面静止」守卫**（预期 T145 (AI驱动②b) 必红）\n"
+                "                return _simulator != null;\n",
+            ),
+        ],
+    ),
+    # ⑩ **删掉「AI 无法出杆 ⇒ 让位」的出路** ⇒ `IsAiTurn` 长期为真、没人出杆 = **僵局**
+    "ai-turn-yield-drop": (
+        PTD,
+        [
+            (
+                "            // **出路（b）：显式让位** —— 绝不静默卡住。\n"
+                "            AiTurnYieldedCount++;\n"
+                "            SetTurn(ShotTurn.Player);\n",
+                "            // INJ-P6RT-10：**删掉「AI 无法出杆 ⇒ 让位」的出路**"
+                "（预期 T145 (AI驱动⑤) 必红 = 会卡死）\n",
+            ),
+        ],
+    ),
 }
 
 

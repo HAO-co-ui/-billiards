@@ -1170,6 +1170,11 @@ namespace Billiards.UI
         /// <summary>
         /// 建文本。`font` 为空时（例如未接线的测试探针）**仍然建出对象** ——
         /// 结构判据要能在没有字体资产的情况下跑，不能因为"字体没接"就整棵树建不出来。
+        ///
+        /// ⚠ **字号在这里乘全局倍率**（`PracticeHudLayout.FontScale`）—— 本方法是**全 UI 唯一**写
+        /// `text.fontSize` 的地方（HUD / 首页 / 赛前屏 / 结算卡 / 选袋条全部经它）⇒ 一个乘号 = 整体放大。
+        /// ⚠ **只准乘这一次**（判据 `T148(d)` 数 `* PracticeHudLayout.FontScale` 的出现次数）：
+        /// 乘两次会变成 1.28² ≈ 1.64，界面会当场崩掉版式。
         /// </summary>
         public static TextMeshProUGUI CreateText(Transform parent, string name, TMP_FontAsset font, float size,
                                                 Color color, TextAlignmentOptions alignment,
@@ -1178,7 +1183,7 @@ namespace Billiards.UI
             RectTransform rect = AddRect(parent, name, anchorMin, anchorMax);
             var text = rect.gameObject.AddComponent<TextMeshProUGUI>();
             text.font = font;
-            text.fontSize = size;
+            text.fontSize = size * PracticeHudLayout.FontScale;
             text.color = color;
             text.alignment = alignment;
             text.characterSpacing = 0f;   // 设计说明 §一：字距 0

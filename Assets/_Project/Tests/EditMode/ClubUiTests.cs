@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -1154,6 +1154,10 @@ namespace Billiards.Tests
         private const string MatchResultCopySourcePath =
             "Assets/_Project/Scripts/Runtime/UI/MatchResultCopy.cs";
 
+        /// <summary>`PracticeHudLayout` 的源码路径（`T148(d)` 的"字号倍率单点"断言用）。</summary>
+        private const string PracticeHudLayoutSourcePath =
+            "Assets/_Project/Scripts/Runtime/UI/PracticeHudLayout.cs";
+
         private const string PointerAimControllerSourcePath =
             "Assets/_Project/Scripts/Runtime/Physics/PointerAimController.cs";
 
@@ -1774,6 +1778,159 @@ namespace Billiards.Tests
         private static bool Same(Color32 a, Color32 b)
         {
             return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+        }
+
+        // ════════════════ T148 全局字号倍率（单点）+ 关键块不挤 ═══════════════
+
+        /// <summary>
+        /// **`T148`：字号整体放大（`FontScale`）—— 单点、真的生效、关键块不挤。**
+        ///
+        /// 起因（用户实机反馈之二）：**"字体太小，看不清"**。要求是**整体放大**，且**不许逐个字号手调**
+        /// （那会散成"这块大一点、那块忘了调"的半新半旧界面 —— 与 35-A 重做前"令牌散落两处视图"同一类病）。
+        ///
+        /// ── ⚠ 一个必须先说清的**实测事实**（它决定了实现路径）─────────────────────
+        /// `PracticeHudLayout.RenderedFontPixels` **不是渲染路径**：全库只有一个调用者，是判据
+        /// （`PracticeHudTests.T95 (e)` 的可读下限）。真正写字号的**唯一**地方是
+        /// `PracticeHudView.CreateText` 的 `text.fontSize = size`。
+        /// ⇒ 倍率乘在**那里**（才叫整体放大），`RenderedFontPixels` 乘**同一个常量**（否则它预测的
+        ///   像素高与实渲染不一致，可读性判据就成了假陈述）。⇒ 两处引用同一常量 ⇒ 倍率仍只有一个真源。
+        ///
+        /// ── 判据六组 ────────────────────────────────────────────────────────────
+        /// (a) `FontScale > 1`（本轮目标就是放大）；
+        /// (b) **真的乘上了**：参考分辨率 1920×1080（`CanvasScale = 1`）下预测像素高 **>** 设计字号；
+        /// (c) **单调**：设计字号 ↑ ⇒ 预测像素高 ↑；
+        /// (d) **单点**：`* FontScale` 在换算点里恰好 1 次、`* PracticeHudLayout.FontScale` 在视图里恰好 1 次、
+        ///     且 `.fontSize =` 全 UI 只有 1 处；
+        /// (e) **关键块不挤**：12 个容器的带高 ≥ **放大后**的字号（状态条说明行 / 选袋 6 格 / 赛前屏三档与标题赛制行 /
+        ///     结算卡标题·徽章·"为什么"行）。⚠ 这是"**单行 band 装得下字号**"的**下界**，不是 leading 保证
+        ///     （TMP 没有 mask ⇒ 超出不会自动裁切，只会压到邻行 ⇒ 这条守的就是"不压邻行"）；
+        /// (f) 结算卡标题带**不与**下面"为什么"行重叠（放大后重算过的缝）。
+        ///
+        /// **怎么打死它**：把 `CreateText` 的乘号**乘两次**（`p9-font-scale-twice`）⇒ (d) 红。
+        /// ⚠ 如实标注：`(a)(b)(c)` 是取值级断言，**(d) 才是"单点"那一刀**；`(e)(f)` 守的是版式预算。
+        /// </summary>
+        [Test]
+        public void T148_FontScale_SinglePoint_AppliedOnce_AndKeyAreasFit()
+        {
+            var failures = new List<string>();
+
+            // ── (a) 倍率 > 1 ──
+            if (!(PracticeHudLayout.FontScale > 1f))
+            {
+                failures.Add($"T148(a) `FontScale` 应 > 1（本轮目标是整体放大），实测 {PracticeHudLayout.FontScale:R}。");
+            }
+
+            // ── (b) 真的乘上了（参考分辨率 = 1920×1080，CanvasScale = 1）──
+            const int refW = 1920;
+            const int refH = 1080;
+            float labelPx = PracticeHudLayout.RenderedFontPixels(PracticeHudLayout.LabelFontSize, refW, refH);
+            if (!(labelPx > PracticeHudLayout.LabelFontSize))
+            {
+                failures.Add($"T148(b) 参考分辨率下 {PracticeHudLayout.LabelFontSize:R} px 的标签应被放大到 **>** "
+                             + $"{PracticeHudLayout.LabelFontSize:R} px，实测 {labelPx:R} ⇒ 倍率没乘进换算点。");
+            }
+
+            // ── (c) 单调 ──
+            float smallPx = PracticeHudLayout.RenderedFontPixels(9f, refW, refH);
+            float midPx = PracticeHudLayout.RenderedFontPixels(PracticeHudLayout.LabelFontSize, refW, refH);
+            float hugePx = PracticeHudLayout.RenderedFontPixels(ClubUiTokens.FontResultTitle, refW, refH);
+            if (!(smallPx < midPx && midPx < hugePx))
+            {
+                failures.Add($"T148(c) 预测像素高必须对设计字号**严格单调**，实测 9→{smallPx:R}、"
+                             + $"{PracticeHudLayout.LabelFontSize:R}→{midPx:R}、"
+                             + $"{ClubUiTokens.FontResultTitle:R}→{hugePx:R}。");
+            }
+
+            // ── (d) 单点：只准乘两次（换算点 1 次 + CreateText 1 次）──
+            string layoutSource = StripComments(ReadSourceOrNull(PracticeHudLayoutSourcePath));
+            string viewSource = StripComments(ReadSourceOrNull(PracticeHudViewSourcePath));
+
+            if (string.IsNullOrEmpty(layoutSource) || string.IsNullOrEmpty(viewSource))
+            {
+                failures.Add("T148(d) 读不到 `PracticeHudLayout.cs` / `PracticeHudView.cs` 的磁盘文本 ⇒ 单点守卫失效。");
+            }
+            else
+            {
+                int inLayout = Regex.Matches(layoutSource, @"\*\s*FontScale").Count;
+                int inView = Regex.Matches(viewSource, @"\*\s*PracticeHudLayout\.FontScale").Count;
+                int writes = Regex.Matches(viewSource, @"\.fontSize\s*=").Count;
+
+                if (inLayout != 1)
+                {
+                    failures.Add($"T148(d) 换算点里 `* FontScale` 应恰好 **1** 次，实测 {inLayout}"
+                                 + $" —— 乘两次会变成 {PracticeHudLayout.FontScale * PracticeHudLayout.FontScale:R} 倍。");
+                }
+
+                if (inView != 1)
+                {
+                    failures.Add($"T148(d) `PracticeHudView` 里 `* PracticeHudLayout.FontScale` 应恰好 **1** 次"
+                                 + $"（那是全 UI 唯一的字号写入点），实测 {inView}。");
+                }
+
+                if (writes != 1)
+                {
+                    failures.Add($"T148(d) 全 UI 应只有 **1** 处写 `.fontSize =`，实测 {writes} 处"
+                                 + " —— 多出来的那一处就是漏乘倍率的第二种字号来源。");
+                }
+            }
+
+            // ── (e) 关键块：band 高 ≥ 放大后的字号 ──
+            //  ⚠ 单位换算：`HomeLayout.Px(...)` 返回的是**归一化比例**（x 除 `ReferenceWidth`、y/高除
+            //    `ReferenceHeight`，见 `HomeLayout.Px`）⇒ 必须 ×`ReferenceHeight` 才回到设计 px。
+            //    （首版漏了这一步 ⇒ 带高算成 0.046 px、整组假红；**这是判据的单位错，不是产品缺陷**。）
+            //  ⚠ 两个比例（状态条 0.60、主行 0.46、说明行 0.42）取自 `PracticeHudView.BuildStatusBar`；
+            //    选袋格的 0.82 来自 `PracticeHudLayout.CallPocketButtonRect` 的 18% 缝。改那边要同改这里。
+            const float homeRefH = HomeLayout.ReferenceHeight;
+            float statusBarH = PracticeHudLayout.StatusZone.height * PracticeHudLayout.ReferenceHeight * 0.60f;
+            var bands = new (string Name, float Band, float Font)[]
+            {
+                ("状态条说明行", statusBarH * 0.42f, ClubUiTokens.FontCaption),
+                ("状态条主行", statusBarH * 0.46f, ClubUiTokens.FontBody),
+                ("选袋条单格",
+                    PracticeHudLayout.CallPocketButtonRect(0, PracticeHudLayout.CallPocketSlots).height
+                    * PracticeHudLayout.ReferenceHeight, ClubUiTokens.FontCaption),
+                ("赛前屏标题", HomeLayout.MatchIntroTitle.height * homeRefH, ClubUiTokens.FontResultTitle),
+                ("赛前屏小标", HomeLayout.MatchIntroEyebrow.height * homeRefH, ClubUiTokens.FontBody),
+                ("赛前屏赛制标题", HomeLayout.MatchIntroFormatTitle.height * homeRefH, ClubUiTokens.FontHomeAction),
+                ("赛前屏赛制说明", HomeLayout.MatchIntroFormatDetail.height * homeRefH, ClubUiTokens.FontSmall),
+                ("赛前屏档位小标", HomeLayout.MatchIntroTierLabel.height * homeRefH, ClubUiTokens.FontMicro),
+                ("赛前屏三档格",
+                    HomeLayout.MatchIntroTierSegment.height * homeRefH - ClubUiTokens.SegmentPadding * 2f,
+                    ClubUiTokens.FontBodySmall),
+                ("结算卡标题", PracticeResultLayout.TitleLocal.height * PracticeResultLayout.CardHeightPx,
+                    ClubUiTokens.FontResultTitle),
+                ("结算卡徽章", PracticeResultLayout.BadgeLocal.height * PracticeResultLayout.CardHeightPx,
+                    ClubUiTokens.FontCaption),
+                ("结算卡\"为什么\"行", PracticeResultLayout.ReasonLocal.height * PracticeResultLayout.CardHeightPx,
+                    ClubUiTokens.FontResultBody),
+            };
+
+            foreach ((string name, float band, float font) in bands)
+            {
+                float need = font * PracticeHudLayout.FontScale;
+                if (band < need)
+                {
+                    failures.Add($"T148(e) {name}：容器带高 {band:R} px 装不下放大后的字号 {need:R} px"
+                                 + $"（设计 {font:R} × {PracticeHudLayout.FontScale:R}）"
+                                 + " ⇒ **加容器高/减行距**，别把倍率调回去。");
+                }
+            }
+
+            // ── (f) 结算卡标题带不得压住"为什么"行（放大后重算过的缝）──
+            float titleBottom = PracticeResultLayout.TitleLocal.yMin;
+            float reasonTop = PracticeResultLayout.ReasonLocal.yMax;
+            if (titleBottom < reasonTop)
+            {
+                failures.Add($"T148(f) 结算卡标题（yMin {titleBottom:R}）压住了\"为什么\"行（yMax {reasonTop:R}）"
+                             + " ⇒ 放大字号后必须**加高/下移**标题带。");
+            }
+
+            Assert.IsEmpty(failures, "T148 失败：\n" + string.Join("\n", failures));
+            TestContext.WriteLine($"T148: FontScale = {PracticeHudLayout.FontScale:R}（参考 1920×1080，CanvasScale = 1）✓；"
+                                  + $"换算点放大生效（{PracticeHudLayout.LabelFontSize:R} → {labelPx:R} px）✓；单调 ✓；"
+                                  + "单点：换算点 1 次 + `CreateText` 1 次 + `.fontSize` 唯一写入点 ✓；"
+                                  + $"{bands.Length} 个关键块的带高都装得下放大后的字号 ✓；"
+                                  + "结算卡标题与\"为什么\"行不重叠 ✓");
         }
 
         // ════════════════ T147 P6-3：指定袋（call-pocket）的 UI 半边 ══════════════

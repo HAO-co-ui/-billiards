@@ -1829,6 +1829,252 @@ namespace Billiards.Tests
                     Object.DestroyImmediate(aiNormalGo);
                 }
 
+                // ── AI 回合驱动器（P6 收口）：① 真的出手 ② 一回合只出一杆 ②b 未静止不出杆
+                //    ③ 玩家回合不出手 ④ 结算后不出手 ⑤ 不死锁（无法出杆 ⇒ 显式让位）──
+                // 动机（用户实机）：`TryLaunchAiShot` 在**运行期零调用者** ⇒ 轮到 AI 就僵住
+                //（"怎么没有 AI 和我对战"）。本节钉住"轮到 AI ⇒ 停顿一拍 ⇒ 自己出一杆"真的发生。
+                var turnGo = new GameObject("T145AiTurn");
+                try
+                {
+                    PhysicsTestDrive td = NewAiDrive(turnGo, rackSeed: 21);
+                    int tp = FirstCornerPocket(td.tableConfig);
+                    SetUpCleanPot(td, AiCleanTargetBall, tp, td.Simulator.Balls.Count);   // 只剩 1 颗实色目标球
+                    AdvanceToRest(td, RestCap);
+                    td.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,
+                        solidRemaining = 3,   // 普通杆（不是打黑 8）
+                        stripeRemaining = 7,
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    td.SetTurn(ShotTurn.Ai);
+                    td.aiThinkSeconds = 0.2f;   // ⚠ **可配置** ⇒ 判据用固定 dt 推进，不 sleep
+
+                    // ── ②b 台面**未静止** ⇒ 不得出杆、也不得因误判而"让位" ──
+                    //    ⚠ 专钉"静止门"：去掉它 ⇒ 球还在滚时计时继续累加，到点就去出杆，
+                    //      而 `Launch()` 会拒 ⇒ 直接被判成「AI 无法出杆」⇒ 白送一次让位。
+                    td.Simulator.PlaceBall(AiCleanTargetBall,
+                        td.Simulator.Balls[AiCleanTargetBall].position, new Vector2(0.8f, 0f));
+                    int launchesBeforeMoving = td.LaunchCount;
+                    int yieldsBeforeMoving = td.AiTurnYieldedCount;
+                    for (int i = 0; i < 24; i++)   // 0.2 s：**刚好**越过 `aiThinkSeconds`
+                    {
+                        td.Advance(PoolSimulator.FixedDeltaTime);
+                    }
+
+                    if (td.LaunchCount != launchesBeforeMoving)
+                    {
+                        failures.Add("(AI驱动②b) 台面**未静止**时 AI 不得出杆（静止门失效 ⇒ 球还在滚就开打）。");
+                    }
+
+                    if (td.AiTurnYieldedCount != yieldsBeforeMoving)
+                    {
+                        failures.Add("(AI驱动②b) 台面未静止时**不得**误判「AI 无法出杆」而让位"
+                                     + "（那会把回合白送玩家），实测让位计数 "
+                                     + $"{yieldsBeforeMoving} → {td.AiTurnYieldedCount}。");
+                    }
+
+                    // 把干净局面摆回去（那颗被推走的球归位），再跑真正的一回合
+                    SetUpCleanPot(td, AiCleanTargetBall, tp, td.Simulator.Balls.Count);
+                    AdvanceToRest(td, RestCap);
+                    td.SetTurn(ShotTurn.Ai);
+
+                    // ── ① AI **真的出手**：用固定 dt 推进过 `aiThinkSeconds` ──
+                    int launchesBefore = td.LaunchCount;
+                    Vector2 cueBeforeTurn = td.Simulator.Balls[0].position;
+                    for (int i = 0; i < 300 && td.LaunchCount == launchesBefore; i++)
+                    {
+                        td.Advance(PoolSimulator.FixedDeltaTime);
+                    }
+
+                    if (td.LaunchCount == launchesBefore)
+                    {
+                        failures.Add("(AI驱动①) **前提不成立**：推进 300 步（2.5 s，> `aiThinkSeconds` 0.2 s）"
+                                     + "AI 仍未出杆 ⇒ 回合驱动器没接上"
+                                     + "（`IsAiTurn` 长期为真 + 台面静止 + 没人出杆 = 对局僵住）。");
+                    }
+                    else
+                    {
+                        // ── ② 一回合只出一杆：出手后再推 5 帧 ⇒ `LaunchCount` 不得再涨 ──
+                        for (int i = 0; i < 5; i++)
+                        {
+                            td.Advance(PoolSimulator.FixedDeltaTime);
+                        }
+
+                        if (td.LaunchCount != launchesBefore + 1)
+                        {
+                            failures.Add($"(AI驱动②) 同一次出手窗口内**不得**出现第二杆，实测 `LaunchCount` "
+                                         + $"{launchesBefore} → {td.LaunchCount}。");
+                        }
+
+                        // ① 续：白球**真的动了**（不是"没报错"）——
+                        //   `LaunchCount` 只在 `Launch()` 走到真出杆那一步才自增 ⇒ 它是
+                        //   「`_shotInFlight` 曾为真」的等价可观测出口。
+                        for (int i = 0; i < 120; i++)
+                        {
+                            td.Advance(PoolSimulator.FixedDeltaTime);
+                        }
+
+                        float moved = (td.Simulator.Balls[0].position - cueBeforeTurn).magnitude;
+                        if (moved <= 0.05f)
+                        {
+                            failures.Add($"(AI驱动①) AI 出杆后白球位移应 > 0.05 m，实测 {moved:F4} m"
+                                         + " ⇒ `LaunchCount` 涨了但球没动（不是真出杆）。");
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(turnGo);
+                }
+
+                // ── ③ **玩家回合**绝不出手 ──
+                var playerTurnGo = new GameObject("T145AiTurnPlayer");
+                try
+                {
+                    PhysicsTestDrive pd = NewAiDrive(playerTurnGo, rackSeed: 22);
+                    int pp = FirstCornerPocket(pd.tableConfig);
+                    SetUpCleanPot(pd, AiCleanTargetBall, pp, pd.Simulator.Balls.Count);
+                    AdvanceToRest(pd, RestCap);
+                    pd.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,
+                        solidRemaining = 3,
+                        stripeRemaining = 7,
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    // `CurrentTurn` 默认 = Player（**玩家回合**）
+                    pd.aiThinkSeconds = 0.1f;
+                    int launchesBeforePlayer = pd.LaunchCount;
+                    Vector2 cueBeforePlayer = pd.Simulator.Balls[0].position;
+                    for (int i = 0; i < 120; i++)   // 1 s = 10 × `aiThinkSeconds`
+                    {
+                        pd.Advance(PoolSimulator.FixedDeltaTime);
+                    }
+
+                    if (pd.LaunchCount != launchesBeforePlayer)
+                    {
+                        failures.Add($"(AI驱动③) **玩家回合**绝不许 AI 出杆，实测 `LaunchCount` "
+                                     + $"{launchesBeforePlayer} → {pd.LaunchCount}。");
+                    }
+
+                    if ((pd.Simulator.Balls[0].position - cueBeforePlayer).magnitude > 0.001f)
+                    {
+                        failures.Add("(AI驱动③) 玩家回合白球不得自发位移。");
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(playerTurnGo);
+                }
+
+                // ── ④ **结算后**绝不出手（`MatchOver` 制住后续杆）──
+                var overGo = new GameObject("T145AiTurnOver");
+                try
+                {
+                    PhysicsTestDrive od = NewAiDrive(overGo, rackSeed: 23);
+                    int op = FirstCornerPocket(od.tableConfig);
+                    SetUpCleanPot(od, AiCleanTargetBall, op, od.Simulator.Balls.Count);
+                    AdvanceToRest(od, RestCap);
+                    od.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,
+                        solidRemaining = 3,
+                        stripeRemaining = 7,
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    od.SetTurn(ShotTurn.Ai);
+                    od.aiThinkSeconds = 0.1f;
+                    od.ApplyVerdict(new RuleVerdict
+                    {
+                        gameOver = true,
+                        winner = ShotTurn.Player,
+                        nextTurn = ShotTurn.Ai,   // 回合仍指向 AI ⇒ **只有 `MatchOver` 能拦住**
+                        outcome = ShotOutcomeKind.LegalEightBallPotted,
+                    });
+                    od.TryConsumeSettlement();   // 把"待结算"清掉 ⇒ 只剩 `MatchOver` 这一道门
+                    int launchesBeforeOver = od.LaunchCount;
+                    for (int i = 0; i < 120; i++)
+                    {
+                        od.Advance(PoolSimulator.FixedDeltaTime);
+                    }
+
+                    if (!od.MatchOver)
+                    {
+                        failures.Add("(AI驱动④) 前提：`ApplyVerdict(gameOver)` 之后 `MatchOver` 应为 true。");
+                    }
+
+                    if (od.LaunchCount != launchesBeforeOver)
+                    {
+                        failures.Add($"(AI驱动④) **结算后**（`MatchOver == true`）绝不许再出杆（一局定胜负被破坏），"
+                                     + $"实测 `LaunchCount` {launchesBeforeOver} → {od.LaunchCount}。");
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(overGo);
+                }
+
+                // ── ⑤ **不死锁**：AI 无法出杆 ⇒ 必须**显式让位**（不许静默僵住）──
+                var stuckGo = new GameObject("T145AiTurnStuck");
+                try
+                {
+                    PhysicsTestDrive sd2 = NewAiDrive(stuckGo, rackSeed: 24);
+                    // 把所有**目标球**挪到台外 ⇒ AI 没有任何合法目标 ⇒ `Plan` 报"没打算"
+                    // ⇒ `TryLaunchAiShot` 返回零向量 ⇒ 驱动器**必须**让位。
+                    for (int ball = 0; ball < sd2.Simulator.Balls.Count; ball++)
+                    {
+                        if (ball == 0)
+                        {
+                            continue;
+                        }
+
+                        sd2.Simulator.PlaceBall(ball, new Vector2(0f, 50f + ball * 0.5f), Vector2.zero);
+                    }
+
+                    AdvanceToRest(sd2, RestCap);
+                    sd2.ruleState = new RuleState
+                    {
+                        groupState = GroupState.OpenTable,
+                        solidRemaining = 7,
+                        stripeRemaining = 7,
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    sd2.SetTurn(ShotTurn.Ai);
+                    sd2.aiThinkSeconds = 0.1f;
+                    int yieldsBeforeStuck = sd2.AiTurnYieldedCount;
+                    int launchesBeforeStuck = sd2.LaunchCount;
+                    for (int i = 0; i < 240; i++)   // 2 s = 20 × `aiThinkSeconds`
+                    {
+                        sd2.Advance(PoolSimulator.FixedDeltaTime);
+                    }
+
+                    if (sd2.LaunchCount != launchesBeforeStuck)
+                    {
+                        failures.Add("(AI驱动⑤) 前提：没有任何目标球时 AI 不可能真的出杆（`LaunchCount` 不该涨）。");
+                    }
+
+                    if (sd2.AiTurnYieldedCount != yieldsBeforeStuck + 1)
+                    {
+                        failures.Add($"(AI驱动⑤) AI **无法出杆**时必须**显式让位**（`AiTurnYieldedCount` 应 +1），"
+                                     + $"实测 {yieldsBeforeStuck} → {sd2.AiTurnYieldedCount} —— 否则就是"
+                                     + "「`IsAiTurn` 长期为真 + 台面静止 + 没人出杆」的僵局。");
+                    }
+
+                    if (sd2.CurrentTurn != ShotTurn.Player)
+                    {
+                        failures.Add($"(AI驱动⑤) 让位后回合应回到**玩家**，实测 {sd2.CurrentTurn}。");
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(stuckGo);
+                }
+
                 Assert.IsEmpty(failures, "T145（AI 出杆入口）失败：\n" + string.Join("\n", failures));
             }
             finally
