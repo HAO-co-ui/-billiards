@@ -1431,6 +1431,13 @@ namespace Billiards.UI
         /// <summary>点击按钮的短音（唯一入口；`poolAudio` 为空时静默，不抛）。</summary>
         private void PlayUiClick()
         {
+            // 场景里 `poolAudio` 可能没接线（本工程的 HUD 由生成器建树，历史上只接了 `drive`）
+            // ⇒ 为空就现找一次并缓存；找不到就静默（不抛）。
+            if (poolAudio == null)
+            {
+                poolAudio = Object.FindObjectOfType<PoolAudio>();
+            }
+
             if (poolAudio != null)
             {
                 poolAudio.PlayUiClick();

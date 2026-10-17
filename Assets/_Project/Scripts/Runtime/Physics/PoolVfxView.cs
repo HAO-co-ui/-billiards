@@ -115,11 +115,13 @@ namespace Billiards.Physics
         /// </summary>
         public const float PocketBurstDelaySeconds = SinkSlideFraction * SinkDurationSeconds;
 
+        // ⚠ **爆点数量由顶点预算锁死**：单帧顶点上界 1824 = 48 × 38（`T117③` / `T126④`），
+        //   加到 5 个会到 2016 ⇒ 直接判红。⇒ 数量维持 3，**爽感改为"飞得更远"**（`SparkTravelFactor`）。
         private const int SparkCount = 3;
         private const float PocketInset = 0.013f;
         private const float SparkSpreadRad = 0.65f;
         private const float SparkStartFactor = 1.03f;
-        private const float SparkTravelFactor = 0.65f;
+        private const float SparkTravelFactor = 0.9f;
 
         /// <summary>
         /// 击杆 / 碰球的**粉笔色**（**冷青蓝 ≈206°**，`#a9d8ff`）。

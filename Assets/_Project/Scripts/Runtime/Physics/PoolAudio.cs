@@ -588,10 +588,10 @@ namespace Billiards.Physics
         private const float UiClickMinIntervalSeconds = 0.05f;
 
         /// <summary>点击按钮的音量（dB）。比击球轻一档，避免"点一下比打球还响"。</summary>
-        private const float UiClickGainDb = -8f;
+        private const float UiClickGainDb = -3f;
 
         /// <summary>胜/负结算音的音量（dB）。要压过环境但不刺耳。</summary>
-        private const float OutcomeGainDb = -3f;
+        private const float OutcomeGainDb = 0f;
 
         private float _lastUiClickTime = -99f;
 
@@ -629,7 +629,11 @@ namespace Billiards.Physics
                 return;
             }
 
-            NextSource().PlayOneShot(clip, Mathf.Clamp01(Mathf.Pow(10f, gainDb / 20f)));
+            // ⚠ **必须重置 pitch**：音源是池化复用的，上一发可能被 `Emit` 设过变调
+            //   （落袋/撞库都有 pitch 因子）⇒ 不复位会让"点击音/胜负音"听起来忽高忽低甚至听不见。
+            AudioSource source = NextSource();
+            source.pitch = 1f;
+            source.PlayOneShot(clip, Mathf.Clamp01(Mathf.Pow(10f, gainDb / 20f)));
         }
 
         private AudioSource NextSource()
