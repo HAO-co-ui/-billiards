@@ -1428,6 +1428,15 @@ namespace Billiards.UI
             IsSettingsOpen = false;
         }
 
+        /// <summary>点击按钮的短音（唯一入口；`poolAudio` 为空时静默，不抛）。</summary>
+        private void PlayUiClick()
+        {
+            if (poolAudio != null)
+            {
+                poolAudio.PlayUiClick();
+            }
+        }
+
         /// <summary>`Back to club`：关面板 → **关掉 AI 对手** → 回首页。两个模式都能回。</summary>
         public void OnBackToClub()
         {
@@ -1527,7 +1536,7 @@ namespace Billiards.UI
             minusImage.raycastTarget = true;
             var minusButton = minus.gameObject.AddComponent<Button>();
             minusButton.targetGraphic = minusImage;
-            minusButton.onClick.AddListener(() => AdjustVolume(-0.1f));
+            minusButton.onClick.AddListener(() => { PlayUiClick(); AdjustVolume(-0.1f); });
             ApplyButtonTint(minusButton);
 
             // 轨道（只做视觉，不接收射线）：底色 + 按当前音量伸长的亮色条。
@@ -1547,7 +1556,7 @@ namespace Billiards.UI
             plusImage.raycastTarget = true;
             var plusButton = plus.gameObject.AddComponent<Button>();
             plusButton.targetGraphic = plusImage;
-            plusButton.onClick.AddListener(() => AdjustVolume(0.1f));
+            plusButton.onClick.AddListener(() => { PlayUiClick(); AdjustVolume(0.1f); });
             ApplyButtonTint(plusButton);
 
             // 右上 `Close`
@@ -1559,7 +1568,7 @@ namespace Billiards.UI
             closeImage.raycastTarget = true;
             var closeButton = close.gameObject.AddComponent<Button>();
             closeButton.targetGraphic = closeImage;
-            closeButton.onClick.AddListener(CloseSettings);
+            closeButton.onClick.AddListener(() => { PlayUiClick(); CloseSettings(); });
             ApplyButtonTint(closeButton);
 
             RefreshVolumeText();
@@ -1585,7 +1594,12 @@ namespace Billiards.UI
 
             var button = row.gameObject.AddComponent<Button>();
             button.targetGraphic = rowImage;
-            button.onClick.AddListener(action);
+            // 点击先出声，再执行动作（声音与动作同一处接线，不会出现"有的按钮有声音、有的没有"）。
+            button.onClick.AddListener(() =>
+            {
+                PlayUiClick();
+                action();
+            });
             ApplyButtonTint(button);
         }
 

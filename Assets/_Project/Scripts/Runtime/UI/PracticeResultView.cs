@@ -423,6 +423,9 @@ namespace Billiards.UI
         /// **唯一的落笔点**：四样东西（标题 / 徽章 / 说明 / 次键标签）与配色一起写 → 置 <see cref="IsOpen"/>。
         /// 两条展示路径**只能**经它写卡 —— 这样"两形态的差异项算全了吗"只有一个地方要审。
         /// </summary>
+        /// <summary>结算音源（场景未接线时 `Present` 会现找一次）。</summary>
+        public PoolAudio poolAudio;
+
         private void Present(MatchResultForm form, bool win, string title, string badge)
         {
             if (_card == null)
@@ -431,6 +434,15 @@ namespace Billiards.UI
             }
 
             CurrentForm = form;
+
+            // **胜/负结算音**：只在卡片真正弹出时响一次（`Present` 已被一次性闸门守着，不会重复）。
+            // 场景未接线时现找一次 `PoolAudio`（仅此处发生，不在每帧路径上）。
+            PoolAudio audio = poolAudio != null ? poolAudio : Object.FindObjectOfType<PoolAudio>();
+            if (audio != null)
+            {
+                audio.PlayOutcome(win);
+            }
+
             _title.text = title;
             _badgeText.text = badge;
 

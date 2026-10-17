@@ -87,6 +87,13 @@ namespace Billiards.Physics
         [Tooltip("落袋音（pocket）。")]
         public AudioClip pocketClip;
 
+        // ── UI / 结果音效（场景未接线时**从 Resources 兜底**：`Assets/_Project/Resources/{win,lose,click}.wav`）──
+        [Tooltip("胜利音（结算卡胜形态）。为空 ⇒ 读 Resources/win。")]
+        public AudioClip winClip;
+
+        [Tooltip("失败音（结算卡负形态）。为空 ⇒ 读 Resources/lose。")]
+        public AudioClip loseClip;
+
         [Tooltip("hit 尾音层借用的 UI 脆音（规格 §3.1）。为空 ⇒ 退回 hitClip。")]
         public AudioClip clickClip;
 
@@ -480,9 +487,35 @@ namespace Billiards.Physics
             }
         }
 
-        /// <summary>发一个声部；含 P3 帧内功率守（先丢 L2；pocket 豁免 P4）。</summary>
+        /// <summary>
+        /// **落袋让位窗口（秒）**：落袋响起后的这一小段里，碰球/撞库**临时降 6 dB**。
+        ///
+        /// 为什么不是"把落袋调更响"：音量表是**规格值**（`T118 L4` 钉死），而且层内功率和须 ≤ 类目标
+        /// （R-L 契约）—— 抬主层会越界。用户也不接受"削弱碰球"。
+        /// ⇒ 采用**侧链式让位**：只在落袋后 180 ms 内给碰球/撞库让路，之后立刻恢复原音量，
+        ///   听感上"进袋那一刻世界安静一下"，而不是整体变小声。
+        /// </summary>
+        private const float PocketDuckSeconds = 0.18f;
+
+        /// <summary>让位期间碰球/撞库的增益（0.5 ≈ −6 dB）。</summary>
+        private const float PocketDuckGainLinear = 0.5f;
+
+        private float _duckUntil = -1f;
+
+        /// <summary>发一个声部；含 P3 帧内功率守（先丢 L2；pocket 豁免 P4）+ **落袋让位**。</summary>
         private void Emit(AudioCue cue, AudioClip clip, float volume, float pitch, int layer)
         {
+            float now = Time.unscaledTime;
+            if (cue == AudioCue.Pocket)
+            {
+                // 落袋自己不受让位影响，并把窗口往后推。
+                _duckUntil = now + PocketDuckSeconds;
+            }
+            else if ((cue == AudioCue.Hit || cue == AudioCue.Rail) && now < _duckUntil)
+            {
+                volume *= PocketDuckGainLinear;
+            }
+
             float power = volume * volume;
             if (cue != AudioCue.Pocket && layer > 0 && _framePower + power > FramePowerLinearCap)
             {
@@ -547,6 +580,56 @@ namespace Billiards.Physics
                     cue = AudioCue.Hit;
                     return false;
             }
+        }
+
+        // ════════════════ UI / 结果音效（不走分层：它们是单发、无速度档）════════════════
+
+        /// <summary>同一帧内连点按钮只响一次的门（秒）。</summary>
+        private const float UiClickMinIntervalSeconds = 0.05f;
+
+        /// <summary>点击按钮的音量（dB）。比击球轻一档，避免"点一下比打球还响"。</summary>
+        private const float UiClickGainDb = -8f;
+
+        /// <summary>胜/负结算音的音量（dB）。要压过环境但不刺耳。</summary>
+        private const float OutcomeGainDb = -3f;
+
+        private float _lastUiClickTime = -99f;
+
+        /// <summary>**点击按钮**（设置面板 / 结算卡按钮）。节流 50 ms，防连点叠音。</summary>
+        public void PlayUiClick()
+        {
+            if (!audioEnabled || Time.unscaledTime - _lastUiClickTime < UiClickMinIntervalSeconds)
+            {
+                return;
+            }
+
+            _lastUiClickTime = Time.unscaledTime;
+            AudioClip clip = clickClip != null ? clickClip : Resources.Load<AudioClip>("click");
+            PlayUiOneShot(clip, UiClickGainDb);
+        }
+
+        /// <summary>**胜负结算音**（胜 = win / 负 = lose）。</summary>
+        public void PlayOutcome(bool win)
+        {
+            if (!audioEnabled)
+            {
+                return;
+            }
+
+            AudioClip clip = win
+                ? (winClip != null ? winClip : Resources.Load<AudioClip>("win"))
+                : (loseClip != null ? loseClip : Resources.Load<AudioClip>("lose"));
+            PlayUiOneShot(clip, OutcomeGainDb);
+        }
+
+        private void PlayUiOneShot(AudioClip clip, float gainDb)
+        {
+            if (clip == null)
+            {
+                return;
+            }
+
+            NextSource().PlayOneShot(clip, Mathf.Clamp01(Mathf.Pow(10f, gainDb / 20f)));
         }
 
         private AudioSource NextSource()
