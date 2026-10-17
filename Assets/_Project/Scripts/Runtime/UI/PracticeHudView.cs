@@ -1511,15 +1511,15 @@ namespace Billiards.UI
             divider.offsetMax = Vector2.zero;
             SetImage(divider.gameObject.AddComponent<Image>(), null, ClubUiTokens.LineMid);
 
-            SettingsButtonRow(card, "BackToClub", PracticeHudState.ButtonBackToClub, 0.60f, 0.78f, OnBackToClub);
-            SettingsButtonRow(card, "Quit", PracticeHudState.ButtonQuit, 0.42f, 0.56f, OnQuitGame);
+            SettingsButtonRow(card, "BackToClub", PracticeHudState.ButtonBackToClub, 0.655f, 0.765f, OnBackToClub);
+            SettingsButtonRow(card, "Quit", PracticeHudState.ButtonQuit, 0.525f, 0.635f, OnQuitGame);
 
             // ── 音量：标签 + 可视轨道 + 百分比 + 两个圆角步进键 ────────────────
             CreateText(card, "VolumeLabel", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
                 TextAlignmentOptions.Left, new Vector2(0.06f, 0.16f), new Vector2(0.34f, 0.30f))
                 .text = PracticeHudState.LabelVolume;
 
-            RectTransform minus = AddFramed(card, "VolumeDown", new Vector2(0.36f, 0.155f), new Vector2(0.465f, 0.305f),
+            RectTransform minus = AddFramed(card, "VolumeDown", new Vector2(0.395f, 0.175f), new Vector2(0.475f, 0.285f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusDialog);
             CreateText(minus, "Label", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
                 TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "-";
@@ -1531,15 +1531,15 @@ namespace Billiards.UI
             ApplyButtonTint(minusButton);
 
             // 轨道（只做视觉，不接收射线）：底色 + 按当前音量伸长的亮色条。
-            RectTransform rail = AddRect(card, "VolumeRail", new Vector2(0.49f, 0.196f), new Vector2(0.74f, 0.264f));
+            RectTransform rail = AddRect(card, "VolumeRail", new Vector2(0.50f, 0.205f), new Vector2(0.71f, 0.255f));
             SetImage(rail.gameObject.AddComponent<Image>(), null, ClubUiTokens.LineMid);
             _volumeFill = AddRect(rail, "Fill", Vector2.zero, Vector2.one);
             SetImage(_volumeFill.gameObject.AddComponent<Image>(), null, ClubUiTokens.Accent);
 
             _volumeValueText = CreateText(card, "VolumeValue", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
-                TextAlignmentOptions.Right, new Vector2(0.76f, 0.16f), new Vector2(0.86f, 0.30f));
+                TextAlignmentOptions.Center, new Vector2(0.725f, 0.17f), new Vector2(0.845f, 0.29f));
 
-            RectTransform plus = AddFramed(card, "VolumeUp", new Vector2(0.87f, 0.155f), new Vector2(0.975f, 0.305f),
+            RectTransform plus = AddFramed(card, "VolumeUp", new Vector2(0.855f, 0.175f), new Vector2(0.935f, 0.285f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusDialog);
             CreateText(plus, "Label", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
                 TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "+";
@@ -1551,7 +1551,7 @@ namespace Billiards.UI
             ApplyButtonTint(plusButton);
 
             // 右上 `Close`
-            RectTransform close = AddFramed(card, "Close", new Vector2(0.80f, 0.82f), new Vector2(0.96f, 0.94f),
+            RectTransform close = AddFramed(card, "Close", new Vector2(0.895f, 0.875f), new Vector2(0.955f, 0.935f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
             CreateText(close, "Label", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Muted,
                 TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "X";
@@ -1573,15 +1573,12 @@ namespace Billiards.UI
         private void SettingsButtonRow(RectTransform card, string name, string label, float yMin, float yMax,
                                        UnityEngine.Events.UnityAction action)
         {
-            RectTransform row = AddFramed(card, name, new Vector2(0.06f, yMin), new Vector2(0.94f, yMax),
+            // 尺寸收窄收矮（用户："按键小一点"），文案**居中**（"字体居中"）。
+            RectTransform row = AddFramed(card, name, new Vector2(0.16f, yMin), new Vector2(0.84f, yMax),
                 ClubUiTokens.ButtonEdgeSecondary, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusDialog);
 
             CreateText(row, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
-                TextAlignmentOptions.Left, new Vector2(0.055f, 0f), new Vector2(0.80f, 1f)).text = label;
-
-            // 右侧箭头：让"这一行是可点的动作"一眼看得出来。
-            AddFixed(row, "Go", ClubUiSprites.UiSprite.ArrowRight, ClubUiTokens.ButtonText,
-                new Vector2(0.925f, 0.5f), new Vector2(ClubUiTokens.ButtonArrowSize, ClubUiTokens.ButtonArrowSize));
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = label;
 
             var rowImage = row.GetComponent<Image>();
             rowImage.raycastTarget = true;
