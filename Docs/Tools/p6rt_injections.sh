@@ -70,14 +70,16 @@ OUT="$OUT_ROOT/inj_$TAG"
 
 # ── tag → 目标文件（多个 tag 可指向同一文件；基线按"文件"记，不按 tag）──────────
 case "$TAG" in
-  settle-unwire|rest-gate-drop|settlement-gate-break|ai-never-launch|ai-turn-player-guard-drop|ai-turn-rest-gate-drop|ai-turn-yield-drop|p7-group-drop|p7-ballinhand-drop|p7-ai-one-shot|p7-isbreak-never-clear|p7-ai-autoplace-drop|p8-pending-launch-gate-drop|p9-roster-stale|p9-cue-float-drop)
+  settle-unwire|rest-gate-drop|settlement-gate-break|ai-never-launch|ai-turn-player-guard-drop|ai-turn-rest-gate-drop|ai-turn-yield-drop|p7-group-drop|p7-ballinhand-drop|p7-ai-one-shot|p7-isbreak-never-clear|p7-ai-autoplace-drop|p8-pending-launch-gate-drop|p9-roster-stale|p9-cue-float-drop|p10-float-any-pending|p10-float-xy-fixed|p10-float-instant|p10-refuse-gate-drop|p10-refuse-gate-always)
                     REL="Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs" ;;
   p7-no-pot-turn)
                     REL="Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs" ;;
-  p8-cue-visible-in-flight)
+  p8-cue-visible-in-flight|p10-stick-awaiting-drop)
                     REL="Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs" ;;
   p9-tiers-flatten)
                     REL="Assets/_Project/Scripts/Runtime/Rules/EightBallAi.cs" ;;
+  p10-aim-awaiting-drop)
+                    REL="Assets/_Project/Scripts/Runtime/Physics/AimAssistController.cs" ;;
   *) echo "未登记的 tag：$TAG（见本文件头部的 tag 列表）" >&2; exit 2 ;;
 esac
 
@@ -99,6 +101,7 @@ EXPECT_ARGS=()
 for _p in \
   "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs" \
   "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs" \
+  "Assets/_Project/Scripts/Runtime/Physics/AimAssistController.cs" \
   "Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs" \
   "Assets/_Project/Scripts/Runtime/Rules/EightBallAi.cs" \
   "Assets/_Project/Tests/EditMode/PhysicsTestDriveLaunchStateTests.cs" \

@@ -112,9 +112,16 @@ namespace Billiards.Physics
         ///    否则最后几帧又会闪一下。判据 `T137` 守这条。
         /// </summary>
         public static bool ShouldShowAimAssist(bool predictionEnabled, bool tableAtRest, bool cueBallInPlay,
-                                               bool modalOpen, bool transitionActive)
+                                               bool modalOpen, bool transitionActive,
+                                               bool awaitingPlacement = false)
         {
-            return predictionEnabled && tableAtRest && cueBallInPlay && !modalOpen && !transitionActive;
+            // **P10-B**：待放置期间**不画**（用户："瞄准线残余在球桌上"）。
+            // ⚠ 与 A 同源：实机里"犯规自由球"那种待放**白球还在台上** ⇒ 只靠 `cueBallInPlay` 挡不住；
+            //   而且这时候玩家的心智是"先放球"，画瞄准线只会误导。
+            // 一旦为 false，`AimAssistView.LateUpdate` 会走既有的 `!controller.ShouldShow` 分支
+            // ⇒ 落到**唯一清空点** `HideAllAimVisuals()`（不另写清空逻辑）。
+            return predictionEnabled && tableAtRest && cueBallInPlay && !modalOpen && !transitionActive
+                   && !awaitingPlacement;
         }
 
         /// <summary>本组件当前是否应当绘制（把实时状态喂给 <see cref="ShouldShowAimAssist"/>）。</summary>
@@ -130,7 +137,9 @@ namespace Billiards.Physics
                     // 两个模态判据点：结算卡（`PracticeResultView`）与首页（`HomeView`）。
                     Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen,
                     // 取景转场（相机侧发布的中性状态；转场落终态才放开）
-                    Billiards.Core.CameraTransition.IsActive);
+                    Billiards.Core.CameraTransition.IsActive,
+                    // **P10-B**：待放置 ⇒ 不画（并在 `AimAssistView` 里落到唯一清空点）
+                    drive.IsWaitingForPlacement);
             }
         }
 

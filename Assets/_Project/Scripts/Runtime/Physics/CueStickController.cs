@@ -149,9 +149,14 @@ namespace Billiards.Physics
         ///   用户原话「AI 击玩球，画面上的球杆也要暂时消失」。等台面静止、相位回到 `Aim` 时自然重新出现。
         /// </summary>
         public static bool ShouldShowStick(bool flowVisible, bool cueBallInPlay, bool transitionActive,
-                                          bool homeViewOpen = false, bool shotInFlight = false)
+                                          bool homeViewOpen = false, bool shotInFlight = false,
+                                          bool awaitingPlacement = false)
         {
-            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen && !shotInFlight;
+            // **P10-A**：`awaitingPlacement` 是**显式**的一道门，不靠 `cueBallInPlay` 的副作用。
+            // 用户原话「白球浮空时不该有球杆」—— 实机里"犯规自由球"那种待放**白球还在台上**
+            // （`IsBallInPlay(0) == true`）⇒ 只靠 `cueBallInPlay` 挡不住，杆会照常画出来。
+            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen && !shotInFlight
+                   && !awaitingPlacement;
         }
 
         private void SyncStick()
@@ -174,7 +179,8 @@ namespace Billiards.Physics
             bool cueBallInPlay = drive.Simulator != null && drive.Simulator.IsBallInPlay(0);
             // **P8-D**：出杆后（球在飞的整段时间）**球杆整根隐藏** —— 用户要"暂时消失"，不是"冻在原地"。
             bool visible = ShouldShowStick(_flow.IsStickVisible, cueBallInPlay,
-                Billiards.Core.CameraTransition.IsActive, Billiards.UI.HomeView.IsOpen, drive.ShotInFlight);
+                Billiards.Core.CameraTransition.IsActive, Billiards.UI.HomeView.IsOpen, drive.ShotInFlight,
+                drive.IsWaitingForPlacement);
             if (_stickRenderer != null && _stickRenderer.enabled != visible)
             {
                 _stickRenderer.enabled = visible;

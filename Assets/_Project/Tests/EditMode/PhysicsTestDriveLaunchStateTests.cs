@@ -524,6 +524,16 @@ namespace Billiards.Tests
                     "T66：前提 —— 白球应确实滚离了开球位（否则本判据与“被摆回开球位”不可区分）。");
                 Assert.IsTrue(drive.Simulator.IsBallInPlay(0), "T66：前提 —— 白球应仍在场上（未入袋）。");
 
+                // ⚠ **P10 裁定 (a) 后的前提修正**：单球模式下每一杆都判"空杆犯规" ⇒ 会给对手自由球
+                //   ⇒ `IsWaitingForPlacement` 为真 ⇒ 第二杆会被"待放期一律拒杆"这道门拦下。
+                //   本项要测的是"**白球从停下的地方**出杆"，所以先把球**放回它停下的位置**（合法、且不改变本项语义），
+                //   再出杆。⇒ 旧前提"第二杆应被接受"**不是被打松，而是补上了规则要求的"先放球"**。
+                if (drive.IsWaitingForPlacement)
+                {
+                    Assert.IsTrue(drive.TryPlaceCueBall(stopped), "T66：前提 —— 应能把白球放回它停下的位置。");
+                    AdvanceToRest(drive, RestCap);
+                }
+
                 Assert.Greater(drive.Launch().magnitude, 0f, "T66：前提 —— 第二杆应被接受。");
                 Assert.IsFalse(drive.LastLaunchRespawnedCueBall, "T66：白球在场上，不得触发重摆。");
 
@@ -807,7 +817,7 @@ namespace Billiards.Tests
                 Assert.IsTrue(drive.PendingCueBallPlacement, "T70b：前提 —— 应处于待放球。");
 
                 var failures = new List<string>();
-                int refusedBefore = drive.RefusedPendingPlacementCount;
+                int refusedBefore = drive.RefusedLaunchWhileAwaitingCount;   // P10 裁定 (a)：待放期一律拒杆
                 int launchesBefore = drive.LaunchCount;
                 drive.aimDegrees = 180f;
                 drive.power = 1f;
@@ -821,10 +831,10 @@ namespace Billiards.Tests
                     failures.Add($"被拒时 `LaunchCount` 不该涨（{launchesBefore} → {drive.LaunchCount}）。");
                 }
 
-                if (drive.RefusedPendingPlacementCount != refusedBefore + 1)
+                if (drive.RefusedLaunchWhileAwaitingCount != refusedBefore + 1)
                 {
-                    failures.Add($"被拒**必须留痕**（`RefusedPendingPlacementCount` 应 +1），"
-                                 + $"实测 {refusedBefore} → {drive.RefusedPendingPlacementCount}。");
+                    failures.Add($"被拒**必须留痕**（`RefusedLaunchWhileAwaitingCount` 应 +1），"
+                                 + $"实测 {refusedBefore} → {drive.RefusedLaunchWhileAwaitingCount}。");
                 }
 
                 if (!drive.PendingCueBallPlacement)
@@ -1918,6 +1928,17 @@ namespace Billiards.Tests
                         failures.Add("(P7⑤) 头区自由球：**开球线之前**的落点应非法。");
                     }
 
+                    // ⚠ **必须先放好球**：P10 裁定 (a) 之后"待放期一律拒杆"这道门排在**更前面**
+                    //   ⇒ 不放球的话下面测到的是"待放拒杆"，不是"前向门"（会把两条门混成一条）。
+                    if (!h1.TryPlaceCueBall(new Vector2(lineX + 0.15f, 0.20f)))
+                    {
+                        failures.Add("(P7⑤) 前提不成立：头区合法落点应能放球。");
+                    }
+
+                    // ⚠ `PlaceBall` 会把"静止计数"清零 ⇒ 必须再推到静止，否则下一杆先被**静止门**拒
+                    //   （那样测到的是第三条门，`RefusedForwardCount` 当然不涨）。
+                    AdvanceToRest(h1, RestCap);
+
                     int fwdBefore = h1.RefusedForwardCount;
                     h1.aimDegrees = 0f;   // +x = **背向**头线（判定口径：前方 = −x）
                     h1.power = 0.5f;
@@ -2225,6 +2246,17 @@ namespace Billiards.Tests
                         {
                             failures.Add("(P7⑪) AI 拿了自由球却**没能出杆**。");
                         }
+
+                        // **P10 补**：这道"待放期一律拒杆"的门排在 `Launch()` 最前面 ⇒
+                        // AI 的**自动放球必须发生在出杆之前**，否则 AI 会被自己拒掉、每 tick 空转
+                        //（"AI 不出杆"的静默症状我们吃过一次：`TickAiTurn` 零调用者）。
+                        // ⚠ 判的是**不变量**（放球先于击出），不是"同一 tick"——AI 是分阶段的（瞄准→拉杆→击出），
+                        //   放球在 `AiShotPhase.None` 就完成了，击出在后面的 tick ⇒ 只要求"击出时已不在待放态"。
+                        if (v1.RefusedLaunchWhileAwaitingCount != 0)
+                        {
+                            failures.Add($"(P10-AI) AI 出杆**不许被「待放」门拒**（自动放球必须先于击出），"
+                                         + $"实测 RefusedLaunchWhileAwaitingCount={v1.RefusedLaunchWhileAwaitingCount}。");
+                        }
                     }
                 }
                 finally
@@ -2352,10 +2384,46 @@ namespace Billiards.Tests
                     else
                     {
                         float floatY = PhysicsTestDrive.CueBallFloatHeightMeters;
-                        if (Mathf.Abs(cueVisual.localPosition.y - floatY) > 1e-3f)
+                        float restY = PoolConstants.BallRadius;
+                        const float dt = 1f / 120f;
+
+                        // ── **P10-C：抬升必须是过渡，不是瞬移** ──
+                        // 先推 1/4 的过渡时长 ⇒ 高度应**严格夹在两端之间**（既不是台面、也不是悬浮位）。
+                        int quarterSteps = Mathf.Max(1, Mathf.RoundToInt(0.25f * 0.25f / dt));  // cueFloatTransitionSeconds=0.25 ⇒ 0.0625 s
+                        for (int i = 0; i < quarterSteps; i++)
                         {
-                            failures.Add($"(P9-D) 待放态白球应被**抬到悬浮位**（世界 Y ≈ {floatY:F2} m，离台 12 cm），"
-                                         + $"实测 localY={cueVisual.localPosition.y:F4} ⇒ 白球还躺在台布上（用户看不到「拿起来」）。");
+                            f1.Advance(dt);
+                        }
+
+                        float midY = cueVisual.localPosition.y;
+                        if (!(midY > restY + 1e-4f && midY < floatY - 1e-4f))
+                        {
+                            failures.Add($"(P10-C) 抬起必须**过渡**：中途高度应严格夹在 {restY:F4} 与 {floatY:F2} 之间，"
+                                         + $"实测 {midY:F4} ⇒ 是**瞬移**（用户：「不要马上出现，应该丝滑地过渡」）。");
+                        }
+
+                        // 再推足剩余时长 ⇒ 应稳定停在悬浮位
+                        for (int i = 0; i < Mathf.CeilToInt(0.60f / dt); i++)
+                        {
+                            f1.Advance(dt);
+                        }
+
+                        if (Mathf.Abs(cueVisual.localPosition.y - floatY) > 2e-3f)
+                        {
+                            failures.Add($"(P9-D) 待放态白球应**停在悬浮位**（世界 Y ≈ {floatY:F2} m），"
+                                         + $"实测 localY={cueVisual.localPosition.y:F4}。");
+                        }
+
+                        // **P10-A2③**：**落袋**待放的横向必须是"拿出来"那个固定落点（设计意图，不是瞬移）
+                        Vector3 floatXY = f1.CueBallFloatWorldPosition;
+                        float dxz = Mathf.Sqrt(
+                            (cueVisual.localPosition.x - floatXY.x) * (cueVisual.localPosition.x - floatXY.x)
+                            + (cueVisual.localPosition.z - floatXY.z) * (cueVisual.localPosition.z - floatXY.z));
+                        if (dxz > 2e-3f)
+                        {
+                            failures.Add($"(P10-A2③) **落袋**待放的白球应出现在「拿出来」的固定落点 "
+                                         + $"({floatXY.x:F3},{floatXY.z:F3})，实测 ({cueVisual.localPosition.x:F3},"
+                                         + $"{cueVisual.localPosition.z:F3})，偏差 {dxz * 1000f:F2} mm。");
                         }
 
                         if (!f1.TryPlaceCueBall(Vector2.zero))
@@ -2364,12 +2432,30 @@ namespace Billiards.Tests
                         }
                         else
                         {
-                            if (Mathf.Abs(cueVisual.localPosition.y - floatY) < 1e-3f)
+                            // ── **P10-C：落下同样是过渡** ──
+                            for (int i = 0; i < quarterSteps; i++)
                             {
-                                failures.Add("(P9-D) 放好之后白球应**落回台面**（不应还停在悬浮高度）。");
+                                f1.Advance(dt);
                             }
 
-                            AdvanceToRest(f1, RestCap);
+                            float midDown = cueVisual.localPosition.y;
+                            if (!(midDown < floatY - 1e-4f && midDown > restY + 1e-4f))
+                            {
+                                failures.Add($"(P10-C) **落下**也必须过渡：中途高度应严格夹在 {restY:F4} 与 {floatY:F2} 之间，"
+                                             + $"实测 {midDown:F4} ⇒ 是瞬移。");
+                            }
+
+                            for (int i = 0; i < Mathf.CeilToInt(0.60f / dt); i++)
+                            {
+                                f1.Advance(dt);
+                            }
+
+                            if (Mathf.Abs(cueVisual.localPosition.y - restY) > 2e-3f)
+                            {
+                                failures.Add($"(P9-D) 放好之后白球应**落回台面**（Y ≈ {restY:F4}），"
+                                             + $"实测 localY={cueVisual.localPosition.y:F4}。");
+                            }
+
                             if (f1.Launch().magnitude <= 0f)
                             {
                                 failures.Add("(P9-D) 放好之后应能**正常出杆**。");
@@ -2380,6 +2466,177 @@ namespace Billiards.Tests
                 finally
                 {
                     Object.DestroyImmediate(p9dGo);
+                }
+
+                // ── P10-A/B 待放置时**没有球杆、没有瞄准线**（用户：「白球浮空时不该有球杆」「瞄准线残余在球桌上」）──
+                // ⚠ 关键：实机里"**犯规自由球**"那种待放**白球还在台上**（`IsBallInPlay(0) == true`）
+                //   ⇒ 只靠 `cueBallInPlay` 挡不住 ⇒ 必须有**显式** `awaitingPlacement` 门。
+                if (CueStickController.ShouldShowStick(true, true, false, false, false, awaitingPlacement: true))
+                {
+                    failures.Add("(P10-A) 待放置时球杆必须**不可见**（显式 `awaitingPlacement` 门），"
+                                 + "实测仍返回可见 ⇒ 白球还在台上的那种待放（犯规自由球）挡不住。");
+                }
+
+                if (!CueStickController.ShouldShowStick(true, true, false, false, false, awaitingPlacement: false))
+                {
+                    failures.Add("(P10-A) 放下之后球杆必须**回来**（`awaitingPlacement == false` ⇒ true）。");
+                }
+
+                if (AimAssistController.ShouldShowAimAssist(true, true, true, false, false, awaitingPlacement: true))
+                {
+                    failures.Add("(P10-B) 待放置时瞄准线**不许画**（应落到唯一清空点 `HideAllAimVisuals()`），实测仍返回可见。");
+                }
+
+                if (!AimAssistController.ShouldShowAimAssist(true, true, true, false, false, awaitingPlacement: false))
+                {
+                    failures.Add("(P10-B) 放下之后瞄准线必须**回来**。");
+                }
+
+                // ── P10-A2（**定稿**）：**两种待放都要抬**（犯规自由球是 ball-in-hand 的重放入口），
+                //    但**横向位置按来源分**：犯规 ⇒ 它自己的位置（不许瞬移到台心）；落袋 ⇒ 拿出来那个落点。
+                var p10Go = new GameObject("T145P10FloatScope");
+                try
+                {
+                    PhysicsTestDrive b1 = NewAiDrive(p10Go, rackSeed: 63);
+                    var cueVisual2 = new GameObject("P10CueVisual").transform;
+                    b1.ballVisuals = new[] { cueVisual2 };
+                    int bp = FirstCornerPocket(b1.tableConfig);
+                    SetUpCleanPot(b1, 3, bp, b1.Simulator.Balls.Count);
+                    AdvanceToRest(b1, RestCap);
+                    b1.SetTurn(ShotTurn.Player);
+
+                    // **犯规自由球**：白球**仍在台上**，但进入了待放态
+                    b1.ApplyVerdict(new RuleVerdict
+                    {
+                        nextTurn = ShotTurn.Player,
+                        winner = ShotTurn.Player,
+                        ballInHand = BallInHandKind.FullTable,
+                    });
+
+                    var p10Failures = new List<string>();
+                    const float dt2 = 1f / 120f;
+                    if (!b1.IsWaitingForPlacement)
+                    {
+                        p10Failures.Add("(P10-A2) 前提不成立：犯规自由球应进入待放态。");
+                    }
+                    else if (!b1.Simulator.IsBallInPlay(0))
+                    {
+                        p10Failures.Add("(P10-A2) 前提不成立：本项要的是**白球仍在台上**的待放。");
+                    }
+                    else
+                    {
+                        Vector2 ownPhysics = b1.Simulator.Balls[0].position;
+
+                        // 推足整个过渡（"推一帧 ≠ 到达稳态" —— 上次的真空教训）
+                        for (int i = 0; i < Mathf.CeilToInt(1.5f * PhysicsTestDrive.CueFloatTransitionSeconds / dt2)
+                             + Mathf.CeilToInt(0.3f / dt2); i++)
+                        {
+                            b1.Advance(dt2);
+                        }
+
+                        // ① **必须抬起来**（这是"被拿在手上"的唯一视觉信号；不抬玩家就不知道点击=放球）
+                        float y2 = cueVisual2.localPosition.y;
+                        if (Mathf.Abs(y2 - PhysicsTestDrive.CueBallFloatHeightMeters) > 2e-3f)
+                        {
+                            p10Failures.Add("(P10-A2①) **犯规自由球待放也必须悬浮**（那是 ball-in-hand 的重放入口；"
+                                            + "不抬的话画面零信号，玩家想瞄一按就把球挪走），"
+                                            + $"实测 localY={y2:F4}（应 ≈ {PhysicsTestDrive.CueBallFloatHeightMeters:F2}）。");
+                        }
+
+                        // ② **横向不瞬移**：应停在它自己的物理位置，而不是"拿出来"那个固定落点
+                        Vector3 ownWorld = PoolGeometry.PhysicsBallToUnity(ownPhysics);
+                        Vector3 floatWorld = b1.CueBallFloatWorldPosition;
+                        float dOwn = Mathf.Sqrt(
+                            (cueVisual2.localPosition.x - ownWorld.x) * (cueVisual2.localPosition.x - ownWorld.x)
+                            + (cueVisual2.localPosition.z - ownWorld.z) * (cueVisual2.localPosition.z - ownWorld.z));
+                        float dFloat = Mathf.Sqrt(
+                            (cueVisual2.localPosition.x - floatWorld.x) * (cueVisual2.localPosition.x - floatWorld.x)
+                            + (cueVisual2.localPosition.z - floatWorld.z) * (cueVisual2.localPosition.z - floatWorld.z));
+                        if (dOwn > 1e-3f)
+                        {
+                            p10Failures.Add($"(P10-A2②) 犯规自由球抬起时**横向不瞬移**：应停在它自己的位置 "
+                                            + $"({ownWorld.x:F3},{ownWorld.z:F3})，实测 ({cueVisual2.localPosition.x:F3},"
+                                            + $"{cueVisual2.localPosition.z:F3})，偏差 {dOwn * 1000f:F2} mm。");
+                        }
+
+                        if (dFloat < 1e-3f && dOwn > 1e-3f)
+                        {
+                            p10Failures.Add("(P10-A2②) 横向落点等于**「拿出来」的固定落点** ⇒ 犯规自由球被瞬移到台心。");
+                        }
+                    }
+
+                    failures.AddRange(p10Failures);
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p10Go);
+                }
+
+                // ── P10 裁定 (a)：**待放期一律拒杆**，且**不许拒过头**（三条负路径）──
+                var p10RefuseGo = new GameObject("T145P10Refuse");
+                try
+                {
+                    PhysicsTestDrive q1 = NewAiDrive(p10RefuseGo, rackSeed: 64);
+                    AdvanceToRest(q1, RestCap);
+
+                    // ① **开球那杆不许被拒**（`IsWaitingForPlacement` 必须是 false）
+                    if (q1.IsWaitingForPlacement)
+                    {
+                        failures.Add("(P10-拒杆①) 前提不成立：开局不应处于待放态。");
+                    }
+
+                    q1.SetTurn(ShotTurn.Player);
+                    q1.aimDegrees = 180f;
+                    q1.power = 0.6f;
+                    if (q1.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(P10-拒杆①) **开球那一杆不许被拒**（拒过头了）—— 实测返回零向量。");
+                    }
+
+                    AdvanceToRest(q1, RestCap);
+
+                    // ③ 待放期开杆 ⇒ 零向量 + 计数 +1
+                    PotCueBall(q1);
+                    if (!q1.IsWaitingForPlacement)
+                    {
+                        failures.Add("(P10-拒杆③) 前提不成立：白球入袋后应进入待放态。");
+                    }
+                    else
+                    {
+                        int refuseBefore = q1.RefusedLaunchWhileAwaitingCount;
+                        q1.aimDegrees = 180f;
+                        q1.power = 0.6f;
+                        if (q1.Launch().magnitude > 0f)
+                        {
+                            failures.Add("(P10-拒杆③) **待放期开杆必须被拒**（球是被拿在手上的），实测打出去了。");
+                        }
+
+                        if (q1.RefusedLaunchWhileAwaitingCount != refuseBefore + 1)
+                        {
+                            failures.Add($"(P10-拒杆③) 被拒**必须留痕**（`RefusedLaunchWhileAwaitingCount` 应 +1），"
+                                         + $"实测 {refuseBefore} → {q1.RefusedLaunchWhileAwaitingCount}。");
+                        }
+
+                        // ② 放置完成后的第一杆必须**成功**
+                        if (!q1.TryPlaceCueBall(Vector2.zero))
+                        {
+                            failures.Add("(P10-拒杆②) 前提不成立：原点应是合法落点。");
+                        }
+                        else
+                        {
+                            AdvanceToRest(q1, RestCap);
+                            q1.aimDegrees = 180f;
+                            q1.power = 0.6f;
+                            if (q1.Launch().magnitude <= 0f)
+                            {
+                                failures.Add("(P10-拒杆②) 放置完成后的第一杆必须**成功**（不许拒过头）。");
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p10RefuseGo);
                 }
 
                 Assert.IsEmpty(failures, "T145（AI 出杆入口）失败：\n" + string.Join("\n", failures));

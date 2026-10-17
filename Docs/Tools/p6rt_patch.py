@@ -200,9 +200,11 @@ PATCHES = {
         "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
         [
             (
-                "            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen && !shotInFlight;\n",
+                "            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen && !shotInFlight\n"
+                "                   && !awaitingPlacement;\n",
                 "            // INJ-P8-1：**出杆期间仍可见**（删掉 `!shotInFlight`）\n"
-                "            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen;\n",
+                "            return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen\n"
+                "                   && !awaitingPlacement;\n",
             ),
         ],
     ),
@@ -299,12 +301,90 @@ PATCHES = {
         PTD,
         [
             (
-                "                    if (i == 0 && PendingCueBallPlacement)\n"
-                "                    {\n"
-                "                        SyncFloatingCueBall(ballVisuals[i], CueBallFloatWorldPosition);\n"
-                "                        continue;\n"
-                "                    }\n",
-                "                    // INJ-P9-3：**删掉「待放态把白球抬起来」**（预期 T145 (P9-D) 必红）\n",
+                # ⚠ 只锚**代码行**（不锚注释：注释里带引号，锚点一碰就碎）
+                "if (i == 0 && _cueFloatHeight > PoolConstants.BallRadius + 1e-4f)\n",
+                "if (i == 0 && false && _cueFloatHeight > PoolConstants.BallRadius + 1e-4f)   "
+                "// INJ-P9-3：**永不抬球**（预期 P9-D / P10-C 必红）\n",
+            ),
+        ],
+    ),
+    # ㉑ **删掉球杆的「待放置」门** ⇒ 白球还在台上的那种待放会照常画出球杆（P10-A 必红）
+    "p10-stick-awaiting-drop": (
+        "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
+        [
+            (
+                "                   && !awaitingPlacement;\n",
+                "                   ;\n",
+            ),
+        ],
+    ),
+    # ㉒ **删掉瞄准线的「待放置」门** ⇒ 瞄准线残留（P10-B 必红）
+    "p10-aim-awaiting-drop": (
+        "Assets/_Project/Scripts/Runtime/Physics/AimAssistController.cs",
+        [
+            (
+                "                   && !awaitingPlacement;\n",
+                "                   ;\n",
+            ),
+        ],
+    ),
+    # ㉓ **INJ-A2-a**：把 `awaiting` 收窄回「待放 **且** 白球不在场上」
+    #     ⇒ 犯规自由球（球在台上）不再悬浮 ⇒ **只有 P10-A2① 红**（② 仍绿：横向本来就用自己的位置）
+    "p10-float-any-pending": (
+        PTD,
+        [
+            (
+                "            bool awaiting = PendingCueBallPlacement;\n"
+                "            float target = awaiting ? CueBallFloatHeightMeters : PoolConstants.BallRadius;\n",
+                "            bool awaiting = PendingCueBallPlacement && !_simulator.IsBallInPlay(0);\n"
+                "            float target = awaiting ? CueBallFloatHeightMeters : PoolConstants.BallRadius;\n",
+            ),
+        ],
+    ),
+    # ㉓b **INJ-A2-b**：横向无条件用「拿出来」的固定落点 ⇒ **只有 P10-A2② 红**
+    # ㉕ **删掉「待放期一律拒杆」那道门** ⇒ P10-拒杆③ 必红
+    "p10-refuse-gate-drop": (
+        PTD,
+        [
+            (
+                "            if (IsWaitingForPlacement)\n"
+                "            {\n"
+                "                RefusedLaunchWhileAwaitingCount++;\n"
+                "                return Vector2.zero;\n"
+                "            }\n",
+                "            // INJ-P10-5：**删掉「待放期一律拒杆」**（预期 P10-拒杆③ 必红）\n",
+            ),
+        ],
+    ),
+    # ㉖ **把门写成恒真** ⇒ 连开球也被拒 ⇒ P10-拒杆① 必红
+    "p10-refuse-gate-always": (
+        PTD,
+        [
+            (
+                "            if (IsWaitingForPlacement)\n",
+                "            if (true)   // INJ-P10-6：**恒真 ⇒ 连开球也拒**（预期 P10-拒杆① 必红）\n",
+            ),
+        ],
+    ),
+    "p10-float-xy-fixed": (
+        PTD,
+        [
+            (
+                "                        Vector2 xy = awaiting\n"
+                "                            ? (offTable ? CueBallFloatPhysicsPosition : balls[0].position)\n"
+                "                            : balls[0].position;\n",
+                "                        Vector2 xy = awaiting ? CueBallFloatPhysicsPosition : balls[0].position;\n",
+            ),
+        ],
+    ),
+    # ㉔ **把悬浮过渡时长设为 0**（瞬移）⇒ P10-C 的"中途夹在两端之间"必红
+    "p10-float-instant": (
+        PTD,
+        [
+            (
+                "        public const float CueFloatTransitionSeconds = 0.25f;\n",
+                "        // INJ-P10-4：**过渡时长设为 0 ⇒ 瞬移**（预期 P10-C 中途断言必红）\n"
+                "        public const float CueFloatTransitionSeconds = 0f;\n",
             ),
         ],
     ),

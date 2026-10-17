@@ -262,6 +262,17 @@ namespace Billiards.Physics
         public const float CueBallFloatHeightMeters = 0.12f;
 
         /// <summary>
+        /// **抬起 / 落下的过渡时长**（秒；P10-C 用户要求"不要马上出现，丝滑地过渡，像被拿起来浮在半空"）。
+        /// ⚠ **必须是 `const` 而不是序列化字段**：`public float` 挂在 MonoBehaviour 上会被场景/预制体序列化，
+        ///   旧实例里没有这条键时反序列化可能把它压成 **0** ⇒ **实机瞬移、而 EditMode 全绿**
+        ///   （"默认值只在新实例生效"那一族坑）。
+        /// </summary>
+        public const float CueFloatTransitionSeconds = 0.25f;
+
+        /// <summary>**当前**悬浮高度（世界 Y；`BallRadius` = 贴台面、`CueBallFloatHeightMeters` = 悬浮位）。</summary>
+        private float _cueFloatHeight = PoolConstants.BallRadius;
+
+        /// <summary>
         /// 待放置时白球的**悬浮世界坐标**（只读出口；UI 据此把白球画在空中、等玩家拖动）。
         /// ⚠ 只在 <see cref="IsWaitingForPlacement"/> 为真时有意义。
         /// </summary>
@@ -420,6 +431,7 @@ namespace Billiards.Physics
             // ⚠ 必须在 `LoadBalls` **之后**：剩余球数是**按球台**算的。
             // ⚠ 两个入口（`Initialize` / `ReloadRack`）都走这段 ⇒ 重摆后不会带着上一局的组别继续打。
             _playerGroup = GroupState.OpenTable;
+            _cueFloatHeight = PoolConstants.BallRadius;   // P10-C：新局从"贴台面"起
             ruleState = new RuleState();
             BallInHand = BallInHandKind.None;
             PendingCueBallPlacement = false;
@@ -464,6 +476,7 @@ namespace Billiards.Physics
             // ⚠ 必须在 `LoadBalls` **之后**：剩余球数是**按球台**算的。
             // ⚠ 两个入口（`Initialize` / `ReloadRack`）都走这段 ⇒ 重摆后不会带着上一局的组别继续打。
             _playerGroup = GroupState.OpenTable;
+            _cueFloatHeight = PoolConstants.BallRadius;   // P10-C：新局从"贴台面"起
             ruleState = new RuleState();
             BallInHand = BallInHandKind.None;
             PendingCueBallPlacement = false;
@@ -597,6 +610,13 @@ namespace Billiards.Physics
 
         /// <summary>**本杆是否在飞**（只读出口：球杆据此在**球在滚的整段时间**里整根隐藏，见 `ShouldShowStick`）。</summary>
         public bool ShotInFlight => _shotInFlight;
+
+        /// <summary>
+        /// **待放置期间被拒的出杆次数**（只读出口，P10 裁定 (a)）。
+        /// ⚠ 与 <see cref="RefusedPendingPlacementCount"/> **不是一回事**：那个数的是"白球离台/未放好"，
+        /// 这个数的是"**手里拿着球**（含犯规自由球那种球还在台上的）还想开杆"。
+        /// </summary>
+        public int RefusedLaunchWhileAwaitingCount { get; private set; }
 
         private float _aiThinkElapsed;
         private int _aiLaunchCount;
@@ -1595,6 +1615,9 @@ namespace Billiards.Physics
             // ⚠ 顺序：**先结算再驱动** —— 上一杆的判定可能正好把回合交给 AI。
             TickAiTurn(elapsed);
 
+            // **P10-C**：悬浮高度的过渡必须**按时间**推进（不是帧计数），且在**同步之前**。
+            TickCueFloatTransition(elapsed);
+
             SyncVisual();
         }
 
@@ -1964,6 +1987,16 @@ namespace Billiards.Physics
                 return Vector2.zero;
             }
 
+            // ① **待放置期间一律不许出杆**（P10 裁定 (a)）—— **单一真源** `IsWaitingForPlacement`
+            //    （不另立 `PendingCueBallPlacement` / `IsBallInPlay(0)` 的第二套判据）。
+            //    理由：待放期白球是"**拿在手上**"的（视觉离台 12 cm；犯规自由球那种在模拟器里还在台上），
+            //    此时开杆等于"用一只悬空的球击球" ⇒ 语义不通；且待放期左键语义是"放球"，开杆也没有入口。
+            if (IsWaitingForPlacement)
+            {
+                RefusedLaunchWhileAwaitingCount++;
+                return Vector2.zero;
+            }
+
             // ② 门控：整盘未静止 ⇒ 拒绝（不改任何状态）。**留痕**（否则玩家只看到"按了没反应"）。
             if (!_simulator.TableAtRest)
             {
@@ -2049,11 +2082,27 @@ namespace Billiards.Physics
                 for (int i = 0; i < n; i++)
                 {
                     // **P9-D（用户要求）**：白球**待放置**时把它**抬到悬浮位**（"重新拿出来悬浮在空中等放置"）。
-                    // ⚠ 白球此刻**不在场上**，模拟器里没有"它该在哪" ⇒ 只能由这一处**显式**抬起来；
+                    // ⚠ 落袋那种待放下，模拟器里**没有"它该在哪"**（球已离台）⇒ 只能由这一处**显式**抬起来；
+                    //   犯规自由球那种待放下球还在台上，但**同样要抬**（见下）。
                     //   而 `ballVisuals` 是**运行期逐帧同步**的对象（场景/预制体里搜坐标 0 命中）⇒ 也只能在这里做。
-                    if (i == 0 && PendingCueBallPlacement)
+                    // **P10-A2 语义（定稿）**：**抬不抬只看 `PendingCueBallPlacement`** —— 两种待放（落袋 / 犯规自由球）
+                    // **都要抬**：待放期**左键语义已被 `PointerAimController` 改成"放球"**（12 px 判据），
+                    // 不抬的话画面上**零信号**，玩家想瞄准一按就把球挪走了（用户第五轮截图里的"球浮空"**是对的**，
+                    // 当时错的只是球杆）。**横向位置**才按来源分：落袋 ⇒ "拿出来"的固定落点；
+                    // 犯规 ⇒ **它自己的位置**（否则会莫名瞬移到台心）。
+                    // **P10-C**：抬/落都走**过渡高度** `_cueFloatHeight`（不再是常量吸附）——
+                    //   只要它离台面还有高度，就由这里接管这一个球的可视物。
+                    if (i == 0 && _cueFloatHeight > PoolConstants.BallRadius + 1e-4f)
                     {
-                        SyncFloatingCueBall(ballVisuals[i], CueBallFloatWorldPosition);
+                        // 抬不抬只看"是否待放"；**横向位置按来源分**：
+                        //   落袋 ⇒ "重新拿出来"的固定落点；犯规 ⇒ **它自己的位置**（否则会莫名瞬移到台心）。
+                        bool awaiting = PendingCueBallPlacement;
+                        bool offTable = !_simulator.IsBallInPlay(0);
+                        Vector2 xy = awaiting
+                            ? (offTable ? CueBallFloatPhysicsPosition : balls[0].position)
+                            : balls[0].position;
+                        SyncFloatingCueBall(ballVisuals[i],
+                            PoolGeometry.PhysicsToUnity(xy, _cueFloatHeight));
                         continue;
                     }
 
@@ -2069,6 +2118,27 @@ namespace Billiards.Physics
                 SyncBallVisual(ballVisual, 0, PoolGeometry.PhysicsBallToUnity(balls[0].position));
                 _hasLastVisualPositions = true;
             }
+        }
+
+        /// <summary>
+        /// **悬浮高度的过渡**（P10-C）：`awaiting ⇒ 0.12 m`、否则 `⇒ 球半径（贴台面）`，
+        /// 以 `CueBallFloatHeightMeters / CueFloatTransitionSeconds` 的**恒定速度**推进（`deltaTime` 驱动）。
+        /// ⚠ 两侧都过渡：**抬起**丝滑、"放下"同样丝滑（用户要"像被拿起来浮在半空"，不是瞬移）。
+        /// </summary>
+        private void TickCueFloatTransition(float dt)
+        {
+            if (_simulator == null || dt <= 0f)
+            {
+                return;
+            }
+
+            // **A2 定稿（主理人裁定）**：抬不抬**只看"是否待放"** —— 犯规自由球那种"白球还在台上"的待放
+            // **也必须抬**（那正是 ball-in-hand 的**重放入口**：待放期左键语义已是"放球"，
+            // 不抬的话画面上**零信号**，玩家想瞄一按就把球挪走了）。
+            bool awaiting = PendingCueBallPlacement;
+            float target = awaiting ? CueBallFloatHeightMeters : PoolConstants.BallRadius;
+            float speed = CueBallFloatHeightMeters / Mathf.Max(1e-4f, CueFloatTransitionSeconds);
+            _cueFloatHeight = Mathf.MoveTowards(_cueFloatHeight, target, speed * dt);
         }
 
         /// <summary>
