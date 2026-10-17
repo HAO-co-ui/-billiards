@@ -117,7 +117,8 @@ namespace Billiards.Physics
 
             // **模态让位**：结算卡 / 首页打开期间不许蓄力 —— 否则在卡片或首页上右键拖拽会蓄力、
             // 松手时出杆，把刚开的新一局当场打乱。判据点 = `PracticeResultView.IsOpen` 或 `HomeView.IsOpen`。
-            if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen)
+            if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen
+                || Billiards.UI.PracticeHudView.IsSettingsOpen)
             {
                 return;
             }

@@ -238,6 +238,20 @@ namespace Billiards.UI
         /// <summary>主按钮文案（设计稿 `Shoot`）。</summary>
         public const string ButtonShoot = "Shoot";
 
+        // ── 设置面板（返回俱乐部 / 退出 / 音量）──────────────────────────────
+        /// <summary>设置按钮文案。⚠ 工程无齿轮图标（16 个图标槽里没有），故用文本；补图标后只换 glyph。</summary>
+        public const string ButtonSettings = "SET";
+        /// <summary>设置面板标题。</summary>
+        public const string TitleSettings = "SETTINGS";
+        /// <summary>回首页。</summary>
+        public const string ButtonBackToClub = "Back to club";
+        /// <summary>退出游戏（出包后生效；编辑器内只记日志）。</summary>
+        public const string ButtonQuit = "Quit";
+        /// <summary>关闭设置面板。</summary>
+        public const string ButtonClose = "Close";
+        /// <summary>音量行标签。</summary>
+        public const string LabelVolume = "Volume";
+
         /// <summary>品牌副标题（设计稿 `brand small` 的位置）。</summary>
         public const string BrandEyebrow = "PRACTICE";
 

@@ -110,6 +110,9 @@ namespace Billiards.UI
         private TextMeshProUGUI _oppName;
         private RectTransform _oppAvatar;
         private RectTransform _scoreboard;
+        private RectTransform _settingsToggle;
+        private RectTransform _settingsPanel;
+        private TextMeshProUGUI _volumeLabel;
 
         // ── 状态条 ───────────────────────────────────────────────────────────
         private Image _statusFrame;
@@ -169,6 +172,41 @@ namespace Billiards.UI
         /// **刻意不序列化**（无 `[SerializeField]`）⇒ 不改场景、不需要重生成场景。
         /// </summary>
         private CanvasGroup[] _chromeGroups;
+
+        /// <summary>
+        /// **设置面板是否打开**（`Back to club` / `Quit` / 音量 三件）。
+        /// ⚠ 这是**模态判据点**：`PointerAimController` / `PointerPowerController` / `AimAssistController`
+        /// 与结算卡、首页并列读它 —— 否则面板开着时点击会穿透去瞄准或出杆。
+        /// </summary>
+        public static bool IsSettingsOpen { get; private set; }
+
+        /// <summary>设置按钮（文本 `SET`；工程无齿轮图标）。</summary>
+        private TextMeshProUGUI _settingsButtonText;
+
+        /// <summary>设置面板根（懒建一次；未打开时 `SetActive(false)`）。</summary>
+
+        /// <summary>面板里的音量百分比文本。</summary>
+        private TextMeshProUGUI _volumeValueText;
+
+        /// <summary>判据入口：设置按钮节点。</summary>
+        public RectTransform SettingsToggleForJudge => _settingsToggle;
+
+        /// <summary>判据入口：音量百分比文本。</summary>
+        public string VolumeTextForJudge => _volumeValueText != null ? _volumeValueText.text : null;
+
+        /// <summary>判据收尾：把静态开关复位（EditMode 里对象销毁不会自动复位静态量）。</summary>
+        public static void CloseSettingsForJudge() => IsSettingsOpen = false;
+
+        /// <summary>首页视图（`Back to club` 用；场景未接线时运行时 `FindObjectOfType` 兜底）。</summary>
+        public HomeView home;
+
+        /// <summary>设置面板的三处文案（**只用拉丁字母**：字体只覆盖 Latin 子集）。</summary>
+        public const string SettingsTitleText = "SETTINGS";
+        public const string SettingsBackText = "Back to club";
+        public const string SettingsQuitText = "Quit";
+        public const string SettingsVolumeText = "Volume";
+        public const string SettingsToggleText = "SET";
+        public const string SettingsCloseText = "Close";
 
         /// <summary>记分牌专用分区（全宽，见 `EnsureBuilt`）。**必须进 `_chromeGroups`** —— 否则首页盖上来时它不会让位。</summary>
         private RectTransform _boardZone;
@@ -554,9 +592,43 @@ namespace Billiards.UI
         private void BuildToolButtons(RectTransform brand)
         {
             // 设计稿 `.tools`：右上角一组 38×38 图标按钮。
-            // 本工程**只放真实生效的两个**（VFX / SFX）—— 做个点不动的齿轮按钮是最典型的假 UI。
+            // 本工程只放**真实生效**的按钮 —— 做个点不动的齿轮是最典型的假 UI。
             _vfxIcon = AddIconButton(brand, "VfxToggle", ClubUiSprites.UiSprite.Sparkle, 0, OnToggleVfx);
             _sfxIcon = AddIconButton(brand, "SfxToggle", ClubUiSprites.UiSprite.Volume, 1, OnToggleSfx);
+
+
+            // **设置**（第三个位置）。⚠ 工程现有 16 个图标槽里**没有齿轮/菜单图标**，
+            //   而 `Pause` 已被"暂停"语义占用（拿来当设置会误导）⇒ 先用**文本 `SET`** 的同尺寸按钮，
+            //   待美术补齿轮图标后只换 glyph、不动布局。
+            //   不用 `⚙`：字体只有 Latin 子集，缺字会变空白。
+            _settingsButtonText = AddTextButton(brand, "SettingsToggle", PracticeHudState.ButtonSettings, 2,
+                OnOpenSettings);
+            _settingsToggle = (RectTransform)brand.Find("SettingsToggle");
+        }
+
+        /// <summary>与 <see cref="AddIconButton"/> 同尺寸同边框，但内容是**文本**（用于缺图标的场合）。</summary>
+        private TextMeshProUGUI AddTextButton(RectTransform parent, string name, string label, int slot,
+                                              UnityEngine.Events.UnityAction action)
+        {
+            float step = ClubUiTokens.IconButtonSize + ClubUiTokens.IconButtonGap;
+            RectTransform frame = AddFramed(parent, name,
+                new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
+            frame.pivot = new Vector2(1f, 0.5f);
+            frame.sizeDelta = new Vector2(ClubUiTokens.IconButtonSize, ClubUiTokens.IconButtonSize);
+            frame.anchoredPosition = new Vector2(-slot * step, 0f);
+
+            var hit = frame.GetComponent<Image>();
+            hit.raycastTarget = true;
+
+            TextMeshProUGUI text = CreateText(frame, "Label", bodyFont, ClubUiTokens.FontMicro,
+                ClubUiTokens.IconIdle, TextAlignmentOptions.Center, Vector2.zero, Vector2.one);
+            text.text = label;
+
+            var button = frame.gameObject.AddComponent<Button>();
+            button.targetGraphic = hit;
+            button.onClick.AddListener(action);
+            return text;
         }
 
         private Image AddIconButton(RectTransform parent, string name, ClubUiSprites.UiSprite sprite, int slot,
@@ -582,6 +654,7 @@ namespace Billiards.UI
             button.onClick.AddListener(action);
             return glyph.GetComponent<Image>();
         }
+
 
         // ════════════════ 分区 B：模式切换 + 状态条 ═══════════════════════════
 
@@ -1284,6 +1357,156 @@ namespace Billiards.UI
             {
                 poolAudio.audioEnabled = !poolAudio.audioEnabled;
             }
+        }
+
+        // ════════════════ 设置面板（返回俱乐部 / 退出 / 音量）═══════════════════
+
+        /// <summary>打开设置面板。**两个模式共用**（不挂在"仅对战"分支）。</summary>
+        public void OnOpenSettings()
+        {
+            EnsureBuilt();
+            EnsureSettingsPanel();
+            if (_settingsPanel != null)
+            {
+                _settingsPanel.gameObject.SetActive(true);
+            }
+
+            IsSettingsOpen = true;
+            RefreshVolumeText();
+        }
+
+        /// <summary>关闭设置面板（点背板、`Close`、或做完动作后都走这里）。</summary>
+        public void CloseSettings()
+        {
+            if (_settingsPanel != null)
+            {
+                _settingsPanel.gameObject.SetActive(false);
+            }
+
+            IsSettingsOpen = false;
+        }
+
+        /// <summary>`Back to club`：关面板 → **关掉 AI 对手** → 回首页。两个模式都能回。</summary>
+        public void OnBackToClub()
+        {
+            CloseSettings();
+
+            if (drive != null)
+            {
+                drive.EndAiMatchSession();
+            }
+
+            // 首页视图：优选用场景里接好的引用；没接就现找一次（只在点按钮时发生，不在每帧路径上）。
+            HomeView target = home != null ? home : Object.FindObjectOfType<HomeView>();
+            if (target != null)
+            {
+                target.Show();
+            }
+        }
+
+        /// <summary>`Quit`：出包后生效。**编辑器内 `Application.Quit()` 是空操作** ⇒ 明确记一条日志，不留"点了没反应"的假象。</summary>
+        public void OnQuitGame()
+        {
+#if UNITY_EDITOR
+            Debug.Log("设置 → Quit：编辑器内不生效（Application.Quit 在编辑器是空操作）；出包后可用。");
+#else
+            Application.Quit();
+#endif
+        }
+
+        /// <summary>音量增减（每次 10%，夹到 [0,1]）—— 写**全局主音量**（SFX 与 BGM 一起受影响）。</summary>
+        public void AdjustVolume(float delta)
+        {
+            AudioListener.volume = Mathf.Clamp01(AudioListener.volume + delta);
+            RefreshVolumeText();
+        }
+
+        /// <summary>把音量数值同步到百分比文本（`NN%`）。</summary>
+        public void RefreshVolumeText()
+        {
+            if (_volumeValueText != null)
+            {
+                _volumeValueText.text = Mathf.RoundToInt(AudioListener.volume * 100f) + "%";
+            }
+        }
+
+        /// <summary>懒建：全屏背板（点击关闭）+ 居中卡片 + 标题 + 三行 + `Close`。</summary>
+        private void EnsureSettingsPanel()
+        {
+            if (_settingsPanel != null || _canvas == null)
+            {
+                return;
+            }
+
+            RectTransform root = AddRect(_canvas.transform, "SettingsPanel", Vector2.zero, Vector2.one);
+            _settingsPanel = root;
+
+            // 背板：半透明黑（复用既有面板色，不新增材质）
+            var backdrop = root.gameObject.AddComponent<Image>();
+            SetImage(backdrop, null, ClubUiTokens.PanelShotbar);
+            backdrop.raycastTarget = true;
+            var backdropButton = root.gameObject.AddComponent<Button>();
+            backdropButton.targetGraphic = backdrop;
+            backdropButton.onClick.AddListener(CloseSettings);
+
+            RectTransform card = AddFramed(root, "Card", new Vector2(0.34f, 0.30f), new Vector2(0.66f, 0.70f),
+                ClubUiTokens.LineStrong, ClubUiTokens.PanelShotbar, ClubUiTokens.RadiusDialog);
+
+            CreateText(card, "Title", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
+                TextAlignmentOptions.Center, new Vector2(0.06f, 0.80f), new Vector2(0.94f, 0.96f))
+                .text = PracticeHudState.TitleSettings;
+
+            SettingsButtonRow(card, "BackToClub", PracticeHudState.ButtonBackToClub, 0.58f, 0.76f, OnBackToClub);
+            SettingsButtonRow(card, "Quit", PracticeHudState.ButtonQuit, 0.38f, 0.56f, OnQuitGame);
+
+            // 音量行：`-` / `NN%` / `+`
+            CreateText(card, "VolumeLabel", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
+                TextAlignmentOptions.Left, new Vector2(0.06f, 0.18f), new Vector2(0.40f, 0.34f))
+                .text = PracticeHudState.LabelVolume;
+
+            RectTransform minus = AddFramed(card, "VolumeDown", new Vector2(0.44f, 0.18f), new Vector2(0.54f, 0.34f),
+                ClubUiTokens.LineMid, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusButton);
+            CreateText(minus, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "-";
+            var minusButton = minus.gameObject.AddComponent<Button>();
+            minusButton.targetGraphic = minus.GetComponent<Image>();
+            minusButton.onClick.AddListener(() => AdjustVolume(-0.1f));
+
+            _volumeValueText = CreateText(card, "VolumeValue", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
+                TextAlignmentOptions.Center, new Vector2(0.55f, 0.18f), new Vector2(0.70f, 0.34f));
+
+            RectTransform plus = AddFramed(card, "VolumeUp", new Vector2(0.71f, 0.18f), new Vector2(0.81f, 0.34f),
+                ClubUiTokens.LineMid, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusButton);
+            CreateText(plus, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "+";
+            var plusButton = plus.gameObject.AddComponent<Button>();
+            plusButton.targetGraphic = plus.GetComponent<Image>();
+            plusButton.onClick.AddListener(() => AdjustVolume(0.1f));
+
+            // 右上 `Close`
+            RectTransform close = AddFramed(card, "Close", new Vector2(0.80f, 0.82f), new Vector2(0.96f, 0.94f),
+                ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
+            CreateText(close, "Label", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Muted,
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = PracticeHudState.ButtonClose;
+            var closeButton = close.gameObject.AddComponent<Button>();
+            closeButton.targetGraphic = close.GetComponent<Image>();
+            closeButton.onClick.AddListener(CloseSettings);
+
+            RefreshVolumeText();
+            _settingsPanel.gameObject.SetActive(false);
+        }
+
+        /// <summary>卡片里的一行整宽按钮（复用既有边框与按钮色，不新增材质）。</summary>
+        private void SettingsButtonRow(RectTransform card, string name, string label, float yMin, float yMax,
+                                       UnityEngine.Events.UnityAction action)
+        {
+            RectTransform row = AddFramed(card, name, new Vector2(0.06f, yMin), new Vector2(0.94f, yMax),
+                ClubUiTokens.LineMid, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusButton);
+            CreateText(row, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = label;
+            var button = row.gameObject.AddComponent<Button>();
+            button.targetGraphic = row.GetComponent<Image>();
+            button.onClick.AddListener(action);
         }
 
         // ════════════════ 建树小工具（同一套几何口径，供结算卡复用）═══════════

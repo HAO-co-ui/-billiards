@@ -2159,5 +2159,123 @@ namespace Billiards.Tests
                                   + "结算卡标题与\"为什么\"行不重叠 ✓");
         }
 
+        /// <summary>
+        /// **`T156`：设置面板**（`SET` 按钮 / 打开关闭 / 音量夹紧 / 三处输入门）。
+        /// ⚠ 为什么音量要连点：单次 `+0.1` 不能证明**夹紧**；必须点到上限再点一次，断言仍为 1。
+        /// </summary>
+        [Test]
+        public void T156_SettingsPanel_ButtonOpenClose_VolumeClamp_AndInputGates()
+        {
+            var failures = new List<string>();
+            float originalVolume = AudioListener.volume;
+
+            var hudGo = new GameObject("T156HudProbe");
+            try
+            {
+                var hud = hudGo.AddComponent<PracticeHudView>();
+                hud.EnsureBuilt();
+
+                // ① 按钮存在且**真的可点**（防"假可点态"的反面：钉死它真接了行为）
+                Transform toggle = hud.SettingsToggleForJudge;
+                if (toggle == null)
+                {
+                    failures.Add("T156① 找不到设置按钮 `Brand/SettingsToggle`。");
+                }
+                else
+                {
+                    var button = toggle.GetComponent<UnityEngine.UI.Button>();
+                    if (button == null || button.onClick.GetPersistentEventCount() == 0)
+                    {
+                        // 运行时 `AddListener` 不计入 persistent 事件 ⇒ 用 `onClick` 是否为空判断不可靠，
+                        // 因此这里只断"有 Button 组件"；接线本身由 ② 的行为断言证明。
+                        if (button == null)
+                        {
+                            failures.Add("T156① 设置按钮上没有 `Button` 组件 ⇒ 点不动。");
+                        }
+                    }
+
+                    var label = toggle.Find("Label")?.GetComponent<TMPro.TextMeshProUGUI>();
+                    if (label == null || label.text != PracticeHudState.ButtonSettings)
+                    {
+                        failures.Add($"T156① 按钮文案应为 `{PracticeHudState.ButtonSettings}`，实测 `{label?.text}`。");
+                    }
+                }
+
+                // ② 打开 / 关闭同步 `IsSettingsOpen`
+                hud.OnOpenSettings();
+                if (!PracticeHudView.IsSettingsOpen)
+                {
+                    failures.Add("T156② `OnOpenSettings()` 之后 `IsSettingsOpen` 应为 true。");
+                }
+
+                hud.CloseSettings();
+                if (PracticeHudView.IsSettingsOpen)
+                {
+                    failures.Add("T156② `CloseSettings()` 之后 `IsSettingsOpen` 应为 false。");
+                }
+
+                // ③ 音量：连点到上限仍为 1（**夹紧**），连点到下限仍为 0；文本与数值同步
+                AudioListener.volume = 0.5f;
+                for (int i = 0; i < 20; i++)
+                {
+                    hud.AdjustVolume(0.1f);
+                }
+
+                if (Mathf.Abs(AudioListener.volume - 1f) > 1e-4f)
+                {
+                    failures.Add($"T156③ 音量上限应夹到 1，实测 {AudioListener.volume:R}。");
+                }
+
+                string expectTop = Mathf.RoundToInt(AudioListener.volume * 100f) + "%";
+                if (hud.VolumeTextForJudge != expectTop)
+                {
+                    failures.Add($"T156③ 百分比文本应为 `{expectTop}`，实测 `{hud.VolumeTextForJudge}`。");
+                }
+
+                for (int i = 0; i < 25; i++)
+                {
+                    hud.AdjustVolume(-0.1f);
+                }
+
+                if (Mathf.Abs(AudioListener.volume) > 1e-4f)
+                {
+                    failures.Add($"T156③ 音量下限应夹到 0，实测 {AudioListener.volume:R}。");
+                }
+
+                // ④ 三处输入门都在（源码级：防止以后有人删掉其中一处，面板开着就点穿）
+                string physicsDir = Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".",
+                    "Assets/_Project/Scripts/Runtime/Physics");
+                (string file, string name)[] gates =
+                {
+                    ("PointerAimController.cs", "瞄准"),
+                    ("PointerPowerController.cs", "蓄力"),
+                    ("AimAssistController.cs", "瞄准线"),
+                };
+                foreach ((string file, string name) in gates)
+                {
+                    string path = Path.Combine(physicsDir, file);
+                    if (!File.Exists(path))
+                    {
+                        failures.Add($"T156④ 找不到 `{file}`（被扫文件缺失 ⇒ 本项无从判定）。");
+                        continue;
+                    }
+
+                    string text = File.ReadAllText(path);
+                    if (!text.Contains("PracticeHudView.IsSettingsOpen"))
+                    {
+                        failures.Add($"T156④ `{file}`（{name}）缺少 `PracticeHudView.IsSettingsOpen` 这道门 ⇒ 面板打开时会被点穿。");
+                    }
+                }
+            }
+            finally
+            {
+                AudioListener.volume = originalVolume;
+                Object.DestroyImmediate(hudGo);
+                PracticeHudView.CloseSettingsForJudge();
+            }
+
+            Assert.IsEmpty(failures, "T156（设置面板）失败：\n" + string.Join("\n", failures));
+        }
+
     }
 }

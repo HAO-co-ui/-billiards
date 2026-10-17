@@ -128,6 +128,7 @@ namespace Billiards.Physics
             // **取景转场让位**（第三个判据点，同类的"相机在动"根因）：转场期间相机在扫，
             // 拖拽瞄准既看不见（瞄准线已被 `AimAssistController` 门控）又容易串味 ⇒ 一并让位。
             if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen
+                || Billiards.UI.PracticeHudView.IsSettingsOpen
                 || Billiards.Core.CameraTransition.IsActive)
             {
                 return;
