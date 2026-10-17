@@ -78,6 +78,12 @@ namespace Billiards.Physics
         public Transform playfieldRoot;
 
         private static readonly Color PathColor = new Color(1.00f, 1.00f, 1.00f, 0.95f);
+
+        /// <summary>白线的外发光色（暖白、低不透明度；**只靠它提质感，不新增材质**）。</summary>
+        private static readonly Color GlowColor = new Color(0.98f, 0.96f, 0.90f, 0.12f);
+
+        /// <summary>发光宽度 = 主线宽 × 本系数（约 2.6 倍 ⇒ 边缘一圈柔光）。</summary>
+        private const float GlowWidthFactor = 2.6f;
         private static readonly Color GhostColor = new Color(1.00f, 1.00f, 1.00f, 0.60f);
         private static readonly Color TargetColor = new Color(1.00f, 0.85f, 0.25f, 0.95f);
         private static readonly Color CueDeflectColor = new Color(0.55f, 0.85f, 1.00f, 0.80f);
@@ -102,6 +108,12 @@ namespace Billiards.Physics
 
         /// <summary>**白线本体**（实线：整条折线由**一个** `LineRenderer` 承载；见 <see cref="SyncPathLine"/>）。</summary>
         private LineRenderer _pathLine;
+
+        /// <summary>
+        /// **白线的外发光**（同一条折线、更宽更淡、画在主线下层）。
+        /// 复用同一个 `_runtimeLineMaterial` ⇒ **不新增材质**（材质数 30/30 零余量）。
+        /// </summary>
+        private LineRenderer _pathGlow;
 
         /// <summary>
         /// **库边接触圆**（用户 2026-10-16："白线碰到边缘…**前面有个圆圈**"）—— 与幽灵球圆**同口径**
@@ -592,12 +604,33 @@ namespace Billiards.Physics
             if (_pathLine == null)
             {
                 _pathLine = CreateMarkerLine("AimAssistPathLine", PathColor, 2);
+                // 圆角端点 + 圆角拐点：折线转折处不再出现尖角，观感更"像一根线"。
+                _pathLine.numCapVertices = 4;
+                _pathLine.numCornerVertices = 2;
+                // 沿路径轻微衰减：远端略淡，近端更亮 ⇒ 视觉上有方向感，不呆板。
+                _pathLine.startColor = PathColor;
+                _pathLine.endColor = new Color(PathColor.r, PathColor.g, PathColor.b, 0.62f);
+                _pathLine.sortingOrder = 1;
+            }
+
+            if (_pathGlow == null)
+            {
+                _pathGlow = CreateMarkerLine("AimAssistPathGlow", GlowColor, 2);
+                _pathGlow.numCapVertices = 4;
+                _pathGlow.numCornerVertices = 2;
+                _pathGlow.startColor = GlowColor;
+                _pathGlow.endColor = new Color(GlowColor.r, GlowColor.g, GlowColor.b, 0.04f);
+                _pathGlow.sortingOrder = 0;   // 画在主线下层
+                float glowScale = DrawScale(playfieldRoot);
+                _pathGlow.startWidth = PredictionLineWidth * GlowWidthFactor * glowScale;
+                _pathGlow.endWidth = PredictionLineWidth * GlowWidthFactor * glowScale;
             }
 
             int use = VisiblePathVertexCount(prediction, path);
             if (use == 0)
             {
                 _pathLine.gameObject.SetActive(false);
+                _pathGlow.gameObject.SetActive(false);
                 return;
             }
 
@@ -606,17 +639,23 @@ namespace Billiards.Physics
             int count = use + (extraEnd ? 1 : 0);
 
             _pathLine.positionCount = count;
+            _pathGlow.positionCount = count;
             for (int i = 0; i < use; i++)
             {
-                _pathLine.SetPosition(i, DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(path[i])));
+                Vector3 point = DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(path[i]));
+                _pathLine.SetPosition(i, point);
+                _pathGlow.SetPosition(i, point);
             }
 
             if (extraEnd)
             {
-                _pathLine.SetPosition(use, DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(end)));
+                Vector3 point = DrawPoint(playfieldRoot, PoolGeometry.PhysicsToUnity(end));
+                _pathLine.SetPosition(use, point);
+                _pathGlow.SetPosition(use, point);
             }
 
             _pathLine.gameObject.SetActive(true);
+            _pathGlow.gameObject.SetActive(true);
         }
 
         /// <summary>

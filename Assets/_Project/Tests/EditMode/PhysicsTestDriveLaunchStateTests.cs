@@ -3605,5 +3605,60 @@ namespace Billiards.Tests
                 }
             }
         }
+
+        /// <summary>
+        /// **`T157`：对手回合玩家不能动瞄准线、也不能出杆**（用户实机反馈）。
+        /// 两个输入控制器里都必须存在 `IsAiTurn` 这道门；缺失即红（这是"AI 用了玩家方向"的根因）。
+        /// 另断言白线外发光用的是**共享运行时材质**（不新增材质）。
+        /// </summary>
+        [Test]
+        public void T157_AiTurnGates_AimAndPower_AndAimGlowReusesMaterial()
+        {
+            var failures = new List<string>();
+            string root = Path.GetDirectoryName(Application.dataPath) ?? ".";
+
+            (string file, string label)[] gated =
+            {
+                ("Assets/_Project/Scripts/Runtime/Physics/PointerAimController.cs", "瞄准"),
+                ("Assets/_Project/Scripts/Runtime/Physics/PointerPowerController.cs", "蓄力/出杆"),
+            };
+
+            foreach ((string file, string label) in gated)
+            {
+                string path = Path.Combine(root, file);
+                if (!File.Exists(path))
+                {
+                    failures.Add($"T157 找不到 `{file}`（被扫文件缺失 ⇒ 无从判定）。");
+                    continue;
+                }
+
+                string text = File.ReadAllText(path);
+                if (!text.Contains("drive.IsAiTurn"))
+                {
+                    failures.Add($"T157 `{file}`（{label}）缺少 `drive.IsAiTurn` 门 ⇒ **对手回合玩家仍能操作**。");
+                }
+            }
+
+            string viewPath = Path.Combine(root, "Assets/_Project/Scripts/Runtime/Physics/AimAssistView.cs");
+            if (!File.Exists(viewPath))
+            {
+                failures.Add("T157 找不到 `AimAssistView.cs`。");
+            }
+            else
+            {
+                string viewText = File.ReadAllText(viewPath);
+                if (!viewText.Contains("_pathGlow"))
+                {
+                    failures.Add("T157 白线外发光（`_pathGlow`）不存在 ⇒ 瞄准线质感退化。");
+                }
+
+                if (!viewText.Contains("GlowWidthFactor"))
+                {
+                    failures.Add("T157 发光宽度系数（`GlowWidthFactor`）不存在 ⇒ 发光宽度无处可调。");
+                }
+            }
+
+            Assert.IsEmpty(failures, "T157（AI 回合输入门 / 瞄准线质感）失败：\n" + string.Join("\n", failures));
+        }
     }
 }

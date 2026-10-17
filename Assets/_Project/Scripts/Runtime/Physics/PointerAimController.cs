@@ -127,9 +127,13 @@ namespace Billiards.Physics
             // 或 `HomeView.IsOpen`。否则在卡片或首页上左键拖拽会同时驱动瞄准锁，交互会串。
             // **取景转场让位**（第三个判据点，同类的"相机在动"根因）：转场期间相机在扫，
             // 拖拽瞄准既看不见（瞄准线已被 `AimAssistController` 门控）又容易串味 ⇒ 一并让位。
+            // **对手回合不许动瞄准线**：AI 在思考/出杆时，玩家拖动会改掉瞄准角，
+            //   轮回来时方向已经被改过 ⇒ 观感是"AI 用了我没设的方向"。
+            bool aiTurn = drive != null && drive.IsAiTurn;
             if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen
                 || Billiards.UI.PracticeHudView.IsSettingsOpen
-                || Billiards.Core.CameraTransition.IsActive)
+                || Billiards.Core.CameraTransition.IsActive
+                || aiTurn)
             {
                 return;
             }
