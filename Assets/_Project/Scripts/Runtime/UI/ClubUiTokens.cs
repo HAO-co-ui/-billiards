@@ -77,6 +77,12 @@ namespace Billiards.UI
         /// <summary>主按钮 hover 底 `#e5ca87`。</summary>
         public static readonly Color32 ButtonFillHover = Rgb(0xE5CA87);
 
+        /// <summary>主按钮**按下**态（`ColorTint`；比常态略暗 ⇒ 有"按下去"的手感）。</summary>
+        public static readonly Color32 ButtonFillPressed = Rgb(0xC9A961);
+
+        /// <summary>主按钮**禁用**态（`ColorTint`；半透明，保留形状但明显不可点）。</summary>
+        public static readonly Color32 ButtonFillDisabled = Alpha(Rgb(0xD4B46C), 0x66);
+
         /// <summary>主按钮 1 px 亮边 `#ebd397`。</summary>
         public static readonly Color32 ButtonEdge = Rgb(0xEBD397);
 
@@ -513,6 +519,8 @@ namespace Billiards.UI
             (nameof(PowerThumbRing), PowerThumbRing),
             (nameof(ButtonFill), ButtonFill),
             (nameof(ButtonFillHover), ButtonFillHover),
+            (nameof(ButtonFillPressed), ButtonFillPressed),
+            (nameof(ButtonFillDisabled), ButtonFillDisabled),
             (nameof(ButtonEdge), ButtonEdge),
             (nameof(ButtonText), ButtonText),
             (nameof(ButtonEdgeSecondary), ButtonEdgeSecondary),

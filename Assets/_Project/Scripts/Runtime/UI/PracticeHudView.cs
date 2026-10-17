@@ -188,6 +188,9 @@ namespace Billiards.UI
         /// <summary>面板里的音量百分比文本。</summary>
         private TextMeshProUGUI _volumeValueText;
 
+        /// <summary>音量轨道里的亮色填充条（随音量伸缩；只做视觉，不接收射线）。</summary>
+        private RectTransform _volumeFill;
+
         /// <summary>判据入口：设置按钮节点。</summary>
         public RectTransform SettingsToggleForJudge => _settingsToggle;
 
@@ -1467,6 +1470,13 @@ namespace Billiards.UI
             {
                 _volumeValueText.text = Mathf.RoundToInt(AudioListener.volume * 100f) + "%";
             }
+
+            if (_volumeFill != null)
+            {
+                Vector2 max = _volumeFill.anchorMax;
+                max.x = Mathf.Clamp01(AudioListener.volume);
+                _volumeFill.anchorMax = max;
+            }
         }
 
         /// <summary>懒建：全屏背板（点击关闭）+ 居中卡片 + 标题 + 三行 + `Close`。</summary>
@@ -1504,65 +1514,100 @@ namespace Billiards.UI
             SettingsButtonRow(card, "BackToClub", PracticeHudState.ButtonBackToClub, 0.60f, 0.78f, OnBackToClub);
             SettingsButtonRow(card, "Quit", PracticeHudState.ButtonQuit, 0.42f, 0.56f, OnQuitGame);
 
-            // 音量行：`-` / `NN%` / `+`
+            // ── 音量：标签 + 可视轨道 + 百分比 + 两个圆角步进键 ────────────────
             CreateText(card, "VolumeLabel", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
-                TextAlignmentOptions.Left, new Vector2(0.06f, 0.16f), new Vector2(0.38f, 0.30f))
+                TextAlignmentOptions.Left, new Vector2(0.06f, 0.16f), new Vector2(0.34f, 0.30f))
                 .text = PracticeHudState.LabelVolume;
 
-            RectTransform minus = AddFramed(card, "VolumeDown", new Vector2(0.42f, 0.16f), new Vector2(0.52f, 0.30f),
-                ClubUiTokens.LineMid, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusButton);
-            CreateText(minus, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
+            RectTransform minus = AddFramed(card, "VolumeDown", new Vector2(0.36f, 0.155f), new Vector2(0.465f, 0.305f),
+                ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusDialog);
+            CreateText(minus, "Label", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
                 TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "-";
             var minusImage = minus.GetComponent<Image>();
             minusImage.raycastTarget = true;
             var minusButton = minus.gameObject.AddComponent<Button>();
             minusButton.targetGraphic = minusImage;
             minusButton.onClick.AddListener(() => AdjustVolume(-0.1f));
+            ApplyButtonTint(minusButton);
+
+            // 轨道（只做视觉，不接收射线）：底色 + 按当前音量伸长的亮色条。
+            RectTransform rail = AddRect(card, "VolumeRail", new Vector2(0.49f, 0.196f), new Vector2(0.74f, 0.264f));
+            SetImage(rail.gameObject.AddComponent<Image>(), null, ClubUiTokens.LineMid);
+            _volumeFill = AddRect(rail, "Fill", Vector2.zero, Vector2.one);
+            SetImage(_volumeFill.gameObject.AddComponent<Image>(), null, ClubUiTokens.Accent);
 
             _volumeValueText = CreateText(card, "VolumeValue", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
-                TextAlignmentOptions.Center, new Vector2(0.53f, 0.16f), new Vector2(0.73f, 0.30f));
+                TextAlignmentOptions.Right, new Vector2(0.76f, 0.16f), new Vector2(0.86f, 0.30f));
 
-            RectTransform plus = AddFramed(card, "VolumeUp", new Vector2(0.74f, 0.16f), new Vector2(0.84f, 0.30f),
-                ClubUiTokens.LineMid, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusButton);
-            CreateText(plus, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
+            RectTransform plus = AddFramed(card, "VolumeUp", new Vector2(0.87f, 0.155f), new Vector2(0.975f, 0.305f),
+                ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusDialog);
+            CreateText(plus, "Label", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
                 TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "+";
             var plusImage = plus.GetComponent<Image>();
             plusImage.raycastTarget = true;
             var plusButton = plus.gameObject.AddComponent<Button>();
             plusButton.targetGraphic = plusImage;
             plusButton.onClick.AddListener(() => AdjustVolume(0.1f));
+            ApplyButtonTint(plusButton);
 
             // 右上 `Close`
             RectTransform close = AddFramed(card, "Close", new Vector2(0.80f, 0.82f), new Vector2(0.96f, 0.94f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
-            CreateText(close, "Label", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Muted,
-                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = PracticeHudState.ButtonClose;
+            CreateText(close, "Label", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Muted,
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "X";
             var closeImage = close.GetComponent<Image>();
             closeImage.raycastTarget = true;
             var closeButton = close.gameObject.AddComponent<Button>();
             closeButton.targetGraphic = closeImage;
             closeButton.onClick.AddListener(CloseSettings);
+            ApplyButtonTint(closeButton);
 
             RefreshVolumeText();
             _settingsPanel.gameObject.SetActive(false);
         }
 
-        /// <summary>卡片里的一行整宽按钮（复用既有边框与按钮色，不新增材质）。</summary>
+        /// <summary>
+        /// 卡片里的一行整宽按钮：**描边 + 大圆角 + 左对齐文案 + 右侧箭头 + 悬停/按下变色**（只用既有令牌）。
+        /// ⚠ `SetImage` 统一把 `raycastTarget` 置 false ⇒ 可点控件的图片必须**显式打开**射线。
+        /// </summary>
         private void SettingsButtonRow(RectTransform card, string name, string label, float yMin, float yMax,
                                        UnityEngine.Events.UnityAction action)
         {
             RectTransform row = AddFramed(card, name, new Vector2(0.06f, yMin), new Vector2(0.94f, yMax),
-                ClubUiTokens.LineMid, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusButton);
+                ClubUiTokens.ButtonEdgeSecondary, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusDialog);
+
             CreateText(row, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
-                TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = label;
-            // ⚠ `SetImage` 统一把 `raycastTarget` 置 false（视图里绝大多数元素不该吃射线）
-            //   ⇒ 可点控件必须**显式打开**，否则按钮看得见、点不动（用户实测"点了没反应"）。
+                TextAlignmentOptions.Left, new Vector2(0.055f, 0f), new Vector2(0.80f, 1f)).text = label;
+
+            // 右侧箭头：让"这一行是可点的动作"一眼看得出来。
+            AddFixed(row, "Go", ClubUiSprites.UiSprite.ArrowRight, ClubUiTokens.ButtonText,
+                new Vector2(0.925f, 0.5f), new Vector2(ClubUiTokens.ButtonArrowSize, ClubUiTokens.ButtonArrowSize));
+
             var rowImage = row.GetComponent<Image>();
             rowImage.raycastTarget = true;
 
             var button = row.gameObject.AddComponent<Button>();
             button.targetGraphic = rowImage;
             button.onClick.AddListener(action);
+            ApplyButtonTint(button);
+        }
+
+        /// <summary>
+        /// 统一的按键反馈：**悬停变亮、按下变暗**（`ColorTint`）。
+        /// 没有这一层，鼠标移上去毫无变化 —— 用户会以为按钮是死的。
+        /// </summary>
+        private static void ApplyButtonTint(Button button)
+        {
+            button.transition = Selectable.Transition.ColorTint;
+            ColorBlock colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = ClubUiTokens.ButtonFillHover;
+            colors.pressedColor = ClubUiTokens.ButtonFillPressed;
+            colors.selectedColor = Color.white;
+            colors.disabledColor = ClubUiTokens.ButtonFillDisabled;
+            colors.fadeDuration = 0.08f;
+            colors.colorMultiplier = 1f;
+            button.colors = colors;
         }
 
         // ════════════════ 建树小工具（同一套几何口径，供结算卡复用）═══════════
