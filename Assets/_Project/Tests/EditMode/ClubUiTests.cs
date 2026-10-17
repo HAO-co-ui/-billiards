@@ -1074,6 +1074,104 @@ namespace Billiards.Tests
                 UnityEngine.Object.DestroyImmediate(hudGo);
             }
 
+                // 这里另建一个探针（⑧ 之后已不在原来的 try 内）—— 与前面同一条建树路径。
+                var rectGo = new GameObject("T144RectProbe");
+                var hudForRect = rectGo.AddComponent<PracticeHudView>();
+                hudForRect.EnsureBuilt();
+                hudForRect.ApplyMatchHud(true, GroupState.Solid, GroupState.Stripe, false,
+                    new[] { 1, 3, 5 }, new[] { 10, 12 });
+
+                // **版式判据必须在参考分辨率下量**：`EnsureBuilt` 建的 Canvas 默认不是 1920×1080
+                // （实测整条 bar 只有 ~200 单位宽 ⇒ 46 宽的头像占 23%，会造出**生产中不存在**的重叠）。
+                Canvas judgeCanvas = hudForRect.GetComponentInChildren<Canvas>(true);
+                if (judgeCanvas != null)
+                {
+                    var judgeScaler = judgeCanvas.GetComponent<UnityEngine.UI.CanvasScaler>();
+                    judgeScaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ConstantPixelSize;
+                    judgeScaler.scaleFactor = 1f;
+                    ((RectTransform)judgeCanvas.transform).sizeDelta = new Vector2(1920f, 1080f);
+                    Canvas.ForceUpdateCanvases();
+                }
+
+
+                // ── ⑨ 前提自证：必须在 **1920×1080** 下量版式 ──
+                if (judgeCanvas != null)
+                {
+                    Vector2 canvasSize = ((RectTransform)judgeCanvas.transform).rect.size;
+                    TestContext.WriteLine($"T144canvas {canvasSize.x:F1}x{canvasSize.y:F1}");
+                    if (Mathf.Abs(canvasSize.x - 1920f) > 0.5f || Mathf.Abs(canvasSize.y - 1080f) > 0.5f)
+                    {
+                        failures.Add($"⑨ 前提不成立：版式判据必须在参考分辨率 1920×1080 下量，实测 "
+                                     + $"{canvasSize.x:F1}×{canvasSize.y:F1} ⇒ 量出来的重叠可能是**假阳性**。");
+                    }
+                }
+
+                // ── ⑨ 不重叠（**同一块内**的三行两两）+ ⑩ 名字单行 + 打印各块 rect ──
+
+                RectTransform board = hudForRect.ScoreboardForJudge;
+                string[] leftNames = { "Avatar", "PlayerName", "PlayerGroupTag", "YourGroupChips" };
+                string[] rightNames = { "OppGroupChips", "OppName", "OppGroupTag", "OppAvatar" };
+                foreach (string[] block in new[] { leftNames, rightNames })
+                {
+                    for (int a = 0; a < block.Length; a++)
+                    {
+                        for (int b = a + 1; b < block.Length; b++)
+                        {
+                            RectTransform ra = FindDeep(board, block[a]);
+                            RectTransform rb = FindDeep(board, block[b]);
+                            if (ra == null || rb == null || !ra.gameObject.activeSelf || !rb.gameObject.activeSelf)
+                            {
+                                continue;
+                            }
+
+                            if (WorldRect(ra).Overlaps(WorldRect(rb)))
+                            {
+                                failures.Add($"T144(g) ⑨ 「{block[a]}」与「{block[b]}」的矩形**相交**（同一块内不许叠）。");
+                            }
+                        }
+                    }
+                }
+
+                // ⑩ 名字必须**单行**（关了换行还不够：还要看实际单行高）
+                foreach (string nameNode in new[] { "PlayerName", "OppName" })
+                {
+                    var text = FindDeep(board, nameNode)?.GetComponent<TMPro.TextMeshProUGUI>();
+                    if (text == null)
+                    {
+                        continue;
+                    }
+
+                    if (text.enableWordWrapping)
+                    {
+                        failures.Add($"T144(g) ⑩ 「{nameNode}」仍开启自动换行（实机截图里被折成两行）。");
+                    }
+
+                    if (text.preferredHeight > text.fontSize * 1.35f)
+                    {
+                        failures.Add($"T144(g) ⑩ 「{nameNode}」的 preferredHeight={text.preferredHeight:F1} 明显超过单行高"
+                                     + $"（fontSize={text.fontSize:F1}）⇒ 实际已被折行。");
+                    }
+                }
+
+                // **供 team-lead 判版式**：把各块的实际 rect 打出来（不参与断言）
+                foreach (string node in new[] { "Avatar", "PlayerName", "PlayerGroupTag", "YourGroupChips",
+                                                "ScoreLabel", "ScoreValue", "OppGroupChips", "OppName",
+                                                "OppGroupTag", "OppAvatar" })
+                {
+                    RectTransform r = FindDeep(board, node);
+                    if (r == null)
+                    {
+                        TestContext.WriteLine($"T144rect {node}: <不存在>");
+                        continue;
+                    }
+
+                    Rect w = WorldRect(r);
+                    TestContext.WriteLine($"T144rect {node}: active={r.gameObject.activeSelf} "
+                                          + $"x={w.x:F1} y={w.y:F1} w={w.width:F1} h={w.height:F1}");
+                }
+
+                UnityEngine.Object.DestroyImmediate(rectGo);
+
             // ⑧ **防假陈述守卫**：参考图里那三样在本工程**没有接线**（一局定胜负 / D3 已撤销 / 局中切模式），
             //   视图源码里一律不许出现（这是"防止照抄参考图"的守卫，不是文案测试）。
             foreach (string forbidden in new[] { "BEST OF THREE", "of 3", "Call a pocket" })
@@ -1788,6 +1886,27 @@ namespace Billiards.Tests
         }
 
         /// <summary>两个 `Color32` 是否逐通道相同（判据里比色值，不做浮点容差 —— 令牌是 8 位整数量化值）。</summary>
+        /// <summary>判据用：递归按名字找子节点。</summary>
+        private static RectTransform FindDeep(RectTransform root, string name)
+        {
+            if (root == null) return null;
+            RectTransform[] all = root.GetComponentsInChildren<RectTransform>(true);
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i].name == name) return all[i];
+            }
+
+            return null;
+        }
+
+        /// <summary>判据用：RectTransform 的**世界空间 AABB**（重叠检测用，规避 pivot/anchor 差异）。</summary>
+        private static Rect WorldRect(RectTransform r)
+        {
+            Vector3 a = r.TransformPoint(new Vector3(r.rect.xMin, r.rect.yMin, 0f));
+            Vector3 b = r.TransformPoint(new Vector3(r.rect.xMax, r.rect.yMax, 0f));
+            return Rect.MinMaxRect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Max(a.x, b.x), Mathf.Max(a.y, b.y));
+        }
+
         private static bool Same(Color32 a, Color32 b)
         {
             return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;

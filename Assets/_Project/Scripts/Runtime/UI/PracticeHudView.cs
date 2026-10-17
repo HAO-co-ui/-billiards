@@ -109,6 +109,7 @@ namespace Billiards.UI
         private TextMeshProUGUI _oppGroupLabel;
         private TextMeshProUGUI _oppName;
         private RectTransform _oppAvatar;
+        private RectTransform _scoreboard;
 
         // ── 状态条 ───────────────────────────────────────────────────────────
         private Image _statusFrame;
@@ -339,7 +340,10 @@ namespace Billiards.UI
             _status = CreateZone(canvasGo.transform, zones.status, "Status");
             _power = CreateZone(canvasGo.transform, zones.power, "Power");
 
-            BuildScoreboard(_counters);
+            BuildScoreboard(_counters,
+                // **记分牌独占一条全宽分区**：它早前被塞进 `CountersZone`（屏宽 28%）⇒ 头像 46 px 就占 23%，
+                // 名字必然折行、组别标签与 chip 行必然叠（用户实机截图的 `Expe/rt AI`、`Solids` 压 chip）。
+                CreateZone(canvasGo.transform, new Rect(0.020f, 0.780f, 0.960f, 0.202f), "Board"));
             BuildStatusBar(_status);
             BuildShotbar(_power);
 
@@ -370,7 +374,7 @@ namespace Billiards.UI
 
         // ════════════════ 分区 A：品牌 + 记分牌 ═══════════════════════════════
 
-        private void BuildScoreboard(RectTransform zone)
+        private void BuildScoreboard(RectTransform zone, RectTransform boardZone)
         {
             // ── 品牌行（设计稿 `.brand`：白球徽章 + wordmark + 模式小标）──────
             RectTransform brand = AddRect(zone, "Brand", new Vector2(0f, 0.78f), new Vector2(1f, 1f));
@@ -401,13 +405,14 @@ namespace Billiards.UI
             BuildToolButtons(brand);
 
             // ── 记分牌（设计稿 `.scoreboard`：上下细边线 + 85% 炭黑底）────────
-            RectTransform board = AddRect(zone, "Scoreboard", new Vector2(0f, 0.06f), new Vector2(1f, 0.72f));
+            RectTransform board = AddRect(boardZone, "Scoreboard", new Vector2(0f, 0.06f), new Vector2(1f, 0.72f));
+            _scoreboard = board;
             SetImage(board.gameObject.AddComponent<Image>(), null, ClubUiTokens.PanelScoreboard);
             AddEdgeStrip(board, "ScoreTopLine", true, ClubUiTokens.LineScoreTop);
             AddEdgeStrip(board, "ScoreBottomLine", false, ClubUiTokens.Line);
 
             // 左栏：头像 + 玩家名 + 实时统计
-            var avatarAnchor = new Vector2(0.075f, 0.5f);
+            var avatarAnchor = new Vector2(0.045f, 0.5f);
             RectTransform avatar = AddFixed(board, "Avatar", ClubUiSprites.UiSprite.Disc, ClubUiTokens.AvatarFill,
                 avatarAnchor, new Vector2(ClubUiTokens.AvatarSize, ClubUiTokens.AvatarSize));
             AddFixed(board, "AvatarRing", ClubUiSprites.UiSprite.Ring, ClubUiTokens.AvatarEdge, avatarAnchor,
@@ -416,18 +421,22 @@ namespace Billiards.UI
                 new Vector2(0.5f, 0.5f),
                 new Vector2(ClubUiTokens.AvatarIconSize, ClubUiTokens.AvatarIconSize));
 
-            CreateText(board, "PlayerName", bodyFont, ClubUiTokens.FontLabel, ClubUiTokens.Text,
-                TextAlignmentOptions.BottomLeft, new Vector2(0.152f, 0.62f), new Vector2(0.345f, 1f))
-                .text = PracticeHudState.LabelYou;
+            TextMeshProUGUI youName = CreateText(board, "PlayerName", bodyFont, ClubUiTokens.FontLabel,
+                ClubUiTokens.Text, TextAlignmentOptions.BottomLeft,
+                new Vector2(0.100f, 0.64f), new Vector2(0.340f, 1f));
+            youName.text = PracticeHudState.LabelYou;
+            // **单行**：名字不许折行（用户实机截图里 `Expert AI` 被折成 `Expe` / `rt AI`）。
+            youName.enableWordWrapping = false;
+            youName.overflowMode = TextOverflowModes.Overflow;
 
             // 组别小标签（`Solids`/`Stripes`）：**开放球局是空串（零字形）**，定组后才出现。
             _yourGroupLabel = CreateText(board, "PlayerGroupTag", bodyFont, ClubUiTokens.FontSmall,
                 ClubUiTokens.Muted, TextAlignmentOptions.Left,
-                new Vector2(0.152f, 0.36f), new Vector2(0.345f, 0.60f));
+                new Vector2(0.100f, 0.46f), new Vector2(0.340f, 0.62f));
             _yourGroupLabel.text = string.Empty;
 
             _playerStats = CreateText(board, "PlayerStats", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Label,
-                TextAlignmentOptions.TopLeft, new Vector2(0.152f, 0.04f), new Vector2(0.345f, 0.36f));
+                TextAlignmentOptions.TopLeft, new Vector2(0.100f, 0.32f), new Vector2(0.340f, 0.44f));
 
             // 中栏：`POCKETED` + 大数字 + 目标说明（设计稿 `.score-center`）
             _scoreLabel = CreateText(board, "ScoreLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,
@@ -454,7 +463,7 @@ namespace Billiards.UI
             // **对手头像**（对战模式才显示）：复用既有 `Disc`+`Ring`+`Robot` 精灵 ⇒ **零新增材质**
             // （美术包里没有任何人物/头像资源：`02_Characters_人物` 只有"不适用说明.md"）。
             _oppAvatar = AddFixed(board, "OppAvatar", ClubUiSprites.UiSprite.Disc, ClubUiTokens.AvatarFill,
-                new Vector2(0.925f, 0.66f), new Vector2(ClubUiTokens.AvatarSize, ClubUiTokens.AvatarSize));
+                new Vector2(0.955f, 0.5f), new Vector2(ClubUiTokens.AvatarSize, ClubUiTokens.AvatarSize));
             AddFixed(_oppAvatar, "OppAvatarRing", ClubUiSprites.UiSprite.Ring, ClubUiTokens.AvatarEdge,
                 new Vector2(0.5f, 0.5f), new Vector2(ClubUiTokens.AvatarSize, ClubUiTokens.AvatarSize));
             AddFixed(_oppAvatar, "OppAvatarGlyph", ClubUiSprites.UiSprite.Robot, ClubUiTokens.AvatarIcon,
@@ -463,13 +472,15 @@ namespace Billiards.UI
 
             // 右栏文字（镜像左栏）：`Expert AI` + 组别小标签；开放球局时组别为空。
             _oppName = CreateText(board, "OppName", bodyFont, ClubUiTokens.FontLabel, ClubUiTokens.Text,
-                TextAlignmentOptions.BottomRight, new Vector2(0.78f, 0.62f), new Vector2(0.90f, 1f));
+                TextAlignmentOptions.BottomRight, new Vector2(0.660f, 0.64f), new Vector2(0.900f, 1f));
             _oppName.text = PracticeHudState.OpponentDisplayName;
+            _oppName.enableWordWrapping = false;
+            _oppName.overflowMode = TextOverflowModes.Overflow;
             _oppGroupLabel = CreateText(board, "OppGroupTag", bodyFont, ClubUiTokens.FontSmall,
-                ClubUiTokens.Muted, TextAlignmentOptions.Right, new Vector2(0.78f, 0.36f), new Vector2(0.90f, 0.60f));
+                ClubUiTokens.Muted, TextAlignmentOptions.Right, new Vector2(0.660f, 0.46f), new Vector2(0.900f, 0.62f));
             _oppGroupLabel.text = string.Empty;
-            BuildGroupChipRow(board, "YourGroupChips", 0.21f, 0.37f, 0.42f, out _yourGroupChips);
-            BuildGroupChipRow(board, "OppGroupChips", 0.62f, 0.78f, 0.42f, out _oppGroupChips);
+            BuildGroupChipRow(board, "YourGroupChips", 0.02f, 0.34f, 0.08f, out _yourGroupChips);
+            BuildGroupChipRow(board, "OppGroupChips", 0.66f, 0.98f, 0.08f, out _oppGroupChips);
             // 判据缓存：**必须在建树时初始化**（否则第一次 `ApplyGroupChips` 收到 null ⇒ 判据永远读空）。
             _yourShownNumbers = new int[PracticeHudState.MatchGroupChipSlots];
             _oppShownNumbers = new int[PracticeHudState.MatchGroupChipSlots];
@@ -664,12 +675,13 @@ namespace Billiards.UI
             _shootFrame = button.GetComponent<Image>();
             _shootFill = button.Find("Fill") != null ? button.Find("Fill").GetComponent<Image>() : null;
 
+            // **文字 + 箭头作为整体居中**（用户实机反馈：原来文字偏左、箭头孤零零贴在右侧）。
             _shootText = CreateText(button, "ShootText", titleFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
-                TextAlignmentOptions.Center, Vector2.zero, new Vector2(0.52f, 1f));
+                TextAlignmentOptions.Center, new Vector2(0.26f, 0f), new Vector2(0.72f, 1f));
             _shootText.text = PracticeHudState.ButtonShoot;
 
             RectTransform arrow = AddFixed(button, "Arrow", ClubUiSprites.UiSprite.ArrowRight,
-                ClubUiTokens.ButtonText, new Vector2(0.545f, 0.5f),
+                ClubUiTokens.ButtonText, new Vector2(0.745f, 0.5f),
                 new Vector2(ClubUiTokens.ButtonArrowSize, ClubUiTokens.ButtonArrowSize));
             _shootArrow = arrow.GetComponent<Image>();
 
@@ -1012,6 +1024,9 @@ namespace Billiards.UI
             return count;
         }
 
+        /// <summary>**判据用**：记分牌（顶部条）根节点 —— 判据按子节点名读各块 `rect` 做重叠检测。</summary>
+        public RectTransform ScoreboardForJudge => _scoreboard;
+
         /// <summary>**判据用**：玩家侧组别小标签的当前文本（`Solids`/`Stripes`/空串）。</summary>
         public string YourGroupTagText => _yourGroupLabel != null ? _yourGroupLabel.text : null;
 
@@ -1057,15 +1072,17 @@ namespace Billiards.UI
                 _scoreValue.text = aiTurn ? PracticeHudState.OpponentTurnLabel : PracticeHudState.YourShotLabel;
             }
 
-            // **对战模式隐藏中栏**（`POCKETED` 大数字 + 目标说明）把宽度让给两侧；练习模式原样。
+            // 中栏在**对战形态要显示**：`RACK 1`（小字）+ `YOUR SHOT`/`AI`（大字）。
+            // ⚠ 早前"对战隐藏中栏、把宽度让给两侧"的口径已被参考稿覆盖 —— 用户实机截图要求中栏有轮次信息，
+            //   且实测"中栏空着 + 状态条还在"会被当成排版错误。
             if (_scoreLabel != null)
             {
-                _scoreLabel.gameObject.SetActive(!aiMatch);
+                _scoreLabel.gameObject.SetActive(true);
             }
 
             if (_scoreValue != null)
             {
-                _scoreValue.gameObject.SetActive(!aiMatch);
+                _scoreValue.gameObject.SetActive(true);
             }
 
             if (_goalText != null)
@@ -1075,6 +1092,8 @@ namespace Billiards.UI
 
             if (_playerStats != null)
             {
+                // 练习统计（SHOTS/FOULS）在对战形态**必须整行隐藏** —— 否则会和组别标签、
+                // 球号 chip 叠在同一块（用户实机截图：`You` 下面挤着 `Str…` + 一串圆点 + `Solids`）。
                 _playerStats.gameObject.SetActive(!aiMatch);
             }
 
@@ -1082,6 +1101,25 @@ namespace Billiards.UI
             if (_oppAvatar != null)
             {
                 _oppAvatar.gameObject.SetActive(aiMatch);
+            }
+
+            // **对战形态隐藏整条状态条**（`Aim` + `Clear the colors…` 那两行）——
+            //   它属练习语义（`PracticeHudState.CaptionLine`），对战里显示就是假陈述。
+            //   ⚠ 中栏的 `RACK 1` / `YOUR SHOT` **不动**（它们是对的）。
+            if (_stateText != null)
+            {
+                _stateText.gameObject.SetActive(!aiMatch);
+            }
+
+            if (_stateCaption != null)
+            {
+                _stateCaption.gameObject.SetActive(!aiMatch);
+            }
+
+            // ⚠ 只藏文字会留下**一个空黑条**（底板 + 菱形点 + 交叉准星仍在）⇒ 必须整块隐藏。
+            if (_statusFrame != null)
+            {
+                _statusFrame.gameObject.SetActive(!aiMatch);
             }
 
             if (_ballsLabel != null)

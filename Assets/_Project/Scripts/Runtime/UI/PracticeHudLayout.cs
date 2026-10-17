@@ -44,6 +44,11 @@ namespace Billiards.UI
         // y 上界 0.982 < 1（上边距 0.018）；y 下界 0.780 > 球桌最高投影 0.764702（余量 0.015298）。
         public static readonly Rect CountersZone = new Rect(0.020f, 0.780f, 0.280f, 0.202f);
         public static readonly Rect StatusZone = new Rect(0.360f, 0.780f, 0.280f, 0.202f);
+        /// <summary>
+        /// 力度块。⚠ **不能放到屏幕右侧竖排**：球桌主区已占到 `x ≤ 0.9501`、`y 0.094–0.765`
+        /// （判据 `T95 (b)` 明确禁止 HUD 压球桌）⇒ 右侧只剩 0.05 宽、放不下 150 px 的 `Shoot` 按钮。
+        /// 参考稿那种"右侧一列"在本工程会盖住球桌边缘，故保持**顶部右块**。
+        /// </summary>
         public static readonly Rect PowerZone = new Rect(0.700f, 0.780f, 0.280f, 0.202f);
 
         // ── 可读性下限（规格 §4.2）──────────────────────────────────────────
