@@ -151,6 +151,18 @@ namespace Billiards.Physics
             return flowVisible && cueBallInPlay && !transitionActive && !homeViewOpen;
         }
 
+        /// <summary>
+        /// **球杆的锚点**（= 杆尖要对准的那个点）—— **纯函数**，判据直接驱动它（不起场景）。
+        ///
+        /// `shotInFlight == true` ⇒ **冻在"出杆那一刻"的白球位置**。
+        /// ⚠ 为什么必须冻结（用户实机反馈）：原来每帧读 `ballVisuals[0].position` ⇒ 出杆后白球在跑，
+        /// **杆就跟着白球飞**。球杆在"球在飞"期间应当**定在击球位置**，等球停下/下一杆 `Aim` 再回到白球旁。
+        /// </summary>
+        public static Vector3 StickAnchorPosition(bool shotInFlight, Vector3 cueBallWorld, Vector3 strikeCueBallWorld)
+        {
+            return shotInFlight ? strikeCueBallWorld : cueBallWorld;
+        }
+
         private void SyncStick()
         {
             EnsureStick();
@@ -187,12 +199,19 @@ namespace Billiards.Physics
             }
 
             Vector3 cueBallWorld = drive.ballVisuals[0].position;
+
+            // **出杆后不跟球**（P7）：`ShotInFlight` 期间锚点冻在"击球那一刻"的白球位置。
+            // 位置来自驱动器的 `LastStrikeCueBallPosition`（**物理坐标**）⇒ 与视觉更新次序无关，也不会被帧序干扰。
+            Vector3 strikeWorld = PoolGeometry.PhysicsBallToUnity(drive.LastStrikeCueBallPosition);
+            cueBallWorld = StickAnchorPosition(drive.ShotInFlight, cueBallWorld, strikeWorld);
+
             Vector3 aimDir = drive.AimDirectionUnity;
 
             float pullback;
-            if (_flow.Phase == ShotPhase.Charging)
+            if (_flow.Phase == ShotPhase.Charging
+                || drive.AiPhase == PhysicsTestDrive.AiShotPhase.Pulling)
             {
-                pullback = drive.power * MaxPullback;   // 蓄力：1:1 后拉
+                pullback = drive.power * MaxPullback;   // 蓄力 / **AI 拉杆段**：1:1 后拉
             }
             else if (_flow.Phase == ShotPhase.Shooting)
             {

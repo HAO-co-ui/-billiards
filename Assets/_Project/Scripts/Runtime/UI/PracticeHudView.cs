@@ -344,6 +344,28 @@ namespace Billiards.UI
             BuildStatusBar(_status);
             BuildShotbar(_power);
             BuildCallPocketPicker(canvasGo.transform);
+
+            // **一行启动日志**（P7-1）：把"用户实际看到的字号"一次性钉成可读数据 ——
+            // 起因：用户两次反馈"看不清"，而**窗口模式**下 `Screen.width/height` 可能不是 1920×1080
+            // （若是 1280×720，`CanvasScale` 只有 0.667 ⇒ 正文在 1.9 下也只有 15.2 px，那才是真凶）。
+            // ⚠ `Application.isPlaying` 守卫：EditMode 判据也会调 `EnsureBuilt`，不守卫会刷屏（且本工程刚修过"假告警"）。
+            // ⚠ `Screen.dpi` 在**窗口模式**可能返回 0 ⇒ 标 `0(未知)`，**不拿它做任何判断**。
+            if (Application.isPlaying)
+            {
+                int w = Screen.width;
+                int h = Screen.height;
+                string dpi = Screen.dpi > 0f ? Screen.dpi.ToString("F0") : "0(未知)";
+
+                // ⚠ 这两个值**必须走 `RenderedFontPixels`**（与判据同一个函数、同一个真源）——
+                //   若在这里自己写 `字号 * canvasScale * FontScale`，就等于在视图里**又乘了一次倍率**
+                //   ⇒ `T148(d)`「视图里该乘积只准出现 1 次」会立刻红（第一版就是这么红的，实测 `实测 3`）。
+                Debug.Log(
+                    $"[UI/字号] screen={w}x{h} dpi={dpi} "
+                    + $"canvasScale={PracticeHudLayout.CanvasScale(w, h):F4} "
+                    + $"fontScale={PracticeHudLayout.FontScale:F2} "
+                    + $"bodyPx={PracticeHudLayout.RenderedFontPixels(ClubUiTokens.FontBody, w, h):F1} "
+                    + $"captionPx={PracticeHudLayout.RenderedFontPixels(ClubUiTokens.FontCaption, w, h):F1}", this);
+            }
         }
 
         // ════════════════ 分区 A：品牌 + 记分牌 ═══════════════════════════════
@@ -1174,7 +1196,9 @@ namespace Billiards.UI
         /// ⚠ **字号在这里乘全局倍率**（`PracticeHudLayout.FontScale`）—— 本方法是**全 UI 唯一**写
         /// `text.fontSize` 的地方（HUD / 首页 / 赛前屏 / 结算卡 / 选袋条全部经它）⇒ 一个乘号 = 整体放大。
         /// ⚠ **只准乘这一次**（判据 `T148(d)` 数 `* PracticeHudLayout.FontScale` 的出现次数）：
-        /// 乘两次会变成 1.28² ≈ 1.64，界面会当场崩掉版式。
+        /// 乘两次会变成 1.9² ≈ 3.61（1.6 时代是 2.56），界面会当场崩掉版式。
+        /// ⚠ 注释里出现这个乘积**不算**（判据读的是 `StripComments` 之后的文本）；启动日志那两处也**必须**走
+        /// `RenderedFontPixels`，不许在视图里自己再乘一遍倍率（实测：那样 `T148(d)` 会数到 3）。
         /// </summary>
         public static TextMeshProUGUI CreateText(Transform parent, string name, TMP_FontAsset font, float size,
                                                 Color color, TextAlignmentOptions alignment,

@@ -399,6 +399,14 @@ namespace Billiards.Rules
 
             // **开球进球不定组**（开放球局）
             verdict.reassignGroup = false;
+
+            // **P7：合法开球但一颗目标球都没进 ⇒ 换手**（正规 8 球；旧实现默认续杆 = 用户反馈 6"发球没进球也没换手"）。
+            // ⚠ 放在最后：前面"开球犯规 ⇒ nextTurn = 对手"已经处理过的情况不会被它改写（同向）。
+            //   开球**进了黑 8**（respot）或**进了任意目标球** ⇒ `objectBallsPotted >= 1` ⇒ 不换手（继续打）。
+            if (!eightPotted && objectBallsPotted == 0)
+            {
+                verdict.nextTurn = Other(before.turn);
+            }
         }
 
         /// <summary>**常规分支**（§3.2：定组 / 首碰 / 碰库原则 / 直接判负 / 胜负 / D3 指定袋）。</summary>
@@ -480,15 +488,21 @@ namespace Billiards.Rules
                 verdict.groupBall = groupBall;     // **第一颗合法进球**（单点实现 ⇒ 宿主不必猜）
             }
 
-            // ⑥ 犯规 ⇒ 对手**全场**自由球；否则继续打（不换手）
+            // ⑥ 犯规 ⇒ 对手**全场**自由球；
+            //    **P7 正规规则**：不犯规但**没进本方组的球** ⇒ **换手**（旧实现"只要不犯规就续杆"= 用户反馈 6）。
+            //    续杆的唯一条件 = 本杆进了**本方组**的球（开放球局 ⇒ 任意目标球，不含黑 8）。
             if (fouled)
             {
                 verdict.nextTurn = Other(before.turn);
                 verdict.ballInHand = BallInHandKind.FullTable;
             }
-            else
+            else if (PottedOwnGroupBall(before.groupState, shot.pottedBalls))
             {
                 verdict.nextTurn = before.turn;
+            }
+            else
+            {
+                verdict.nextTurn = Other(before.turn);
             }
         }
 
@@ -553,6 +567,55 @@ namespace Billiards.Rules
             }
 
             return -1;
+        }
+
+        /// <summary>
+        /// **本杆是否进了"本方组的球"** —— **续杆的唯一判据**（P7）。
+        ///
+        /// · **开放球局** ⇒ 进了任意目标球（`1..15`，**不含**黑 8）就算续杆；
+        /// · **已定实色** ⇒ 只有实色球算；
+        /// · **已定花色** ⇒ 只有花色球算。
+        ///
+        /// ⚠ 与 <see cref="FirstLegalPottedBall"/> **不同**：那个答"按哪颗定组"，这个答"要不要换手"；
+        /// 两者都用**集合** `pottedBalls`（本杆进了哪些球），不需要先后次序。
+        /// </summary>
+        public static bool PottedOwnGroupBall(GroupState groupState, List<int> pottedBalls)
+        {
+            if (pottedBalls == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < pottedBalls.Count; i++)
+            {
+                int ball = pottedBalls[i];
+                if (ball < 1 || ball > 15 || ball == EightBall)
+                {
+                    continue;   // 白球与黑 8 都不参与"续杆判定"（黑 8 走胜负分支）
+                }
+
+                switch (groupState)
+                {
+                    case GroupState.OpenTable:
+                        return true;
+                    case GroupState.Solid:
+                        if (IsSolid(ball))
+                        {
+                            return true;
+                        }
+
+                        break;
+                    case GroupState.Stripe:
+                        if (IsStripe(ball))
+                        {
+                            return true;
+                        }
+
+                        break;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>对手。</summary>

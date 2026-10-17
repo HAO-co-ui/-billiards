@@ -243,6 +243,17 @@ PATCHES = {
             ),
         ],
     ),
+    # ㉑ **把赛前屏标题带高改回 1.28 时代的值**（本轮第二条注入）
+    #    ⇒ `T148(e) 赛前屏标题` 必红 —— 证明"新版式也确实被守"，不是"改了就算"
+    "p9-title-band-shrink": (
+        r"Assets\_Project\Scripts\Runtime\UI\HomeLayout.cs",
+        [
+            (
+                "            CardTop + 54f,\n            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 74f);",
+                "            CardTop + 54f,\n            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 50f);",
+            ),
+        ],
+    ),
     # ⑭ **选袋槽位数被改小**（QA 修复轮 B10）：6 → 5
     #    ⇒ "槽位数 == 6"与"== TableConfig.PocketCount"两条独立断言必须红（旧写法是自指的、跟着绿）
     "p7-slot-count": (

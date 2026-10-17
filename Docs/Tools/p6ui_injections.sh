@@ -69,7 +69,9 @@ case "$TAG" in
                             BASE="7e55e457ab09fde9d970390301533bbaa9a712ec" ;;
   # ── 字号整体放大（FontScale）一条 ──────────────────────────────────────────
   p9-font-scale-twice)      REL="Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs"
-                            BASE="c23f0aeccd1ee602ed1ad1a1fe5f43d01d3573e4" ;;
+                            BASE="a4cc71a8fa52e2367e33e528847ce473544ca968" ;;
+  p9-title-band-shrink)     REL="Assets/_Project/Scripts/Runtime/UI/HomeLayout.cs"
+                            BASE="b571e5b14e758c7f1a6498ab85a39d42fa25d24f" ;;
   *) echo "未登记的 tag：$TAG" >&2; exit 2 ;;
 esac
 
@@ -88,6 +90,25 @@ fi
 
 mkdir -p "$OUT"
 
+# ── ⓪'' **两种模式：smoke（默认，冒烟）/ anchor（锚点）** ─────────────────────
+# 语义（team-lead 2026-10-17 裁定）。注：曾拟给预检加 `--frozen`，**已被否决** ——
+# 改用「`--expect` 全量 + `P6UI_FROZEN_SHA` 逐位核」，避免给关键路径上的共享脚本加活：
+#   · `--expect <glob>`         = 「**这些是我要提交的**」—— 调用方自己的在途文件；
+#   · `--accept-foreign <glob>` = 「别人的、**在途且未验证**」—— 放行但留痕 ⇒ **只算冒烟**；
+# ⇒ **锚点模式的定义（team-lead 2026-10-17 裁定）**：`--accept-foreign` **恒为 0**；
+#    `--expect` **覆盖树里全部待提交文件**（我的 + 对方**已冻结**的，反正要一起提交）；
+#    "对方那些是否真冻结"**不由预检判断**，而是由本脚本的 `P6UI_FROZEN_SHA` **逐位核 sha1**（不符 ⇒ 退 9）。
+#    ⇒ 职责拆分：**预检只负责"没有未声明项"**；**是否真冻结由调用方机械核**。
+#    ⇒ 因此**不给** `batch_precheck.sh` 加 `--frozen`（那在规则那一路的关键路径上，不加活）。
+# ⇒ 开关（缺省 = 冒烟，保持原行为）：
+#      P6UI_ANCHOR=1           或  P6UI_ACCEPT_FOREIGN=0/空   ⇒ 锚点模式
+#      P6UI_FROZEN="glob glob"  ⇒ 锚点模式下对方**已冻结**的文件（逐条并入 `--expect`）
+#      P6UI_FROZEN_SHA="p=sha1;p=sha1" ⇒ 可选，**逐位核**这些冻结文件的 sha1（不符 ⇒ 退 9）
+ANCHOR_MODE=0
+if [ "${P6UI_ANCHOR:-0}" = "1" ] || [ "${P6UI_ACCEPT_FOREIGN:-1}" = "0" ]; then
+  ANCHOR_MODE=1
+fi
+
 # ── ⓪' **共享预检（紧贴起跑）**：白名单外有"既非 --expect 也非 --accept-foreign"的改动 ⇒ **退 7**
 # ⚠ **位置必须在 `apply` 之前**：本脚本**没有 `trap`** —— 若先注入再被拦下，就必须自己保证还原。
 #   放在这里，窗口只多约 1 秒。
@@ -105,9 +126,42 @@ ACCEPT_ARGS=(--accept-foreign "Assets/_Project/Scripts/Runtime/Physics/PhysicsTe
              --accept-foreign "Assets/_Project/Tests/EditMode/EightBallAiTests.cs"
              --accept-foreign "Docs/Tools/p6rt_*"
              --accept-foreign "Docs/35-C_*.md")
-if ! bash "$PROJECT/Docs/Tools/batch_precheck.sh" "${EXPECT_ARGS[@]}" "${ACCEPT_ARGS[@]}"; then
-  echo "⛔ [$TAG] 跑批前置检查未通过（白名单外有既非 --expect 也非 --accept-foreign 的改动）⇒ **不跑批**" >&2
-  exit 7
+if [ "$ANCHOR_MODE" = "1" ]; then
+  # 锚点模式 1)：先把「对方的冻结文件」逐位核 sha1（若给了期望值）；不符即退 9、**不跑批**。
+  if [ -n "${P6UI_FROZEN_SHA:-}" ]; then
+    IFS=';' read -r -a _pairs <<< "$P6UI_FROZEN_SHA"
+    for _kv in "${_pairs[@]}"; do
+      [ -z "$_kv" ] && continue
+      _path="${_kv%%=*}"
+      _want="${_kv#*=}"
+      _got="$(sha1_of "$PROJECT/$_path")"
+      if [ "$_got" != "$_want" ]; then
+        echo "⛔ [$TAG] **冻结文件 sha1 不符**：$_path 期望 $_want、实测 $_got" >&2
+        echo "   ⇒ 对方又改了（冻结已失效）—— **不跑批**。" >&2
+        exit 9
+      fi
+      echo "[$TAG] ✓ 冻结 sha1 相符：$_path"
+    done
+  fi
+
+  # 2) **声明**：锚点跑把"树里全部待提交文件"都并入 `--expect` —— 我的 + 对方**已冻结**的。
+  #    ⚠ `batch_precheck.sh` **不需要**知道"冻结"这个概念（它只管"没有未声明项"）；
+  #      "对方是否真冻结"已由上面的 `P6UI_FROZEN_SHA` 逐位核过（不符已退 9）。
+  FROZEN_ARGS=()
+  for _pat in ${P6UI_FROZEN:-}; do
+    FROZEN_ARGS+=(--expect "$_pat")
+  done
+  echo "【锚点模式】--accept-foreign = **0**；--expect ${#EXPECT_ARGS[@]} 项（我的）+ ${#FROZEN_ARGS[@]} 项（对方已冻结、已核 sha）"
+  if ! bash "$PROJECT/Docs/Tools/batch_precheck.sh" "${EXPECT_ARGS[@]}" "${FROZEN_ARGS[@]}"; then
+    echo "⛔ [$TAG] 锚点模式前置检查未通过（存在既未声明、也非噪声的改动）⇒ **不跑批**" >&2
+    exit 7
+  fi
+else
+  echo "【冒烟模式】含 --accept-foreign（对方**在途未验证**）⇒ **本轮结果不作锚点**"
+  if ! bash "$PROJECT/Docs/Tools/batch_precheck.sh" "${EXPECT_ARGS[@]}" "${ACCEPT_ARGS[@]}"; then
+    echo "⛔ [$TAG] 冒烟模式前置检查未通过（白名单外有既非 --expect 也非 --accept-foreign 的改动）⇒ **不跑批**" >&2
+    exit 7
+  fi
 fi
 
 # ── ① 备份（仓外）──────────────────────────────────────────────────────────

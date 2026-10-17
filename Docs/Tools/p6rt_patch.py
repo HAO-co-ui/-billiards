@@ -163,11 +163,132 @@ PATCHES = {
         PTD,
         [
             (
-                "            // **出路（b）：显式让位** —— 绝不静默卡住。\n"
+                "        private void YieldAiTurn(string reason)\n"
+                "        {\n"
+                "            AiPhase = AiShotPhase.None;\n"
+                "            _aiPhaseElapsed = 0f;\n"
                 "            AiTurnYieldedCount++;\n"
                 "            SetTurn(ShotTurn.Player);\n",
+                "        private void YieldAiTurn(string reason)\n"
+                "        {\n"
                 "            // INJ-P6RT-10：**删掉「AI 无法出杆 ⇒ 让位」的出路**"
-                "（预期 T145 (AI驱动⑤) 必红 = 会卡死）\n",
+                "（预期 T145 (AI驱动⑤) 必红 = 会卡死）\n"
+                "            AiPhase = AiShotPhase.None;\n"
+                "            _aiPhaseElapsed = 0f;\n",
+            ),
+        ],
+    ),
+    # ⑪ **回到"合法就续杆"的旧行为** ⇒ 合法但没进本方球也续杆（P7 判据③ 必红）
+    "p7-no-pot-turn": (
+        RULES,
+        [
+            (
+                "            else if (PottedOwnGroupBall(before.groupState, shot.pottedBalls))\n"
+                "            {\n"
+                "                verdict.nextTurn = before.turn;\n"
+                "            }\n"
+                "            else\n"
+                "            {\n"
+                "                verdict.nextTurn = Other(before.turn);\n"
+                "            }\n",
+                "            else if (PottedOwnGroupBall(before.groupState, shot.pottedBalls))\n"
+                "            {\n"
+                "                verdict.nextTurn = before.turn;\n"
+                "            }\n"
+                "            else\n"
+                "            {\n"
+                "                // INJ-P7-1：**删掉「合法但没进本方球 ⇒ 换手」**（回到旧行为：合法就续杆）\n"
+                "                verdict.nextTurn = before.turn;\n"
+                "            }\n",
+            ),
+        ],
+    ),
+    # ⑫ **删掉 `reassignGroup` 的施加** ⇒ 组别永远停在 OpenTable（P7 判据①⑦ 必红）
+    "p7-group-drop": (
+        PTD,
+        [
+            (
+                "            if (verdict.reassignGroup && verdict.groupBall > 0)\n"
+                "            {\n"
+                "                GroupState shooterGroup = EightBallRules.IsSolid(verdict.groupBall)\n"
+                "                    ? GroupState.Solid\n"
+                "                    : GroupState.Stripe;\n"
+                "                _playerGroup = CurrentTurn == ShotTurn.Player ? shooterGroup : OpponentGroup(shooterGroup);\n"
+                "            }\n",
+                "            // INJ-P7-2：**删掉 `reassignGroup` 的施加**（组别永远停在 OpenTable）\n",
+            ),
+        ],
+    ),
+    # ⑬ **删掉 `ballInHand` 的施加** ⇒ 自由球永远不发（P7 判据⑤ 必红）
+    "p7-ballinhand-drop": (
+        PTD,
+        [
+            (
+                "            BallInHand = verdict.ballInHand;\n"
+                "            if (verdict.ballInHand != BallInHandKind.None)\n"
+                "            {\n"
+                "                PendingCueBallPlacement = true;\n"
+                "            }\n",
+                "            // INJ-P7-3：**删掉 `ballInHand` 的施加**（自由球永远不发）\n",
+            ),
+        ],
+    ),
+    # ⑭ **让球杆在飞行期间仍跟着白球** ⇒ P7 判据⑧ 必红（用户实机反馈"杆跟着球飞"）
+    "p7-stick-follow": (
+        "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs",
+        [
+            (
+                "            return shotInFlight ? strikeCueBallWorld : cueBallWorld;\n",
+                "            // INJ-P7-4：**取消冻结** ⇒ 出杆后杆继续跟着白球跑\n"
+                "            return cueBallWorld;\n",
+            ),
+        ],
+    ),
+    # ⑮ **AI 恢复"一次性出杆"**（规划完立刻击出，跳过瞄准/拉杆） ⇒ P7 判据⑨ 必红
+    "p7-ai-one-shot": (
+        PTD,
+        [
+            (
+                "                    if (!BeginAiShot())\n"
+                "                    {\n"
+                "                        YieldAiTurn(\"规划不出任何一杆（无合法目标 / 叫袋失败）\");\n"
+                "                    }\n"
+                "\n"
+                "                    return;\n",
+                "                    if (!BeginAiShot())\n"
+                "                    {\n"
+                "                        YieldAiTurn(\"规划不出任何一杆（无合法目标 / 叫袋失败）\");\n"
+                "                        return;\n"
+                "                    }\n"
+                "\n"
+                "                    // INJ-P7-5：**AI 恢复「一次性出杆」**（跳过瞄准 / 拉杆两段）\n"
+                "                    power = _aiPlannedPower;\n"
+                "                    AiPhase = AiShotPhase.Strike;\n"
+                "                    return;\n",
+            ),
+        ],
+    ),
+    # ⑯ **`isBreak` 从不清**（回到旧 bug）⇒ 第一杆之后**每一杆都被 `JudgeBreak` 判**（P7 判据⑩ 必红）
+    "p7-isbreak-never-clear": (
+        PTD,
+        [
+            (
+                "            ruleState.isBreak = verdict.reRack;\n",
+                "            // INJ-P7-7：**`isBreak` 从不清**（回到旧 bug ⇒ 之后每一杆都被 `JudgeBreak` 判）\n",
+            ),
+        ],
+    ),
+    # ⑰ **删掉 AI 的自由球自动放置** ⇒ AI 只能吃 `Launch()` 的"回开球位"兜底（P7 判据⑪ 必红）
+    "p7-ai-autoplace-drop": (
+        PTD,
+        [
+            (
+                "                    if (!TryAutoPlaceAiCueBall())\n"
+                "                    {\n"
+                "                        YieldAiTurn(\"自由球找不到合法放球点\");\n"
+                "                        return;\n"
+                "                    }\n",
+                "                    // INJ-P7-6：**删掉 AI 的自由球自动放置**（预期 P7⑪ 必红）\n",
             ),
         ],
     ),

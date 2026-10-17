@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace Billiards.UI
 {
@@ -46,13 +46,13 @@ namespace Billiards.UI
         public static readonly Rect BadgeLocal = new Rect(0.350f, 0.712f, 0.300f, 0.045f);
 
         /// <summary>标题（`Rack ended` / `Table cleared`，Barlow 38 px）。</summary>
-        public static readonly Rect TitleLocal = new Rect(0.06f, 0.588f, 0.88f, 0.080f);   // 0.593/0.075 → 0.588/0.080：38 px 标题 ×1.28 = 48.6 > 0.075×635=47.6 ⇒ **向下**长到 50.8（顶边 0.668 不变，仍与下面 0.566 的"为什么"行留 0.022 = 14 px 的缝）（T148(e)）
+        public static readonly Rect TitleLocal = new Rect(0.06f, 0.550f, 0.88f, 0.118f);   // 0.550/0.118（=74.9 px）：38 px × FontScale 1.9 = 72.2 ⇒ 带高 ≥；顶边仍 0.668、与徽章(0.712)留 27.9 px、与"为什么"行(顶 0.540)留 6.4 px（T148(e)(f)）
 
         /// <summary>副标题（失败原因，11 px 静音灰）。</summary>
-        public static readonly Rect ReasonLocal = new Rect(0.06f, 0.521f, 0.88f, 0.045f);
+        public static readonly Rect ReasonLocal = new Rect(0.06f, 0.495f, 0.88f, 0.045f);   // 0.521 → 0.495：把"为什么"行**下移** 16.5 px，给加高后的标题腾缝（标题底 0.568，仍留 17.8 px）；下方统计区顶边 0.445 ⇒ 仍有 31.8 px（T148(f)）
 
         /// <summary>三列统计的容器（内部再竖分"大数字 / 8 px 标签"）。</summary>
-        public static readonly Rect StatsLocal = new Rect(0.06f, 0.315f, 0.88f, 0.130f);
+        public static readonly Rect StatsLocal = new Rect(0.06f, 0.300f, 0.88f, 0.145f);   // 0.315/0.130 → 0.300/0.145（=92.1 px）：统计**数值**占该区 0.58 ⇒ 53.4 px ≥ 27×1.9=51.3（原 47.9 装不下）；上下仍留 35.6 / 31.7 px（T148(e)）
 
         /// <summary>统计区上边线的卡内 y（设计稿 `.result-stats { border-top }`）。</summary>
         public const float StatsTopLineY = 0.465f;

@@ -1086,6 +1086,9 @@ namespace Billiards.Tests
         /// <summary>`PointerPowerController` 源码路径（T145 ⑧ 的调用点守卫用）。</summary>
         private const string PointerPowerSourcePath = "Assets/_Project/Scripts/Runtime/Physics/PointerPowerController.cs";
 
+        /// <summary>`CueStickController` 源码路径（P7⑧「出杆后杆不跟球」的**接线守卫**用）。</summary>
+        private const string CueStickSourcePath = "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs";
+
         /// <summary>逐行剥掉 `//` 之后注释（T145 ⑧ 守卫用；避免注释里的片段被数成调用点）。</summary>
         private static string StripCommentLines(string source)
         {
@@ -2075,6 +2078,631 @@ namespace Billiards.Tests
                     Object.DestroyImmediate(stuckGo);
                 }
 
+                // ── P7 规则（Runtime 侧）：`RuleVerdict` 的七个字段**一个都不许丢** ──
+                // ① 定组（含 ⑦ `IsEightBallShot` 真的变 true）② 首碰违规 ⇒ 犯规 + 换手（含 ⑤ 对手拿全场自由球）
+                // ③ 合法但没进本方球 ⇒ 换手 ④ 合法开球没进球 ⇒ 换手
+                // ⑤(b) 自由球形态 / 头区落点 / 前向门 ⑥ 开球进黑 8 ⇒ 复位回 footSpot
+                var p7GroupGo = new GameObject("T145P7Group");
+                try
+                {
+                    PhysicsTestDrive g1 = NewAiDrive(p7GroupGo, rackSeed: 51);
+                    int gp = FirstCornerPocket(g1.tableConfig);
+                    SetUpCleanPot(g1, 3, gp, g1.Simulator.Balls.Count);   // 只剩**实色 3** 在场
+                    AdvanceToRest(g1, RestCap);
+
+                    if (g1.ruleState.groupState != GroupState.OpenTable)
+                    {
+                        failures.Add($"(P7①) 前提：新局应为开放球局，实测 {g1.ruleState.groupState}。");
+                    }
+
+                    g1.SetTurn(ShotTurn.Player);
+                    AiShotContext gctx = g1.BuildAiContext();
+                    g1.aimDegrees = EightBallAi.AimDegreesForPocket(gctx.cueBallPosition, gctx.ballPositions[3],
+                        gctx.pocketCenters[gp]);
+                    g1.power = 0.5f;
+
+                    if (g1.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(P7①) 前提不成立：定组那一杆没打出去。");
+                    }
+                    else
+                    {
+                        AdvanceToRest(g1, RestCap);
+
+                        if (g1.Simulator.IsBallInPlay(3))
+                        {
+                            failures.Add("(P7①) 前提不成立：那一杆没把 3 号打进袋 ⇒ 定组无从判定。");
+                        }
+                        else if (!g1.LastVerdict.reassignGroup)
+                        {
+                            failures.Add($"(P7①) 开放球局的第一颗合法进球应触发**定组**（`reassignGroup`），"
+                                         + $"实测 false（outcome={g1.LastVerdict.outcome}）。");
+                        }
+                        else
+                        {
+                            if (g1.ruleState.groupState != GroupState.Solid)
+                            {
+                                failures.Add($"(P7①) 第一颗合法进球是**实色** ⇒ `ruleState.groupState` 应变 `Solid`，"
+                                             + $"实测 {g1.ruleState.groupState}。");
+                            }
+
+                            if (g1.aiGroupState != GroupState.Stripe)
+                            {
+                                failures.Add($"(P7①) 玩家定实色 ⇒ **对手(AI)的组别**应为 `Stripe`（互补、不重复），"
+                                             + $"实测 {g1.aiGroupState}。");
+                            }
+
+                            if (g1.IsAiTurn)
+                            {
+                                failures.Add("(P7①) 进了本方球应**续杆**（仍是玩家回合）。");
+                            }
+
+                            // ⑦：本方球清完 ⇒ `IsEightBallShot` 必须真的变 true
+                            //    （这正是"进黑 8 必判负"的根因：它恒 false ⇒ 从不要求指定袋 + `wrongPocket` 恒真）
+                            if (!g1.IsEightBallShot)
+                            {
+                                failures.Add($"(P7⑦) 本方球已清完（solidRemaining={g1.ruleState.solidRemaining}）"
+                                             + " ⇒ `IsEightBallShot` 应为 **true**，实测 false"
+                                             + "（`solidRemaining` 没重算 ⇒ 组别/剩余数与球台脱节）。");
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p7GroupGo);
+                }
+
+                // ── ② 首碰违规 ⇒ 犯规 + 换手；⑤ 犯规 ⇒ 对手拿**全场**自由球 ──
+                var p7FoulGo = new GameObject("T145P7Foul");
+                try
+                {
+                    PhysicsTestDrive f1 = NewAiDrive(p7FoulGo, rackSeed: 52);
+                    for (int ball = 0; ball < f1.Simulator.Balls.Count; ball++)
+                    {
+                        if (ball == 0)
+                        {
+                            f1.Simulator.PlaceBall(ball, new Vector2(-0.30f, 0f), Vector2.zero);
+                            continue;
+                        }
+
+                        // 场上只留**花色 10**（正对 +x）⇒ 实色方先碰它 = 犯规
+                        Vector2 pos = ball == 10 ? new Vector2(0.30f, 0f) : new Vector2(0f, 50f + ball * 0.5f);
+                        f1.Simulator.PlaceBall(ball, pos, Vector2.zero);
+                    }
+
+                    AdvanceToRest(f1, RestCap);
+                    f1.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,
+                        solidRemaining = 7,
+                        stripeRemaining = 1,   // 场上只有一颗花色
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    f1.SetTurn(ShotTurn.Player);
+                    f1.aimDegrees = 0f;
+                    f1.power = 0.5f;
+
+                    if (f1.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(P7②) 前提不成立：那一杆没打出去。");
+                    }
+                    else
+                    {
+                        AdvanceToRest(f1, RestCap);
+
+                        if (!f1.LastVerdict.foul)
+                        {
+                            failures.Add("(P7②) **先碰对方组的球**应判犯规（`foul == true`），实测 false"
+                                         + "（组别恒 `OpenTable` 时首碰合法性整段被跳过）。");
+                        }
+
+                        if (!f1.IsAiTurn)
+                        {
+                            failures.Add("(P7②) 犯规应**换手**给对手，实测仍是玩家回合。");
+                        }
+
+                        if (f1.BallInHand != BallInHandKind.FullTable)
+                        {
+                            failures.Add($"(P7⑤) 犯规应给对手**全场自由球**（`BallInHand` 出口可读），"
+                                         + $"实测 {f1.BallInHand}。");
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p7FoulGo);
+                }
+
+                // ── ③ 合法但**没进本方球** ⇒ 换手（正规 8 球；旧实现"只要不犯规就续杆"）──
+                var p7NoPotGo = new GameObject("T145P7NoPot");
+                try
+                {
+                    PhysicsTestDrive n1 = NewAiDrive(p7NoPotGo, rackSeed: 53);
+                    for (int ball = 0; ball < n1.Simulator.Balls.Count; ball++)
+                    {
+                        if (ball == 0)
+                        {
+                            n1.Simulator.PlaceBall(ball, new Vector2(-0.30f, 0f), Vector2.zero);
+                            continue;
+                        }
+
+                        // 场上只留**实色 3**（正对 +x，且**不正对任何袋**）⇒ 必碰库、必不进袋
+                        Vector2 pos = ball == 3 ? Vector2.zero : new Vector2(0f, 50f + ball * 0.5f);
+                        n1.Simulator.PlaceBall(ball, pos, Vector2.zero);
+                    }
+
+                    AdvanceToRest(n1, RestCap);
+                    n1.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,
+                        solidRemaining = 1,
+                        stripeRemaining = 0,
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    n1.SetTurn(ShotTurn.Player);
+                    n1.aimDegrees = 0f;
+                    n1.power = 0.5f;
+
+                    if (n1.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(P7③) 前提不成立：那一杆没打出去。");
+                    }
+                    else
+                    {
+                        AdvanceToRest(n1, RestCap);
+
+                        if (!n1.Simulator.IsBallInPlay(3))
+                        {
+                            failures.Add("(P7③) 前提不成立：3 号竟然进袋了（本项要的是【合法但没进球】）。");
+                        }
+                        else if (n1.LastVerdict.foul)
+                        {
+                            failures.Add("(P7③) 前提不成立：这一杆不该犯规（先碰本方球、之后有球碰库）。");
+                        }
+                        else
+                        {
+                            if (n1.BallInHand != BallInHandKind.None)
+                            {
+                                failures.Add($"(P7③) 合法杆不该给自由球，实测 {n1.BallInHand}。");
+                            }
+
+                            if (!n1.IsAiTurn)
+                            {
+                                failures.Add("(P7③) **合法但没进本方球 ⇒ 必须换手**，实测仍是玩家回合。");
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p7NoPotGo);
+                }
+
+                // ── ④ 合法开球但**没进任何目标球** ⇒ 换手（旧实现默认续杆）──
+                var p7BreakGo = new GameObject("T145P7Break");
+                try
+                {
+                    PhysicsTestDrive b1 = NewAiDrive(p7BreakGo, rackSeed: 54);
+                    PlaceBreakCluster(b1);
+                    AdvanceToRest(b1, RestCap);
+                    b1.ruleState = new RuleState
+                    {
+                        groupState = GroupState.OpenTable,
+                        solidRemaining = 7,
+                        stripeRemaining = 0,
+                        calledPocket = -1,
+                        isBreak = true,
+                    };
+                    b1.SetTurn(ShotTurn.Player);
+                    b1.aimDegrees = 0f;
+                    b1.power = 1f;
+
+                    if (b1.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(P7④) 前提不成立：开球那一杆没打出去。");
+                    }
+                    else
+                    {
+                        AdvanceToRest(b1, RestCap);
+
+                        if (b1.LastVerdict.reRack)
+                        {
+                            failures.Add("(P7④) 前提不成立：这一杆被判成**无效开球**（碰库目标球不足 4 颗）"
+                                         + " ⇒ 换手那一条无从判定（调布局或加力）。");
+                        }
+                        else
+                        {
+                            int inPlay = 0;
+                            for (int ball = 1; ball <= 7; ball++)
+                            {
+                                if (b1.Simulator.IsBallInPlay(ball))
+                                {
+                                    inPlay++;
+                                }
+                            }
+
+                            if (inPlay < 7)
+                            {
+                                failures.Add($"(P7④) 前提不成立：开球竟然进了球（场上只剩 {inPlay}/7 颗）"
+                                             + " ⇒ 本项要的是【合法开球但没进球】。");
+                            }
+                            else if (!b1.IsAiTurn)
+                            {
+                                failures.Add("(P7④) **合法开球但没进任何目标球 ⇒ 必须换手**，实测仍是玩家回合。");
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p7BreakGo);
+                }
+
+                // ── ⑤(b) 自由球：形态出口 / 头区落点 / 前向门 ──
+                var p7BiHGo = new GameObject("T145P7BallInHand");
+                try
+                {
+                    PhysicsTestDrive h1 = NewAiDrive(p7BiHGo, rackSeed: 55);
+                    for (int ball = 0; ball < h1.Simulator.Balls.Count; ball++)
+                    {
+                        Vector2 pos = ball == 0 ? Vector2.zero : new Vector2(0f, 50f + ball * 0.5f);
+                        h1.Simulator.PlaceBall(ball, pos, Vector2.zero);
+                    }
+
+                    AdvanceToRest(h1, RestCap);
+                    h1.SetTurn(ShotTurn.Player);
+
+                    // 直接施加"头区自由球 + 必须往前打"（本项测**施加侧**；规则层给不给由 ②/④ 守）
+                    h1.ApplyVerdict(new RuleVerdict
+                    {
+                        nextTurn = ShotTurn.Player,
+                        ballInHand = BallInHandKind.Kitchen,
+                        mustShootForward = true,
+                        winner = ShotTurn.Player,
+                    });
+
+                    if (h1.BallInHand != BallInHandKind.Kitchen)
+                    {
+                        failures.Add($"(P7⑤) `ballInHand` 未施加：应可读到 `Kitchen`，实测 {h1.BallInHand}。");
+                    }
+
+                    if (!h1.PendingCueBallPlacement)
+                    {
+                        failures.Add("(P7⑤) 自由球应打开【待放球】态（`PendingCueBallPlacement`），实测 false。");
+                    }
+
+                    float lineX = PoolConstants.KitchenLineX;
+                    if (!h1.CanPlaceCueBall(new Vector2(lineX + 0.15f, 0.20f)))
+                    {
+                        failures.Add("(P7⑤) 头区自由球：**开球线之后**的落点应合法（复用 `IsPlacementLegalInKitchen`）。");
+                    }
+
+                    if (h1.CanPlaceCueBall(new Vector2(lineX - 0.15f, 0.20f)))
+                    {
+                        failures.Add("(P7⑤) 头区自由球：**开球线之前**的落点应非法。");
+                    }
+
+                    int fwdBefore = h1.RefusedForwardCount;
+                    h1.aimDegrees = 0f;   // +x = **背向**头线（判定口径：前方 = −x）
+                    h1.power = 0.5f;
+                    if (h1.Launch().magnitude > 0f)
+                    {
+                        failures.Add("(P7⑤) `mustShootForward` 未施加：背向头线的出杆应被拒。");
+                    }
+                    else if (h1.RefusedForwardCount != fwdBefore + 1)
+                    {
+                        failures.Add($"(P7⑤) 前向门拒绝必须留痕（`RefusedForwardCount` 应 +1），"
+                                     + $"实测 {fwdBefore} → {h1.RefusedForwardCount}。");
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p7BiHGo);
+                }
+
+                // ── ⑥ 开球进黑 8 ⇒ `respotEightBall` 生效（黑 8 回到 `footSpot`）──
+                var p7RespotGo = new GameObject("T145P7Respot");
+                try
+                {
+                    PhysicsTestDrive r1 = NewAiDrive(p7RespotGo, rackSeed: 56);
+                    // 把黑 8 挪到台外（= 既有"已入袋"口径），再施加复位
+                    r1.Simulator.PlaceBall(EightBallRules.EightBall, new Vector2(0f, 50f + 8 * 0.5f), Vector2.zero);
+                    AdvanceToRest(r1, RestCap);
+
+                    if (r1.Simulator.IsBallInPlay(EightBallRules.EightBall))
+                    {
+                        failures.Add("(P7⑥) 前提不成立：黑 8 应已不在场。");
+                    }
+                    else
+                    {
+                        r1.ApplyVerdict(new RuleVerdict
+                        {
+                            nextTurn = ShotTurn.Player,
+                            winner = ShotTurn.Player,
+                            respotEightBall = true,
+                            outcome = ShotOutcomeKind.EightBallRespot,
+                        });
+
+                        if (!r1.Simulator.IsBallInPlay(EightBallRules.EightBall))
+                        {
+                            failures.Add("(P7⑥) `respotEightBall` 未施加：黑 8 应被**放回场上**，实测仍不在场。");
+                        }
+                        else
+                        {
+                            float off = (r1.Simulator.Balls[EightBallRules.EightBall].position
+                                         - r1.tableConfig.footSpot).magnitude;
+                            if (off > 1e-4f)
+                            {
+                                failures.Add($"(P7⑥) 黑 8 应复位到 `footSpot`，实测偏离 {off:F5} m。");
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p7RespotGo);
+                }
+
+                // ── P7⑧ 球杆在「杆在飞」期间**不跟着白球跑**（用户实机反馈）+ 接线守卫 ──
+                Vector3 cueW = new Vector3(0.1f, 0f, 0.2f);
+                Vector3 strikeW = new Vector3(-0.3f, 0f, 0.4f);
+                if ((CueStickController.StickAnchorPosition(true, cueW, strikeW) - strikeW).sqrMagnitude > 1e-8f)
+                {
+                    failures.Add("(P7⑧) 出杆后球杆锚点应**冻结在击球位置**（`ShotInFlight` ⇒ 用 strike 点），"
+                                 + "实测没冻结 ⇒ 杆会跟着白球飞。");
+                }
+
+                if ((CueStickController.StickAnchorPosition(false, cueW, strikeW) - cueW).sqrMagnitude > 1e-8f)
+                {
+                    failures.Add("(P7⑧) 没在飞时应**跟着白球**（否则瞄准时杆不贴球）。");
+                }
+
+                // **接线守卫**（纯函数绿 ≠ 真的用上了）：源码里必须有**调用点**，且把 `drive.ShotInFlight` 喂进去
+                string stickSource = File.ReadAllText(Path.Combine(
+                    Path.GetDirectoryName(Application.dataPath) ?? ".", CueStickSourcePath));
+                string stickNoComment = StripCommentLines(stickSource);
+                if (CountOccurrences(stickNoComment, "StickAnchorPosition(") < 2)
+                {
+                    failures.Add("(P7⑧) `CueStickController` 里找不到 `StickAnchorPosition(` 的**调用点**"
+                                 + " ⇒ 冻结没接线（纯函数在、但没人用）。");
+                }
+
+                if (CountOccurrences(stickNoComment, "drive.ShotInFlight") < 1)
+                {
+                    failures.Add("(P7⑧) `CueStickController` 没有把 `drive.ShotInFlight` 喂给锚点函数"
+                                 + " ⇒ 冻结永远不生效。");
+                }
+
+                // ── P7⑨ AI 出杆**分阶段**（瞄准 → 拉杆 → 击出），不是一次性 aim+power+Launch ──
+                var p7PhaseGo = new GameObject("T145P7AiPhase");
+                try
+                {
+                    PhysicsTestDrive a2 = NewAiDrive(p7PhaseGo, rackSeed: 57);
+                    int ap = FirstCornerPocket(a2.tableConfig);
+                    SetUpCleanPot(a2, AiCleanTargetBall, ap, a2.Simulator.Balls.Count);
+                    AdvanceToRest(a2, RestCap);
+                    a2.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,
+                        solidRemaining = 3,
+                        stripeRemaining = 7,
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    a2.SetTurn(ShotTurn.Ai);
+                    a2.aiThinkSeconds = 0.05f;
+                    a2.aiAimSeconds = 0.10f;
+                    a2.aiPullSeconds = 0.10f;
+
+                    bool sawAiming = false;
+                    bool sawPulling = false;
+                    float powerMidPull = -1f;
+                    int launchesBeforePhase = a2.LaunchCount;
+                    for (int i = 0; i < 600 && a2.LaunchCount == launchesBeforePhase; i++)
+                    {
+                        a2.Advance(PoolSimulator.FixedDeltaTime);
+                        if (a2.AiPhase == PhysicsTestDrive.AiShotPhase.Aiming)
+                        {
+                            sawAiming = true;
+                        }
+
+                        if (a2.AiPhase == PhysicsTestDrive.AiShotPhase.Pulling)
+                        {
+                            sawPulling = true;
+                            if (powerMidPull < 0f && a2.power > 0.01f)
+                            {
+                                powerMidPull = a2.power;
+                            }
+                        }
+                    }
+
+                    if (a2.LaunchCount == launchesBeforePhase)
+                    {
+                        failures.Add("(P7⑨) 前提不成立：AI 在 600 步内没出手 ⇒ 分阶段判据无从判定。");
+                    }
+                    else
+                    {
+                        if (!sawAiming)
+                        {
+                            failures.Add("(P7⑨) AI 出杆应经过**瞄准段**（`AiPhase == Aiming` 可观测），实测没看到"
+                                         + " ⇒ 仍是「一次性出杆」，玩家看不到对手在瞄。");
+                        }
+
+                        if (!sawPulling)
+                        {
+                            failures.Add("(P7⑨) AI 出杆应经过**拉杆段**（`AiPhase == Pulling` 可观测），实测没看到"
+                                         + " ⇒ 没有「拉杆」这个动作。");
+                        }
+
+                        float planned = a2.LastAiShotIntent.power;
+                        if (powerMidPull <= 0f || powerMidPull >= planned)
+                        {
+                            failures.Add($"(P7⑨) 拉杆段 `power` 应从 0 **线性涨**上去"
+                                         + $"（中途应 0 < power < 规划值 {planned:F3}），实测中途 {powerMidPull:F3}。");
+                        }
+
+                        if (a2.AiPhase != PhysicsTestDrive.AiShotPhase.None)
+                        {
+                            failures.Add($"(P7⑨) 击出后 `AiPhase` 应回到 `None`，实测 {a2.AiPhase}。");
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p7PhaseGo);
+                }
+
+                // ── P7⑩ `isBreak` **只在开球那一杆为 true**（第二根因：旧代码从不清 ⇒ 之后每一杆都走 `JudgeBreak`）──
+                var p7BreakFlagGo = new GameObject("T145P7BreakFlag");
+                try
+                {
+                    PhysicsTestDrive k1 = NewAiDrive(p7BreakFlagGo, rackSeed: 58);
+                    PlaceBreakCluster(k1);
+                    AdvanceToRest(k1, RestCap);
+                    k1.ruleState = new RuleState
+                    {
+                        groupState = GroupState.OpenTable,
+                        solidRemaining = 7,
+                        stripeRemaining = 0,
+                        calledPocket = -1,
+                        isBreak = true,
+                    };
+                    k1.SetTurn(ShotTurn.Player);
+                    k1.aimDegrees = 0f;
+                    k1.power = 1f;
+
+                    if (k1.Launch().magnitude <= 0f)
+                    {
+                        failures.Add("(P7⑩) 前提不成立：开球那一杆没打出去。");
+                    }
+                    else
+                    {
+                        AdvanceToRest(k1, RestCap);
+
+                        if (k1.LastVerdict.reRack)
+                        {
+                            failures.Add("(P7⑩) 前提不成立：这一杆被判成**无效开球** ⇒ 本项无从判定。");
+                        }
+                        else
+                        {
+                            if (k1.ruleState.isBreak)
+                            {
+                                failures.Add("(P7⑩) **有效开球之后 `ruleState.isBreak` 必须回到 false**，实测仍为 true"
+                                             + " ⇒ 之后每一杆都会被 `JudgeBreak` 判（常规分支永远跑不到）。");
+                            }
+
+                            // 第二杆：**故意做成"若按开球判就会重摆"的形状**（0 球进袋 + 碰库目标球不足 4 颗）
+                            // ⇒ 只有**真的走了 `JudgeRegular`** 才不会 `reRack` ⇒ 这条断的是"走的是哪个分支"本身。
+                            for (int ball = 0; ball < k1.Simulator.Balls.Count; ball++)
+                            {
+                                if (ball == 0)
+                                {
+                                    k1.Simulator.PlaceBall(ball, new Vector2(-0.30f, 0f), Vector2.zero);
+                                    continue;
+                                }
+
+                                Vector2 pos = ball == AiCleanTargetBall
+                                    ? Vector2.zero
+                                    : new Vector2(0f, 50f + ball * 0.5f);
+                                k1.Simulator.PlaceBall(ball, pos, Vector2.zero);
+                            }
+
+                            AdvanceToRest(k1, RestCap);
+                            k1.SetTurn(ShotTurn.Player);
+                            k1.aimDegrees = 0f;
+                            k1.power = 0.3f;
+
+                            if (k1.Launch().magnitude <= 0f)
+                            {
+                                failures.Add("(P7⑩) 前提不成立：第二杆没打出去。");
+                            }
+                            else
+                            {
+                                AdvanceToRest(k1, RestCap);
+                                if (k1.LastVerdict.reRack)
+                                {
+                                    failures.Add("(P7⑩) 第二杆被判成**重新摆球** ⇒ 它走的仍是 `JudgeBreak` 分支"
+                                                 + "（`isBreak` 没清掉 ⇒ 常规分支一次都跑不到）。");
+                                }
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p7BreakFlagGo);
+                }
+
+                // ── P7⑪ AI 拿自由球 ⇒ **自己找合法位置放白球**再出杆（否则自由球白拿）──
+                var p7AiPlaceGo = new GameObject("T145P7AiPlace");
+                try
+                {
+                    PhysicsTestDrive v1 = NewAiDrive(p7AiPlaceGo, rackSeed: 59);
+                    int vp = FirstCornerPocket(v1.tableConfig);
+                    SetUpCleanPot(v1, AiCleanTargetBall, vp, v1.Simulator.Balls.Count);
+
+                    // 白球先离台（= 犯规后"待放球"的既有形态）；此刻仍是玩家回合 ⇒ 驱动器不会动
+                    v1.Simulator.PlaceBall(0, new Vector2(0f, 50f), Vector2.zero);
+                    AdvanceToRest(v1, RestCap);
+
+                    v1.ruleState = new RuleState
+                    {
+                        groupState = GroupState.Solid,
+                        solidRemaining = 3,
+                        stripeRemaining = 7,
+                        calledPocket = -1,
+                        isBreak = false,
+                    };
+                    v1.SetTurn(ShotTurn.Ai);
+                    v1.ApplyVerdict(new RuleVerdict
+                    {
+                        nextTurn = ShotTurn.Ai,
+                        winner = ShotTurn.Ai,
+                        ballInHand = BallInHandKind.FullTable,
+                    });
+
+                    if (!v1.PendingCueBallPlacement)
+                    {
+                        failures.Add("(P7⑪) 前提不成立：施加自由球后应处于**待放球**态。");
+                    }
+                    else
+                    {
+                        v1.aiThinkSeconds = 0.05f;
+                        v1.aiAimSeconds = 0.05f;
+                        v1.aiPullSeconds = 0.05f;
+                        int launchesBeforePlace = v1.LaunchCount;
+                        int placeBefore = v1.AiAutoPlaceCount;
+                        for (int i = 0; i < 600 && v1.LaunchCount == launchesBeforePlace; i++)
+                        {
+                            v1.Advance(PoolSimulator.FixedDeltaTime);
+                        }
+
+                        if (v1.AiAutoPlaceCount != placeBefore + 1)
+                        {
+                            failures.Add($"(P7⑪) AI 拿自由球时必须**自己把白球放到合法位置**"
+                                         + $"（`AiAutoPlaceCount` 应 +1），实测 {placeBefore} → {v1.AiAutoPlaceCount}"
+                                         + " ⇒ 只能吃 `Launch()` 的「白球回开球位」兜底 = **自由球白拿**。");
+                        }
+
+                        if (!v1.Simulator.IsBallInPlay(0))
+                        {
+                            failures.Add("(P7⑪) AI 出杆前白球必须在场上（放球成功）。");
+                        }
+
+                        if (v1.LaunchCount == launchesBeforePlace)
+                        {
+                            failures.Add("(P7⑪) AI 拿了自由球却**没能出杆**。");
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(p7AiPlaceGo);
+                }
+
                 Assert.IsEmpty(failures, "T145（AI 出杆入口）失败：\n" + string.Join("\n", failures));
             }
             finally
@@ -2110,6 +2738,41 @@ namespace Billiards.Tests
             }
 
             return fallback;
+        }
+
+        /// <summary>
+        /// 造一个**可控开球**布局：白球 + **7 颗实色挤成小三角**（中区、远离袋口）
+        /// ⇒ 满力冲开后 7 颗都会散开撞库（满足"≥4 颗目标球碰库"= **有效开球**），但**不该进球**。
+        /// 判据 ④（开球换手）与 ⑩（`isBreak` 只在开球那杆为 true）**共用**这一个布局（同源，避免两处各写一份）。
+        /// </summary>
+        private static void PlaceBreakCluster(PhysicsTestDrive drive)
+        {
+            var starts = new[]
+            {
+                new Vector2(-0.86f, 0f),
+                new Vector2(-0.80f, 0.030f), new Vector2(-0.80f, -0.030f),
+                new Vector2(-0.74f, 0.060f), new Vector2(-0.74f, 0f), new Vector2(-0.74f, -0.060f),
+                new Vector2(-0.68f, 0.030f),
+            };
+            int placed = 0;
+            for (int ball = 0; ball < drive.Simulator.Balls.Count; ball++)
+            {
+                if (ball == 0)
+                {
+                    drive.Simulator.PlaceBall(ball, new Vector2(-0.95f, 0f), Vector2.zero);
+                    continue;
+                }
+
+                Vector2 pos = placed < starts.Length
+                    ? starts[placed]
+                    : new Vector2(0f, 50f + ball * 0.5f);
+                if (placed < starts.Length)
+                {
+                    placed++;
+                }
+
+                drive.Simulator.PlaceBall(ball, pos, Vector2.zero);
+            }
         }
 
         /// <summary>

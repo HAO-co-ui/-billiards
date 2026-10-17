@@ -390,6 +390,19 @@ namespace Billiards.Physics
             _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
             _accumulator = 0f;
             TotalSteps = 0;
+
+            // **P7：新一局 ⇒ 规则状态归零**（组别 / 自由球 / 前向约束 / 指定袋），并按新球台重算剩余球数。
+            // ⚠ 必须在 `LoadBalls` **之后**：剩余球数是**按球台**算的。
+            // ⚠ 两个入口（`Initialize` / `ReloadRack`）都走这段 ⇒ 重摆后不会带着上一局的组别继续打。
+            _playerGroup = GroupState.OpenTable;
+            ruleState = new RuleState { calledPocket = -1 };
+            BallInHand = BallInHandKind.None;
+            PendingCueBallPlacement = false;
+            AiPhase = AiShotPhase.None;
+            _aiPhaseElapsed = 0f;
+            _aiThinkElapsed = 0f;
+            SyncGroupsForTurn();
+            RefreshRemainingCounts();
             ResetVisualRotationTracking();   // 首帧只落位、不自转（无"上一帧位置"可用）
 
             if (cushionGizmo != null)
@@ -421,6 +434,19 @@ namespace Billiards.Physics
             _simulator.LoadBalls(loadRackForBallBallDemo ? BuildRack() : BuildSingleBall());
             _accumulator = 0f;
             TotalSteps = 0;
+
+            // **P7：新一局 ⇒ 规则状态归零**（组别 / 自由球 / 前向约束 / 指定袋），并按新球台重算剩余球数。
+            // ⚠ 必须在 `LoadBalls` **之后**：剩余球数是**按球台**算的。
+            // ⚠ 两个入口（`Initialize` / `ReloadRack`）都走这段 ⇒ 重摆后不会带着上一局的组别继续打。
+            _playerGroup = GroupState.OpenTable;
+            ruleState = new RuleState { calledPocket = -1 };
+            BallInHand = BallInHandKind.None;
+            PendingCueBallPlacement = false;
+            AiPhase = AiShotPhase.None;
+            _aiPhaseElapsed = 0f;
+            _aiThinkElapsed = 0f;
+            SyncGroupsForTurn();
+            RefreshRemainingCounts();
             ResetVisualRotationTracking();   // 重摆是瞬移 ⇒ 不得被当成真实位移、否则球凭空猛转
 
             // **复位"全场自由球"的两个状态**（独立复核抓出的**状态泄漏**，可达路径很短：
@@ -502,8 +528,57 @@ namespace Billiards.Physics
         /// <summary>**AI 因无法出杆而把回合让给玩家的次数**（只读出口：判据不读像素）。</summary>
         public int AiTurnYieldedCount { get; private set; }
 
+        /// <summary>
+        /// **AI 自己把白球放到合法位置的次数**（只读出口）。
+        /// ⚠ 为什么必须有这个出口：`Launch()` 里有一条"白球离台 ⇒ 回开球位"的**兜底**
+        /// ⇒ 即使 AI **完全不放球**，它也能"照打"（自由球白拿）。⇒ 只看"它出杆了"是**真空绿**，
+        /// 必须看"它真的自己放了吗"。
+        /// </summary>
+        public int AiAutoPlaceCount { get; private set; }
+
         /// <summary>本局 AI 已经**真的出杆**的次数（种子派生的单调计数；只读出口）。</summary>
         public int AiLaunchCount => _aiLaunchCount;
+
+        /// <summary>
+        /// **AI 出杆的三个可见阶段**（"AI 要像人"：先**瞄准** → 再**拉杆** → 最后**击出**）。
+        /// ⚠ 一次性 `aim+power+Launch()` 虽然结果一样，但玩家**看不到**对手在做什么 —— 用户实机要的是"像人"。
+        /// </summary>
+        public enum AiShotPhase
+        {
+            /// <summary>没在出杆（玩家回合 / 球在滚 / 有杆在飞 / 已结算）。</summary>
+            None = 0,
+
+            /// <summary>**瞄准**：杆已指向目标方向（可见），但还没拉杆。</summary>
+            Aiming,
+
+            /// <summary>**拉杆**：`power` 从 0 线性涨到规划力度（球杆据此可见地后拉）。</summary>
+            Pulling,
+
+            /// <summary>**击出**：这一帧走**既有** `Launch()`（与玩家同一条出杆路径）。</summary>
+            Strike,
+        }
+
+        /// <summary>**当前 AI 出杆阶段**（只读出口：判据据此断"分阶段"真的发生，而不是一次性出杆）。</summary>
+        public AiShotPhase AiPhase { get; private set; }
+
+        /// <summary>AI **瞄准**阶段时长（秒，可配置）。</summary>
+        public float aiAimSeconds = 0.5f;
+
+        /// <summary>AI **拉杆**阶段时长（秒，可配置）。</summary>
+        public float aiPullSeconds = 0.4f;
+
+        private float _aiPhaseElapsed;
+        private float _aiPlannedPower;
+
+        /// <summary>**本杆是否在飞**（只读出口：球杆据此决定"跟球"还是"冻结在击球位置"）。</summary>
+        public bool ShotInFlight => _shotInFlight;
+
+        /// <summary>
+        /// **最近一次出杆那一刻白球的位置**（物理坐标，只读出口）。
+        /// ⚠ 存在的理由：出杆后白球会跑，而球杆若每帧读 `ballVisuals[0].position` ⇒ **杆跟着白球飞**
+        ///（用户实机反馈）。球杆在 `ShotInFlight` 期间应当冻结在**这个点**。
+        /// </summary>
+        public Vector2 LastStrikeCueBallPosition { get; private set; }
 
         private float _aiThinkElapsed;
         private int _aiLaunchCount;
@@ -545,20 +620,97 @@ namespace Billiards.Physics
         /// </summary>
         public RuleState ruleState;
 
+        // ── 规则施加（P7：`RuleVerdict` 的七个字段**一个都不许丢**）─────────────────
+
+        /// <summary>
+        /// **玩家（人类）一方的组别**（`OpenTable` = 还没定组）—— 组别的**唯一真源**。
+        /// `ruleState.groupState` 是**击球方相对**的（规则层按 `before.turn` 解读），
+        /// 由 <see cref="SyncGroupsForTurn"/> 从本字段派生 ⇒ **别在两处各写一份**。
+        /// </summary>
+        private GroupState _playerGroup = GroupState.OpenTable;
+
+        /// <summary>
+        /// **本杆之后的自由球形态**（`None` = 没有自由球）。**只读出口**：HUD / 判据据此知道"该放白球了、能放哪"。
+        /// 与 <see cref="PendingCueBallPlacement"/> 的分工：本字段说**是什么自由球**（全场 / 头区），
+        /// 那个布尔说**现在处于待放态**（能不能放）。
+        /// </summary>
+        public BallInHandKind BallInHand { get; private set; }
+
+        /// <summary>**因"开球犯规后必须往头线前打"而被拒的出杆次数**（只读出口 —— 拒绝不许静默）。</summary>
+        public int RefusedForwardCount { get; private set; }
+
+        /// <summary>头区自由球"往前打"的最小前向分量（m/s）—— 喂给 `PoolSimulator.IsBreakShotForwardEnough`。</summary>
+        public float minForwardComponent = 0.5f;
+
+        /// <summary>
+        /// **最近一次被施加的判定**（**只读出口**）。用途：判据/诊断可以直接看"规则层到底给了什么"
+        /// （`reassignGroup` / `ballInHand` / `mustShootForward` / `respotEightBall` / `reRack` / `outcome`），
+        /// 不必从副作用反推 —— 反推容易把"副作用碰巧相同"读成"字段被施加了"（真空绿的常见来源）。
+        /// </summary>
+        public RuleVerdict LastVerdict { get; private set; }
+
         private bool _shotInFlight;
         private int[] _shotBeforePocketIndex;
         private bool[] _shotBeforeInPlay;
 
         /// <summary>
-        /// **施加一次判定**（**唯一施加口**）：规则层给的 `RuleVerdict` ⇒ 切回合 / 记结算。
+        /// **施加一次判定**（**唯一施加口**）：把规则层 `RuleVerdict` 的**七个字段全部落地**。
         ///
-        /// · 非结局杆 ⇒ 只切回合（`CurrentTurn = verdict.nextTurn`），不动结算位；
-        /// · 结局杆（`gameOver`）⇒ `MatchOver = true` + 记 `Winner` / `EndReason`（**原样取规则层的**），
-        ///   并置"结算待展示"位（**一局只弹一次**，见 <see cref="TryConsumeSettlement"/>）。
+        /// ⚠ **P7 的根因就是这里曾经只施加了 2/7**：`reassignGroup` / `ballInHand` / `mustShootForward` /
+        /// `respotEightBall` / `reRack` 全被丢掉 ⇒ ① 组别永远是 `OpenTable`（首碰合法性整段被跳过、
+        /// `IsEightBallShot` 恒 false ⇒ **进黑 8 必判负**、赢了也判负）；② 自由球没人发；③ 开球进黑 8 不回位；
+        /// ④ 无效开球不重摆。⇒ 现在**逐字段施加**，每个字段都有**可判定出口**（判据 ①–⑦ 守这条）。
+        ///
+        /// 施加顺序刻意如此：**先做"局内状态"（重摆/定组/自由球/前向/复位），再切回合，最后按新回合派生组别与剩余球数**。
+        /// 理由：定组要按**击球方**的视角记（`_playerGroup`），而 `ruleState.groupState` 是**击球方相对**的 ⇒
+        /// 必须等 `SetTurn` 之后再派生，否则会把"对手的组"写成"我的组"。
         /// </summary>
         public void ApplyVerdict(in RuleVerdict verdict)
         {
-            SetTurn(verdict.nextTurn);   // 走唯一施加口（连带做回合边界的 calledPocket 清理）
+            LastVerdict = verdict;   // 只读出口：判据可直接断言"规则层给了什么"
+
+            // ① **重摆**（开球无效）：只重摆，**开球方不变**（回合由 ⑥ 的 `nextTurn` 决定，这里不动）。
+            if (verdict.reRack)
+            {
+                ReRackKeepingEveryone();
+            }
+
+            // ② **定组**（开放球局的第一颗合法进球）：先记进"玩家侧真源"，等回合切完再派生。
+            if (verdict.reassignGroup && verdict.groupBall > 0)
+            {
+                GroupState shooterGroup = EightBallRules.IsSolid(verdict.groupBall)
+                    ? GroupState.Solid
+                    : GroupState.Stripe;
+                _playerGroup = CurrentTurn == ShotTurn.Player ? shooterGroup : OpponentGroup(shooterGroup);
+            }
+
+            // ③ **自由球**：记形态 + 打开"待放球"闸门（玩家拖动放 / AI 自动放，见 `TickAiTurn`）。
+            //    ⚠ 只记形态**不等于**实现了自由球 —— 谁能放、放哪、AI 怎么自动放，是 ③ 的配套（判据 ⑤ 守）。
+            BallInHand = verdict.ballInHand;
+            if (verdict.ballInHand != BallInHandKind.None)
+            {
+                PendingCueBallPlacement = true;
+            }
+
+            // ④ **必须往头线前打**（开球犯规的附加约束 ⇒ 喂给下一杆 `Launch()` 的前向门）。
+            ruleState.mustShootForward = verdict.mustShootForward;
+
+            // ⑤ **黑 8 复位**（开球进黑 8 ⇒ 放回 `footSpot`，继续打、不算赢）。
+            if (verdict.respotEightBall)
+            {
+                RespotEightBall();
+            }
+
+            // ⑥ 切回合（走唯一施加口，连带清 `calledPocket`）。
+            SetTurn(verdict.nextTurn);
+
+            // ⑦ **回合切完**：派生组别（`ruleState.groupState` / `aiGroupState`）+ 按**当前球台**重算剩余球数。
+            SyncGroupsForTurn();
+            RefreshRemainingCounts();
+
+            // **开球只判一次**；但**无效开球要重摆 ⇒ 仍是"开球那一杆"**（下一杆还得按开球规则判）。
+            ruleState.isBreak = verdict.reRack;
+
             if (!verdict.gameOver)
             {
                 return;
@@ -568,6 +720,96 @@ namespace Billiards.Physics
             Winner = verdict.winner;
             EndReason = verdict.outcome;
             _settlementPending = true;
+        }
+
+        private static GroupState OpponentGroup(GroupState group) => group switch
+        {
+            GroupState.Solid => GroupState.Stripe,
+            GroupState.Stripe => GroupState.Solid,
+            _ => GroupState.OpenTable,
+        };
+
+        /// <summary>
+        /// 把"玩家侧组别"派生到**击球方相对**的 `ruleState.groupState` 与 AI 侧 `aiGroupState`（**单点**）。
+        /// ⚠ **只有这里能写 `ruleState.groupState`**（除了测试夹具自己设）—— 两处各写一份必然分叉。
+        /// </summary>
+        private void SyncGroupsForTurn()
+        {
+            GroupState aiGroup = _playerGroup == GroupState.OpenTable
+                ? GroupState.OpenTable
+                : OpponentGroup(_playerGroup);
+            ruleState.groupState = CurrentTurn == ShotTurn.Player ? _playerGroup : aiGroup;
+            aiGroupState = aiGroup;
+        }
+
+        /// <summary>
+        /// 按**当前球台**重算两组剩余球数（**每杆结束后 + 每局装球后**各一次）。
+        /// ⚠ 为什么必须重算：`solidRemaining/stripeRemaining` 是**规则层的输入**，若与球台脱节，
+        /// `IsEightBallShot`（"清完本方球 ⇒ 该打黑 8"）与 `JudgeRegular` 的 `ownGroupCleared` 会**同时**判错。
+        /// </summary>
+        public void RefreshRemainingCounts()
+        {
+            if (_simulator == null)
+            {
+                return;
+            }
+
+            int solid = 0;
+            int stripe = 0;
+            int count = _simulator.Balls.Count;
+            for (int ball = 1; ball <= 15 && ball < count; ball++)
+            {
+                if (ball == EightBallRules.EightBall || !_simulator.IsBallInPlay(ball))
+                {
+                    continue;
+                }
+
+                if (EightBallRules.IsSolid(ball))
+                {
+                    solid++;
+                }
+                else if (EightBallRules.IsStripe(ball))
+                {
+                    stripe++;
+                }
+            }
+
+            ruleState.solidRemaining = solid;
+            ruleState.stripeRemaining = stripe;
+        }
+
+        /// <summary>**把黑 8 放回 `footSpot`**（开球进黑 8 的既有口径：复位、继续打、不算赢）。</summary>
+        private void RespotEightBall()
+        {
+            if (_simulator == null || tableConfig == null)
+            {
+                return;
+            }
+
+            _simulator.PlaceBall(EightBallRules.EightBall, tableConfig.footSpot, Vector2.zero);
+            ResetVisualRotationTracking();
+            SyncVisual();
+        }
+
+        /// <summary>
+        /// **重摆**（开球无效）：按当前种子整盘重建，**不改回合、不改组别**（开球方继续开球）。
+        /// </summary>
+        private void ReRackKeepingEveryone()
+        {
+            if (_simulator == null)
+            {
+                return;
+            }
+
+            _simulator.LoadBalls(BuildRack());
+            _accumulator = 0f;
+            PendingCueBallPlacement = false;
+            BallInHand = BallInHandKind.None;
+            ruleState.mustShootForward = false;
+            ClearCalledPocket();
+            ResetVisualRotationTracking();
+            RefreshRemainingCounts();
+            SyncVisual();
         }
 
         /// <summary>
@@ -843,36 +1085,163 @@ namespace Billiards.Physics
         {
             if (!AiTurnArmed)
             {
-                // 前提不成立（玩家回合 / 球还在滚 / 有杆在飞 / 有待结算 / 已结算）⇒ **计时归零**，
+                // 前提不成立（玩家回合 / 球还在滚 / 有杆在飞 / 有待结算 / 已结算）⇒ **阶段与计时都归零**，
                 // 不许把"球在滚的那几帧"攒进去（否则一静止就立刻开打，看不出"思考"）。
                 _aiThinkElapsed = 0f;
+                _aiPhaseElapsed = 0f;
+                AiPhase = AiShotPhase.None;
                 return;
             }
 
-            _aiThinkElapsed += elapsed;
-            if (_aiThinkElapsed < aiThinkSeconds)
+            switch (AiPhase)
             {
-                return;
+                case AiShotPhase.None:
+                    // ① **思考**（可配置延时）—— 让玩家先看到"轮到对手了"。
+                    _aiThinkElapsed += elapsed;
+                    if (_aiThinkElapsed < aiThinkSeconds)
+                    {
+                        return;
+                    }
+
+                    _aiThinkElapsed = 0f;
+
+                    // ② **自由球**：AI 自己找合法位置放白球（否则第 1 段刚做的 `ballInHand` 会把 AI 卡住）。
+                    if (!TryAutoPlaceAiCueBall())
+                    {
+                        YieldAiTurn("自由球找不到合法放球点");
+                        return;
+                    }
+
+                    // ③ **规划**（只读探针）+ 打黑 8 时叫袋；失败 ⇒ 让位。
+                    if (!BeginAiShot())
+                    {
+                        YieldAiTurn("规划不出任何一杆（无合法目标 / 叫袋失败）");
+                    }
+
+                    return;
+
+                case AiShotPhase.Aiming:
+                    // ④ **瞄准段**：杆已指向目标（`aimDegrees` 已写），停一拍让玩家看清方向。
+                    _aiPhaseElapsed += elapsed;
+                    if (_aiPhaseElapsed < aiAimSeconds)
+                    {
+                        return;
+                    }
+
+                    _aiPhaseElapsed = 0f;
+                    power = 0f;                        // 拉杆从 **0** 起
+                    AiPhase = AiShotPhase.Pulling;
+                    return;
+
+                case AiShotPhase.Pulling:
+                {
+                    // ⑤ **拉杆段**：`power` 从 0 线性涨到规划力度 ⇒ 球杆可见地后拉。
+                    _aiPhaseElapsed += elapsed;
+                    float t = aiPullSeconds <= 0f ? 1f : Mathf.Clamp01(_aiPhaseElapsed / aiPullSeconds);
+                    power = _aiPlannedPower * t;
+                    if (t < 1f)
+                    {
+                        return;
+                    }
+
+                    AiPhase = AiShotPhase.Strike;
+                    return;
+                }
+
+                case AiShotPhase.Strike:
+                    // ⑥ **击出**：走**既有** `Launch()`（与玩家同一条出杆路径；`aimDegrees`/`power` 已在前两段写好）。
+                    AiPhase = AiShotPhase.None;
+                    _aiPhaseElapsed = 0f;
+                    if (Launch().magnitude > 0f)
+                    {
+                        _aiLaunchCount++;
+                        return;
+                    }
+
+                    YieldAiTurn("Launch() 被门控拒绝");
+                    return;
             }
+        }
 
-            _aiThinkElapsed = 0f;
-
+        /// <summary>
+        /// **AI 出杆的"规划段"**：只读探针算意图 ⇒ 打黑 8 时**叫袋** ⇒ 把方向写进 `aimDegrees`（玩家可见）。
+        /// 返回 `false` = 规划不出来（调用方**让位**）。
+        /// </summary>
+        private bool BeginAiShot()
+        {
             // 种子：**注入位**优先（判据可复现）；否则每杆真随机 ⇒ 同一局不会每杆都一样。
             int seed = aiLaunchSeed >= 0
                 ? aiLaunchSeed + _aiLaunchCount
                 : System.Guid.NewGuid().GetHashCode();
 
-            Vector2 velocity = TryLaunchAiShot(MatchTier, seed);
-            if (velocity.magnitude > 0f)
+            AiShotIntent intent = PlanAiShot(MatchTier, seed);
+            if (!intent.planned)
             {
-                _aiLaunchCount++;
-                return;
+                return false;
             }
 
-            // **出路（b）：显式让位** —— 绝不静默卡住。
+            // AI 打黑 8 必须自己叫袋（既有口径：写入口唯一 `TryCallPocket`）。
+            if (IsEightBallShot && (intent.pocketIndex < 0 || !TryCallPocket(intent.pocketIndex)))
+            {
+                return false;
+            }
+
+            aimDegrees = intent.aimDegrees;
+            _aiPlannedPower = intent.power;
+            power = 0f;
+            SyncAimIndicator();
+
+            _aiPhaseElapsed = 0f;
+            AiPhase = AiShotPhase.Aiming;
+            return true;
+        }
+
+        /// <summary>
+        /// **AI 自由球自动放球**：按**确定性网格**找第一个合法点（`CanPlaceCueBall` 已含台内/压球/袋口，
+        /// 头区自由球还含"线后"约束）。找不到 ⇒ `false`（调用方**让位**，不许静默卡住）。
+        /// ⚠ 不用随机：同局面 ⇒ 同落点（判据可复现，AI 站位也不会每局乱跳）。
+        /// </summary>
+        private bool TryAutoPlaceAiCueBall()
+        {
+            if (!PendingCueBallPlacement || _simulator == null || tableConfig == null)
+            {
+                return true;   // 没有自由球 ⇒ 无事可做（**不是**失败）
+            }
+
+            const int steps = 24;
+            for (int iy = 0; iy < steps; iy++)
+            {
+                float y = Mathf.Lerp(-tableConfig.halfWidth * 0.9f, tableConfig.halfWidth * 0.9f,
+                    (iy + 0.5f) / steps);
+                for (int ix = 0; ix < steps; ix++)
+                {
+                    float x = Mathf.Lerp(-tableConfig.halfLength * 0.9f, tableConfig.halfLength * 0.9f,
+                        (ix + 0.5f) / steps);
+                    var candidate = new Vector2(x, y);
+                    if (CanPlaceCueBall(candidate))
+                    {
+                        if (TryPlaceCueBall(candidate))
+                        {
+                            AiAutoPlaceCount++;   // 可判定出口：AI **真的自己放了**（不是靠 `Launch()` 的兜底）
+                            return true;
+                        }
+
+                        return false;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>**出路（b）：显式让位** —— 绝不静默卡住（`AiTurnYieldedCount` 是可判定出口）。</summary>
+        private void YieldAiTurn(string reason)
+        {
+            AiPhase = AiShotPhase.None;
+            _aiPhaseElapsed = 0f;
             AiTurnYieldedCount++;
             SetTurn(ShotTurn.Player);
-            Debug.LogWarning($"PhysicsTestDrive：AI 无法出杆（TryLaunchAiShot 返回零向量，seed={seed}）"
+            Debug.LogWarning($"PhysicsTestDrive：AI 无法出杆（{reason}）"
                              + " ⇒ 把回合让给玩家（AiTurnYieldedCount +1）。", this);
         }
 
@@ -1489,6 +1858,15 @@ namespace Billiards.Physics
                 }
             }
 
+            // **P7：头区自由球**（开球犯规的处罚）⇒ 落点还必须在**开球线之后**。
+            // ⚠ 复用既有纯函数 `IsPlacementLegalInKitchen`（它**内部调用** `IsPlacementLegal` 做台内/压球/袋口）
+            //   ⇒ 不在这里重写那三条基础规则（重写必然分叉）。
+            if (BallInHand == BallInHandKind.Kitchen)
+            {
+                return PoolSimulator.IsPlacementLegalInKitchen(position, occupied, tableConfig.pockets,
+                    tableConfig.halfLength, tableConfig.halfWidth, PoolConstants.KitchenLineX);
+            }
+
             return PoolSimulator.IsPlacementLegal(position, occupied, tableConfig.pockets,
                 tableConfig.halfLength, tableConfig.halfWidth);
         }
@@ -1583,6 +1961,15 @@ namespace Billiards.Physics
             float speed = LaunchSpeedFor(power);
             Vector2 v0 = CueVelocityFor(aimDegrees, speed);
 
+            // **P7：头区自由球的第一杆必须往头线前打**（开球犯规的附加约束 —— 规则层给 `mustShootForward`，
+            // 这里按**既有纯函数**判方向，不另写几何）。被拒要**留痕**（`RefusedForwardCount`），不许静默。
+            if (ruleState.mustShootForward
+                && !PoolSimulator.IsBreakShotForwardEnough(v0, minForwardComponent))
+            {
+                RefusedForwardCount++;
+                return Vector2.zero;
+            }
+
             // ③ 白球不在场上（已入袋 / 擦袋角离台）⇒ **兜底**：放回开球位（详见下方 `PendingCueBallPlacement` 分支）；
             //    否则 ① 就在它停下的地方出杆。
             bool cueOffTable = !_simulator.IsBallInPlay(0);
@@ -1598,6 +1985,12 @@ namespace Billiards.Physics
             Vector2 from = cueOffTable ? cueHome : _simulator.Balls[0].position;
 
             _simulator.PlaceBall(0, from, v0);
+            // **记住击球位置**：出杆后白球会跑，球杆在 `ShotInFlight` 期间要**冻结在这个点**（不许跟球飞）。
+            LastStrikeCueBallPosition = from;
+
+            // **P7：一开打，"放球窗口"就结束**（自由球不能用两次；否则 `PendingCueBallPlacement`
+            // 会一直挂着，下一杆还会被当成"待放球"）。
+            PendingCueBallPlacement = false;
 
             // 只清**每杆计数**；逐球入袋记录是跨杆状态，**不得**在此抹掉（否则入袋球会复活）。
             _simulator.ResetDiagnostics();

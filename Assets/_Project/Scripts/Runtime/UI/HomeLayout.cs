@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace Billiards.UI
 {
@@ -79,72 +79,72 @@ namespace Billiards.UI
         /// <summary>`8-BALL CLUB`（复用首页 eyebrow 文案）。</summary>
         public static readonly Rect MatchIntroEyebrow = Px(
             CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX,
-            CardTop + 34f,
-            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 16f);   // 12→16：字号整体放大 1.28 后 12 px 字号需要 ≥15.4 px 的带（T148(e)）
+            CardTop + 28f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 24f);   // 28/24：12 px × FontScale 1.9 = 22.8 ⇒ 带高 ≥（T148(e)）
 
         /// <summary>大标题 `Tonight's match`（参考稿 35 px）。</summary>
         public static readonly Rect MatchIntroTitle = Px(
             CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX,
-            CardTop + 52f,
-            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 50f);   // 46→50：38 px 标题 ×1.28 = 48.6 ⇒ 带高必须 ≥（T148(e)）
+            CardTop + 54f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 74f);   // 54/74：38 px × 1.9 = 72.2 ⇒ 带高 ≥；上接 eyebrow(28..52) 缝 2、下接头像(134) 缝 6（T148(e)）
 
         /// <summary>己方头像（`You` 一侧）。</summary>
         public static readonly Rect MatchIntroPlayerIcon = Px(
-            CenterX - 130f - MatchIntroAvatarSize * 0.5f, CardTop + 118f,
+            CenterX - 130f - MatchIntroAvatarSize * 0.5f, CardTop + 134f,
             MatchIntroAvatarSize, MatchIntroAvatarSize);
 
         /// <summary>己方名（`You`）。</summary>
         public static readonly Rect MatchIntroPlayerName = Px(
-            CenterX - 130f - 90f, CardTop + 180f, 180f, 18f);
+            CenterX - 130f - 90f, CardTop + 198f, 180f, 24f);   // 198/24：12 px × 1.9 = 22.8 ⇒ 带高 ≥（T148(e)）
 
         /// <summary>对阵分隔 `VS`。</summary>
-        public static readonly Rect MatchIntroVersus = Px(CenterX - 30f, CardTop + 118f, 60f, MatchIntroAvatarSize);
+        public static readonly Rect MatchIntroVersus = Px(CenterX - 30f, CardTop + 134f, 60f, MatchIntroAvatarSize);
 
         /// <summary>对手头像（机器人）。</summary>
         public static readonly Rect MatchIntroOpponentIcon = Px(
-            CenterX + 130f - MatchIntroAvatarSize * 0.5f, CardTop + 118f,
+            CenterX + 130f - MatchIntroAvatarSize * 0.5f, CardTop + 134f,
             MatchIntroAvatarSize, MatchIntroAvatarSize);
 
         /// <summary>对手名（`<难度> AI`，随选中档变化）。</summary>
-        public static readonly Rect MatchIntroOpponentName = Px(CenterX + 130f - 90f, CardTop + 180f, 180f, 18f);
+        public static readonly Rect MatchIntroOpponentName = Px(CenterX + 130f - 90f, CardTop + 198f, 180f, 24f);   // 198/24：与己方名同一字号（T148(e)）
 
         /// <summary>赛制块上边线（参考稿 `.intro-format` 的上下 1 px）。</summary>
         public static readonly Rect MatchIntroFormatRuleTop = Px(
-            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 220f,
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 240f,
             MatchIntroCardWidth - MatchIntroPaddingX * 2f, ClubUiTokens.Hairline);
 
         /// <summary>赛制标题行的位置（文案见 `PracticeHudState.MatchIntroFormatTitle` —— **不再抄文案**）。</summary>
         public static readonly Rect MatchIntroFormatTitle = Px(
-            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 228f,
-            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 32f);   // 232/28 → 228/32：23 px ×1.28 = 29.4 ⇒ 带高 ≥；顶边由 260 不变、避开下面 262 的说明行（T148(e)）
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 246f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 45f);   // 246/45：23 px × 1.9 = 43.7 ⇒ 带高 ≥（T148(e)）   // 232/28 → 228/32：23 px ×1.28 = 29.4 ⇒ 带高 ≥；顶边由 260 不变、避开下面 262 的说明行（T148(e)）
 
         /// <summary>赛制说明行的位置（文案见 `PracticeHudState.MatchIntroFormatDetail` —— **不再抄文案**）。</summary>
         public static readonly Rect MatchIntroFormatDetail = Px(
-            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 262f,
-            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 16f);
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 294f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 20f);   // 294/20：10 px × 1.9 = 19.0 ⇒ 带高 ≥（T148(e)）
 
         /// <summary>赛制块下边线。</summary>
         public static readonly Rect MatchIntroFormatRuleBottom = Px(
-            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 286f,
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 320f,
             MatchIntroCardWidth - MatchIntroPaddingX * 2f, ClubUiTokens.Hairline);
 
         /// <summary>`OPPONENT` 小标签。</summary>
         public static readonly Rect MatchIntroTierLabel = Px(
-            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 308f,
-            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 12f);
+            CenterX - MatchIntroCardWidth * 0.5f + MatchIntroPaddingX, CardTop + 334f,
+            MatchIntroCardWidth - MatchIntroPaddingX * 2f, 16f);   // 334/16：8 px × 1.9 = 15.2 ⇒ 带高 ≥（T148(e)）
 
         /// <summary>三档难度分段（与本屏同一套令牌；**可点**，非首页那个禁用占位）。</summary>
         public static readonly Rect MatchIntroTierSegment = Px(
-            CenterX - MatchIntroControlWidth * 0.5f, CardTop + 326f,
+            CenterX - MatchIntroControlWidth * 0.5f, CardTop + 358f,
             MatchIntroControlWidth, ClubUiTokens.SegmentHeight);
 
         /// <summary>`Start match` 主按钮。</summary>
         public static readonly Rect MatchIntroStartButton = Px(
-            CenterX - MatchIntroControlWidth * 0.5f, CardTop + 382f, MatchIntroControlWidth, 44f);
+            CenterX - MatchIntroControlWidth * 0.5f, CardTop + 410f, MatchIntroControlWidth, 44f);
 
         /// <summary>`Back to club` 次按钮。</summary>
         public static readonly Rect MatchIntroBackButton = Px(
-            CenterX - MatchIntroControlWidth * 0.5f, CardTop + 434f, MatchIntroControlWidth, 40f);
+            CenterX - MatchIntroControlWidth * 0.5f, CardTop + 462f, MatchIntroControlWidth, 40f);
 
         /// <summary>卡片水平中心（设计 px）。</summary>
         private const float CenterX = ReferenceWidth * 0.5f;

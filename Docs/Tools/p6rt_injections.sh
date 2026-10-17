@@ -51,10 +51,12 @@ OUT="$OUT_ROOT/inj_$TAG"
 
 # ── tag → 目标文件（多个 tag 可指向同一文件；基线按"文件"记，不按 tag）──────────
 case "$TAG" in
-  settle-unwire|rest-gate-drop|settlement-gate-break|callpocket-gate-drop|ai-callpocket-drop|ai-never-launch|ai-turn-player-guard-drop|ai-turn-rest-gate-drop|ai-turn-yield-drop)
+  settle-unwire|rest-gate-drop|settlement-gate-break|callpocket-gate-drop|ai-callpocket-drop|ai-never-launch|ai-turn-player-guard-drop|ai-turn-rest-gate-drop|ai-turn-yield-drop|p7-group-drop|p7-ballinhand-drop|p7-ai-one-shot|p7-isbreak-never-clear|p7-ai-autoplace-drop)
                     REL="Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs" ;;
-  eightpocket-freeze)
+  eightpocket-freeze|p7-no-pot-turn)
                     REL="Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs" ;;
+  p7-stick-follow)
+                    REL="Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs" ;;
   *) echo "未登记的 tag：$TAG（见本文件头部的 tag 列表）" >&2; exit 2 ;;
 esac
 
@@ -75,6 +77,7 @@ tree_sig() {
 EXPECT_ARGS=()
 for _p in \
   "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs" \
+  "Assets/_Project/Scripts/Runtime/Physics/CueStickController.cs" \
   "Assets/_Project/Scripts/Runtime/Rules/EightBallRules.cs" \
   "Assets/_Project/Scripts/Runtime/Rules/EightBallAi.cs" \
   "Assets/_Project/Tests/EditMode/PhysicsTestDriveLaunchStateTests.cs" \
@@ -102,10 +105,16 @@ mkdir -p "$OUT_ROOT"
 
 # ── ⓪ **持锁断言**：结果只认"自己持锁窗口内的那次" ─────────────────────────
 LOCK="${TEMP:-/tmp}/billiards_batch/BATCH_LOCK"
+now() { date +%H:%M:%S; }
 if [ ! -f "$LOCK" ] || [ "$(cut -d'|' -f1 < "$LOCK")" != "$LOCK_OWNER" ]; then
   echo "⛔ [$TAG] 锁不在 $LOCK_OWNER 手上（当前：$(cat "$LOCK" 2>/dev/null || echo '无锁')）⇒ **让路，不跑批**" >&2
   exit 4
 fi
+
+# **持锁窗口的"起点"由锁自己记着**（`owner|pid|起始时刻`）——本脚本**不 acquire/release**（由调用方做），
+# 所以只能"读起点 + 打自己的跑批起止"；`release` 时刻由调用方在脚本返回后打印。
+LOCK_STARTED="$(cut -d'|' -f3 < "$LOCK" 2>/dev/null || echo '?')"
+echo "[$TAG] 持锁窗口：acquire=${LOCK_STARTED}（取自 BATCH_LOCK）　脚本启动=$(now)"
 
 # ── ① 基线：**首跑记录 / 之后读取**（不写字面量）──────────────────────────────
 [ -f "$BASE_FILE" ] || : > "$BASE_FILE"
@@ -164,6 +173,7 @@ fi
 # ── ④ 跑全量（结果只认本次；跑批脚本自己先删旧 XML 并打印 mtime）───────────
 SIG_BEFORE="$(tree_sig)"
 echo "[$TAG] 跑批前源码树签名 = $SIG_BEFORE"
+echo "[$TAG] 跑批开始 = $(now)"
 bash "$PROJECT/Docs/Tools/unity_batch.sh" tests > "$OUT/run.log" 2>&1
 RC=$?
 SIG_AFTER="$(tree_sig)"
@@ -205,6 +215,7 @@ if grep -q "INJ-P6RT" "$TARGET"; then
   exit 3
 fi
 echo "[$TAG] ✓ 还原后 sha1 与基线**逐字节一致**，且 INJ 残留 = 0"
+echo "[$TAG] 脚本结束 = $(now)（`release` 由调用方在脚本返回后立即执行）"
 
 # ── ⑥ 汇总（**判成败只认 XML 的 failed 与 mtime**，不看 unity rc）──────────────
 grep -E "results mtime" "$OUT/run.log" || true

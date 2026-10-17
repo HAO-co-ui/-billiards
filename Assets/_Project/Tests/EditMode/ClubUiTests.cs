@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -1801,13 +1801,21 @@ namespace Billiards.Tests
         /// (c) **单调**：设计字号 ↑ ⇒ 预测像素高 ↑；
         /// (d) **单点**：`* FontScale` 在换算点里恰好 1 次、`* PracticeHudLayout.FontScale` 在视图里恰好 1 次、
         ///     且 `.fontSize =` 全 UI 只有 1 处；
-        /// (e) **关键块不挤**：12 个容器的带高 ≥ **放大后**的字号（状态条说明行 / 选袋 6 格 / 赛前屏三档与标题赛制行 /
+        /// (e) **关键块不挤**：**18 个**容器的带高 ≥ **放大后**的字号（状态条说明行 / 选袋 6 格 / 赛前屏三档与标题赛制行 /
         ///     结算卡标题·徽章·"为什么"行）。⚠ 这是"**单行 band 装得下字号**"的**下界**，不是 leading 保证
         ///     （TMP 没有 mask ⇒ 超出不会自动裁切，只会压到邻行 ⇒ 这条守的就是"不压邻行"）；
         /// (f) 结算卡标题带**不与**下面"为什么"行重叠（放大后重算过的缝）。
         ///
-        /// **怎么打死它**：把 `CreateText` 的乘号**乘两次**（`p9-font-scale-twice`）⇒ (d) 红。
-        /// ⚠ 如实标注：`(a)(b)(c)` 是取值级断言，**(d) 才是"单点"那一刀**；`(e)(f)` 守的是版式预算。
+        /// (g) **绝对像素可读下限**（阈值来自用户**三轮**反馈，不是审美）：
+        ///     **三轮反馈：1.28 不够 → 1.6 不够 → 1.9 才够**（用户原话"小，但很清楚"）。
+        ///     1080p 下正文 `12 × 1.9 = 22.8` ≥ **22 px**、标签 `9 × 1.9 = 17.1` ≥ **16 px**。
+        ///     ⚠ **阈值必须随契约上调**：旧的 18/13 在"回调到 1.5"（正文正好 18 px）时**仍然绿**
+        ///       —— 那正是"回调换绿"的滑坡，所以下限写 22/16。
+        ///
+        /// **怎么打死它**：① 把 `CreateText` 的乘号**乘两次**（`p9-font-scale-twice`）⇒ (d) 红；
+        /// ② 把赛前屏标题带高改回 1.28 时代的 50（`p9-title-band-shrink`）⇒ **(e) 赛前屏标题** 红
+        ///    —— 证明**新版式也确实被守**，不是"改了就算"。
+        /// ⚠ 如实标注：`(a)(b)(c)` 是取值级断言，**(d) 才是"单点"那一刀**；`(e)(f)` 守的是版式预算，`(g)` 守可读下限。
         /// </summary>
         [Test]
         public void T148_FontScale_SinglePoint_AppliedOnce_AndKeyAreasFit()
@@ -1903,6 +1911,22 @@ namespace Billiards.Tests
                     ClubUiTokens.FontCaption),
                 ("结算卡\"为什么\"行", PracticeResultLayout.ReasonLocal.height * PracticeResultLayout.CardHeightPx,
                     ClubUiTokens.FontResultBody),
+                // ↓ 本轮的 +6（12 → 18）：用户点名"结算卡字体也不够大" ⇒ 把卡内**四处**全纳入
+                //   （标题/徽章/"为什么"上面已有），再加两个键的文案、统计数值、统计标签；
+                //   另两块是核算时发现同样临界的**赛前屏己方名/对手名**（12 px 字号、带高 18 ⇒ 19.2 装不下），
+                //   不纳入就又是一条"测空气"的盲区，故一并纳入（如实说明：多出的 2 块是我加的，不是你点名的）。
+                ("结算卡主键文案", PracticeResultLayout.PlayAgainButtonLocal.height * PracticeResultLayout.CardHeightPx,
+                    ClubUiTokens.FontBody),
+                ("结算卡次键文案", PracticeResultLayout.ExportButtonLocal.height * PracticeResultLayout.CardHeightPx,
+                    ClubUiTokens.FontBody),
+                ("结算卡统计数值",
+                    PracticeResultLayout.StatsLocal.height * PracticeResultLayout.CardHeightPx * 0.58f,
+                    ClubUiTokens.FontStatValue),
+                ("结算卡统计标签",
+                    PracticeResultLayout.StatsLocal.height * PracticeResultLayout.CardHeightPx * 0.32f,
+                    ClubUiTokens.FontMicro),
+                ("赛前屏己方名", HomeLayout.MatchIntroPlayerName.height * homeRefH, ClubUiTokens.FontBody),
+                ("赛前屏对手名", HomeLayout.MatchIntroOpponentName.height * homeRefH, ClubUiTokens.FontBody),
             };
 
             foreach ((string name, float band, float font) in bands)
@@ -1923,6 +1947,29 @@ namespace Billiards.Tests
             {
                 failures.Add($"T148(f) 结算卡标题（yMin {titleBottom:R}）压住了\"为什么\"行（yMax {reasonTop:R}）"
                              + " ⇒ 放大字号后必须**加高/下移**标题带。");
+            }
+
+            // ── (g) 绝对像素可读下限（阈值来自"用户两轮反馈看不清"）──
+            //  1080p（CanvasScale = 1）：正文 12 px × 1.6 = **19.2 px** ≥ 18 px；标签 9 px × 1.6 = **14.4 px** ≥ 13 px。
+            //  ⚠ 第一版 1.28 时正文只有 15.4 px、标签 11.5 px，用户实机**仍说看不清** ⇒ 这两个数是"够大"的**下界**，
+            //    不是审美取值；要调只能调**上调**，不许为了别的判据变绿而回调。
+            //  三轮反馈（1.28 → 1.6 → 1.9）定下的下限：正文 ≥ 22 px、标签 ≥ 16 px。
+            //  ⚠ 不写成 18/13：那会让"倍率回调到 1.5（正文 18 px）"仍然绿 ⇒ 抓不到滑坡。
+            float bodyPx = PracticeHudLayout.RenderedFontPixels(ClubUiTokens.FontBody, refW, refH);
+            float captionPx = PracticeHudLayout.RenderedFontPixels(ClubUiTokens.FontCaption, refW, refH);
+            const float minBodyPx = 22f;
+            const float minCaptionPx = 16f;
+
+            if (bodyPx < minBodyPx)
+            {
+                failures.Add($"T148(g) 1080p 下正文只有 {bodyPx:R} px（< {minBodyPx:R} px）"
+                             + " ⇒ 倍率太小（用户已两次反馈看不清）。");
+            }
+
+            if (captionPx < minCaptionPx)
+            {
+                failures.Add($"T148(g) 1080p 下标签只有 {captionPx:R} px（< {minCaptionPx:R} px）"
+                             + " ⇒ 倍率太小（用户已两次反馈看不清）。");
             }
 
             Assert.IsEmpty(failures, "T148 失败：\n" + string.Join("\n", failures));
