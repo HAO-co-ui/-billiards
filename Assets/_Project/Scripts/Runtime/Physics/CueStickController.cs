@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Billiards.Core;
 using UnityEngine;
 
@@ -64,9 +63,6 @@ namespace Billiards.Physics
         private readonly ShotFlowState _flow = new ShotFlowState();
         private Transform _stick;
         private MeshRenderer _stickRenderer;
-
-        /// <summary>杆尾握把（懒建；跟随球杆显隐）。</summary>
-        private Transform _buttGrip;
         private float _pullbackAtRelease;
         private int _strikeCountdown = -1;   // < 0 = 未在前推
 
@@ -208,10 +204,6 @@ namespace Billiards.Physics
             if (_stickRenderer != null && _stickRenderer.enabled != visible)
             {
                 _stickRenderer.enabled = visible;
-                if (_buttGrip != null)
-                {
-                    _buttGrip.gameObject.SetActive(visible);
-                }
             }
 
             if (!visible)
@@ -431,116 +423,6 @@ namespace Billiards.Physics
         private bool _wasWaiting;
         private bool _cueBallTinted;
 
-        /// <summary>
-        /// **杆尾深色握把**（用户：复用现有深色材质加一段握把）。
-        /// 1. **不新增材质**（30/30 零余量）：复用杆身 `sharedMaterial`，用 `MaterialPropertyBlock` 把
-        ///    `_BaseColor` 压成深胡桃色 —— 属性块不进材质库，不计入材质数；2. 不新增贴图；
-        /// 3. 只多**一个渲染物件**（渲染器 42/60 有余量），且跟随球杆显隐。
-        /// </summary>
-        private void EnsureButtGrip()
-        {
-            if (_buttGrip != null || _stick == null)
-            {
-                return;
-            }
-
-            // ⚠ 局部原点 = **杆尖**，但几何体沿 **+Z** 延伸 ⇒ **杆尾在 +Z**。
-            //   此前写成 −Z，握把跑到白球**前方**（用户截图："蓄力时出现不明物"）。
-            const float gripLength = 0.42f;
-            const float gripRadius = 0.0145f;
-
-            // ⚠ **不能用 `CreatePrimitive`**：它自带 Collider ⇒ 运行时会引用 `UnityEngine.PhysicsModule`，
-            //   直接违反"自研物理、运行时不得依赖 PhysX"的铁律（判据 `RuntimeAssembly_DoesNotReferencePhysXModule`）。
-            //   ⇒ 纯 `Mesh` 程序化圆柱（无碰撞体），只走 MeshFilter/MeshRenderer。
-            var gripGo = new GameObject("ButtGrip");
-            var meshFilter = gripGo.AddComponent<MeshFilter>();
-            meshFilter.sharedMesh = BuildCylinderMesh(1f, 1f, 16);
-            gripGo.AddComponent<MeshRenderer>();
-
-            Transform grip = gripGo.transform;
-            grip.SetParent(_stick, false);
-            grip.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            grip.localPosition = new Vector3(0f, 0f, StickLength - gripLength * 0.5f);
-            grip.localScale = new Vector3(gripRadius * 2f, gripLength * 0.5f, gripRadius * 2f);
-
-            var gripRenderer = gripGo.GetComponent<MeshRenderer>();
-            if (gripRenderer != null && _stickRenderer != null && _stickRenderer.sharedMaterial != null)
-            {
-                gripRenderer.sharedMaterial = _stickRenderer.sharedMaterial;
-
-                var block = new MaterialPropertyBlock();
-                gripRenderer.GetPropertyBlock(block);
-                block.SetColor("_BaseColor", GripColor);
-                gripRenderer.SetPropertyBlock(block);
-            }
-
-            _buttGrip = grip;
-        }
-
-        /// <summary>
-        /// 程序化圆柱网格（单位半径、单位高度，轴向 +Y；无碰撞体）。
-        /// 只为握把服务：16 边足够在球杆尺度下看不出棱。
-        /// </summary>
-        private static Mesh BuildCylinderMesh(float radius, float height, int segments)
-        {
-            var mesh = new Mesh { name = "ButtGripCylinder" };
-            int count = segments * 2;
-            var vertices = new Vector3[count + 2];
-            var normals = new Vector3[count + 2];
-            var uvs = new Vector2[count + 2];
-
-            float halfHeight = height * 0.5f;
-            for (int i = 0; i < segments; i++)
-            {
-                float a = (Mathf.PI * 2f * i) / segments;
-                float cos = Mathf.Cos(a);
-                float sin = Mathf.Sin(a);
-                Vector3 normal = new Vector3(cos, 0f, sin);
-
-                vertices[i] = new Vector3(cos * radius, -halfHeight, sin * radius);
-                vertices[i + segments] = new Vector3(cos * radius, halfHeight, sin * radius);
-                normals[i] = normal;
-                normals[i + segments] = normal;
-                uvs[i] = new Vector2((float)i / segments, 0f);
-                uvs[i + segments] = new Vector2((float)i / segments, 1f);
-            }
-
-            int capTop = count;
-            int capBottom = count + 1;
-            vertices[capTop] = new Vector3(0f, halfHeight, 0f);
-            vertices[capBottom] = new Vector3(0f, -halfHeight, 0f);
-            normals[capTop] = Vector3.up;
-            normals[capBottom] = Vector3.down;
-            uvs[capTop] = new Vector2(0.5f, 0.5f);
-            uvs[capBottom] = new Vector2(0.5f, 0.5f);
-
-            var triangles = new List<int>(segments * 12);
-            for (int i = 0; i < segments; i++)
-            {
-                int next = (i + 1) % segments;
-                int bottom = i;
-                int top = i + segments;
-                int bottomNext = next;
-                int topNext = next + segments;
-
-                triangles.Add(bottom); triangles.Add(top); triangles.Add(topNext);
-                triangles.Add(bottom); triangles.Add(topNext); triangles.Add(bottomNext);
-
-                triangles.Add(capTop); triangles.Add(top); triangles.Add(topNext);
-                triangles.Add(capBottom); triangles.Add(bottomNext); triangles.Add(bottom);
-            }
-
-            mesh.vertices = vertices;
-            mesh.normals = normals;
-            mesh.uv = uvs;
-            mesh.triangles = triangles.ToArray();
-            mesh.RecalculateBounds();
-            return mesh;
-        }
-
-        /// <summary>握把的深胡桃色（只在属性块里用，不是新材质）。</summary>
-        private static readonly Color GripColor = new Color(0.23f, 0.14f, 0.09f, 1f);
-
         private void EnsureStick()
         {
             if (_stick != null)
@@ -553,7 +435,6 @@ namespace Billiards.Physics
             {
                 _stick = stickInstance;
                 _stickRenderer = stickInstance.GetComponentInChildren<MeshRenderer>(true);
-                EnsureButtGrip();
                 return;
             }
 
