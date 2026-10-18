@@ -779,6 +779,14 @@ namespace Billiards.Physics
                 return;
             }
 
+            // **练习模式没有对手 ⇒ 没有"一局定胜负"这回事**：规则照样会判 gameOver
+            // （例如黑 8 提前落袋），但练习里不该弹胜负面板、更不该把后续杆锁死
+            // （用户反馈：面板点"继续比赛"后又进入 AI 对战）。⇒ 只有**真有 AI 对手**时才结算。
+            if (!AiOpponentEnabled)
+            {
+                return;
+            }
+
             MatchOver = true;
             Winner = verdict.winner;
             EndReason = verdict.outcome;

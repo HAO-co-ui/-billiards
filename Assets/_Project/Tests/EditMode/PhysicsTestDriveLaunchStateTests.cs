@@ -2308,6 +2308,11 @@ namespace Billiards.Tests
                 try
                 {
                     PhysicsTestDrive sd = NewAiDrive(settleGo, rackSeed: 5);
+
+                    // **契约更新**：结算（`MatchOver` + 待展示）现在只在**真有 AI 对手**时发生 ——
+                    // 练习模式不再弹胜负面板，也不锁后续杆（用户要求）。⇒ 端到端用例先开对手开关，
+                    // 才构成"一局定胜负"的真实场景。
+                    sd.SetAiOpponentEnabledForDiagnostics(true);
                     int potPocket = FirstCornerPocket(sd.tableConfig);
                     SetUpCleanPot(sd, 8, potPocket, sd.Simulator.Balls.Count);   // 8 号球，正对角袋
                     AdvanceToRest(sd, RestCap);

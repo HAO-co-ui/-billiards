@@ -357,8 +357,13 @@ namespace Billiards.UI
             // ⇒ "只弹一次"这条性质**不靠 UI 自己记状态**（UI 记的状态正是判据守不住的那类东西）。
             if (drive.TryConsumeSettlement())
             {
-                ShowMatchResult(MatchResultCopy.FormFor(drive.Winner));
-                return;
+                // **练习模式不显示胜负面板**（用户要求）：`TryConsumeSettlement` 取走即清零，
+                // 所以这里**照样消费**、只是不展示 —— 否则会一直挂"待展示"。
+                if (drive.AiOpponentEnabled)
+                {
+                    ShowMatchResult(MatchResultCopy.FormFor(drive.Winner));
+                    return;
+                }
             }
 
             if (IsOpen)
