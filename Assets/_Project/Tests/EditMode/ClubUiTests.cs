@@ -2354,6 +2354,22 @@ namespace Billiards.Tests
             //   `TryConsumePlayerInput()` —— 后者会被该方法在 `PhysicsTestDrive.cs` 里的
             //   **定义本身**满足（`Contains` 命中 `public bool TryConsumePlayerInput()`），
             //   于是删掉调用点仍照旧绿 = **真空绿**。否定前缀只在调用点出现 ⇒ 有牙。
+            //
+            // ★ **注入自检（实跑，2026-10-18；与 `T157` 是**同一次**注入，持锁 `bug-audit` 15:59:02 起）**
+            //   —— 这段断言**有牙**的实证；没有重跑下面四次就不要声称"已验证"：
+            //   · 注入 = `cp` 备份当时的磁盘状态后，删 `Update()` 里 `bool modal = …`（4 行）+
+            //     `_keyboardInputBlocked = modal || !TryConsumePlayerInput();`（1 行），
+            //     `bool inputBlocked = modal || _keyboardInputBlocked;` 退回 `= false`（注入态仍可编译）；
+            //   · `-testFilter T158` **注入态** → `total=1 passed=0 failed=1`（XML mtime 16:00:15, 5276 B），
+            //     失败原文含**三条**：`缺少 IsOnboardingOpen 门` + `缺少**回合门调用** !TryConsumePlayerInput()`
+            //     + `缺少**模态门** PracticeHudView.IsSettingsOpen`（**三条全中** ⇒ 本类的三处断言都有牙）；
+            //   · `cp` 还原后 `md5sum` = `41cb58b0bdfffac12de295b69190077c`（与注入前逐字节相同，
+            //     `git status` / `git diff` 对该文件均为空）；
+            //   · `-testFilter T158` **还原态** → `total=1 passed=1 failed=0`（mtime 16:01:12, 3289 B）。
+            //   ⇒ 裸名计数的实证（为什么必须用调用形态）：`PhysicsTestDrive.cs` 里
+            //     裸名出现 **4** 次 = **定义 1** + **注释 2** + **调用 1** ⇒ `Contains(裸名)` 被**定义自己**满足；
+            //     否定前缀 `!` 只存在于调用点（全文 **1** 次）⇒ 删掉调用必红。这是 `T146(f)`
+            //     「必须断言**使用形态**、不能只断言符号名」的又一实例。
             string keyboardDriverPath = Path.Combine(
                 root, "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs");
             if (!File.Exists(keyboardDriverPath))
