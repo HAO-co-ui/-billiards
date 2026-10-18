@@ -120,6 +120,7 @@ namespace Billiards.Physics
             // **对手回合不许蓄力/出杆**（与瞄准同一道门）。
             if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen
                 || Billiards.UI.PracticeHudView.IsSettingsOpen
+                || Billiards.UI.PracticeHudView.IsOnboardingOpen
                 || (drive != null && drive.IsAiTurn))
             {
                 return;

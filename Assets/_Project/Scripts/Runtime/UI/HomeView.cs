@@ -775,6 +775,12 @@ namespace Billiards.UI
                 hud.drive.EndAiMatchSession();
             }
 
+            // 首次进入打球弹一次操作引导（`PlayerPrefs` 记档，重进不再弹）。
+            if (hud != null)
+            {
+                hud.ShowOnboardingIfFirstTime();
+            }
+
             Hide();
         }
 
@@ -807,6 +813,12 @@ namespace Billiards.UI
         /// </summary>
         public void OnBeginMatch()
         {
+            // 首次进入打球弹一次操作引导（与练习同一入口，重进不再弹）。
+            if (hud != null)
+            {
+                hud.ShowOnboardingIfFirstTime();
+            }
+
             if (!MatchSeams.TryStartMatch(MatchSetup.Selected))
             {
                 Debug.LogWarning("HomeView：`Start match` 被点击，但 `MatchSeams.Host` 尚未注册"

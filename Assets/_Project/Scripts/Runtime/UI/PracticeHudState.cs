@@ -252,6 +252,45 @@ namespace Billiards.UI
         /// <summary>音量行标签。</summary>
         public const string LabelVolume = "Volume";
 
+        // ── 操作引导（首次进入时的一次性引导）──────────────────────────────
+        /// <summary>引导步数（文案与图标都由 <see cref="OnboardingTitle"/> / <see cref="OnboardingBody"/> 单点给出）。</summary>
+        public const int OnboardingStepCount = 4;
+
+        /// <summary>引导结束按钮。</summary>
+        public const string OnboardingDone = "Got it";
+
+        /// <summary>引导下一步按钮。</summary>
+        public const string OnboardingNext = "Next";
+
+        /// <summary>第 <paramref name="index"/> 步标题（越界 ⇒ 空串，**不抛**）。</summary>
+        public static string OnboardingTitle(int index)
+        {
+            switch (index)
+            {
+                case 0: return "AIM";
+                case 1: return "SHOOT";
+                case 2: return "BALL IN HAND";
+                case 3: return "SETTINGS";
+                default: return string.Empty;
+            }
+        }
+
+        /// <summary>第 <paramref name="index"/> 步正文。**只描述真实存在的操作**（界面不许有假陈述）。</summary>
+        public static string OnboardingBody(int index)
+        {
+            switch (index)
+            {
+                case 0: return "Drag with the left mouse button to aim.\nThe white line shows where the cue ball will go.";
+                case 1: return "Hold the right mouse button to build power.\nRelease to shoot.";
+                case 2: return "If the cue ball is potted, click the table\nto place it back.";
+                case 3: return "Use SET at the top right to return to the club,\nquit, or change the volume.";
+                default: return string.Empty;
+            }
+        }
+
+        /// <summary>"已看过引导"的存档键（**带版本号**：改引导内容时升版，老玩家可再看一次）。</summary>
+        public const string OnboardingSeenKey = "billiards.onboarding.seen.v1";
+
         /// <summary>品牌副标题（设计稿 `brand small` 的位置）。</summary>
         public const string BrandEyebrow = "PRACTICE";
 

@@ -136,7 +136,8 @@ namespace Billiards.Physics
                     sim != null && sim.IsBallInPlay(0),
                     // 三个模态判据点：结算卡（`PracticeResultView`）、首页（`HomeView`）、设置面板（`PracticeHudView`）。
                     Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen
-                    || Billiards.UI.PracticeHudView.IsSettingsOpen,
+                    || Billiards.UI.PracticeHudView.IsSettingsOpen
+                    || Billiards.UI.PracticeHudView.IsOnboardingOpen,
                     // 取景转场（相机侧发布的中性状态；转场落终态才放开）
                     Billiards.Core.CameraTransition.IsActive,
                     // **P10-B**：待放置 ⇒ 不画（并在 `AimAssistView` 里落到唯一清空点）

@@ -180,6 +180,18 @@ namespace Billiards.UI
         /// </summary>
         public static bool IsSettingsOpen { get; private set; }
 
+        /// <summary>
+        /// **操作引导是否打开**（首次进入时的一次性引导）。
+        /// ⚠ 与设置面板同属**模态判据点**：三个输入控制器都读它，否则引导开着还能瞄准/出杆。
+        /// </summary>
+        public static bool IsOnboardingOpen { get; private set; }
+
+        private RectTransform _onboardingPanel;
+        private TextMeshProUGUI _onboardingTitle;
+        private TextMeshProUGUI _onboardingBody;
+        private TextMeshProUGUI _onboardingButtonLabel;
+        private int _onboardingStep;
+
         /// <summary>设置按钮（文本 `SET`；工程无齿轮图标）。</summary>
         private TextMeshProUGUI _settingsButtonText;
 
@@ -1426,6 +1438,125 @@ namespace Billiards.UI
             }
 
             IsSettingsOpen = false;
+        }
+
+        // ════════════════ 操作引导（首次进入弹一次）═══════════════════════════════
+
+        /// <summary>若从未看过引导则弹一次（`PlayerPrefs` 存档键带版本号）。</summary>
+        public void ShowOnboardingIfFirstTime()
+        {
+            if (PlayerPrefs.GetInt(PracticeHudState.OnboardingSeenKey, 0) != 0)
+            {
+                return;
+            }
+
+            ShowOnboarding();
+        }
+
+        /// <summary>打开引导（首页的 `How to play` 也走这里）。</summary>
+        public void ShowOnboarding()
+        {
+            EnsureBuilt();
+            EnsureOnboardingPanel();
+            if (_onboardingPanel == null)
+            {
+                return;
+            }
+
+            _onboardingStep = 0;
+            RefreshOnboardingStep();
+            _onboardingPanel.gameObject.SetActive(true);
+            IsOnboardingOpen = true;
+        }
+
+        /// <summary>`Next` / `Got it`：最后一步则关闭并记档。</summary>
+        public void AdvanceOnboarding()
+        {
+            PlayUiClick();
+            _onboardingStep++;
+            if (_onboardingStep >= PracticeHudState.OnboardingStepCount)
+            {
+                CloseOnboarding(markSeen: true);
+                return;
+            }
+
+            RefreshOnboardingStep();
+        }
+
+        /// <summary>关闭引导（`markSeen` = 是否记"已看过"；点背板中途关掉也记，避免每次进来都烦）。</summary>
+        public void CloseOnboarding(bool markSeen)
+        {
+            if (_onboardingPanel != null)
+            {
+                _onboardingPanel.gameObject.SetActive(false);
+            }
+
+            IsOnboardingOpen = false;
+            if (markSeen)
+            {
+                PlayerPrefs.SetInt(PracticeHudState.OnboardingSeenKey, 1);
+                PlayerPrefs.Save();
+            }
+        }
+
+        /// <summary>把当前步的文案/按钮标签刷到界面上（文案来自纯函数，判据同源）。</summary>
+        public void RefreshOnboardingStep()
+        {
+            if (_onboardingTitle != null)
+            {
+                _onboardingTitle.text = PracticeHudState.OnboardingTitle(_onboardingStep);
+            }
+
+            if (_onboardingBody != null)
+            {
+                _onboardingBody.text = PracticeHudState.OnboardingBody(_onboardingStep);
+            }
+
+            if (_onboardingButtonLabel != null)
+            {
+                bool last = _onboardingStep >= PracticeHudState.OnboardingStepCount - 1;
+                _onboardingButtonLabel.text = last
+                    ? PracticeHudState.OnboardingDone
+                    : PracticeHudState.OnboardingNext;
+            }
+        }
+
+        /// <summary>懒建引导卡（背板 + 卡片 + 标题 + 正文 + 下一步）。复用既有面板与令牌，不新增材质。</summary>
+        private void EnsureOnboardingPanel()
+        {
+            if (_onboardingPanel != null || _canvas == null)
+            {
+                return;
+            }
+
+            RectTransform root = AddRect(_canvas.transform, "OnboardingPanel", Vector2.zero, Vector2.one);
+            _onboardingPanel = root;
+
+            var backdrop = root.gameObject.AddComponent<Image>();
+            SetImage(backdrop, null, ClubUiTokens.Alpha(ClubUiTokens.PanelShotbar, 0xC8));
+            backdrop.raycastTarget = true;
+
+            RectTransform card = AddFramed(root, "Card", new Vector2(0.28f, 0.30f), new Vector2(0.72f, 0.70f),
+                ClubUiTokens.LineStrong, ClubUiTokens.PanelStatus, ClubUiTokens.RadiusDialog);
+
+            _onboardingTitle = CreateText(card, "Title", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Accent,
+                TextAlignmentOptions.Center, new Vector2(0.06f, 0.80f), new Vector2(0.94f, 0.94f));
+
+            _onboardingBody = CreateText(card, "Body", bodyFont, ClubUiTokens.FontLabel, ClubUiTokens.Text,
+                TextAlignmentOptions.Center, new Vector2(0.08f, 0.32f), new Vector2(0.92f, 0.76f));
+
+            RectTransform next = AddFramed(card, "Next", new Vector2(0.30f, 0.12f), new Vector2(0.70f, 0.26f),
+                ClubUiTokens.ButtonEdgeSecondary, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusDialog);
+            _onboardingButtonLabel = CreateText(next, "Label", bodyFont, ClubUiTokens.FontBody,
+                ClubUiTokens.ButtonText, TextAlignmentOptions.Center, Vector2.zero, Vector2.one);
+
+            var nextImage = next.GetComponent<Image>();
+            nextImage.raycastTarget = true;
+            var nextButton = next.gameObject.AddComponent<Button>();
+            nextButton.targetGraphic = nextImage;
+            nextButton.onClick.AddListener(AdvanceOnboarding);
+
+            _onboardingPanel.gameObject.SetActive(false);
         }
 
         /// <summary>点击按钮的短音（唯一入口；`poolAudio` 为空时静默，不抛）。</summary>

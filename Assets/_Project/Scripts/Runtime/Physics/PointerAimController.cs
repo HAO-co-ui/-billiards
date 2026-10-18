@@ -132,6 +132,7 @@ namespace Billiards.Physics
             bool aiTurn = drive != null && drive.IsAiTurn;
             if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen
                 || Billiards.UI.PracticeHudView.IsSettingsOpen
+                || Billiards.UI.PracticeHudView.IsOnboardingOpen
                 || Billiards.Core.CameraTransition.IsActive
                 || aiTurn)
             {

@@ -2282,5 +2282,85 @@ namespace Billiards.Tests
             Assert.IsEmpty(failures, "T156（设置面板）失败：\n" + string.Join("\n", failures));
         }
 
+        /// <summary>
+        /// **`T158`：操作引导**（首次进入弹一次 / 三处输入门 / 文案非空 / 存档键带版本）。
+        /// 引导开着还能瞄准或出杆，就是"模态门漏接"——这条守的正是那个。
+        /// </summary>
+        [Test]
+        public void T158_Onboarding_StepsGatedAndVersioned()
+        {
+            var failures = new List<string>();
+
+            if (PracticeHudState.OnboardingStepCount < 3)
+            {
+                failures.Add($"T158 引导步数过少（{PracticeHudState.OnboardingStepCount}），至少覆盖 瞄准/出杆/放球。");
+            }
+
+            for (int i = 0; i < PracticeHudState.OnboardingStepCount; i++)
+            {
+                if (string.IsNullOrWhiteSpace(PracticeHudState.OnboardingTitle(i)))
+                {
+                    failures.Add($"T158 第 {i} 步标题为空。");
+                }
+
+                if (string.IsNullOrWhiteSpace(PracticeHudState.OnboardingBody(i)))
+                {
+                    failures.Add($"T158 第 {i} 步正文为空。");
+                }
+            }
+
+            if (!PracticeHudState.OnboardingSeenKey.Contains(".v"))
+            {
+                failures.Add("T158 存档键必须带版本号（改引导内容时可让老玩家再看一次）。");
+            }
+
+            string root = Path.GetDirectoryName(Application.dataPath) ?? ".";
+            (string file, string label)[] gated =
+            {
+                ("Assets/_Project/Scripts/Runtime/Physics/PointerAimController.cs", "瞄准"),
+                ("Assets/_Project/Scripts/Runtime/Physics/PointerPowerController.cs", "蓄力/出杆"),
+                ("Assets/_Project/Scripts/Runtime/Physics/AimAssistController.cs", "瞄准线"),
+            };
+
+            foreach ((string file, string label) in gated)
+            {
+                string path = Path.Combine(root, file);
+                if (!File.Exists(path))
+                {
+                    failures.Add($"T158 找不到 `{file}`（被扫文件缺失 ⇒ 无从判定）。");
+                    continue;
+                }
+
+                if (!File.ReadAllText(path).Contains("PracticeHudView.IsOnboardingOpen"))
+                {
+                    failures.Add($"T158 `{file}`（{label}）缺少 `IsOnboardingOpen` 门 ⇒ 引导开着还能操作。");
+                }
+            }
+
+            string home = Path.Combine(root, "Assets/_Project/Scripts/Runtime/UI/HomeView.cs");
+            if (File.Exists(home))
+            {
+                string text = File.ReadAllText(home);
+                int hits = 0;
+                int at = 0;
+                while ((at = text.IndexOf("ShowOnboardingIfFirstTime", at, System.StringComparison.Ordinal)) >= 0)
+                {
+                    hits++;
+                    at += 5;
+                }
+
+                if (hits < 2)
+                {
+                    failures.Add($"T158 进入打球的入口应**两处**都触发引导（练习 + 对战），实际只找到 {hits} 处。");
+                }
+            }
+            else
+            {
+                failures.Add("T158 找不到 `HomeView.cs`。");
+            }
+
+            Assert.IsEmpty(failures, "T158（操作引导）失败：\n" + string.Join("\n", failures));
+        }
+
     }
 }
