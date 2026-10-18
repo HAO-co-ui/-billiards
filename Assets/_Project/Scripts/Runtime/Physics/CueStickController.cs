@@ -411,22 +411,38 @@ namespace Billiards.Physics
         /// <summary>把白球底色切到指定颜色（写属性块；找不到渲染器就静默跳过）。</summary>
         private void SetCueBallTint(Color color)
         {
-            MeshRenderer cueBall = null;
-            if (drive != null && drive.ballVisuals != null && drive.ballVisuals.Length > 0
-                && drive.ballVisuals[0] != null)
-            {
-                cueBall = drive.ballVisuals[0].GetComponentInChildren<MeshRenderer>(true);
-            }
-
-            if (cueBall == null)
+            // **P33 ①：颜色与上次相同 ⇒ 直接返回**（调用方每帧都调：待放球脉冲 3 s、被拒红闪 0.45 s）。
+            // ⚠ 用 `_hasLastTint` 而不是"魔数初值"：白球本色 `Color.white` 本身就是会被请求的值之一。
+            if (_hasLastTint && color == _lastTint)
             {
                 return;
             }
 
-            var block = new MaterialPropertyBlock();
-            cueBall.GetPropertyBlock(block);
-            block.SetColor("_BaseColor", color);
-            cueBall.SetPropertyBlock(block);
+            // **P33 ②：渲染器缓存**（旧实现每帧一次 `GetComponentInChildren<MeshRenderer>(true)` 层级搜索）。
+            // 重摆 / 重建可视物后旧渲染器会被销毁 ⇒ Unity 的 `== null` 会命中"已销毁"⇒ 这里自动重新取。
+            if (_cueBallRenderer == null)
+            {
+                if (drive == null || drive.ballVisuals == null || drive.ballVisuals.Length == 0
+                    || drive.ballVisuals[0] == null)
+                {
+                    return;
+                }
+
+                _cueBallRenderer = drive.ballVisuals[0].GetComponentInChildren<MeshRenderer>(true);
+                if (_cueBallRenderer == null)
+                {
+                    return;
+                }
+            }
+
+            // **P33 ③：属性块复用**（旧实现每帧 `new MaterialPropertyBlock()`）；属性 ID 走常量（去掉每帧字符串哈希）。
+            _cueBallBlock ??= new MaterialPropertyBlock();
+            _cueBallRenderer.GetPropertyBlock(_cueBallBlock);
+            _cueBallBlock.SetColor(CueBallColorPropertyId, color);
+            _cueBallRenderer.SetPropertyBlock(_cueBallBlock);
+
+            _lastTint = color;
+            _hasLastTint = true;
             _cueBallTinted = !Mathf.Approximately(color.r, 1f) || !Mathf.Approximately(color.g, 1f)
                              || !Mathf.Approximately(color.b, 1f);
         }
@@ -454,6 +470,28 @@ namespace Billiards.Physics
         private float _cueBallPulseUntil;
         private bool _wasWaiting;
         private bool _cueBallTinted;
+
+        // ── **P33：白球着色的复用字段**（原来这三样是**每帧**现造/现找的）─────────────
+        //
+        // `SetCueBallTint` 在"待放球脉冲（3 s）"与"被拒红闪（0.45 s）"期间**每帧**被调一次，
+        // 旧实现对每一帧都做：`GetComponentInChildren<MeshRenderer>(true)`（层级搜索）+ `new MaterialPropertyBlock()`
+        // （每次 ≈64 B 托管分配）+ `SetColor(\"_BaseColor\", …)`（字符串 → 属性 ID 的哈希）。
+        // 三样都不需要每帧重来：渲染器是同一个、属性块是纯数据容器、属性 ID 是常量。
+
+        /// <summary>白球渲染器缓存（**被销毁时** Unity 的 `== null` 会命中 ⇒ 自动重新取，见 `SetCueBallTint`）。</summary>
+        private MeshRenderer _cueBallRenderer;
+
+        /// <summary>复用的属性块（只 new 一次）。</summary>
+        private MaterialPropertyBlock _cueBallBlock;
+
+        /// <summary>白球底色属性 ID（`SetColor(string)` 每次都要哈希字符串 ⇒ 这里只算一次）。</summary>
+        private static readonly int CueBallColorPropertyId = Shader.PropertyToID("_BaseColor");
+
+        /// <summary>上一次真正写进属性块的颜色。</summary>
+        private Color _lastTint;
+
+        /// <summary>是否已写过颜色（`Color.white` 本身也是合法请求值 ⇒ 不能用魔数当"未初始化"）。</summary>
+        private bool _hasLastTint;
 
         private void EnsureStick()
         {

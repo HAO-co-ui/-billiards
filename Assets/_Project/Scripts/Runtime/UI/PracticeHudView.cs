@@ -174,6 +174,39 @@ namespace Billiards.UI
         private CanvasGroup[] _chromeGroups;
 
         /// <summary>
+        /// **HUD 当前是否"可见"**（`SetChromeVisible` 的唯一真相）。
+        /// 首页 / 转场挡屏期**不刷新任何文字与开关**（P33）：`Update` 照旧跑（状态机与轮询必须继续），
+        /// 但所有**写**都跳过 ⇒ 首页停留多久就省多久的 TMP 写入 + `SetActive` + 每帧字符串分配。
+        /// 初值 `true`：建树后即按"可见"处理，避免首帧空白。
+        /// </summary>
+        private bool _isChromeVisible = true;
+
+        // ── P33 脏判缓存（"上次真正写进去的值"；相等 ⇒ 不写）──────────────────────
+        // ⚠ 缓存语义 = **已写到屏幕上的值**（不是"上次读到的值"）⇒ 挡屏期跳过写之后，
+        //   可见时值若已变 ⇒ 必写；若未变 ⇒ 屏幕本来就是对的 ⇒ 不写也不会陈旧（自愈，无需复位）。
+
+        /// <summary>`_playerStats` 上次写出的 `(shots, fouls)`（`-1` = 从未写过）。</summary>
+        private int _shownShots = -1;
+
+        /// <summary>`_playerStats` 上次写出的犯规数（`-1` = 从未写过）。</summary>
+        private int _shownFouls = -1;
+
+        /// <summary>`_scoreValue` 上次写出的已进球数（`-1` = 从未写过）。</summary>
+        private int _shownPocketed = -1;
+
+        /// <summary>`_scoreValue` 上次写出的目标球总数（`-1` = 从未写过）。</summary>
+        private int _shownTotal = -1;
+
+        /// <summary>`_powerPercent` 上次写出的整数百分比（`-1` = 从未写过）。</summary>
+        private int _shownPowerPercent = -1;
+
+        /// <summary>`ApplyMatchHud` 上次真正执行的输入指纹；相同 ⇒ 直接返回（P33）。</summary>
+        private int _lastMatchHudSignature;
+
+        /// <summary>是否已有 <see cref="_lastMatchHudSignature"/>（避免用"魔数指纹"当哨兵）。</summary>
+        private bool _hasMatchHudSignature;
+
+        /// <summary>
         /// **设置面板是否打开**（`Back to club` / `Quit` / 音量 三件）。
         /// ⚠ 这是**模态判据点**：`PointerAimController` / `PointerPowerController` / `AimAssistController`
         /// 与结算卡、首页并列读它 —— 否则面板开着时点击会穿透去瞄准或出杆。
@@ -259,6 +292,9 @@ namespace Billiards.UI
         public void SetChromeVisible(bool visible)
         {
             EnsureBuilt();
+
+            // **P33**：记下可见性 —— `Refresh()` 的写入段据此整体让位（见 `_isChromeVisible` 的注释）。
+            _isChromeVisible = visible;
 
             CanvasGroup[] groups = EnsureChromeGroups();
             for (int i = 0; i < groups.Length; i++)
@@ -945,6 +981,19 @@ namespace Billiards.UI
             HudVisualState state = PracticeHudState.ResolveVisualState(
                 phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen, awaitingPlacement, aiTurn);
 
+            // **P33 可见性门：到此为止 —— 下面全是"写"**（TMP.text / SetActive / sprite / color）。
+            //
+            // ⚠ **门放在这里、不放 `Refresh()` 首行**（这是刻意的，不是漏改）：
+            //   上面那一段是**轮询与锁存**（`LaunchCount`/`ScratchCount`/`RefusedLaunch`/`RefusedPlacement`
+            //   的上升沿、犯规窗口的**打开**、`MatchTurnNotice.ConsumePending()` 的消费、`_ballInHandLatch`）。
+            //   把它们一起跳过会有**可见副作用**：回到台面那一刻把"挡屏期间攒下的上升沿"当成新事件
+            //   ⇒ 凭空闪一次 `Foul` / 弹一次过期的"对手回合"提示（正是 P6 登记的"不排队补弹"被破坏）。
+            //   ⇒ 轮询必须每帧跑（零分配），只有**写入**让位。
+            if (!_isChromeVisible)
+            {
+                return;
+            }
+
             RefreshStatusBar(state, awaitingPlacement, placementRefusedWindow, opponentBlockedWindow);
             RefreshPower(phase);
             RefreshCounters();
@@ -1018,7 +1067,15 @@ namespace Billiards.UI
 
             if (_powerPercent != null)
             {
-                _powerPercent.text = PracticeHudState.PowerLabel(power);
+                // **P33 脏判**：`PowerLabel` 每次都拼一个新字符串（`int.ToString()` + `String.Concat`
+                // = **2 次托管分配**）⇒ 只在**整数百分比**真的变了才重拼/重写。
+                // （TMP 对"等值串"本就有内部早退，所以省下来的是那两笔分配与一次字符串比较。）
+                int percent = Mathf.RoundToInt(power * 100f);
+                if (percent != _shownPowerPercent)
+                {
+                    _shownPowerPercent = percent;
+                    _powerPercent.text = PracticeHudState.PowerLabel(power);
+                }
             }
 
             if (_powerFill != null)
@@ -1076,8 +1133,15 @@ namespace Billiards.UI
 
             if (_playerStats != null)
             {
-                _playerStats.text = PracticeHudState.LabelShots + " " + shots
-                                    + "   " + PracticeHudState.LabelFouls + " " + fouls;
+                // **P33 脏判**：这行拼接 = `int.ToString()`×2 + `String.Concat` = **3 次托管分配/帧**
+                // （60 fps 下 ≈ 180 次/秒、约 6 KB/秒）。出杆数/犯规数没变就**不重拼**。
+                if (shots != _shownShots || fouls != _shownFouls)
+                {
+                    _shownShots = shots;
+                    _shownFouls = fouls;
+                    _playerStats.text = PracticeHudState.LabelShots + " " + shots
+                                        + "   " + PracticeHudState.LabelFouls + " " + fouls;
+                }
             }
 
             if (drive == null || drive.Simulator == null)
@@ -1091,7 +1155,13 @@ namespace Billiards.UI
 
             if (_scoreValue != null && !HomeView.IsAiMatchSession)
             {
-                _scoreValue.text = PracticeHudState.PocketedLabel(pocketed, totalObjects);
+                // **P33 脏判**：`PocketedLabel` 同样每次拼新串（3 次分配）⇒ 只在计数变了才写。
+                if (pocketed != _shownPocketed || totalObjects != _shownTotal)
+                {
+                    _shownPocketed = pocketed;
+                    _shownTotal = totalObjects;
+                    _scoreValue.text = PracticeHudState.PocketedLabel(pocketed, totalObjects);
+                }
             }
 
             RefreshBallRow();
@@ -1203,6 +1273,19 @@ namespace Billiards.UI
         public void ApplyMatchHud(bool aiMatch, GroupState yourGroup, GroupState oppGroup, bool aiTurn,
                                   IReadOnlyList<int> yourNumbers, IReadOnlyList<int> oppNumbers)
         {
+            // **P33 脏判（整个方法体的让位门）**：本方法每帧被 `RefreshGroupChips` 调一次，
+            // 里面有 ~10 次 `SetActive` + 一次 `anchorMax` 写 + 每帧一个 `new Vector2`。
+            // 输入（模式 / 两侧组别 / 轮次 / 两侧剩余球号 / 对战状态行文案）**都没变** ⇒ 屏幕本来就是对的
+            // ⇒ 直接返回。**判据仍可直接调用本方法**：输入变了（如 T144(g) 的 ②→③ 换号码）签名就变 ⇒ 照常执行。
+            int signature = MatchHudSignature(aiMatch, yourGroup, oppGroup, aiTurn, yourNumbers, oppNumbers);
+            if (_hasMatchHudSignature && signature == _lastMatchHudSignature)
+            {
+                return;
+            }
+
+            _lastMatchHudSignature = signature;
+            _hasMatchHudSignature = true;
+
             // 组别小标签：**开放球局是空串**（零字形，不写 "Open"/"?"/占位）。
             if (_yourGroupLabel != null)
             {
@@ -1355,9 +1438,80 @@ namespace Billiards.UI
                 drive != null ? drive.OpponentRemainingNumbers : null);
         }
 
+        /// <summary>
+        /// **P33**：`ApplyMatchHud` 的输入指纹 = 模式 / 两侧组别 / 轮次 / 两侧剩余球号 / 对战状态行文案。
+        ///
+        /// ⚠ 必须**包含两侧球号**：判据 `T144(g)` 就是**只调 `ApplyMatchHud`** 来驱动"进一颗消一颗"的
+        ///   （② `{1,3,5}` → ③ `{1,5}`，其余参数完全相同）⇒ 指纹不含球号的话，那次调用会被脏判吃掉、判据必红。
+        /// ⚠ 必须**包含 `_shotInfoValue.text`**：对战状态行（`_matchStatus`）的文案是从它抄来的，而它由
+        ///   `RefreshStatusBar` 在**本方法之外**写 ⇒ 不进指纹会让状态行停在旧文案（`Aim` 之后一直不更新）。
+        /// </summary>
+        private int MatchHudSignature(bool aiMatch, GroupState yourGroup, GroupState oppGroup, bool aiTurn,
+                                      IReadOnlyList<int> yourNumbers, IReadOnlyList<int> oppNumbers)
+        {
+            int hash = aiMatch ? 1 : 0;
+            hash = hash * 31 + (aiTurn ? 1 : 0);
+            hash = hash * 31 + (int)yourGroup;
+            hash = hash * 31 + (int)oppGroup;
+            hash = hash * 31 + NumbersSignature(yourNumbers);
+            hash = hash * 31 + NumbersSignature(oppNumbers);
+            hash = hash * 31 + (_shotInfoValue != null && _shotInfoValue.text != null
+                ? _shotInfoValue.text.GetHashCode()
+                : 0);
+            return hash;
+        }
+
+        /// <summary>号码表的**内容**指纹（`null` 与"空表"必须可区分 ⇒ 各给不同初值）。</summary>
+        private static int NumbersSignature(IReadOnlyList<int> numbers)
+        {
+            if (numbers == null)
+            {
+                return -1;
+            }
+
+            int hash = 17 + numbers.Count;
+            for (int i = 0; i < numbers.Count; i++)
+            {
+                hash = hash * 31 + numbers[i];
+            }
+
+            return hash;
+        }
+
+        /// <summary>
+        /// `cache`（= 上次**真正写进视图**的号码）是否与本次要写的号码逐位相同
+        /// （口径与 `PracticeHudState.GroupChipNumbers` 一致：`null` / 越界 ⇒ `-1`）。
+        /// </summary>
+        private static bool ChipNumbersUnchanged(int[] cache, IReadOnlyList<int> numbers, int slots)
+        {
+            if (cache == null || cache.Length < slots)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < slots; i++)
+            {
+                int wanted = numbers != null && i < numbers.Count ? numbers[i] : -1;
+                if (cache[i] != wanted)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private void ApplyGroupChips(Image[] chips, int[] cache, IReadOnlyList<int> numbers)
         {
             if (chips == null)
+            {
+                return;
+            }
+
+            // **P33 脏判**：`cache` 就是"上一次**真正写进视图**的那组号码"（`_yourShownNumbers` /
+            // `_oppShownNumbers`，建树时全 `-1`）⇒ 与本次要写的号码逐位相同 ⇒ 什么都不用做。
+            // 省下的：`GroupChipNumbers` 的 `new int[slots]`（每帧 2 个）+ 7 次 `SetActive` + sprite/color 写入。
+            if (ChipNumbersUnchanged(cache, numbers, chips.Length))
             {
                 return;
             }
