@@ -2328,6 +2328,10 @@ namespace Billiards.Tests
                 ("Assets/_Project/Scripts/Runtime/Physics/PointerAimController.cs", "瞄准"),
                 ("Assets/_Project/Scripts/Runtime/Physics/PointerPowerController.cs", "蓄力/出杆"),
                 ("Assets/_Project/Scripts/Runtime/Physics/AimAssistController.cs", "瞄准线"),
+                // **P32**：键盘路径（`PhysicsTestDrive.Update`）此前**一处门都没有** ⇒ 引导开着
+                // 按 Space 也能出杆、按 ←/→ 还能改掉 AI 正在用的 `aimDegrees`。
+                // 它与其他三处**同一道门**，没有理由不扫它。
+                ("Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs", "键盘路径"),
             };
 
             foreach ((string file, string label) in gated)
@@ -2342,6 +2346,33 @@ namespace Billiards.Tests
                 if (!File.ReadAllText(path).Contains("PracticeHudView.IsOnboardingOpen"))
                 {
                     failures.Add($"T158 `{file}`（{label}）缺少 `IsOnboardingOpen` 门 ⇒ 引导开着还能操作。");
+                }
+            }
+
+            // **P32：键盘路径的两道门都必须真的挂在 `Update()` 上**（回合门 + 模态门）。
+            // ⚠ 回合门断言的是**调用形态** `!TryConsumePlayerInput()`，**不是**裸名
+            //   `TryConsumePlayerInput()` —— 后者会被该方法在 `PhysicsTestDrive.cs` 里的
+            //   **定义本身**满足（`Contains` 命中 `public bool TryConsumePlayerInput()`），
+            //   于是删掉调用点仍照旧绿 = **真空绿**。否定前缀只在调用点出现 ⇒ 有牙。
+            string keyboardDriverPath = Path.Combine(
+                root, "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs");
+            if (!File.Exists(keyboardDriverPath))
+            {
+                failures.Add("T158 找不到 `PhysicsTestDrive.cs`（键盘路径的门无从判定）。");
+            }
+            else
+            {
+                string keyboardDriverText = File.ReadAllText(keyboardDriverPath);
+                if (!keyboardDriverText.Contains("!TryConsumePlayerInput()"))
+                {
+                    failures.Add("T158 `PhysicsTestDrive.cs`（键盘路径）缺少**回合门调用** "
+                                 + "`!TryConsumePlayerInput()` ⇒ 对手回合按 Space 仍能出杆。");
+                }
+
+                if (!keyboardDriverText.Contains("PracticeHudView.IsSettingsOpen"))
+                {
+                    failures.Add("T158 `PhysicsTestDrive.cs`（键盘路径）缺少**模态门** "
+                                 + "`PracticeHudView.IsSettingsOpen` ⇒ 设置面板/结算卡/首页/引导开着时按 Space 仍能出杆。");
                 }
             }
 

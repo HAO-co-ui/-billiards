@@ -3629,6 +3629,8 @@ namespace Billiards.Tests
         /// <summary>
         /// **`T157`：对手回合玩家不能动瞄准线、也不能出杆**（用户实机反馈）。
         /// 两个输入控制器里都必须存在 `IsAiTurn` 这道门；缺失即红（这是"AI 用了玩家方向"的根因）。
+        /// **P32 起扩到第三条路径**：`PhysicsTestDrive.Update()` 的**键盘**出杆/方向键路径也必须带
+        /// 回合门（`!TryConsumePlayerInput()`）与模态门（`PracticeHudView.IsSettingsOpen`）。
         /// 另断言白线外发光用的是**共享运行时材质**（不新增材质）。
         /// </summary>
         [Test]
@@ -3663,6 +3665,47 @@ namespace Billiards.Tests
                 if (!text.Contains("drive.AiOpponentEnabled"))
                 {
                     failures.Add($"T157 `{file}`（{label}）的回合门缺 `AiOpponentEnabled` ⇒ 练习模式也会被挡（白球放不下）。");
+                }
+            }
+
+            // ── **P32：键盘路径（`PhysicsTestDrive.Update`）也必须被本判据扫到** ──────────────
+            // 为什么做这件事：`Update()` 里那条键盘出杆/方向键路径**一处门都没有**（P31 才补上）
+            // ⇒ 对手回合按 Space 能抢杆、按 ←/→ 能改掉 AI 正在用的 `aimDegrees`。
+            // 补上之后**必须有人守** —— 否则下一个人删掉那三行，全量测试照旧全绿（"绿而空"那一族）。
+            //
+            // ⚠ **为什么不能直接加进上面那个 `gated` 列表**：那两条断言写的是**接收者限定形态**
+            //   （`drive.IsAiTurn` / `drive.AiOpponentEnabled`），那是"交互层组件手里那个 `drive` 字段"的形状；
+            //   驱动器**自己**就是 `drive`，它那一侧不可能出现 `drive.` 前缀 ⇒ 硬塞进列表只会**恒红**，
+            //   然后被人"顺手"删掉。驱动器侧的正确形态是**调用单一实现点**：`TryConsumePlayerInput()`
+            //   （它内部就是 `!AiOpponentEnabled || !IsAiTurn` 的合取，`TryConsumePlayerInput` 里已守）。
+            //
+            // ⚠⚠ **绝不能断言裸名 `"TryConsumePlayerInput()"`**：该名字在**本文件里有定义**
+            //   （`public bool TryConsumePlayerInput()`）⇒ `Contains` 会被**定义本身**满足，
+            //   把 `Update()` 里的调用整段删掉仍**照旧绿** —— 正是本工程反复踩的"真空绿 / 载体被同源污染"
+            //   （`T146(f)` 的"必须断言**使用形态**、不能只断言符号名"是同一条教训）。
+            //   ⇒ 取**只在调用点才出现**的形态：`!TryConsumePlayerInput()`（否定前缀在定义处不存在）。
+            const string keyboardDriverPath = "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs";
+            string keyboardDriverFull = Path.Combine(root, keyboardDriverPath);
+            if (!File.Exists(keyboardDriverFull))
+            {
+                failures.Add($"T157 找不到 `{keyboardDriverPath}`（键盘路径的门无从判定 ⇒ 本项空扫）。");
+            }
+            else
+            {
+                string keyboardDriverText = File.ReadAllText(keyboardDriverFull);
+
+                if (!keyboardDriverText.Contains("!TryConsumePlayerInput()"))
+                {
+                    failures.Add($"T157 `{keyboardDriverPath}`（键盘路径）缺少**回合门调用** "
+                                 + "`!TryConsumePlayerInput()` ⇒ 对手回合按 Space 仍能出杆、"
+                                 + "按方向键仍能改掉 AI 正在用的 `aimDegrees`。");
+                }
+
+                if (!keyboardDriverText.Contains("PracticeHudView.IsSettingsOpen"))
+                {
+                    failures.Add($"T157 `{keyboardDriverPath}`（键盘路径）缺少**模态门** "
+                                 + "`PracticeHudView.IsSettingsOpen` ⇒ 设置面板/结算卡/首页/引导开着时"
+                                 + "按 Space 仍能出杆。");
                 }
             }
 

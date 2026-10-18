@@ -108,8 +108,22 @@ namespace Billiards.UI
         /// <summary>`moving` 状态的说明。</summary>
         public const string RefusedDetail = "Wait for the table";
 
-        /// <summary>`foul` 状态的处置说明 —— 本工程的实际处置是**白球放回开球点**。</summary>
-        public const string FoulDetail = "Cue ball back on the spot";
+        /// <summary>
+        /// `foul` 状态的说明行 —— **P32 文案口径变更：不再含任何位置主张**（主理人裁定）。
+        ///
+        /// ── 为什么从 `"Cue ball back on the spot"` 改成 `"Foul"` ────────────────────────
+        /// 旧句描述的是**更早那套规则**（白球落袋 ⇒ 自动放回开球点）。现在它在**两种模式下都不总成立**：
+        /// · **对战**：犯规给的是**自由球**，白球由玩家自己放到台面任意合法位置
+        ///   （那一档的文案是 <see cref="BallInHandPendingDetail"/>）；
+        /// · **练习**：`ApplyVerdict` 根本不置 `PendingCueBallPlacement`（`practiceNoHandBall`）
+        ///   ⇒ 空白杆那种犯规白球**原地不动**，而旧句会让玩家以为它被搬回了开球点。
+        /// ⇒ 说明行只说"发生了什么"（犯规）；**位置与后续动作由后续状态承担**
+        ///   （待放球档给"怎么放"、`Aim` 档给 `CaptionIdle`）—— 一句话不承诺它保证不了的事。
+        ///
+        /// ⚠ 与 <see cref="StateFoul"/> 同值（标题与说明都读 `Foul`）是**有意的**：
+        ///   这一档没有更细的信息可给，宁可重复一个词，也不写一句可能为假的解释。
+        /// </summary>
+        public const string FoulDetail = "Foul";
 
         /// <summary>
         /// `ball-in-hand` 且**白球已回到台上**时的说明。
@@ -505,13 +519,12 @@ namespace Billiards.UI
                 return PlacementRefusedDetail;
             }
 
-            // **犯规 + 待放球**（P31 修 4）：白球落袋那一刻，"犯规窗口（1.6 s）"与"待放球"**同时成立**，
-            // 而 `ResolveVisualState` 的优先级让犯规档压过自由球档 ⇒ 说明行会取
-            // `StateDetail(Foul)` = `FoulDetail` = **"Cue ball back on the spot"** —— 那是**旧规则**的说法
-            // （新规则下白球**没有**回到开球点，它悬浮在空中等玩家点击放下）⇒ 一句**假陈述**，
-            // 而且下一句就自相矛盾（"Click to place the cue ball anywhere"）。
-            // ⇒ 这一档回落成"怎么放"那句（它同时说清了"球在你手上"）。
-            // ⚠ **不改 `FoulDetail` 的字面量**：对战里"没有待放球"的那种犯规，那句仍然成立（它说的是扣分口径）。
+            // **犯规 + 待放球**（P31 修 4；**P32 只更新理由，分支与行为一字未改**）：
+            // 白球落袋那一刻，"犯规窗口（1.6 s）"与"待放球"**同时成立**，而 `ResolveVisualState`
+            // 的优先级让犯规档压过自由球档 ⇒ 说明行默认会落到 `StateDetail(Foul)` = `FoulDetail`。
+            // `FoulDetail` 在 P32 已按裁定改成不含位置主张的 `"Foul"`（假陈述已消失），但它**不可操作** ——
+            // 而这一刻玩家最需要的是"怎么把球放下"（含 `Esc` 兜底键）。
+            // ⇒ 这一档回落成 `BallInHandPendingDetail`：**可操作性优先于复述状态**。
             if (state == HudVisualState.Foul && awaitingPlacement)
             {
                 return BallInHandPendingDetail;
