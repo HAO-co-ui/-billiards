@@ -373,6 +373,22 @@ namespace Billiards.Physics
 
             _wasWaiting = waiting;
 
+            // **非法位置被拒 ⇒ 白球闪一下红**（用户："点了没反应"的另一半原因：
+            //   位置不合法时原实现**静默拒绝**，玩家不知道是"没点中"还是"这里不能放"）。
+            int refused = drive != null ? drive.RefusedPlacementCount : 0;
+            if (refused > _lastRefusedPlacement)
+            {
+                _refuseFlashUntil = Time.time + CueBallRefuseFlashSeconds;
+            }
+
+            _lastRefusedPlacement = refused;
+
+            if (Time.time < _refuseFlashUntil)
+            {
+                SetCueBallTint(CueBallRefuseColor);
+                return;
+            }
+
             if (waiting && Time.time < _cueBallPulseUntil)
             {
                 float t = 0.5f + 0.5f * Mathf.Sin(Time.time * CueBallPulseRadPerSec);
@@ -419,6 +435,14 @@ namespace Billiards.Physics
         /// </summary>
         private static readonly Color CueBallPulseColor = new Color(0.55f, 0.58f, 0.62f, 1f);
 
+        /// <summary>被拒绝时闪红的持续时间（秒）。</summary>
+        private const float CueBallRefuseFlashSeconds = 0.45f;
+
+        /// <summary>被拒绝时的提示色（红，区别于待放置的白闪）。</summary>
+        private static readonly Color CueBallRefuseColor = new Color(0.95f, 0.35f, 0.32f, 1f);
+
+        private float _refuseFlashUntil;
+        private int _lastRefusedPlacement;
         private float _cueBallPulseUntil;
         private bool _wasWaiting;
         private bool _cueBallTinted;

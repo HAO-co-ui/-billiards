@@ -220,11 +220,13 @@ namespace Billiards.Physics
                 return;
             }
 
+            // ⚠ **不要在这里 `return`**：快速点一下时"按下"和"抬起"会落在**同一帧**，
+            //   按下就 return 会把当帧的 `GetMouseButtonUp` 吃掉 ⇒ 这次点击被吞、`_placementDown`
+            //   还留在 true ⇒ 玩家感觉"点放球没反应/卡住"（用户实机反馈）。
             if (Input.GetMouseButtonDown(0))
             {
                 _placementDownScreen = Input.mousePosition;
                 _placementDown = true;
-                return;
             }
 
             if (!_placementDown || !Input.GetMouseButtonUp(0))
