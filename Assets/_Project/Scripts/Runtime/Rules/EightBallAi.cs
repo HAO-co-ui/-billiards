@@ -135,10 +135,10 @@ namespace Billiards.Rules
         public const AiDifficulty DefaultDifficulty = AiDifficulty.Club;
 
         /// <summary>**上界守（方向）**：`Expert` 的瞄准角 σ **不得小于**该值（度）。</summary>
-        public const float ExpertAimSigmaFloorDeg = 0.5f;
+        public const float ExpertAimSigmaFloorDeg = 0.15f;
 
         /// <summary>**上界守（力度）**：`Expert` 的力度相对误差 **不得小于**该值（`0.05` = 5%）。</summary>
-        public const float ExpertPowerSigmaFloorFraction = 0.05f;
+        public const float ExpertPowerSigmaFloorFraction = 0.015f;
 
         /// <summary>力度扫描的下端（`0` 会打出"不动"的杆，没有意义）。</summary>
         public const float MinPower = 0.15f;
@@ -169,16 +169,17 @@ namespace Billiards.Rules
                     return new AiDifficultyParameters
                     {
                         difficulty = AiDifficulty.Expert,
-                        aimStepCoarseDeg = 2.0f,
-                        aimStepFineDeg = 0.5f,
-                        // **P9：用户拍板只加强 Expert**（Casual / Club 不动）。三处都在**上界守之上**：
-                        //   σ 0.6° ≥ 0.5°、力度 0.055 ≥ 0.05 ⇒ 仍不是「神」；力度档 6 → 8（更细）。
-                        powerLevelCount = 8,
-                        aimSigmaDeg = 0.6f,
-                        powerSigmaFraction = 0.055f,
+                        aimStepCoarseDeg = 1.0f,
+                        aimStepFineDeg = 0.15f,
+                        // **用户反馈"Expert 不够强、像 Club"** ⇒ 只加强 Expert（Casual/Club 不动）：
+                        //   瞄准 σ 0.6° → 0.18°、力度误差 5.5% → 1.8%、力度档 8 → 16、搜索步长 0.5° → 0.15°、
+                        //   候选 64 → 128。仍是**有限精度**（σ ≥ 0.15°、力度 ≥ 1.5% 的上界守照旧成立）。
+                        powerLevelCount = 16,
+                        aimSigmaDeg = 0.18f,
+                        powerSigmaFraction = 0.018f,
                         topKPick = 1,          // 取最优
                         weakPositionScoring = true,
-                        candidateBudget = 64,
+                        candidateBudget = 128,
                     };
 
                 case AiDifficulty.Club:

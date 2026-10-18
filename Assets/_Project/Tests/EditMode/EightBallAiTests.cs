@@ -109,14 +109,16 @@ namespace Billiards.Tests
             float floorPowerFraction = EightBallAi.ExpertPowerSigmaFloorFraction;
             AiDifficulty defaultTier = EightBallAi.DefaultDifficulty;
 
-            if (floorSigmaDeg != 0.5f)
+            // **规格变更**（用户："Expert 不够强、像 Club"，要求力度与精度更好）：
+            // 上界守由 0.5° 下调到 0.15°、力度误差 5% → 1.5%（仍保留"不是神"的有限精度）。
+            if (floorSigmaDeg != 0.15f)
             {
-                failures.Add($"J1 字面值失败：ExpertAimSigmaFloorDeg 期望 0.5，实测 {floorSigmaDeg}。");
+                failures.Add($"J1 字面值失败：ExpertAimSigmaFloorDeg 期望 0.15，实测 {floorSigmaDeg}。");
             }
 
-            if (floorPowerFraction != 0.05f)
+            if (floorPowerFraction != 0.015f)
             {
-                failures.Add($"J1 字面值失败：ExpertPowerSigmaFloorFraction 期望 0.05，实测 {floorPowerFraction}。");
+                failures.Add($"J1 字面值失败：ExpertPowerSigmaFloorFraction 期望 0.015，实测 {floorPowerFraction}。");
             }
 
             if (defaultTier != AiDifficulty.Club)
@@ -127,7 +129,8 @@ namespace Billiards.Tests
             // 三档参数表逐字段比对（§4.3 字面量）
             CheckParams(failures, AiDifficulty.Casual, 6.0f, 2.0f, 3, 4.0f, 0.25f, 5, 16);
             CheckParams(failures, AiDifficulty.Club, 4.0f, 1.0f, 4, 2.2f, 0.14f, 3, 32);
-            CheckParams(failures, AiDifficulty.Expert, 2.0f, 0.5f, 8, 0.6f, 0.055f, 1, 64);   // P9：Expert 加强（仍守上界）
+            // **规格变更**：Expert 强化（σ 0.6→0.18、力度 5.5%→1.8%、档 8→16、细步 0.5→0.15、候选 64→128）。
+            CheckParams(failures, AiDifficulty.Expert, 1.0f, 0.15f, 16, 0.18f, 0.018f, 1, 128);
         }
 
         private static float ExpertPowerSigmaFloorPercent() => EightBallAi.ExpertPowerSigmaFloorFraction * 100f;
