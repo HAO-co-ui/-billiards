@@ -322,6 +322,9 @@ namespace Billiards.UI
         /// <see cref="ClubUiTokens.DisabledOpacity"/> 且不接收射线
         /// （"点了没反应"的假可点态是本工程明令禁止的）。
         /// </summary>
+        /// <summary>退出键相对主入口的字号系数（0.78 ≈ 18 px；仍与上面两行同一字体族）。</summary>
+        private const float QuitFontScale = 0.78f;
+
         /// <summary>**退出游戏**（文本按钮：无实底、只描边，避免和两个主入口抢视觉重量）。</summary>
         private void BuildQuitRow(Rect rect)
         {
@@ -332,7 +335,8 @@ namespace Billiards.UI
             //   （桌号 / 两个主键标签 / `CreateHomeText` 单点）⇒ 退出键走默认倍率。
             // **与上面两行同字号同字体同颜色**（用户："退出字体要和上面一致"）——
             //   只是底色/描边更轻，避免和主入口抢视觉重量。
-            PracticeHudView.CreateText(frame, "Label", hud.titleFont, ClubUiTokens.FontHomeAction,
+            // 字体族与上面两行一致，**字号小一档**（用户："字体太大了再小一点"）：23 → 约 18。
+            PracticeHudView.CreateText(frame, "Label", hud.titleFont, ClubUiTokens.FontHomeAction * QuitFontScale,
                 ClubUiTokens.Text, TextAlignmentOptions.Center, Vector2.zero, Vector2.one)
                 .text = PracticeHudState.ButtonQuit;
 
