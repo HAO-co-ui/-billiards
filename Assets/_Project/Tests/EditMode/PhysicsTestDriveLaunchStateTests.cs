@@ -2661,6 +2661,11 @@ namespace Billiards.Tests
                     AdvanceToRest(h1, RestCap);
                     h1.SetTurn(ShotTurn.Player);
 
+                    // **契约更新**：自由球是"对战"概念 —— 练习模式不再判自由球、也不要求放球
+                    // （用户："每个球都能打，只有白球落袋才重新放置"）。本段测的是**施加侧**，
+                    // ⇒ 先开对手开关，构成真实对战场景。
+                    h1.SetAiOpponentEnabledForDiagnostics(true);
+
                     // 直接施加"头区自由球 + 必须往前打"（本项测**施加侧**；规则层给不给由 ②/④ 守）
                     h1.ApplyVerdict(new RuleVerdict
                     {
@@ -3279,6 +3284,9 @@ namespace Billiards.Tests
                     AdvanceToRest(b1, RestCap);
                     b1.SetTurn(ShotTurn.Player);
 
+                    // **契约更新**：自由球是对战概念（练习模式不再强制放球）⇒ 先开对手开关。
+                    b1.SetAiOpponentEnabledForDiagnostics(true);
+
                     // **犯规自由球**：白球**仍在台上**，但进入了待放态
                     b1.ApplyVerdict(new RuleVerdict
                     {
@@ -3444,6 +3452,8 @@ namespace Billiards.Tests
                     c1.Simulator.PlaceBall(0, new Vector2(0.60f, 0.20f), Vector2.zero);
                     AdvanceToRest(c1, RestCap);
                     c1.SetTurn(ShotTurn.Player);
+                    // **契约更新**：自由球是对战概念（练习模式不再强制放球）⇒ 开对手开关。
+                    c1.SetAiOpponentEnabledForDiagnostics(true);
                     c1.ApplyVerdict(new RuleVerdict
                     {
                         nextTurn = ShotTurn.Player,

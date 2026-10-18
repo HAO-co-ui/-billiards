@@ -1224,7 +1224,10 @@ namespace Billiards.UI
             // 重置按钮**只在练习模式出现**：对战中重摆等于把对局清掉。
             if (_resetIcon != null)
             {
-                _resetIcon.gameObject.SetActive(!aiMatch);
+                // ⚠ `AddIconButton` 返回的是**字形 Image**；只关它，边框还留在工具栏上（截图里那个空方块）。
+                //   必须关**边框那一层**。
+                Transform frame = _resetIcon.transform.parent;
+                frame.gameObject.SetActive(!aiMatch);
             }
 
             if (_matchStatus != null)

@@ -749,9 +749,20 @@ namespace Billiards.Physics
 
             // ③ **自由球**：记形态 + 打开"待放球"闸门（玩家拖动放 / AI 自动放，见 `TickAiTurn`）。
             //    ⚠ 只记形态**不等于**实现了自由球 —— 谁能放、放哪、AI 怎么自动放，是 ③ 的配套（判据 ⑤ 守）。
+            // **练习模式不判自由球**（用户："打了对方的球也不用重置白球，每个球都能打"）：
+            // 规则照样会判自由球，但练习没有对手、也不分组 ⇒ 忽略它；
+            // **只有白球真的落袋**才要求重新放置（见下一段）。
+            // 规则状态**照旧记录**（对战读它；练习只是不据此强制放球）。
             BallInHand = verdict.ballInHand;
-            if (verdict.ballInHand != BallInHandKind.None)
+            bool practiceNoHandBall = !AiOpponentEnabled;
+            if (!practiceNoHandBall && verdict.ballInHand != BallInHandKind.None)
             {
+                PendingCueBallPlacement = true;
+            }
+
+            if (practiceNoHandBall && _simulator != null && !_simulator.IsBallInPlay(0))
+            {
+                // 白球落袋 ⇒ 必须自己放回去（练习模式唯一会要求放球的情形）。
                 PendingCueBallPlacement = true;
             }
 
