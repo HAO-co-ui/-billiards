@@ -1083,7 +1083,9 @@ namespace Billiards.Physics
         /// </summary>
         public bool TryConsumePlayerInput()
         {
-            if (!IsAiTurn)
+            // **练习模式没有对手**：规则照样可能把回合判给"对方"，但这里必须**放行** ——
+            // 否则玩家出不了杆、HUD 还写着 `Opponent is shooting`（用户实机反馈）。
+            if (!AiOpponentEnabled || !IsAiTurn)
             {
                 return true;
             }

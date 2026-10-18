@@ -2253,6 +2253,11 @@ namespace Billiards.Tests
 
                 // ── ⑦ 接线（**跑真路径**）：AI 回合期间玩家输入被拒 ⇒ 必须登记可见反馈 ──
                 Billiards.UI.MatchTurnNotice.Reset();
+
+                // **契约更新**：`TryConsumePlayerInput` 现在只在**真有 AI 对手**时拒绝 ——
+                // 练习模式里规则换手同样会进入 Ai 回合，但那里必须放行（否则玩家发不了球）。
+                // ⇒ 本段先打开对手开关，才构成"AI 回合"的真实场景。
+                drive.SetAiOpponentEnabledForDiagnostics(true);
                 drive.SetTurn(ShotTurn.Ai);
                 bool consumedDuringAiTurn = drive.TryConsumePlayerInput();
                 if (consumedDuringAiTurn)

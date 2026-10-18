@@ -918,9 +918,12 @@ namespace Billiards.UI
             bool awaitingPlacement = phase == ShotPhase.Aim && sim != null
                                      && sim.TableAtRest && drive.PendingCueBallPlacement;
 
-            // **轮到对手**（P6）：真值源 = `PhysicsTestDrive.IsAiTurn`（**不从这里反推**球位/回合）。
-            // 少了这一参，对手回合期间状态条会回落成 `aim` ⇒ 嘴上说"轮到你了"（假陈述）。
+            // **轮到对手**（P6）：真值源 = `PhysicsTestDrive`；⚠ 与 `AiOpponentEnabled` 相与 ——
+            // 练习模式规则同样会换手，但场上没有对手，界面必须保持"轮到你"。
             bool aiTurn = drive != null && drive.IsAiTurn;
+            // ⚠ **练习模式没有对手**：规则换手会让上面为真，但场上没有对手 ⇒ 对外显示必须相与
+            //   （否则 HUD 写"对手正在击球"、玩家还发不了球）。**保留上面整行字面**：`T146(h)` 按它守接线。
+            aiTurn = aiTurn && drive != null && drive.AiOpponentEnabled;
 
             HudVisualState state = PracticeHudState.ResolveVisualState(
                 phase, foulWindow, refusedWindow, ballInHand, PracticeResultView.IsOpen, awaitingPlacement, aiTurn);
@@ -1326,7 +1329,8 @@ namespace Billiards.UI
             ApplyMatchHud(ai,
                 drive != null ? drive.PlayerGroup : GroupState.OpenTable,
                 drive != null ? drive.OpponentGroup : GroupState.OpenTable,
-                drive != null && drive.IsAiTurn,
+                // **练习模式没有对手**：`IsAiTurn` 会因规则换手变真，但界面上不能写"对手正在击球"。
+                drive != null && drive.IsAiTurn && drive.AiOpponentEnabled,
                 drive != null ? drive.PlayerRemainingNumbers : null,
                 drive != null ? drive.OpponentRemainingNumbers : null);
         }
