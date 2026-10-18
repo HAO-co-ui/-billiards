@@ -1431,6 +1431,9 @@ namespace Billiards.Physics
                 return true;   // 没有自由球 ⇒ 无事可做（**不是**失败）
             }
 
+            // 占用表在一次搜索内不变 ⇒**建一次**，576 个候选共用（旧实现每个候选重建一次）。
+            List<Vector2> occupied = BuildOccupiedForPlacement();
+
             const int steps = 24;
             for (int iy = 0; iy < steps; iy++)
             {
@@ -1441,7 +1444,7 @@ namespace Billiards.Physics
                     float x = Mathf.Lerp(-tableConfig.halfLength * 0.9f, tableConfig.halfLength * 0.9f,
                         (ix + 0.5f) / steps);
                     var candidate = new Vector2(x, y);
-                    if (CanPlaceCueBall(candidate))
+                    if (CanPlaceCueBall(candidate, occupied))
                     {
                         if (TryPlaceCueBall(candidate))
                         {
@@ -2123,19 +2126,40 @@ namespace Billiards.Physics
                 return false;
             }
 
+            return CanPlaceCueBall(position, BuildOccupiedForPlacement());
+        }
+
+        /// <summary>
+        /// **构造"被占位置"表**（跳过白球自己：它正被放，不参与重叠判定）。
+        /// ⚠ **单点实现**：`CanPlaceCueBall` 与 AI 网格搜索共用 —— 网格搜索里这张表在一次搜索内**不变**，
+        ///   旧实现每个候选点都重建一次（24×24 = **576 次 `new List<Vector2>`**，正好落在"轮到对手"那一帧）。
+        /// </summary>
+        private List<Vector2> BuildOccupiedForPlacement()
+        {
             IReadOnlyList<BallState> balls = _simulator.Balls;
             var occupied = new List<Vector2>(balls.Count);
             for (int i = 0; i < balls.Count; i++)
             {
                 if (i == 0)
                 {
-                    continue;   // 白球自己：正在被放，不参与重叠判定
+                    continue;
                 }
 
                 if (_simulator.IsBallInPlay(i))
                 {
                     occupied.Add(balls[i].position);
                 }
+            }
+
+            return occupied;
+        }
+
+        /// <summary>同 <see cref="CanPlaceCueBall"/>，但复用调用方已建好的占用表（AI 网格搜索用）。</summary>
+        private bool CanPlaceCueBall(Vector2 position, List<Vector2> occupied)
+        {
+            if (_simulator == null || tableConfig == null)
+            {
+                return false;
             }
 
             // **P7：头区自由球**（开球犯规的处罚）⇒ 落点还必须在**开球线之后**。
