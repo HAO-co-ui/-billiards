@@ -421,8 +421,11 @@ namespace Billiards.Physics
         /// <summary>闪烁角速度（弧度/秒）≈ 每 0.45 s 一个来回。</summary>
         private const float CueBallPulseRadPerSec = 14f;
 
-        /// <summary>闪烁的强调色（暖金，与界面强调色同族）。</summary>
-        private static readonly Color CueBallPulseColor = new Color(1f, 0.86f, 0.45f, 1f);
+        /// <summary>
+        /// 闪烁的对比色：**浅灰**（白球底色是纯白，往灰走就是"明暗闪"，不会被看成黄球）。
+        /// 用户明确否掉了暖金方案（"这样像黄色球了"）。
+        /// </summary>
+        private static readonly Color CueBallPulseColor = new Color(0.55f, 0.58f, 0.62f, 1f);
 
         private float _cueBallPulseUntil;
         private bool _wasWaiting;
@@ -441,7 +444,8 @@ namespace Billiards.Physics
                 return;
             }
 
-            // 局部原点 = 杆尖，+Z 指向杆尖 ⇒ 杆尾在 −Z 方向。
+            // ⚠ 局部原点 = **杆尖**，但几何体沿 **+Z** 延伸 ⇒ **杆尾在 +Z**。
+            //   此前写成 −Z，握把跑到白球**前方**（用户截图："蓄力时出现不明物"）。
             const float gripLength = 0.42f;
             const float gripRadius = 0.0145f;
 
@@ -456,7 +460,7 @@ namespace Billiards.Physics
             Transform grip = gripGo.transform;
             grip.SetParent(_stick, false);
             grip.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            grip.localPosition = new Vector3(0f, 0f, -(StickLength - gripLength * 0.5f));
+            grip.localPosition = new Vector3(0f, 0f, StickLength - gripLength * 0.5f);
             grip.localScale = new Vector3(gripRadius * 2f, gripLength * 0.5f, gripRadius * 2f);
 
             var gripRenderer = gripGo.GetComponent<MeshRenderer>();
