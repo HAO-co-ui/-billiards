@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Billiards.Core;
 using UnityEngine;
 
@@ -63,6 +64,9 @@ namespace Billiards.Physics
         private readonly ShotFlowState _flow = new ShotFlowState();
         private Transform _stick;
         private MeshRenderer _stickRenderer;
+
+        /// <summary>杆尾握把（懒建；跟随球杆显隐）。</summary>
+        private Transform _buttGrip;
         private float _pullbackAtRelease;
         private int _strikeCountdown = -1;   // < 0 = 未在前推
 
@@ -181,6 +185,7 @@ namespace Billiards.Physics
         private void SyncStick()
         {
             EnsureStick();
+            PulseCueBallWhileWaiting();
             if (_stick == null)
             {
                 return;
@@ -203,6 +208,10 @@ namespace Billiards.Physics
             if (_stickRenderer != null && _stickRenderer.enabled != visible)
             {
                 _stickRenderer.enabled = visible;
+                if (_buttGrip != null)
+                {
+                    _buttGrip.gameObject.SetActive(visible);
+                }
             }
 
             if (!visible)
@@ -355,6 +364,179 @@ namespace Billiards.Physics
         /// 按需创建杆：**杆对象原点 = 杆尖**，网格子对象沿 +Z 偏半长（圆柱基元长轴在 Y ⇒ 绕 X 转 90° 立向 +Z）。
         /// 无任何物理组件（基元自带的接触体立即移除——自研物理铁律；类型名运行时拼接，源码不写该名字）。
         /// </summary>
+        /// <summary>
+        /// **待放置时给白球一个高亮闪烁**（用户反馈："犯规进袋拿出来浮在空中不太明显"）。
+        ///
+        /// 只在**进入**待放置的那一刻起闪 `CueBallPulseSeconds` 秒，不是一直闪 ——
+        /// 一直闪会变成噪音，而且掩盖了"该点哪里"的注意力焦点。
+        /// 实现用 `MaterialPropertyBlock` 改白球底色（**不新增材质**）。
+        /// </summary>
+        private void PulseCueBallWhileWaiting()
+        {
+            bool waiting = drive != null && drive.IsWaitingForPlacement;
+            if (waiting && !_wasWaiting)
+            {
+                _cueBallPulseUntil = Time.time + CueBallPulseSeconds;
+            }
+
+            _wasWaiting = waiting;
+
+            if (waiting && Time.time < _cueBallPulseUntil)
+            {
+                float t = 0.5f + 0.5f * Mathf.Sin(Time.time * CueBallPulseRadPerSec);
+                SetCueBallTint(Color.Lerp(Color.white, CueBallPulseColor, 0.25f + 0.55f * t));
+            }
+            else if (_cueBallTinted)
+            {
+                SetCueBallTint(Color.white);
+            }
+        }
+
+        /// <summary>把白球底色切到指定颜色（写属性块；找不到渲染器就静默跳过）。</summary>
+        private void SetCueBallTint(Color color)
+        {
+            MeshRenderer cueBall = null;
+            if (drive != null && drive.ballVisuals != null && drive.ballVisuals.Length > 0
+                && drive.ballVisuals[0] != null)
+            {
+                cueBall = drive.ballVisuals[0].GetComponentInChildren<MeshRenderer>(true);
+            }
+
+            if (cueBall == null)
+            {
+                return;
+            }
+
+            var block = new MaterialPropertyBlock();
+            cueBall.GetPropertyBlock(block);
+            block.SetColor("_BaseColor", color);
+            cueBall.SetPropertyBlock(block);
+            _cueBallTinted = !Mathf.Approximately(color.r, 1f) || !Mathf.Approximately(color.g, 1f)
+                             || !Mathf.Approximately(color.b, 1f);
+        }
+
+        /// <summary>待放置高亮的持续时长（秒）。</summary>
+        private const float CueBallPulseSeconds = 3f;
+
+        /// <summary>闪烁角速度（弧度/秒）≈ 每 0.45 s 一个来回。</summary>
+        private const float CueBallPulseRadPerSec = 14f;
+
+        /// <summary>闪烁的强调色（暖金，与界面强调色同族）。</summary>
+        private static readonly Color CueBallPulseColor = new Color(1f, 0.86f, 0.45f, 1f);
+
+        private float _cueBallPulseUntil;
+        private bool _wasWaiting;
+        private bool _cueBallTinted;
+
+        /// <summary>
+        /// **杆尾深色握把**（用户：复用现有深色材质加一段握把）。
+        /// 1. **不新增材质**（30/30 零余量）：复用杆身 `sharedMaterial`，用 `MaterialPropertyBlock` 把
+        ///    `_BaseColor` 压成深胡桃色 —— 属性块不进材质库，不计入材质数；2. 不新增贴图；
+        /// 3. 只多**一个渲染物件**（渲染器 42/60 有余量），且跟随球杆显隐。
+        /// </summary>
+        private void EnsureButtGrip()
+        {
+            if (_buttGrip != null || _stick == null)
+            {
+                return;
+            }
+
+            // 局部原点 = 杆尖，+Z 指向杆尖 ⇒ 杆尾在 −Z 方向。
+            const float gripLength = 0.42f;
+            const float gripRadius = 0.0145f;
+
+            // ⚠ **不能用 `CreatePrimitive`**：它自带 Collider ⇒ 运行时会引用 `UnityEngine.PhysicsModule`，
+            //   直接违反"自研物理、运行时不得依赖 PhysX"的铁律（判据 `RuntimeAssembly_DoesNotReferencePhysXModule`）。
+            //   ⇒ 纯 `Mesh` 程序化圆柱（无碰撞体），只走 MeshFilter/MeshRenderer。
+            var gripGo = new GameObject("ButtGrip");
+            var meshFilter = gripGo.AddComponent<MeshFilter>();
+            meshFilter.sharedMesh = BuildCylinderMesh(1f, 1f, 16);
+            gripGo.AddComponent<MeshRenderer>();
+
+            Transform grip = gripGo.transform;
+            grip.SetParent(_stick, false);
+            grip.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            grip.localPosition = new Vector3(0f, 0f, -(StickLength - gripLength * 0.5f));
+            grip.localScale = new Vector3(gripRadius * 2f, gripLength * 0.5f, gripRadius * 2f);
+
+            var gripRenderer = gripGo.GetComponent<MeshRenderer>();
+            if (gripRenderer != null && _stickRenderer != null && _stickRenderer.sharedMaterial != null)
+            {
+                gripRenderer.sharedMaterial = _stickRenderer.sharedMaterial;
+
+                var block = new MaterialPropertyBlock();
+                gripRenderer.GetPropertyBlock(block);
+                block.SetColor("_BaseColor", GripColor);
+                gripRenderer.SetPropertyBlock(block);
+            }
+
+            _buttGrip = grip;
+        }
+
+        /// <summary>
+        /// 程序化圆柱网格（单位半径、单位高度，轴向 +Y；无碰撞体）。
+        /// 只为握把服务：16 边足够在球杆尺度下看不出棱。
+        /// </summary>
+        private static Mesh BuildCylinderMesh(float radius, float height, int segments)
+        {
+            var mesh = new Mesh { name = "ButtGripCylinder" };
+            int count = segments * 2;
+            var vertices = new Vector3[count + 2];
+            var normals = new Vector3[count + 2];
+            var uvs = new Vector2[count + 2];
+
+            float halfHeight = height * 0.5f;
+            for (int i = 0; i < segments; i++)
+            {
+                float a = (Mathf.PI * 2f * i) / segments;
+                float cos = Mathf.Cos(a);
+                float sin = Mathf.Sin(a);
+                Vector3 normal = new Vector3(cos, 0f, sin);
+
+                vertices[i] = new Vector3(cos * radius, -halfHeight, sin * radius);
+                vertices[i + segments] = new Vector3(cos * radius, halfHeight, sin * radius);
+                normals[i] = normal;
+                normals[i + segments] = normal;
+                uvs[i] = new Vector2((float)i / segments, 0f);
+                uvs[i + segments] = new Vector2((float)i / segments, 1f);
+            }
+
+            int capTop = count;
+            int capBottom = count + 1;
+            vertices[capTop] = new Vector3(0f, halfHeight, 0f);
+            vertices[capBottom] = new Vector3(0f, -halfHeight, 0f);
+            normals[capTop] = Vector3.up;
+            normals[capBottom] = Vector3.down;
+            uvs[capTop] = new Vector2(0.5f, 0.5f);
+            uvs[capBottom] = new Vector2(0.5f, 0.5f);
+
+            var triangles = new List<int>(segments * 12);
+            for (int i = 0; i < segments; i++)
+            {
+                int next = (i + 1) % segments;
+                int bottom = i;
+                int top = i + segments;
+                int bottomNext = next;
+                int topNext = next + segments;
+
+                triangles.Add(bottom); triangles.Add(top); triangles.Add(topNext);
+                triangles.Add(bottom); triangles.Add(topNext); triangles.Add(bottomNext);
+
+                triangles.Add(capTop); triangles.Add(top); triangles.Add(topNext);
+                triangles.Add(capBottom); triangles.Add(bottomNext); triangles.Add(bottom);
+            }
+
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.uv = uvs;
+            mesh.triangles = triangles.ToArray();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        /// <summary>握把的深胡桃色（只在属性块里用，不是新材质）。</summary>
+        private static readonly Color GripColor = new Color(0.23f, 0.14f, 0.09f, 1f);
+
         private void EnsureStick()
         {
             if (_stick != null)
@@ -367,6 +549,7 @@ namespace Billiards.Physics
             {
                 _stick = stickInstance;
                 _stickRenderer = stickInstance.GetComponentInChildren<MeshRenderer>(true);
+                EnsureButtGrip();
                 return;
             }
 
