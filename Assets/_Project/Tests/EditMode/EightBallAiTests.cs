@@ -175,11 +175,18 @@ namespace Billiards.Tests
                              + " ⇒ 本层内部出现了**第二次规划**（两杆前瞻在该层的唯一形态）。");
             }
 
-            // 求值器调用点：按"调用括号 + 实参前缀"计数（粗筛 1 + 精扫 1）。
+            // 求值器调用点：按"调用括号 + 实参前缀"计数。
+            // ⚠ **结构变更（AI 分帧）**：候选枚举从 `Plan` 的两个循环搬进了 `EightBallAi.PlanCursor`
+            //   （粗筛/精扫的枚举在游标里 `TryGetNext`，评分由调用方 `Submit` 回填）
+            //   ⇒ `Plan` 只剩 **1 个**求值器调用点。本守卫的**意图不变**：全档仍只有**一层**评估
+            //   （不得出现"评估对手回球"的两步前瞻）；因此额外要求全文件里 `evaluator(` **也只出现 1 次**
+            //   —— 游标若自己调求值器，就等于把评估藏进枚举里，那正是两步前瞻的入口。
             int evalSites = CountOccurrences(code, "evaluator(context, ");
-            if (evalSites != 2)
+            int anyEvalCalls = CountOccurrences(code, "evaluator(");
+            if (evalSites != 1 || anyEvalCalls != 1)
             {
-                failures.Add($"J5 失败：求值器调用点 {evalSites} 个（期望 2 = 粗筛 1 + 精扫 1）"
+                failures.Add($"J5 失败：求值器调用点 {evalSites} 个 / 全文 `evaluator(` {anyEvalCalls} 次"
+                             + "（期望各为 1：枚举在 `PlanCursor`、评分只在 `Plan` 里发起）"
                              + " ⇒ 候选评估的结构被改动（可能引入「评估对手回球」这类前瞻）。");
             }
 

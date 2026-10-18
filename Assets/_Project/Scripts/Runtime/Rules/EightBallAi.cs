@@ -249,100 +249,19 @@ namespace Billiards.Rules
                 return intent;
             }
 
-            // **预算门**：候选评估次数计数，`evaluated >= budget` 处一律早退 ⇒ 永不超预算。
-            int budget = parameters.candidateBudget;
-            int evaluated = 0;
-            int topK = parameters.topKPick <= 0 ? 1 : parameters.topKPick;
-            var top = new List<Candidate>(topK);
-
-            // ── 2. **粗筛**：每个"目标球 × 袋口"的幽灵球基准方向，**各评估 1 次** ──
-            bool hasBase = false;
-            Candidate bestBase = default;
-            float probePower = PowerForLevel(parameters.powerLevelCount / 2, parameters.powerLevelCount);
-
-            for (int t = 0; t < targets.Count; t++)
+            // **分帧 / 整帧共用同一条枚举**：`Plan` = 游标跑到底（因此同 seed 逐位可复现的契约不变）。
+            var cursor = new PlanCursor(context, parameters, targets);
+            if (cursor.Unavailable)
             {
-                int target = targets[t];
-                for (int p = 0; p < context.pocketCenters.Length; p++)
-                {
-                    float baseAim = AimDegreesForPocket(context.cueBallPosition, context.ballPositions[target],
-                        context.pocketCenters[p]);
-                    if (float.IsNaN(baseAim))
-                    {
-                        continue;
-                    }
-
-                    if (evaluated >= budget)
-                    {
-                        goto CoarseDone;
-                    }
-
-                    float score = evaluator(context, baseAim, probePower, target, p);
-                    evaluated++;
-                    var candidate = new Candidate(score, baseAim, probePower, target, p);
-                    Offer(top, topK, candidate);
-                    if (!hasBase || candidate.Beats(bestBase))
-                    {
-                        bestBase = candidate;
-                        hasBase = true;
-                    }
-                }
+                return intent;
             }
 
-        CoarseDone:
-            if (!hasBase)
+            while (cursor.TryGetNext(out AiPlanSlot slot))
             {
-                return intent;   // 无可用基准方向 / 预算为 0 ⇒ 不打算
+                cursor.Submit(slot, evaluator(context, slot.aim, slot.power, slot.target, slot.pocket));
             }
 
-            // ── 3. **精扫**：只在粗筛最优那一对附近按**精步长**细化（含全部力度档）──
-            int rounds = Mathf.Max(1, Mathf.RoundToInt(parameters.aimStepCoarseDeg / parameters.aimStepFineDeg));
-            for (int i = -rounds; i <= rounds; i++)
-            {
-                float aim = bestBase.aim + i * parameters.aimStepFineDeg;
-                for (int level = 0; level < parameters.powerLevelCount; level++)
-                {
-                    if (evaluated >= budget)
-                    {
-                        goto FineDone;
-                    }
-
-                    float power = PowerForLevel(level, parameters.powerLevelCount);
-                    float score = evaluator(context, aim, power, bestBase.target, bestBase.pocket);
-                    evaluated++;
-                    Offer(top, topK, new Candidate(score, aim, power, bestBase.target, bestBase.pocket));
-                }
-            }
-
-        FineDone:
-            Candidate best = best0(top);
-
-            // ── 5. 选杆（top-K 随机）+ 按档位扰动（**种子化**）──────────────
-            var rng = new Rng(seed);
-            Candidate chosen = best;
-            int k = parameters.topKPick <= 1 ? 1 : (parameters.topKPick < top.Count ? parameters.topKPick : top.Count);
-            if (k > 1)
-            {
-                int pick = (int)(rng.NextFloat() * k);
-                if (pick >= k || pick < 0)
-                {
-                    pick = k - 1;
-                }
-
-                chosen = bestK0(top, pick);
-            }
-
-            float aimNoise = parameters.aimSigmaDeg * rng.NextGaussian();
-            float powerNoise = parameters.powerSigmaFraction * rng.NextGaussian();
-
-            intent.planned = true;
-            intent.targetBall = chosen.target;
-            intent.pocketIndex = chosen.pocket;
-            intent.score = chosen.score;
-            intent.candidatesEvaluated = evaluated;
-            intent.aimDegrees = chosen.aim + aimNoise;
-            intent.power = Mathf.Clamp01(chosen.power * (1f + powerNoise));
-            return intent;
+            return cursor.Finish(seed);
         }
 
         /// <summary>
@@ -439,6 +358,206 @@ namespace Billiards.Rules
         }
 
         // ── top-K 维护（**不用 List.Sort** ⇒ 无"排序不稳定"造成的并列歧义）──
+
+        /// <summary>**一个待评估的候选**（分帧规划的最小单位）：只有几何与力度，**不含分数**。</summary>
+        public struct AiPlanSlot
+        {
+            public int target;
+            public int pocket;
+            public float aim;
+            public float power;
+        }
+
+        /// <summary>
+        /// **可暂停的规划游标**（AI 分帧的唯一实现点）。
+        ///
+        /// 与 <see cref="Plan"/> 的**枚举顺序、预算门、评分入列规则逐条一致** —— `Plan` 本身就是
+        /// "游标跑到底"的薄封装（`T145①` 的同 seed 逐位可复现靠这一点保证）。
+        /// 运行期可以**每次只取一个候选**（`TryGetNext` → 真物理评估 → `Submit`），把 N 次整杆推演
+        /// 摊到 N 帧上，从而消掉"一帧跑 32/64 次推演"的秒级卡顿。
+        /// </summary>
+        public sealed class PlanCursor
+        {
+            private readonly AiShotContext _context;
+            private readonly AiDifficultyParameters _parameters;
+            private readonly List<int> _targets;
+            private readonly List<Candidate> _top;
+            private readonly int _topK;
+            private readonly int _budget;
+            private readonly float _probePower;
+
+            private Candidate _bestBase;
+            private bool _hasBase;
+            private int _phase;          // 0 = 粗筛，1 = 精扫，2 = 结束
+            private int _t;
+            private int _p;
+            private int _i;
+            private int _level;
+            private int _rounds;
+
+            /// <summary>本回合**实际**消耗的候选评估次数（≤ <c>candidateBudget</c>）。</summary>
+            public int Evaluated { get; private set; }
+
+            /// <summary>是否已经吐不出新候选（预算用尽 / 枚举结束 / 无基准方向）。</summary>
+            public bool Finished => _phase >= 2;
+
+            /// <summary>局面本身不可规划（无目标球 / 无袋口 / 无求值器）⇒ 调用方直接放弃。</summary>
+            public bool Unavailable { get; }
+
+            internal PlanCursor(in AiShotContext context, AiDifficultyParameters parameters, List<int> targets)
+            {
+                _context = context;
+                _parameters = parameters;
+                _targets = targets;
+                _topK = parameters.topKPick <= 0 ? 1 : parameters.topKPick;
+                _top = new List<Candidate>(_topK);
+                _budget = parameters.candidateBudget;
+                _probePower = PowerForLevel(parameters.powerLevelCount / 2, parameters.powerLevelCount);
+                _rounds = 1;
+                Unavailable = targets == null || targets.Count == 0 || parameters.candidateBudget <= 0;
+                if (Unavailable)
+                {
+                    _phase = 2;
+                }
+            }
+
+            /// <summary>取下一个候选。返回 false ⇒ 规划枚举已结束（此时调 <see cref="Finish"/>）。</summary>
+            public bool TryGetNext(out AiPlanSlot slot)
+            {
+                slot = default;
+                if (_phase == 0)
+                {
+                    while (_t < _targets.Count)
+                    {
+                        int target = _targets[_t];
+                        while (_p < _context.pocketCenters.Length)
+                        {
+                            if (Evaluated >= _budget)
+                            {
+                                _phase = 2;
+                                return false;
+                            }
+
+                            float aim = AimDegreesForPocket(_context.cueBallPosition,
+                                _context.ballPositions[target], _context.pocketCenters[_p]);
+                            int pocket = _p;
+                            _p++;
+                            if (float.IsNaN(aim))
+                            {
+                                continue;
+                            }
+
+                            slot = new AiPlanSlot
+                            {
+                                target = target, pocket = pocket, aim = aim, power = _probePower,
+                            };
+                            return true;
+                        }
+
+                        _p = 0;
+                        _t++;
+                    }
+
+                    if (!_hasBase)
+                    {
+                        _phase = 2;
+                        return false;
+                    }
+
+                    _rounds = Mathf.Max(1,
+                        Mathf.RoundToInt(_parameters.aimStepCoarseDeg / _parameters.aimStepFineDeg));
+                    _phase = 1;
+                    _i = -_rounds;
+                    _level = 0;
+                }
+
+                if (_phase == 1)
+                {
+                    while (_i <= _rounds)
+                    {
+                        while (_level < _parameters.powerLevelCount)
+                        {
+                            if (Evaluated >= _budget)
+                            {
+                                _phase = 2;
+                                return false;
+                            }
+
+                            float aim = _bestBase.aim + _i * _parameters.aimStepFineDeg;
+                            float power = PowerForLevel(_level, _parameters.powerLevelCount);
+                            int level = _level;
+                            _level++;
+                            slot = new AiPlanSlot
+                            {
+                                target = _bestBase.target,
+                                pocket = _bestBase.pocket,
+                                aim = aim,
+                                power = power,
+                            };
+                            return true;
+                        }
+
+                        _level = 0;
+                        _i++;
+                    }
+
+                    _phase = 2;
+                }
+
+                return false;
+            }
+
+            /// <summary>回填某个候选的评分（与 `Plan` 里 `evaluated++ / Offer / bestBase` 完全同序）。</summary>
+            public void Submit(in AiPlanSlot slot, float score)
+            {
+                Evaluated++;
+                var candidate = new Candidate(score, slot.aim, slot.power, slot.target, slot.pocket);
+                Offer(_top, _topK, candidate);
+                if (!_hasBase || candidate.Beats(_bestBase))
+                {
+                    _bestBase = candidate;
+                    _hasBase = true;
+                }
+            }
+
+            /// <summary>收尾：选杆（top-K）+ 按档位扰动，产出意图（**与 `Plan` 尾部逐句一致**）。</summary>
+            public AiShotIntent Finish(int seed)
+            {
+                var intent = new AiShotIntent { planned = false, targetBall = -1, pocketIndex = -1 };
+                if (!_hasBase || _top.Count == 0)
+                {
+                    return intent;
+                }
+
+                var rng = new Rng(seed);
+                Candidate chosen = best0(_top);
+                int k = _parameters.topKPick <= 1
+                    ? 1
+                    : (_parameters.topKPick < _top.Count ? _parameters.topKPick : _top.Count);
+                if (k > 1)
+                {
+                    int pick = (int)(rng.NextFloat() * k);
+                    if (pick >= k || pick < 0)
+                    {
+                        pick = k - 1;
+                    }
+
+                    chosen = bestK0(_top, pick);
+                }
+
+                float aimNoise = _parameters.aimSigmaDeg * rng.NextGaussian();
+                float powerNoise = _parameters.powerSigmaFraction * rng.NextGaussian();
+
+                intent.planned = true;
+                intent.targetBall = chosen.target;
+                intent.pocketIndex = chosen.pocket;
+                intent.score = chosen.score;
+                intent.candidatesEvaluated = Evaluated;
+                intent.aimDegrees = chosen.aim + aimNoise;
+                intent.power = Mathf.Clamp01(chosen.power * (1f + powerNoise));
+                return intent;
+            }
+        }
 
         private struct Candidate
         {

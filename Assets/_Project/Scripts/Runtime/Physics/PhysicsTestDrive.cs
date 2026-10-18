@@ -667,6 +667,12 @@ namespace Billiards.Physics
 
             /// <summary>**击出**：这一帧走**既有** `Launch()`（与玩家同一条出杆路径）。</summary>
             Strike,
+
+            /// <summary>
+            /// **分帧规划**：每帧只评估 `AiCandidatesPerFrame` 个候选（每次都是一次完整整杆推演），
+            /// 把"一帧跑 32/64 次推演"摊到多帧 ⇒ 不再有秒级停顿。枚举顺序与 `EightBallAi.Plan` **逐条一致**。
+            /// </summary>
+            Planning = 4,
         }
 
         /// <summary>**当前 AI 出杆阶段**（只读出口：判据据此断"分阶段"真的发生，而不是一次性出杆）。</summary>
@@ -1348,6 +1354,52 @@ namespace Billiards.Physics
 
                     return;
 
+                case AiShotPhase.Planning:
+                {
+                    // ③ **分帧规划**：本帧最多评估 `AiCandidatesPerFrame` 个候选；游标枚举结束 ⇒ 收尾。
+                    int stepped = 0;
+                    while (stepped < AiCandidatesPerFrame)
+                    {
+                        if (_aiPlanCursor == null || !_aiPlanCursor.TryGetNext(out EightBallAi.AiPlanSlot slot))
+                        {
+                            break;
+                        }
+
+                        float score = EvaluateAiCandidate(_aiPlanContext, slot.aim, slot.power, slot.target,
+                            slot.pocket);
+                        _aiPlanCursor.Submit(slot, score);
+                        stepped++;
+                    }
+
+                    // 墙钟兜底：即便单帧候选数没跑满，累计超预算就提前收尾（避免极端局面拖住一帧）。
+                    bool overBudget = _aiPlanClock.IsRunning && _aiPlanClock.ElapsedMilliseconds >= AiPlanBudgetMs;
+                    bool exhausted = _aiPlanCursor == null || _aiPlanCursor.Finished;
+                    if (!exhausted && !overBudget && stepped > 0)
+                    {
+                        return;   // 本帧额度用完，下一帧继续
+                    }
+
+                    _aiPlanClock.Stop();
+                    AiShotIntent intent = _aiPlanCursor != null ? _aiPlanCursor.Finish(_aiPlanSeed) : default;
+                    LastAiShotIntent = intent;
+                    _aiPlanCursor = null;
+
+                    if (!intent.planned)
+                    {
+                        YieldAiTurn("分帧规划未产出任何一杆（无合法目标 / 预算为 0）");
+                        return;
+                    }
+
+                    aimDegrees = intent.aimDegrees;
+                    _aiPlannedPower = intent.power;
+                    power = 0f;
+                    SyncAimIndicator();
+
+                    _aiPhaseElapsed = 0f;
+                    AiPhase = AiShotPhase.Aiming;
+                    return;
+                }
+
                 case AiShotPhase.Aiming:
                     // ④ **瞄准段**：杆已指向目标（`aimDegrees` 已写），停一拍让玩家看清方向。
                     _aiPhaseElapsed += elapsed;
@@ -1395,6 +1447,16 @@ namespace Billiards.Physics
         /// **AI 出杆的"规划段"**：只读探针算意图 ⇒ 打黑 8 时**叫袋** ⇒ 把方向写进 `aimDegrees`（玩家可见）。
         /// 返回 `false` = 规划不出来（调用方**让位**）。
         /// </summary>
+        /// <summary>分帧规划时每帧评估的候选数（1 = 最丝滑、最慢；4 = 4 帧内推进 16 个候选）。</summary>
+        private const int AiCandidatesPerFrame = 4;
+
+        /// <summary>分帧规划的游标（非 null ⇒ 正在 `Planning` 阶段）。</summary>
+        private EightBallAi.PlanCursor _aiPlanCursor;
+
+        /// <summary>分帧规划使用的局面快照与种子（整段规划期间不变）。</summary>
+        private AiShotContext _aiPlanContext;
+        private int _aiPlanSeed;
+
         private bool BeginAiShot()
         {
             // 种子：**注入位**优先（判据可复现）；否则每杆真随机 ⇒ 同一局不会每杆都一样。
@@ -1402,20 +1464,23 @@ namespace Billiards.Physics
                 ? aiLaunchSeed + _aiLaunchCount
                 : System.Guid.NewGuid().GetHashCode();
 
-            AiShotIntent intent = PlanAiShot(MatchTier, seed);
-            if (!intent.planned)
+            // **改为分帧**：这里只建游标（枚举本身是纯几何、零物理），真正的推演摊到后续帧。
+            LastAiSeed = seed;
+            _aiPlanSeed = seed;
+            _aiPlanContext = BuildAiContext();
+
+            var targets = new List<int>();
+            EightBallAi.CollectLegalTargetBalls(_aiPlanContext, targets);
+            _aiPlanCursor = new EightBallAi.PlanCursor(_aiPlanContext, EightBallAi.Parameters(MatchTier), targets);
+            if (_aiPlanCursor.Unavailable)
             {
+                _aiPlanCursor = null;
                 return false;
             }
 
-            // ⚠ **D3 已按用户要求取消**（P8-C）：黑 8 进任意袋都算 ⇒ 不再叫袋、不再因袋号拒杆。
-            aimDegrees = intent.aimDegrees;
-            _aiPlannedPower = intent.power;
-            power = 0f;
-            SyncAimIndicator();
-
+            _aiPlanClock.Restart();
             _aiPhaseElapsed = 0f;
-            AiPhase = AiShotPhase.Aiming;
+            AiPhase = AiShotPhase.Planning;
             return true;
         }
 
