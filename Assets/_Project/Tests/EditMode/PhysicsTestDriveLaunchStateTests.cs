@@ -3769,5 +3769,335 @@ namespace Billiards.Tests
 
             Assert.IsEmpty(failures, "T157（AI 回合输入门 / 瞄准线质感）失败：\n" + string.Join("\n", failures));
         }
+
+        /// <summary>
+        /// **`T159`：规格 P4③「单帧 ≤1 次整杆推演」** —— **源级 + 运行期双保险**（2026-10-18 收口批次）。
+        ///
+        /// ── 规格原文（`Docs/35-C_AI对战与8球规则_spec.md` §4.2 / §6-P4③）─────────────
+        /// 「**硬规矩：单帧 ≤1 次整杆推演**；…把 N 次**摊到多个渲染帧**；**N ≤ 64** 上限，超时用当前最优收尾」
+        /// 与「③ 性能：**单帧 ≤1 次推演**、每回合 ≤64 次、超时收尾」。
+        ///
+        /// ── 为什么两条都要（缺一条就是真空绿）────────────────────────────────────
+        /// · **只有运行期**：把常量改回 4、却只断"某一次采样 ≤1"，遇到游标提前结束就**恒真**；
+        /// · **只有源级**：常量是 1，但有人在 `Planning` 分支里另写内层循环（或多处 `EvaluateAiCandidate`）
+        ///   ⇒ 常量照旧是 1 而**单帧真的推了 N 次** —— 这是本工程反复踩的"载体被同源污染"。
+        ///   ⇒ 源级断**赋值形态**（`AiCandidatesPerFrame = 1;`，**不是裸名**），运行期断**实测计数**。
+        ///
+        /// ── 判据（收集全部失败，不早退）────────────────────────────────────────
+        /// **(a) 源级**：`PhysicsTestDrive.cs`（**去注释后**）里 `AiCandidatesPerFrame` 的**赋值**只有 1 处，且值为 **1**；
+        ///     并且**两道门的规格常量**也钉住：`AiTurnComputeBudgetMs = 1500`（规格 §4.3 的 1.5 s）、
+        ///     `AiPlanStepBudget = 64000`（只防死循环；太小会把累计预算放开的候选数又压回去）。
+        ///     ⚠ **不能只 `Contains("AiCandidatesPerFrame")`**：裸名会被**定义自身**满足（本仓 `T157` 已记录该机理）。
+        ///     ⚠ **本判据覆盖不到"实机评估数"**：累计计算预算那道门带 `Application.isPlaying` ⇒ EditMode 恒不触发
+        ///     ⇒ **实机评估数必须打包后验收**（看一局里 `LastAiShotIntent.candidatesEvaluated` 是否到两位数）。
+        ///     **不要**为让它可判而在 EditMode 伪造 `isPlaying` —— 那是假绿。
+        /// **(b) 运行期（干净局面）**：真驱动一个 AI 回合（`SetTurn(Ai)` + `Advance` 逐帧推进），
+        ///     逐帧采样 `LastAiPlanCandidatesPerFrameMax` ⇒ 最大值必须 **≤ 1**；
+        ///     并且必须 **≥ 1**（=0 说明出口没接线 / 规划根本没发生 ⇒ 那种"绿"是真空）；
+        ///     并且 `Planning` 阶段必须**跨 ≥2 帧**（否则说明"一帧跑完"，与分帧自陈不符）；
+        ///     最后 `candidatesEvaluated > 0`（防空转）。
+        /// **(b2) 运行期（满 15 颗新摆球的强度守卫，P36b 新增 / P36c 定界）**：
+        ///     `candidatesEvaluated ≥ 12` + `Planning` 跨 ≥ 12 帧 + 单帧 ≤1。
+        ///     **它专抓"规划被某道闸门暗中压扁"**（历史事故两例：① 墙钟从 `BeginAiShot` 起算 ⇒ 帧间隔被算进预算；
+        ///     ② 改成"单帧 100 ms"后仍不够 —— 满摆球**单候选 ≈105 ms**，一帧就顶破 ⇒ 每杆只评 ≈4 个。
+        ///     ③ 两例都让实机 AI 明显弱于 §4.3 参数表，而 EditMode 的强度用例量的是 `EightBallAi` 纯参数
+        ///     ⇒ **判据盲带**）。**下界来源**：`AiTurnComputeBudgetMs`（1500 ms，规格 §4.3）÷ 单候选实测
+        ///     ≈105 ms ≈ **14**，取 **12** 留 2 个余量；帧下界同取 12（每帧 1 个候选 ⇒ 帧数 ≈ 候选数）。
+        ///
+        /// ── 实测留档（`engineering-lead` 自己跑批；XML 在 `%TEMP%\billiards_batch\`）──────────────
+        /// · **干净档（P36c 定稿）**：`(b)` 单帧最大 **1** 次 / `Planning` 跨 **33** 帧；
+        ///   `(b2)` 评估 **32** 个候选 / 跨 **33** 帧 / 单帧最大 **1** 次；
+        ///   **本回合累计计算**两次实测 **2373.1 / 2480.5 ms**（≈74–78 ms/候选，机器负载有波动）。
+        ///   ⚠ **实机侧的推论（是推论、不是实测，别当证据读）**：运行期 `AiTurnComputeBudgetMs = 1500`
+        ///   会在 **≈19–20 个候选**处收尾（1500 ÷ 74~78）—— 比修前（≈4 个）回到两位数，
+        ///   但**仍需打包实机验收**（这道门带 `isPlaying`，EditMode 走不到）。
+        /// · **`T143`（放宽预算没把 AI 变笨的另一半证据）**：`Casual 12/36 = 33.3% &lt; Club 17/36 = 47.2%
+        ///   &lt; Expert 25/36 = 69.4%`，`Expert − Casual = 13 杆`（下限 10）；接线副判据平均瞄准偏离
+        ///   `Casual 3.184° / Club 1.751° / Expert 0.191°`（严格递减）@ mtime `20:54:17`。
+        /// · **诊断注入（曾用来定位"谁在掐断"）**：`AiPlanBudgetMs` 100 → 100000 ⇒ `(b2)` 从
+        ///   **4 候选 / 4 帧** 变成 **32 候选 / 33 帧** ⇒ 证明当时掐断源是"单帧 100 ms × 单候选 ≈105 ms"
+        ///   这对数字（已 `cp` 还原、sha1 回读一致）。⇒ 促成 P36c：改成**累计评估耗时 1500 ms**（规格值）
+        ///   并同步把步数闸门 12000 → 64000（否则 32 候选 × 2000 步先撞步数门，等于换个门继续掐断）。
+        /// · **`INJ-ε`（`AiCandidatesPerFrame` `1` → `4`）⇒ `total=1 passed=0 failed=1` @ mtime `20:56:22`**，
+        ///   **四条**同时红：
+        ///   ①「实测 `AiCandidatesPerFrame = 4` ⇒ 一帧内推了 4 次」（源级赋值形态）；
+        ///   ②「实测单帧推了 **4** 次」（(b) 的运行期出口）；
+        ///   ③「`Planning` 只跨 **9** 帧（期望 ≥12）」（(b2) 的摊帧性质）；
+        ///   ④「新摆球下**单帧**推了 **4** 次」（(b2)）。
+        ///   · **`cp` 还原后回读 sha1 == 基线 `8a5cdc43…`**、`grep -c "AiCandidatesPerFrame = 4;" == 0`、
+        ///     复跑 `total=1 passed=1` @ mtime `20:56:55`（**未用 `git checkout --`**）。
+        /// ⚠ `INJ-ζ`（删掉记账/不归零）**未实跑**：它打的是"出口没接线"，而 `INJ-ε` 已证明
+        ///   ②④ 两条**不是恒真**（若出口恒为 0，红的是另一条消息"始终为 0 ⇒ 观测出口没接线"）。
+        ///   **如实登记，不声称已覆盖。**
+        /// </summary>
+        [Test]
+        public void T159_AiPlanning_AtMostOneFullRolloutPerFrame()
+        {
+            var failures = new List<string>();
+            string root = Path.GetDirectoryName(Application.dataPath) ?? ".";
+
+            // ── (a) 源级：断言**赋值形态**，不断裸名 ──────────────────────────
+            const string driveRelative = "Assets/_Project/Scripts/Runtime/Physics/PhysicsTestDrive.cs";
+            string driveFull = Path.Combine(root, driveRelative);
+            if (!File.Exists(driveFull))
+            {
+                failures.Add($"T159(a) 找不到 `{driveRelative}`（源级性质无从判定 ⇒ 本项空扫）。");
+            }
+            else
+            {
+                // ⚠ **必须先去注释行**：本常量的文档注释里就写着 `AiCandidatesPerFrame`
+                //   ⇒ 只搜裸名会被**注释**满足（与"被定义自身满足"是同一类真空绿）。
+                string code = StripCommentLines(File.ReadAllText(driveFull));
+                var assigned = CollectIntAssignments(code, "AiCandidatesPerFrame");
+
+                if (assigned.Count != 1)
+                {
+                    failures.Add($"T159(a) `AiCandidatesPerFrame` 的**赋值点**应恰好 1 处（常量定义本身），"
+                                 + $"实测 {assigned.Count} 处 ⇒ 有人在别处改写它，"
+                                 + "「单帧 ≤1」不再有单一来源。");
+                }
+
+                if (assigned.Count >= 1 && assigned[0] != 1)
+                {
+                    failures.Add($"T159(a) 规格 P4③ 要求 **单帧 ≤1 次整杆推演**，"
+                                 + $"实测 `AiCandidatesPerFrame = {assigned[0]}` ⇒ 一帧内推了 {assigned[0]} 次（超规格）。");
+                }
+
+                // **两道门的"规格常量"也钉住**（P36c）：它们是**规格值**（§4.3 的 1.5 s / 防死循环的步数上限），
+                // 被谁"顺手调小换绿"就是规格失守。
+                // ⚠ **本判据覆盖不到"实机评估数"**：累计计算预算那道门带 `Application.isPlaying`，
+                //   EditMode 里恒不触发 ⇒ **必须在实机（打包后）验收**"一局里 `candidatesEvaluated` 是否到两位数"。
+                //   **不要**为了让它可判而在 EditMode 里伪造 `isPlaying` —— 那是假绿。
+                var turnBudget = CollectIntAssignments(code, "AiTurnComputeBudgetMs");
+                if (turnBudget.Count != 1 || turnBudget[0] != 1500)
+                {
+                    failures.Add($"T159(a) 每回合累计计算预算应为 **1500 ms**（规格 §4.3「超时 >1.5 s 用当前最优」），"
+                                 + $"实测赋值 {turnBudget.Count} 处、值 {(turnBudget.Count == 1 ? turnBudget[0].ToString() : "—")}"
+                                 + " ⇒ 门槛被改动（调小=牺牲 AI 强度换绿，调大=单杆思考超规格）。");
+                }
+
+                var stepBudget = CollectIntAssignments(code, "AiPlanStepBudget");
+                if (stepBudget.Count != 1 || stepBudget[0] != 64000)
+                {
+                    failures.Add($"T159(a) 确定性步数上限应为 **64000**（只防死循环；30 余候选 × ≈2000 步的量级），"
+                                 + $"实测赋值 {stepBudget.Count} 处、值 {(stepBudget.Count == 1 ? stepBudget[0].ToString() : "—")}"
+                                 + " ⇒ 太小会把累计预算要放开的候选数**又压回去**（换个门继续掐断）。");
+                }
+            }
+
+            // ── (b) 运行期：实测单帧最大推演次数 ──────────────────────────────
+            var go = new GameObject("T159AiPlanPerFrame");
+            try
+            {
+                PhysicsTestDrive drive = NewAiDrive(go, rackSeed: 1591);
+                drive.SetAiOpponentEnabledForDiagnostics(true);
+                int pocket = FirstCornerPocket(drive.tableConfig);
+                SetUpCleanPot(drive, AiCleanTargetBall, pocket, drive.Simulator.Balls.Count);
+                AdvanceToRest(drive, RestCap);
+                drive.ruleState = new RuleState
+                {
+                    groupState = GroupState.Solid,
+                    solidRemaining = 3,
+                    stripeRemaining = 7,
+                    isBreak = false,
+                };
+                drive.SetTurn(ShotTurn.Ai);
+                drive.aiThinkSeconds = 0.02f;
+                drive.aiAimSeconds = 0.02f;
+                drive.aiPullSeconds = 0.02f;
+
+                int observedMax = 0;
+                int planningFrames = 0;
+                int launchesBefore = drive.LaunchCount;
+
+                // 每帧采样：`LastAiPlanCandidatesPerFrameMax` 在 `BeginAiShot` 归零、`Planning` 里取最大值
+                // ⇒ 逐帧取"见过的最大"覆盖整段规划（也覆盖同一杆里若有多次规划）。
+                for (int i = 0; i < 2000 && drive.LaunchCount == launchesBefore; i++)
+                {
+                    drive.Advance(PoolSimulator.FixedDeltaTime);
+                    if (drive.AiPhase == PhysicsTestDrive.AiShotPhase.Planning)
+                    {
+                        planningFrames++;
+                    }
+
+                    if (drive.LastAiPlanCandidatesPerFrameMax > observedMax)
+                    {
+                        observedMax = drive.LastAiPlanCandidatesPerFrameMax;
+                    }
+                }
+
+                TestContext.WriteLine($"[T159(b)] 单帧最大推演 {observedMax} 次 / Planning 跨 {planningFrames} 帧");
+
+                if (planningFrames <= 0)
+                {
+                    failures.Add("T159(b) 前提不成立：AI 从未进入 `Planning` 阶段 ⇒ 「单帧 ≤1」无从判定"
+                                 + "（这种绿是**真空绿**，不算过）。");
+                }
+                else if (observedMax <= 0)
+                {
+                    failures.Add("T159(b) `LastAiPlanCandidatesPerFrameMax` 始终为 0 ⇒ **观测出口没接线**"
+                                 + "（规划发生了却没记账 ⇒ 「单帧 ≤1」无从判定）。");
+                }
+                else
+                {
+                    if (observedMax > 1)
+                    {
+                        failures.Add($"T159(b) 规格 P4③ 要求 **单帧 ≤1 次整杆推演**，"
+                                     + $"实测单帧推了 **{observedMax}** 次（×{observedMax} 超规格）——"
+                                     + " 玩家会看到秒级卡顿。");
+                    }
+
+                    if (planningFrames < 2)
+                    {
+                        failures.Add($"T159(b) 分帧未真正发生：`Planning` 只跨 {planningFrames} 帧"
+                                     + " ⇒ 全部候选在**一帧内**跑完（与 `AiShotPhase.Planning` 的自陈不符）。");
+                    }
+
+                    // ⚠ 这个**干净局面**（1 颗目标球 + 白球）本身只有个位数候选 ⇒ 强度下界**放在
+                    //   (b2) 的新摆球夹具里**量（放这儿必红，且红的不是被测性质）。
+                    //   这里只断"规划真的评估过东西"（否则 `LastAiShotIntent` 是空壳、上面几条全在真空里）。
+                    if (drive.LastAiShotIntent.candidatesEvaluated <= 0)
+                    {
+                        failures.Add("T159(b) 本杆 `candidatesEvaluated == 0` ⇒ 求值器根本没被调用"
+                                     + "（规划是空转，上面「单帧 ≤1」的绿没有意义）。");
+                    }
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+
+            // ── (b2) **强度守卫：规划不能被某道闸门暗中压扁**（历史事故 P36b）─────────
+            // 事故形态：墙钟从 `BeginAiShot()` 起算 ⇒ 分帧后把**帧间隔**算进预算 ⇒ 约 6 帧就"超时收尾"
+            // ⇒ Casual/Club/Expert 的实际评估数被**一起**压到 ≈6（实机 AI 明显弱于 §4.3 参数表，
+            //   而 EditMode 里所有强度用例跑的是 `EightBallAi` 纯参数 ⇒ **判据盲带**）。
+            //
+            // ⚠ **必须用"新摆球"（满 15 颗）当夹具**：这是规格原文的口径（"驱动一次 AI 规划（Club 档、新摆球）"），
+            //   也让"预算 32 应被跑满"这件事可判定。干净局面**其实也有 33 个候选**（实测 `(b)` 跨 33 帧），
+            //   但它只有 1 颗目标球 ⇒ 候选的**分布**不同（都是同一目标 × 不同袋/力度）、
+            //   且看不出"重候选把一帧顶破"这类情形 ⇒ 强度下界仍挂在满摆球这一侧更贴近实机。
+            //   满摆球下 Club 的粗筛 ≫ 32 ⇒ 预算 32 应该被跑满。
+            // ⇒ 下界取 **16**（预算 32 的一半，"绝不可能是只在几个就收尾"），帧数下界取 **20**。
+            var goFeed = new GameObject("T159AiPlanStrength");
+            try
+            {
+                PhysicsTestDrive feed = NewAiDrive(goFeed, rackSeed: 1592);   // 满 15 颗，不摆干净局面
+                feed.SetAiOpponentEnabledForDiagnostics(true);
+                if (feed.MatchTier != AiDifficulty.Club)
+                {
+                    failures.Add($"T159(b2) 前提不成立：本夹具依赖默认档 `Club`（预算 32），实测 {feed.MatchTier}。");
+                }
+
+                feed.SetTurn(ShotTurn.Ai);
+                feed.aiThinkSeconds = 0.02f;
+                feed.aiAimSeconds = 0.02f;
+                feed.aiPullSeconds = 0.02f;
+
+                int feedPlanningFrames = 0;
+                int feedMaxPerFrame = 0;
+                int feedLaunchesBefore = feed.LaunchCount;
+                for (int i = 0; i < 4000 && feed.LaunchCount == feedLaunchesBefore; i++)
+                {
+                    feed.Advance(PoolSimulator.FixedDeltaTime);
+                    if (feed.AiPhase == PhysicsTestDrive.AiShotPhase.Planning)
+                    {
+                        feedPlanningFrames++;
+                    }
+
+                    if (feed.LastAiPlanCandidatesPerFrameMax > feedMaxPerFrame)
+                    {
+                        feedMaxPerFrame = feed.LastAiPlanCandidatesPerFrameMax;
+                    }
+                }
+
+                int feedEvaluated = feed.LastAiShotIntent.candidatesEvaluated;
+                TestContext.WriteLine($"[T159(b2)] 新摆球：评估 {feedEvaluated} 个候选 / "
+                                      + $"Planning 跨 {feedPlanningFrames} 帧 / 单帧最大 {feedMaxPerFrame} 次 / "
+                                      + $"本回合累计计算 {feed.LastAiPlanMilliseconds:F1} ms"
+                                      + "（闸门：累计评估 1500 ms 且仅运行期 / 步数 64000 确定性）");
+
+                if (feedPlanningFrames <= 0)
+                {
+                    failures.Add("T159(b2) 前提不成立：新摆球下 AI 从未进入 `Planning` ⇒ 强度下界无从判定。");
+                }
+                else
+                {
+                    if (feedEvaluated < 12)
+                    {
+                        failures.Add($"T159(b2) 本杆只评估了 **{feedEvaluated}** 个候选（期望 ≥12，Club 预算 32）"
+                                     + " ⇒ 规划被某道闸门提前掐断（历史事故：墙钟跨帧累计 / 单帧 100 ms 门，"
+                                     + "都只评到 ≈4 个；实机 AI 明显弱于参数表，EditMode 的强度用例看不见）。"
+                                     + " 下界来源：`AiTurnComputeBudgetMs`（1500 ms）÷ 单候选实测 ≈105 ms ≈ 14，留 2 个余量。");
+                    }
+
+                    if (feedPlanningFrames < 12)
+                    {
+                        failures.Add($"T159(b2) `Planning` 只跨 **{feedPlanningFrames}** 帧（期望 ≥12；"
+                                     + "每帧 1 个候选 ⇒ 帧数应 ≈ 候选数）⇒ 候选没被真正摊开，规划段被提前收尾。");
+                    }
+
+                    if (feedMaxPerFrame > 1)
+                    {
+                        failures.Add($"T159(b2) 新摆球下**单帧**推了 **{feedMaxPerFrame}** 次"
+                                     + "（规格 P4③ 要求 ≤1）—— 重候选下更该守这条。");
+                    }
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(goFeed);
+            }
+
+            Assert.IsEmpty(failures, "T159（规格 P4③ 单帧 ≤1 次整杆推演 + 规划强度下界）失败：\n"
+                                    + string.Join("\n", failures));
+        }
+
+        /// <summary>
+        /// 收集 `variable` 的**整型赋值**（`= &lt;数字&gt;`）的值，例如 `AiCandidatesPerFrame = 1;` ⇒ `{1}`。
+        /// **只认赋值形态**（跳过 `stepped &lt; AiCandidatesPerFrame` 这类读取点），且跳过 `==` / `&gt;=` 等比较。
+        /// </summary>
+        private static List<int> CollectIntAssignments(string code, string variable)
+        {
+            var values = new List<int>();
+            int index = code.IndexOf(variable, System.StringComparison.Ordinal);
+            while (index >= 0)
+            {
+                int cursor = index + variable.Length;
+                while (cursor < code.Length && (code[cursor] == ' ' || code[cursor] == '\t'))
+                {
+                    cursor++;
+                }
+
+                // 必须恰好是单个 `=`（排除 `==`、`>=`、`<=`、`!=`、`+=` 等）
+                bool isPlainAssign = cursor < code.Length && code[cursor] == '='
+                                     && (cursor + 1 >= code.Length || code[cursor + 1] != '=');
+
+                if (isPlainAssign)
+                {
+                    cursor++;
+                    while (cursor < code.Length && (code[cursor] == ' ' || code[cursor] == '\t'))
+                    {
+                        cursor++;
+                    }
+
+                    int start = cursor;
+                    while (cursor < code.Length && char.IsDigit(code[cursor]))
+                    {
+                        cursor++;
+                    }
+
+                    if (cursor > start)
+                    {
+                        values.Add(int.Parse(code.Substring(start, cursor - start),
+                            CultureInfo.InvariantCulture));
+                    }
+                }
+
+                index = code.IndexOf(variable, index + variable.Length, System.StringComparison.Ordinal);
+            }
+
+            return values;
+        }
     }
 }

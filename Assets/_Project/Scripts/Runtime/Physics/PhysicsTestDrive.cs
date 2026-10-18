@@ -556,24 +556,37 @@ namespace Billiards.Physics
         /// </summary>
         private PoolSimulator _aiProbe;
 
-        // ══════════════════ P33：AI 规划的**耗时闸门**（"分帧未实现"时的有界替代）══════════════
+        // ══════════════════ P33/P36c：AI 规划的**两道闸门**（分工明确，别互相顶替）══════════════
         //
-        // 背景（仓库实测，见 `Docs/35-C_AI对战与8球规则_spec.md` §4.2）：一次"整杆推演"= **1–61 ms**，
-        // 而 `EightBallAi.Plan` 会**同步**调用求值器 `candidateBudget` 次（Expert 64 / Club 32 / Casual 16）
-        // ⇒ 最坏情况是"一帧内 32–64 次整杆推演"，全阻塞在同一个 `FixedUpdate` 里（画面与输入一起停）。
+        // 背景（仓库实测，见 `Docs/35-C_AI对战与8球规则_spec.md` §4.2）：一次"整杆推演"= **1–61 ms**
+        // （满摆球实测 ≈105 ms/候选），而 `EightBallAi.Plan` 会调用求值器 `candidateBudget` 次
+        // （Expert 64 / Club 32 / Casual 16）⇒ 同步跑完会把一帧拖到秒级（画面与输入一起停）。
         //
-        // 本闸门设**两道**边界（都必须在，缺一不可）：
-        //  · ① **确定性闸门** `AiPlanStepBudget`（累计**推演步数**封顶）—— 步数是**物理状态的函数**、
-        //    与机器快慢无关 ⇒ 同 `seed` + 同局面 ⇒ 中止点**逐位可复现**（`T145①` 的契约因此不变）。
-        //  · ② **墙钟兜底** `AiPlanBudgetMs`（只在 `Application.isPlaying` 生效）—— EditMode 判据
-        //    走不到它 ⇒ 判据不受机器快慢影响；**运行期**则把最坏耗时硬封顶在
-        //    `100 ms + 最后一个候选`（≤ `AiProbeStepCap` 步 ≈ 0.25 s）。
-        // ⚠ **不要**把墙钟闸门改成"判据也生效"：那会让 `candidatesEvaluated` 随机器快慢变化 ⇒
-        //    `T145①`（同 seed 两次 `PlanAiShot` 逐位相同）必红。这是本改动的**已知取舍**，如实登记。
+        // 分帧落地后，两道闸门**各管一件事**（P36c 定稿；此前两道都试过越界，见下）：
+        //  · ① **确定性闸门** `AiPlanStepBudget`（64000 步，**跨候选、跨帧**）——
+        //    **只防死循环**，保证"同 `seed` + 同局面 ⇒ 同中止点"（`T145①` 的契约）。它**不省时间**。
+        //  · ② **累计评估耗时闸门** `AiTurnComputeBudgetMs`（1500 ms = 规格 §4.3「>1.5 s 用当前最优」）——
+        //    每帧只累加 `EvaluateAiCandidate` 循环的 elapsed（**不含帧间隔**），**仅运行期**生效。
+        // ⚠ **两次踩过的坑（都如实留档，别再犯）**：
+        //  · P36：`Restart()` 放在 `BeginAiShot()` ⇒ 累计时间被**帧间隔**灌满 ⇒ 100 ms 就到点，
+        //    满摆球只评 ≈4 个候选（实机 AI 变弱；EditMode 判据完全看不见）。
+        //  · P36b：改成"单帧 100 ms"仍不够 —— 满摆球下**单候选 ≈105 ms**，一帧就顶破 ⇒ 还是 ≈4 个候选。
+        //    ⇒ 最终取"**累计评估耗时 + 规格 1.5 s**"（P36c），并同步把步数闸门从 12000 放宽到 64000
+        //    （否则 32 候选 × 2000 步必然先撞步数闸门，等于换个门继续掐断）。
+        // ⇒ `T159(b2)` 的**强度守卫**（`candidatesEvaluated ≥ 12` + `Planning` 跨 ≥12 帧）专抓这一族回归。
+        // ⚠ 两道门里的**墙钟那道必须带 `Application.isPlaying`**：EditMode 判据只走确定性步数门，
+        //   这样 `candidatesEvaluated` 不吃机器快慢 ⇒ 强度守卫才是真有牙的（不是被门假绿）。
         private readonly System.Diagnostics.Stopwatch _aiPlanClock = new System.Diagnostics.Stopwatch();
 
         /// <summary>本回合累计消耗的**探针推演步数**（确定性闸门的计量）；每次 `PlanAiShot` 归零。</summary>
         private long _aiPlanStepsUsed;
+
+        /// <summary>
+        /// **本回合累计计算耗时（毫秒）** —— 只累计 `EvaluateAiCandidate` 那几段循环的墙钟
+        /// （**不含帧间隔**、不含记账/收尾代码）；`BeginAiShot()` / `PlanAiShot()` 归零。
+        /// `LastAiPlanMilliseconds` 读的就是它；累计墙钟闸门（`AiTurnComputeBudgetMs`，仅运行期）也读它。
+        /// </summary>
+        private double _aiTurnComputeMs;
 
         /// <summary>最近一次候选评估实际推演的步数（由 `StepToRest` 写出）。</summary>
         private int _aiProbeStepsLast;
@@ -582,21 +595,31 @@ namespace Billiards.Physics
         private AiShotCandidateEvaluator _aiPlanEvaluator;
 
         /// <summary>
-        /// **确定性闸门**：本回合累计推演步数上限（12000 步）。取值依据：
-        /// · 一次满力滚动静止 ≈ **3800 步**（见 `AiProbeStepCap` 注释）⇒ 约 3 个满力候选；
-        /// · 典型中力候选 1500–2500 步 ⇒ 约 5–8 个候选（足够覆盖粗筛的前几颗目标球）；
-        /// · 最坏总步数 = 本预算 + **越过阈值那一个候选**（≤ `AiProbeStepCap`）= **14000 步** ⇒
-        ///   按 127 µs/步（忙期实测）≈ **1.8 s**、按 15 µs/步（普通局面）≈ **0.21 s**。
-        /// ⚠ 上面 1.8 s 是**只有确定性闸门**时的最坏值。**运行期还有墙钟兜底**
-        ///   （<see cref="AiPlanBudgetMs"/>）⇒ 运行时实际上限 ≈ **100 ms + 0.25 s**。
+        /// **确定性闸门**：本回合累计推演步数上限（**64000 步**）。
+        /// ⚠ **职责只有一条：防死循环**（保证"同 `seed` + 同局面 ⇒ 同中止点"，`T145①` 靠它）。
+        ///   **它不承担"省时间"的职责** —— 省时间交给 `AiTurnComputeBudgetMs`（累计评估耗时，**仅运行期**）。
+        /// 取值依据（P36c 放宽：12000 → 64000）：
+        /// · 规格上限 = `candidateBudget`（Expert 64）× 单候选 ≤ `AiProbeStepCap`（2000 步）= **128000 步**；
+        /// · **旧值 12000 会先撞**：满摆球下 32 候选 × ≈2000 步 ≈ 64000 步 ⇒ 12000 只能覆盖 ~6 个候选，
+        ///   把"累计墙钟"要放宽的那部分**又压回去了**（等于换了道门继续掐断 —— 这正是要避免的"看着绿、实机没变"）。
+        /// · 取 **64000**（= Club 32 × 2000，也≈规格上限的一半）⇒ 正常局面**撞不到**它；
+        ///   只有"真的跑飞"（例如候选枚举爆炸）才会被它截住。
+        /// · 最坏耗时（只有确定性闸门时）：64000 步 × 127 µs/步（忙期实测）≈ **8 s** —— 偏长，
+        ///   但**运行期还有 1500 ms 累计墙钟**先收尾（≈14 个候选），两者叠加后实际最坏 ≈1.5 s + 一个候选。
         /// </summary>
-        private const int AiPlanStepBudget = 12000;
+        private const int AiPlanStepBudget = 64000;
 
         /// <summary>
-        /// **墙钟兜底（仅运行期）**：`100 ms` 是"玩家开始可感知停顿"的量级 ⇒ 它是**可感知阈值**，
-        /// **不是性能预算口径**（要换算帧预算必须用 `-billiards-smoke-aim` 的产品路径帧时）。
+        /// **每回合累计计算时间**上限（毫秒）= 规格 §4.3 的「**超时（&gt;1.5 s）用当前最优收尾**」。
+        /// 只累计**评估耗时**、**不含帧间隔**（量在 `_aiTurnComputeMs`）。
+        /// ⚠ **名字里带 `Turn`**：语义是"这一**回合**总共花了多少计算时间"，**不是**帧预算
+        /// （P36 的 `AiPlanBudgetMs` 先后被理解成"跨帧总时长"与"单帧预算"，两次都错 ⇒ 因此改名）。
+        /// ⚠ **只在 `Application.isPlaying` 生效**：EditMode 判据走 `AiPlanStepBudget`（确定性步数），
+        /// 这样 `candidatesEvaluated` 不吃机器快慢 ⇒ `T159(b2)` 的强度下界才是真有牙的。
+        /// ⚠ **实机评估数不由 EditMode 判据覆盖**（`isPlaying` 门让判据走不到这道门）⇒ 须实机验收：
+        /// 跑一局看 `LastAiShotIntent.candidatesEvaluated` 是否到两位数（诊断出口见 `LastAiPlanMilliseconds`）。
         /// </summary>
-        private const int AiPlanBudgetMs = 100;
+        private const double AiTurnComputeBudgetMs = 1500;
 
         /// <summary>
         /// **闸门触发时的"中止分"** —— 必须是**最差**分，否则超时候选会被选中、打出最差的一杆。
@@ -611,10 +634,24 @@ namespace Billiards.Physics
         public AiShotIntent LastAiShotIntent { get; private set; }
 
         /// <summary>
-        /// 最近一次 `PlanAiShot` 的**墙钟耗时（毫秒）**（**只读诊断**：不参与任何判定、不影响出杆路径）。
-        /// 用途：把"AI 这一杆到底阻塞了多久"变成可读数字，不必自己加临时日志。
+        /// **本回合累计计算毫秒**（**只读诊断**：不参与任何判定、不影响出杆路径）——
+        /// 累计的是每帧 `EvaluateAiCandidate` 循环的耗时（**不含帧间隔**），与
+        /// <see cref="AiTurnComputeBudgetMs"/> 比较的就是这个量。
+        /// ⚠ **语义（P36c 起）**：它**不是**"最近一帧的阻塞"，也**不是**"整段规划的墙钟总时长"——
+        ///   前两种口径（P36 / P36b）都曾让实机评估数被压平，注释必须与实现同步，否则又成假陈述。
         /// </summary>
-        public double LastAiPlanMilliseconds => _aiPlanClock.Elapsed.TotalMilliseconds;
+        public double LastAiPlanMilliseconds => _aiTurnComputeMs;
+
+        /// <summary>
+        /// **最近一次分帧规划里，单帧实际推演次数的最大值**（**只读诊断**；规格 P4 判据③「单帧 ≤1 次推演」的观测出口）。
+        ///
+        /// ⚠ **为什么必须有这个出口**：`AiCandidatesPerFrame` 是 `private const` ⇒ 只能"读常量推断"它生效了；
+        /// 一旦有人在 `Planning` 分支里另写一条内层循环（或多处 `EvaluateAiCandidate`），
+        /// 常量仍是 1 而**实际单帧推了 N 次** —— 这种情况**只有实测计数能抓到**。
+        /// ⇒ 进入新一次规划时归零（见 `BeginAiShot`），`Planning` 分支每帧把本帧 `stepped` 取最大值。
+        /// **不参与出杆路径**（纯记账，不改变任何判定）。
+        /// </summary>
+        public int LastAiPlanCandidatesPerFrameMax { get; private set; }
 
         /// <summary>**最近一次 AI 决策用的种子**（判据据此复现同一次决策）。（**只读出口**：供判据与诊断用；**不参与出杆路径**）</summary>
         public int LastAiSeed { get; private set; }
@@ -1206,6 +1243,7 @@ namespace Billiards.Physics
 
             // **P33：闸门计量归零**（两道闸门都读它们；见字段区的注释块）。
             _aiPlanStepsUsed = 0;
+            _aiTurnComputeMs = 0;
             _aiProbeStepsLast = 0;
             _aiPlanClock.Restart();
 
@@ -1213,6 +1251,7 @@ namespace Billiards.Physics
             LastAiShotIntent = EightBallAi.Plan(context, difficulty, seed, _aiPlanEvaluator);
 
             _aiPlanClock.Stop();
+            _aiTurnComputeMs = _aiPlanClock.Elapsed.TotalMilliseconds;   // 同步路径也写这个只读诊断出口
             return LastAiShotIntent;
         }
 
@@ -1241,8 +1280,9 @@ namespace Billiards.Physics
 
         /// <summary>
         /// 预算是否用尽（**两道闸门**，任一成立即中止）：
-        /// ① 累计推演步数 ≥ <see cref="AiPlanStepBudget"/>（**确定性**：同局面同 seed ⇒ 同中止点）；
-        /// ② **仅运行期**：墙钟 ≥ <see cref="AiPlanBudgetMs"/>（EditMode 判据不走它 ⇒ `T145①` 不受机器快慢影响）。
+        /// ① 累计推演步数 ≥ <see cref="AiPlanStepBudget"/>（**确定性**：同局面同 seed ⇒ 同中止点；只防死循环）；
+        /// ② **仅运行期**：本回合累计**评估耗时** ≥ <see cref="AiTurnComputeBudgetMs"/>（= 规格的 1.5 s；
+        ///    EditMode 判据不走它 ⇒ `T145①`／`T159` 不受机器快慢影响）。
         /// </summary>
         private bool AiPlanBudgetExhausted()
         {
@@ -1251,7 +1291,7 @@ namespace Billiards.Physics
                 return true;
             }
 
-            return Application.isPlaying && _aiPlanClock.ElapsedMilliseconds >= AiPlanBudgetMs;
+            return Application.isPlaying && _aiTurnComputeMs >= AiTurnComputeBudgetMs;
         }
 
         /// <summary>
@@ -1356,6 +1396,10 @@ namespace Billiards.Physics
 
                 case AiShotPhase.Planning:
                 {
+                    // ⏱ **本帧计时只包住"评估循环"**（P36b/P36c）：起表 → `while` → 立刻取样累加。
+                    // 不包记账/收尾代码，**更不含帧间隔** —— 帧间隔由渲染/输入占用，与"AI 思考花了多少"无关。
+                    var frameSw = System.Diagnostics.Stopwatch.StartNew();
+
                     // ③ **分帧规划**：本帧最多评估 `AiCandidatesPerFrame` 个候选；游标枚举结束 ⇒ 收尾。
                     int stepped = 0;
                     while (stepped < AiCandidatesPerFrame)
@@ -1371,15 +1415,25 @@ namespace Billiards.Physics
                         stepped++;
                     }
 
-                    // 墙钟兜底：即便单帧候选数没跑满，累计超预算就提前收尾（避免极端局面拖住一帧）。
-                    bool overBudget = _aiPlanClock.IsRunning && _aiPlanClock.ElapsedMilliseconds >= AiPlanBudgetMs;
+                    frameSw.Stop();
+                    _aiTurnComputeMs += frameSw.Elapsed.TotalMilliseconds;
+
+                    // **规格 P4③ 的观测出口**：把"本帧真的推了几次"记下来（只记账，不改判定）。
+                    if (stepped > LastAiPlanCandidatesPerFrameMax)
+                    {
+                        LastAiPlanCandidatesPerFrameMax = stepped;
+                    }
+
+                    // **每回合累计计算预算**（`AiTurnComputeBudgetMs` = 规格 §4.3 的 1.5 s）用尽 ⇒ 用当前最优收尾。
+                    // ⚠ **只在运行期生效**：EditMode 判据走 `AiPlanStepBudget`（确定性步数）⇒ `candidatesEvaluated`
+                    //   不吃机器快慢 ⇒ `T159(b2)` 的强度下界才是真有牙的（否则是"被门假绿"）。
+                    bool overBudget = Application.isPlaying && _aiTurnComputeMs >= AiTurnComputeBudgetMs;
                     bool exhausted = _aiPlanCursor == null || _aiPlanCursor.Finished;
                     if (!exhausted && !overBudget && stepped > 0)
                     {
-                        return;   // 本帧额度用完，下一帧继续
+                        return;   // 本帧额度用完，下一帧继续（计时已在下一帧入口重启）
                     }
 
-                    _aiPlanClock.Stop();
                     AiShotIntent intent = _aiPlanCursor != null ? _aiPlanCursor.Finish(_aiPlanSeed) : default;
                     LastAiShotIntent = intent;
                     _aiPlanCursor = null;
@@ -1447,8 +1501,14 @@ namespace Billiards.Physics
         /// **AI 出杆的"规划段"**：只读探针算意图 ⇒ 打黑 8 时**叫袋** ⇒ 把方向写进 `aimDegrees`（玩家可见）。
         /// 返回 `false` = 规划不出来（调用方**让位**）。
         /// </summary>
-        /// <summary>分帧规划时每帧评估的候选数（1 = 最丝滑、最慢；4 = 4 帧内推进 16 个候选）。</summary>
-        private const int AiCandidatesPerFrame = 4;
+        /// <summary>
+        /// **分帧规划时每帧评估的候选数** —— **规格 P4③：单帧 ≤1 次整杆推演**
+        /// （每次评估 = 一次完整 `StepToRest` 推演）。
+        /// ⚠ 上限 1 是规格字面值（`§4.2`「**单帧 ≤1 次整杆推演**」+ 判据 P4③），
+        ///   由 `LastAiPlanCandidatesPerFrameMax` 在**运行期实测**守护（`T159`），**不是**靠读这个常量推断。
+        ///   要变的话必须先改规格 —— 改这里只会让 `T159` 变红。
+        /// </summary>
+        private const int AiCandidatesPerFrame = 1;
 
         /// <summary>分帧规划的游标（非 null ⇒ 正在 `Planning` 阶段）。</summary>
         private EightBallAi.PlanCursor _aiPlanCursor;
@@ -1478,8 +1538,12 @@ namespace Billiards.Physics
                 return false;
             }
 
-            _aiPlanClock.Restart();
+            // ⏱ **不在这里起表**（P36b）：累计墙钟只累加**候选评估循环**的耗时，
+            //    计时点搬到 `TickAiTurn` 的 `Planning` 分支（每帧起表、循环后立刻取样）。
+            //    放在这里会把**帧间隔**算进预算 ⇒ 评估数被压平（历史事故，`T159` 的强度守卫专抓它）。
             _aiPhaseElapsed = 0f;
+            _aiTurnComputeMs = 0;                  // **本回合累计计算耗时归零**（累计墙钟闸门的计量）
+            LastAiPlanCandidatesPerFrameMax = 0;   // **进入新一次规划 ⇒ 单帧计数归零**（T159 的观测口径）
             AiPhase = AiShotPhase.Planning;
             return true;
         }
