@@ -482,7 +482,8 @@ namespace Billiards.UI
             AddEdgeStrip(board, "ScoreBottomLine", false, ClubUiTokens.Line);
 
             // 左栏：头像 + 玩家名 + 实时统计
-            var avatarAnchor = new Vector2(0.045f, 0.5f);
+            // **头像与名字同高**（用户："头像文字不对称"）：头像中心对齐名字的垂直中心。
+            var avatarAnchor = new Vector2(0.045f, 0.70f);
             RectTransform avatar = AddFixed(board, "Avatar", ClubUiSprites.UiSprite.Disc, ClubUiTokens.AvatarFill,
                 avatarAnchor, new Vector2(ClubUiTokens.AvatarSize, ClubUiTokens.AvatarSize));
             AddFixed(board, "AvatarRing", ClubUiSprites.UiSprite.Ring, ClubUiTokens.AvatarEdge, avatarAnchor,
@@ -492,8 +493,8 @@ namespace Billiards.UI
                 new Vector2(ClubUiTokens.AvatarIconSize, ClubUiTokens.AvatarIconSize));
 
             TextMeshProUGUI youName = CreateText(board, "PlayerName", bodyFont, ClubUiTokens.FontLabel,
-                ClubUiTokens.Text, TextAlignmentOptions.BottomLeft,
-                new Vector2(0.100f, 0.64f), new Vector2(0.340f, 1f));
+                ClubUiTokens.Text, TextAlignmentOptions.MidlineLeft,
+                new Vector2(0.100f, 0.60f), new Vector2(0.340f, 0.82f));
             youName.text = PracticeHudState.LabelYou;
             // **单行**：名字不许折行（用户实机截图里 `Expert AI` 被折成 `Expe` / `rt AI`）。
             youName.enableWordWrapping = false;
@@ -502,11 +503,11 @@ namespace Billiards.UI
             // 组别小标签（`Solids`/`Stripes`）：**开放球局是空串（零字形）**，定组后才出现。
             _yourGroupLabel = CreateText(board, "PlayerGroupTag", bodyFont, ClubUiTokens.FontSmall,
                 ClubUiTokens.Muted, TextAlignmentOptions.Left,
-                new Vector2(0.100f, 0.46f), new Vector2(0.340f, 0.62f));
+                new Vector2(0.100f, 0.44f), new Vector2(0.340f, 0.60f));
             _yourGroupLabel.text = string.Empty;
 
             _playerStats = CreateText(board, "PlayerStats", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Label,
-                TextAlignmentOptions.TopLeft, new Vector2(0.100f, 0.32f), new Vector2(0.340f, 0.44f));
+                TextAlignmentOptions.MidlineLeft, new Vector2(0.100f, 0.10f), new Vector2(0.340f, 0.40f));
 
             // 中栏：`POCKETED` + 大数字 + 目标说明（设计稿 `.score-center`）
             _scoreLabel = CreateText(board, "ScoreLabel", bodyFont, ClubUiTokens.FontMicro, ClubUiTokens.Accent,

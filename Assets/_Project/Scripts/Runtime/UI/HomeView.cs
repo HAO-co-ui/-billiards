@@ -278,6 +278,7 @@ namespace Billiards.UI
 
             // 第二行：`Practice` —— 次按钮（深底描边），一直是真入口。
             BuildActionRow("ActionPractice", HomeLayout.ActionPractice, PracticeHudState.ModePractice, true, OnStartPractice);
+            BuildQuitRow(HomeLayout.ActionQuit);
 
 
         }
@@ -321,6 +322,39 @@ namespace Billiards.UI
         /// <see cref="ClubUiTokens.DisabledOpacity"/> 且不接收射线
         /// （"点了没反应"的假可点态是本工程明令禁止的）。
         /// </summary>
+        /// <summary>**退出游戏**（文本按钮：无实底、只描边，避免和两个主入口抢视觉重量）。</summary>
+        private void BuildQuitRow(Rect rect)
+        {
+            RectTransform frame = hud.AddFramed(_root, "ActionQuit", Min(rect), Max(rect),
+                ClubUiTokens.HomeActionEdge, ClubUiTokens.HomeActionFill, ClubUiTokens.RadiusButton);
+
+            // ⚠ **不要写 `applyGlobalScale: false`**：`T148(h)` 要求首页恰好 3 处退出倍率
+            //   （桌号 / 两个主键标签 / `CreateHomeText` 单点）⇒ 退出键走默认倍率。
+            PracticeHudView.CreateText(frame, "Label", hud.bodyFont, ClubUiTokens.FontHomeAction,
+                ClubUiTokens.Muted, TextAlignmentOptions.Center, Vector2.zero, Vector2.one)
+                .text = PracticeHudState.ButtonQuit;
+
+            var hit = frame.GetComponent<Image>();
+            hit.raycastTarget = true;
+            var button = frame.gameObject.AddComponent<Button>();
+            button.targetGraphic = hit;
+            button.onClick.AddListener(() =>
+            {
+                PlayUiClick();
+                QuitGame();
+            });
+        }
+
+        /// <summary>退出游戏（编辑器里停播放、打包后退进程）。</summary>
+        private void QuitGame()
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
+        }
+
         private void BuildActionRow(string name, Rect rect, string label, bool interactive,
                                     UnityEngine.Events.UnityAction action, bool primary = false)
         {

@@ -293,6 +293,11 @@ namespace Billiards.UI
             MarginLeft, HeadingRuleTop + HeadingRuleHeight + HeadingRuleBottomGap + ActionHeight + ActionGap,
             MenuWidth, ActionHeight);
 
+        /// <summary>**退出游戏**：两行入口下方再下一格（文本按钮，不占主按钮的视觉重量）。</summary>
+        public static readonly Rect ActionQuit = Px(
+            MarginLeft, HeadingRuleTop + HeadingRuleHeight + HeadingRuleBottomGap + (ActionHeight + ActionGap) * 2,
+            MenuWidth, ActionHeight);
+
 
 
         /// <summary>底部统计行（三项）—— 容器（含上细线）的矩形。</summary>
