@@ -1798,6 +1798,14 @@ namespace Billiards.Tests
             string originalHistory = File.Exists(historyPath) ? File.ReadAllText(historyPath) : null;
             try
             {
+                // ⚠ **先隔离**：历史有上限（`PracticeSessionStore.MaxHistoryEntries = 30`），文件满 30 条后
+                // 追加会被丢弃 ⇒ 本组"必 +1 / 必累积到 32"会**假失败**（不是产品坏，是前提没隔离）。
+                // 这里先清空，`finally` 会按 `originalHistory` 原样还原（含"原本不存在"这一事实）。
+                if (File.Exists(historyPath))
+                {
+                    File.Delete(historyPath);
+                }
+
                 int before = PracticeSessionStore.ReadHistoryFromDisk().Count;
 
                 PracticeSessionRecord first = PracticeSessionStore.NewRecord(

@@ -333,9 +333,9 @@ namespace Billiards.UI
             RectTransform frame = hud.AddFramed(_root, name, Min(rect), Max(rect),
                 edge, fill, ClubUiTokens.RadiusButton);
 
+            // **文案居中**（用户："字体居中"）：整行等宽居中，不再左对齐 + 右侧留白。
             PracticeHudView.CreateText(frame, "Label", hud.titleFont, ClubUiTokens.FontHomeAction, labelColor,
-                TextAlignmentOptions.Left,
-                new Vector2(HomeLayout.ActionPaddingX / HomeLayout.MenuWidth, 0f), new Vector2(0.86f, 1f),
+                TextAlignmentOptions.Center, Vector2.zero, Vector2.one,
                 applyGlobalScale: false)
                 .text = label;
 
