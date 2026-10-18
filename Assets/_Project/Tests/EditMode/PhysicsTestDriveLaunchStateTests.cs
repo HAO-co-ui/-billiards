@@ -3669,6 +3669,31 @@ namespace Billiards.Tests
             }
 
             // ── **P32：键盘路径（`PhysicsTestDrive.Update`）也必须被本判据扫到** ──────────────
+            // ★ **注入自检（实跑，2026-10-18，持锁 `bug-audit` 15:59:02 起）** —— 本段断言**有牙**的实证，
+            //   不要在没有重跑下面四次的情况下声称它"已验证"：
+            //   · 注入 = `cp` 备份当时的磁盘状态后，把 `Update()` 里 `bool modal = …`（4 行）+
+            //     `_keyboardInputBlocked = modal || !TryConsumePlayerInput();`（1 行）删掉、
+            //     `bool inputBlocked = modal || _keyboardInputBlocked;` 退回 `= false`（注入后仍可编译）；
+            //   · 结果①：`-testFilter T157` → `total=1 passed=0 failed=1`（XML mtime 15:59:51, 5484 B），
+            //     失败原文含**两条**：「缺少**回合门调用** `!TryConsumePlayerInput()`」+
+            //     「缺少**模态门** `PracticeHudView.IsSettingsOpen`」；
+            //   · 结果②：`-testFilter T158` → `total=1 passed=0 failed=1`（mtime 16:00:15, 5276 B），
+            //     失败原文含**三条**（`IsOnboardingOpen` + 回合门 + 模态门）；
+            //   · 还原 = `cp` 备份**回**磁盘（**不用** `git checkout --`，那是主理人的硬要求）；
+            //     还原后 `md5sum` = `41cb58b0bdfffac12de295b69190077c`，**与注入前逐字节相同**，
+            //     且 `git status --porcelain` / `git diff` 对该文件均为空（= 与 HEAD 一致）；
+            //   · 结果③④：`-testFilter T157` → `total=1 passed=1 failed=0`（mtime 16:00:47）、
+            //     `-testFilter T158` → `total=1 passed=1 failed=0`（mtime 16:01:12）。
+            //   ⇒ **红/红 → 还原（md5 一致）→ 绿/绿**，判别力闭环。
+            //
+            // ⚠⚠ **为什么断言 `!TryConsumePlayerInput()` 而不是裸名 `TryConsumePlayerInput()`**：
+            //   裸名在 `PhysicsTestDrive.cs` 里出现 **4 次** = **方法定义 1 次**（`public bool
+            //   TryConsumePlayerInput()`）+ **注释 2 次** + **真正的调用 1 次** ⇒ `Contains(裸名)` 会被
+            //   **定义自己**满足：把调用整段删掉，谓词**仍为 True**（上面那次注入就跑出了这个结果 ——
+            //   用裸名的话结果①会"绿"，判据完美地测到了空气）。
+            //   否定前缀 `!` **只存在于调用点**（全文 1 次）⇒ 删掉调用必红。这是 `T146(f)`
+            //   「必须断言**使用形态**、不能只断言符号名」的同一条教训的又一实例。
+            //
             // 为什么做这件事：`Update()` 里那条键盘出杆/方向键路径**一处门都没有**（P31 才补上）
             // ⇒ 对手回合按 Space 能抢杆、按 ←/→ 能改掉 AI 正在用的 `aimDegrees`。
             // 补上之后**必须有人守** —— 否则下一个人删掉那三行，全量测试照旧全绿（"绿而空"那一族）。
