@@ -371,6 +371,22 @@ namespace Billiards.UI
             Refresh();
         }
 
+        /// <summary>
+        /// **两个静态模态门的兜底**（P31 修 13）。
+        ///
+        /// `IsSettingsOpen` / `IsOnboardingOpen` 是 `static`，且此前**只在** `CloseSettings()` /
+        /// `CloseOnboarding()` 里复位 ⇒ 本组件若在面板打开期间被禁用或销毁，这两个位会**永久为真**，
+        /// 于是 `PointerAimController` / `PointerPowerController` / `AimAssistController` /
+        /// `AimAssistView` 会对**每一帧**早退（= 再也瞄不了、出不了杆，且没有任何提示）。
+        /// 同类的另两个组件早就在 `OnDisable` 兜了这一层（`PracticeResultView:134-147`、
+        /// `HomeView:164-184`）—— 本类此前漏了，这里补齐（同类组件同一口径，不是新约定）。
+        /// </summary>
+        private void OnDisable()
+        {
+            IsSettingsOpen = false;
+            IsOnboardingOpen = false;
+        }
+
         private void Update()
         {
             Refresh();

@@ -1075,6 +1075,17 @@ namespace Billiards.Physics
         {
             AiOpponentEnabled = false;
             aiGroupState = GroupState.OpenTable;
+
+            // **离开比赛 ⇒ "本局已结束"这件事必须一并撤销**（P31 修 1，**真卡死**）。
+            // 症状（可达路径极短、且是产品主流程）：AI 对战打完（`MatchOver = true`）→ 结算卡 `Back to club`
+            //   → 首页 `Practice` → **打一杆** ⇒ `Launch()` 把 `_shotInFlight` 置 true，
+            //   而 `SettleShotIfAtRest()` 因 `MatchOver` **永远早退** ⇒ `ShotInFlight` 永久为 true
+            //   ⇒ `CueStickController.ShouldShowStick` 恒 false ⇒ **球杆永久消失、规则层再也不结算**。
+            // ⇒ 练习不是"一场已结束的比赛"：四个与结算有关的位都要清，`EndReason` 回到 `Ongoing`（= 没有结局）。
+            MatchOver = false;
+            _settlementPending = false;
+            _shotInFlight = false;
+            EndReason = ShotOutcomeKind.Ongoing;
         }
 
         public void StartMatch(AiDifficulty tier)
@@ -1551,6 +1562,16 @@ namespace Billiards.Physics
         /// <summary>探针单次评估的步数上限（8 m/s 满力滚动 ≈ 3800 步 ⇒ 给 2 倍余量）。</summary>
         private const int AiProbeStepCap = 8000;
 
+        /// <summary>
+        /// **键盘输入的回合 / 模态门**上一次的判定结果（P31 修 2）。
+        ///
+        /// ⚠ 为什么需要"记住上一次"而不是每帧重判：`TryConsumePlayerInput()` 每次调用都会
+        /// **登记一次"对手回合被拒"的可见反馈**（`MatchTurnNotice.RequestBlock`），而
+        /// `MatchTurnNotice.BlockedCount` 是**被判据读的诊断出口**、HUD 的提示窗口还会被每帧续命。
+        /// ⇒ 门只在**玩家真的按下键的那一帧**判一次（一次点击 = 一次提示），按住的期间沿用结果。
+        /// </summary>
+        private bool _keyboardInputBlocked;
+
         private void Update()
         {
             if (_simulator == null)
@@ -1562,17 +1583,48 @@ namespace Billiards.Physics
             float aStep = fine ? aimStepDegrees * PointerAimController.FineAimStepFactor : aimStepDegrees;
             float pStep = fine ? powerStep * 0.25f : powerStep;
 
-            if (Input.GetKey(aimLeftKey)) { aimDegrees += aStep; }
-            if (Input.GetKey(aimRightKey)) { aimDegrees -= aStep; }
-            if (Input.GetKey(powerUpKey)) { power = Mathf.Clamp01(power + pStep); }
-            if (Input.GetKey(powerDownKey)) { power = Mathf.Clamp01(power - pStep); }
+            // ── **键盘路径的回合门 + 四道模态门**（P31 修 2）──────────────────────────
+            // 指针路径早就在各自组件里上了门（`PointerAimController:135-143` /
+            // `PointerPowerController:121-134` / `TryConsumePlayerInput`），**键盘路径一处都没有**
+            // ⇒ 三处真实缺陷：① 对手回合按 Space **真的把玩家的杆打出去**（抢掉 AI 的杆，
+            // `TickAiTurn` 还会因此 `YieldAiTurn` 把回合让给玩家）；② AI 进入 `Aiming` 后按 ←/→
+            // **把 AI 已规划好的 `aimDegrees` 改掉**（它自己算的评分与实际打出的杆不一致）；
+            // ③ 首页 / 结算卡 / 设置面板 / 引导开着时按 Space 也能出杆。
+            bool modal = Billiards.UI.HomeView.IsOpen
+                         || Billiards.UI.PracticeResultView.IsOpen
+                         || Billiards.UI.PracticeHudView.IsSettingsOpen
+                         || Billiards.UI.PracticeHudView.IsOnboardingOpen;
 
-            if (Input.GetKeyDown(launchKey))
+            // **"键盘意图"的起手边沿**：按下任一方向 / 力度键，或按下出杆键。
+            // ⚠ `||` 是短路的 ⇒ `modal` 为真时**不会**再调 `TryConsumePlayerInput()`（模态不算"被对手拒绝"）。
+            bool intentEdge = Input.GetKeyDown(aimLeftKey) || Input.GetKeyDown(aimRightKey)
+                              || Input.GetKeyDown(powerUpKey) || Input.GetKeyDown(powerDownKey)
+                              || Input.GetKeyDown(launchKey);
+            if (intentEdge)
             {
-                Launch();
+                _keyboardInputBlocked = modal || !TryConsumePlayerInput();
+            }
+
+            // 模态是**每帧都算**的（零副作用）：面板 / 结算卡一开，按住中的键必须**当帧**失效。
+            // 回合那一半沿用上一次按下的判定（见 `_keyboardInputBlocked` 的注释）。
+            bool inputBlocked = modal || _keyboardInputBlocked;
+
+            if (!inputBlocked)
+            {
+                if (Input.GetKey(aimLeftKey)) { aimDegrees += aStep; }
+                if (Input.GetKey(aimRightKey)) { aimDegrees -= aStep; }
+                if (Input.GetKey(powerUpKey)) { power = Mathf.Clamp01(power + pStep); }
+                if (Input.GetKey(powerDownKey)) { power = Mathf.Clamp01(power - pStep); }
+
+                if (Input.GetKeyDown(launchKey))
+                {
+                    Launch();
+                }
             }
 
             // 调试叠加层热键（默认关闭；F1 切换）。与既有输入口径一致：`Input.GetKeyDown`。
+            // ⚠ **刻意不受上面那道门限制**：它只切诊断文本的可见性、不是玩法输入，
+            //   且 `T129` 守的就是这行接线（面板开着时也该能用它自查）。
             if (Input.GetKeyDown(debugOverlayToggleKey))
             {
                 showDebugOverlay = !showDebugOverlay;
@@ -2043,6 +2095,18 @@ namespace Billiards.Physics
         /// </summary>
         public Vector2 Launch()
         {
+            // **防御：本局已结束 ⇒ 绝不再出杆**（P31 修 1 的第二道保险）。
+            // 语义：`MatchOver` 是"一局定胜负"的落闸标记，它只能由 `StartMatch`（开新局）或
+            // `EndAiMatchSession`（离开比赛）显式清掉。**不许**在它仍为真时产生第 2 杆 ——
+            // 否则 `SettleShotIfAtRest()` 的 `MatchOver` 早退会让 `_shotInFlight` **永久卡在 true**
+            // （= `ShotInFlight` 恒真 ⇒ 球杆永远不显示）。
+            // ⚠ 必须放在**最前面**（先于 `MustPlaceCueBallBeforeShooting` / `TableAtRest` 两道门）：
+            //   本局已结束时，"待放球""球没停"这些理由都还没有资格被当成拒绝原因。
+            if (MatchOver)
+            {
+                return Vector2.zero;
+            }
+
             if (_simulator == null)
             {
                 return Vector2.zero;

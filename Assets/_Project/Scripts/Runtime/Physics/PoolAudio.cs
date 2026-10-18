@@ -382,6 +382,11 @@ namespace Billiards.Physics
                 _events.Clear();
                 _delayed.Clear();
                 sim?.DrainContactEvents(_events);
+
+                // **出杆计数也要跟着对齐**（P31 修 11）：上面丢的是**接触事件**，但出杆音走的是
+                // `drive.LaunchCount` 的增量轮询 ⇒ 不同步这一行，关闭期间打过的杆会在**重新开启的
+                // 第一帧补响一声旧击球**（与本段"否则开启瞬间炸一耳朵旧事件"的意图直接相悖）。
+                _lastLaunchCount = drive.LaunchCount;
                 return;
             }
 

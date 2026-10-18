@@ -505,6 +505,18 @@ namespace Billiards.UI
                 return PlacementRefusedDetail;
             }
 
+            // **犯规 + 待放球**（P31 修 4）：白球落袋那一刻，"犯规窗口（1.6 s）"与"待放球"**同时成立**，
+            // 而 `ResolveVisualState` 的优先级让犯规档压过自由球档 ⇒ 说明行会取
+            // `StateDetail(Foul)` = `FoulDetail` = **"Cue ball back on the spot"** —— 那是**旧规则**的说法
+            // （新规则下白球**没有**回到开球点，它悬浮在空中等玩家点击放下）⇒ 一句**假陈述**，
+            // 而且下一句就自相矛盾（"Click to place the cue ball anywhere"）。
+            // ⇒ 这一档回落成"怎么放"那句（它同时说清了"球在你手上"）。
+            // ⚠ **不改 `FoulDetail` 的字面量**：对战里"没有待放球"的那种犯规，那句仍然成立（它说的是扣分口径）。
+            if (state == HudVisualState.Foul && awaitingPlacement)
+            {
+                return BallInHandPendingDetail;
+            }
+
             if (state == HudVisualState.BallInHand && awaitingPlacement)
             {
                 return BallInHandPendingDetail;

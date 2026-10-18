@@ -133,6 +133,14 @@ namespace Billiards.Physics
                 if (_strikeCountdown <= 0)
                 {
                     _flow.Advance(false, false, false, true, false);
+
+                    // **击球后必须把"前推计数"复位成 `-1`（未在前推）**（P31 修 3）。
+                    // 旧实现让它停在 **0** ⇒ 下一杆进 `Shooting` 时上面那个 `_strikeCountdown < 0`
+                    // 的进入分支**不成立**，于是走下面这条 `else if`：`0 → -1` 在**松手那一帧**
+                    // 就 `strikeArrived` 并 `Launch()` ⇒ 表现为**隔一杆没有前推动画**（杆不回收、
+                    // 球瞬间飞出），而且 `_pullbackAtRelease` 还是**两杆前**的旧值。
+                    _strikeCountdown = -1;
+
                     if (_flow.Phase == ShotPhase.Moving)
                     {
                         drive.Launch();
