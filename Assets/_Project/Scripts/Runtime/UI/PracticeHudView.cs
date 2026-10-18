@@ -206,6 +206,11 @@ namespace Billiards.UI
         /// <summary>判据入口：设置按钮节点。</summary>
         public RectTransform SettingsToggleForJudge => _settingsToggle;
 
+        /// <summary>重置球桌按钮（仅练习模式可见；判据入口）。</summary>
+        public Image ResetRackForJudge => _resetIcon;
+
+        private Image _resetIcon;
+
         /// <summary>判据入口：音量百分比文本。</summary>
         public string VolumeTextForJudge => _volumeValueText != null ? _volumeValueText.text : null;
 
@@ -617,6 +622,9 @@ namespace Billiards.UI
             //   待美术补齿轮图标后只换 glyph、不动布局。
             //   不用 `⚙`：字体只有 Latin 子集，缺字会变空白。
             AddSettingsButton(brand, "SettingsToggle", 2, OnOpenSettings);
+
+            // **重置球桌**（仅练习模式）：圆形箭头 = 重摆；对战中隐藏（会把对局清掉）。
+            _resetIcon = AddIconButton(brand, "ResetRack", ClubUiSprites.UiSprite.Orbit, 3, OnResetRack);
             _settingsToggle = (RectTransform)brand.Find("SettingsToggle");
         }
 
@@ -1210,6 +1218,12 @@ namespace Billiards.UI
 
             // 对战状态行：状态条整块隐藏后，`Foul` / `Ball in hand` / `Opponent` 的**唯一出口**。
             // `Aim` 是常态，不占版面（否则又会变成"中栏挂一行没用的字"）。
+            // 重置按钮**只在练习模式出现**：对战中重摆等于把对局清掉。
+            if (_resetIcon != null)
+            {
+                _resetIcon.gameObject.SetActive(!aiMatch);
+            }
+
             if (_matchStatus != null)
             {
                 string status = _shotInfoValue != null ? _shotInfoValue.text : string.Empty;
@@ -1557,6 +1571,19 @@ namespace Billiards.UI
             nextButton.onClick.AddListener(AdvanceOnboarding);
 
             _onboardingPanel.gameObject.SetActive(false);
+        }
+
+        /// <summary>
+        /// **重置球桌**（练习模式）：重摆 15 颗、清自由球/待放置/组别/指定袋，回到开球前。
+        /// 复用 `PhysicsTestDrive.ReloadRack()`（**唯一重置入口**，不在这里另写一套状态清理）。
+        /// </summary>
+        public void OnResetRack()
+        {
+            PlayUiClick();
+            if (drive != null)
+            {
+                drive.ReloadRack();
+            }
         }
 
         /// <summary>点击按钮的短音（唯一入口；`poolAudio` 为空时静默，不抛）。</summary>
