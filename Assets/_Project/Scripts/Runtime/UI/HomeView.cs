@@ -330,8 +330,10 @@ namespace Billiards.UI
 
             // ⚠ **不要写 `applyGlobalScale: false`**：`T148(h)` 要求首页恰好 3 处退出倍率
             //   （桌号 / 两个主键标签 / `CreateHomeText` 单点）⇒ 退出键走默认倍率。
-            PracticeHudView.CreateText(frame, "Label", hud.bodyFont, ClubUiTokens.FontHomeAction,
-                ClubUiTokens.Muted, TextAlignmentOptions.Center, Vector2.zero, Vector2.one)
+            // **与上面两行同字号同字体同颜色**（用户："退出字体要和上面一致"）——
+            //   只是底色/描边更轻，避免和主入口抢视觉重量。
+            PracticeHudView.CreateText(frame, "Label", hud.titleFont, ClubUiTokens.FontHomeAction,
+                ClubUiTokens.Text, TextAlignmentOptions.Center, Vector2.zero, Vector2.one)
                 .text = PracticeHudState.ButtonQuit;
 
             var hit = frame.GetComponent<Image>();
