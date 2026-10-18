@@ -129,7 +129,10 @@ namespace Billiards.Physics
             // 拖拽瞄准既看不见（瞄准线已被 `AimAssistController` 门控）又容易串味 ⇒ 一并让位。
             // **对手回合不许动瞄准线**：AI 在思考/出杆时，玩家拖动会改掉瞄准角，
             //   轮回来时方向已经被改过 ⇒ 观感是"AI 用了我没设的方向"。
-            bool aiTurn = drive != null && drive.IsAiTurn;
+            // ⚠ **只有"真的有 AI 对手"时才让位**：练习模式里规则同样会把回合判给"对方"，
+            //   `IsAiTurn` 会变真；若直接拿它当门，练习模式的**放球点击也会被挡** ⇒
+            //   表现为"白球卡住 / 球杆不见"（用户实机反馈）。⇒ 加 `AiOpponentEnabled` 这一层。
+            bool aiTurn = drive != null && drive.IsAiTurn && drive.AiOpponentEnabled;
             if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen
                 || Billiards.UI.PracticeHudView.IsSettingsOpen
                 || Billiards.UI.PracticeHudView.IsOnboardingOpen

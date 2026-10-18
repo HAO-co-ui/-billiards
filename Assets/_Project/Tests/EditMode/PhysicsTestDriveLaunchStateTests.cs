@@ -3637,6 +3637,13 @@ namespace Billiards.Tests
                 {
                     failures.Add($"T157 `{file}`（{label}）缺少 `drive.IsAiTurn` 门 ⇒ **对手回合玩家仍能操作**。");
                 }
+
+                // **门必须再与 `AiOpponentEnabled` 相与**：练习模式里规则同样会把回合判给"对方"，
+                // 只用 `IsAiTurn` 会把练习模式的**放球点击**也挡掉（用户实机："白球又卡住了"）。
+                if (!text.Contains("drive.AiOpponentEnabled"))
+                {
+                    failures.Add($"T157 `{file}`（{label}）的回合门缺 `AiOpponentEnabled` ⇒ 练习模式也会被挡（白球放不下）。");
+                }
             }
 
             string viewPath = Path.Combine(root, "Assets/_Project/Scripts/Runtime/Physics/AimAssistView.cs");

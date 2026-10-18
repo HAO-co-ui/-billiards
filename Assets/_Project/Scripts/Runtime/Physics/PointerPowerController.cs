@@ -121,7 +121,7 @@ namespace Billiards.Physics
             if (Billiards.UI.PracticeResultView.IsOpen || Billiards.UI.HomeView.IsOpen
                 || Billiards.UI.PracticeHudView.IsSettingsOpen
                 || Billiards.UI.PracticeHudView.IsOnboardingOpen
-                || (drive != null && drive.IsAiTurn))
+                || (drive != null && drive.IsAiTurn && drive.AiOpponentEnabled))
             {
                 return;
             }
