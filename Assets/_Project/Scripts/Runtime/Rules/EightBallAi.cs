@@ -169,17 +169,18 @@ namespace Billiards.Rules
                     return new AiDifficultyParameters
                     {
                         difficulty = AiDifficulty.Expert,
-                        aimStepCoarseDeg = 1.0f,
-                        aimStepFineDeg = 0.15f,
-                        // **用户反馈"Expert 不够强、像 Club"** ⇒ 只加强 Expert（Casual/Club 不动）：
-                        //   瞄准 σ 0.6° → 0.18°、力度误差 5.5% → 1.8%、力度档 8 → 16、搜索步长 0.5° → 0.15°、
-                        //   候选 64 → 128。仍是**有限精度**（σ ≥ 0.15°、力度 ≥ 1.5% 的上界守照旧成立）。
-                        powerLevelCount = 16,
+                        aimStepCoarseDeg = 2.0f,
+                        aimStepFineDeg = 0.5f,
+                        // **用户反馈"Expert 不够强、像 Club"** ⇒ 只加强 Expert（Casual/Club 不动）。
+                        // ⚠ **只降"手抖"，不细化搜索**：评估次数有**硬上限**（`candidateBudget`，粗扫+精扫合计），
+                        //   把步长调细会让预算在粗扫阶段就被吃光 ⇒ 反而挑到更差的杆、还更慢
+                        //   （实测反馈："没变强、思考更久、失误更高"）。⇒ 步长/档位/预算**保持原值**。
+                        powerLevelCount = 8,
                         aimSigmaDeg = 0.18f,
                         powerSigmaFraction = 0.018f,
                         topKPick = 1,          // 取最优
                         weakPositionScoring = true,
-                        candidateBudget = 128,
+                        candidateBudget = 64,
                     };
 
                 case AiDifficulty.Club:

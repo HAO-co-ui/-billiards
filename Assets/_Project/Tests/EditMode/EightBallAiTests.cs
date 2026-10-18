@@ -129,8 +129,9 @@ namespace Billiards.Tests
             // 三档参数表逐字段比对（§4.3 字面量）
             CheckParams(failures, AiDifficulty.Casual, 6.0f, 2.0f, 3, 4.0f, 0.25f, 5, 16);
             CheckParams(failures, AiDifficulty.Club, 4.0f, 1.0f, 4, 2.2f, 0.14f, 3, 32);
-            // **规格变更**：Expert 强化（σ 0.6→0.18、力度 5.5%→1.8%、档 8→16、细步 0.5→0.15、候选 64→128）。
-            CheckParams(failures, AiDifficulty.Expert, 1.0f, 0.15f, 16, 0.18f, 0.018f, 1, 128);
+            // **规格变更**：Expert 只降"手抖"（σ 0.6→0.18、力度 5.5%→1.8%），
+            // 搜索粒度/档位/预算**保持原值**（细步会吃光评估预算，反而更差、更慢）。
+            CheckParams(failures, AiDifficulty.Expert, 2.0f, 0.5f, 8, 0.18f, 0.018f, 1, 64);
         }
 
         private static float ExpertPowerSigmaFloorPercent() => EightBallAi.ExpertPowerSigmaFloorFraction * 100f;
