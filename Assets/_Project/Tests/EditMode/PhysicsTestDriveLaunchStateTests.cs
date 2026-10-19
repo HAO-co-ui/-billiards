@@ -2179,9 +2179,15 @@ namespace Billiards.Tests
                             failures.Add($"(⑤) `StartMatch` 应记下档位 `Club`，实测 {host.MatchTier}。");
                         }
 
-                        if (host.CurrentTurn != ShotTurn.Player)
+                        // **规则变更（用户裁定）**：开球权由本局摆球种子决定（奇数 ⇒ AI 先开）。
+                        // 旧断言"开局先手必为玩家"编码的是旧规则，已同步为"必须与种子给出的结果一致"。
+                        ShotTurn expectedBreaker = PhysicsTestDrive.AiBreaksFirst(host.ResolvedRackSeed)
+                            ? ShotTurn.Ai
+                            : ShotTurn.Player;
+                        if (host.CurrentTurn != expectedBreaker)
                         {
-                            failures.Add($"(⑤) 开局先手应为玩家，实测 {host.CurrentTurn}。");
+                            failures.Add($"(⑤) 开局先手应由摆球种子决定（期望 {expectedBreaker}，"
+                                         + $"实测 {host.CurrentTurn}，seed={host.ResolvedRackSeed}）。");
                         }
 
                         if (host.aiGroupState != GroupState.OpenTable)
@@ -4354,6 +4360,50 @@ namespace Billiards.Tests
             {
                 Object.DestroyImmediate(go);
             }
+        }
+        /// <summary>
+        /// **T183：随机开球** —— 由本局摆球种子决定谁先开（奇数 ⇒ AI 先开），同种子同结果。
+        /// 负路径：不能"总是玩家开球"（那等于没实现）。
+        /// </summary>
+        [Test]
+        public void T183_RandomBreak_DeterministicBySeed_AndBothOutcomesReachable()
+        {
+            var failures = new List<string>();
+
+            if (PhysicsTestDrive.AiBreaksFirst(0) || PhysicsTestDrive.AiBreaksFirst(2)
+                || PhysicsTestDrive.AiBreaksFirst(-2))
+            {
+                failures.Add("T183①：偶数种子应判**玩家**先开。");
+            }
+
+            if (!PhysicsTestDrive.AiBreaksFirst(1) || !PhysicsTestDrive.AiBreaksFirst(3)
+                || !PhysicsTestDrive.AiBreaksFirst(-1))
+            {
+                failures.Add("T183②：奇数种子应判**AI**先开。");
+            }
+
+            // 同种子必须同结果（可复现）；且两种结果都**可达**（不是恒真/恒假）。
+            bool sawAi = false;
+            bool sawPlayer = false;
+            for (int seed = 0; seed < 16; seed++)
+            {
+                bool a = PhysicsTestDrive.AiBreaksFirst(seed);
+                if (a != PhysicsTestDrive.AiBreaksFirst(seed))
+                {
+                    failures.Add($"T183③：种子 {seed} 两次判定不一致（必须可复现）。");
+                }
+
+                sawAi |= a;
+                sawPlayer |= !a;
+            }
+
+            if (!sawAi || !sawPlayer)
+            {
+                failures.Add($"T183④：16 个种子下必须两种开球权都出现（实测 AI={sawAi} / 玩家={sawPlayer}）"
+                             + " —— 否则等于没随机。");
+            }
+
+            Assert.IsEmpty(failures, "T183 失败：\n" + string.Join("\n", failures));
         }
     }
 }

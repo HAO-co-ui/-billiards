@@ -37,7 +37,9 @@ namespace Billiards.Physics
                          || Billiards.UI.PracticeResultView.IsOpen
                          || Billiards.UI.PracticeHudView.IsSettingsOpen
                          || Billiards.UI.PracticeHudView.IsOnboardingOpen;
-            bool show = drive != null && drive.BreakPlacementActive && !modal;
+            // 对手回合也**不显示**：那时白球归 AI，玩家摆不了，闪白只会误导。
+            bool aiTurn = drive != null && drive.IsAiTurn && drive.AiOpponentEnabled;
+            bool show = drive != null && drive.BreakPlacementActive && !modal && !aiTurn;
             if (_renderer.enabled != show)
             {
                 _renderer.enabled = show;

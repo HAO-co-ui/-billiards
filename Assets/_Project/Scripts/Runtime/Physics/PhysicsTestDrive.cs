@@ -1199,14 +1199,24 @@ namespace Billiards.Physics
             EndReason = ShotOutcomeKind.Ongoing;
         }
 
+        /// <summary>
+        /// **随机开球规则（纯函数，单一实现点）**：由本局摆球种子决定谁先开 —— 奇数 ⇒ AI 先开。
+        /// 用位运算而非取模（避免低位偏置）；**同种子 ⇒ 同结果**（判据可注入种子复现）。
+        /// </summary>
+        public static bool AiBreaksFirst(int rackSeed) => (rackSeed & 1) == 1;
+
         public void StartMatch(AiDifficulty tier)
         {
             MatchTier = tier;
             aiGroupState = GroupState.OpenTable;
             rackSeed = RandomRackSeed;
             Initialize();
-            CurrentTurn = ShotTurn.Player;
             AiOpponentEnabled = true;   // 对战：本局**有** AI 对手（必须在 Initialize 之后置位）
+
+            // **随机开球**（用户裁定）：谁先开由**本局摆球种子**决定 —— 位运算取奇偶，
+            // 不用取模（避免低位偏置），且 **同种子 ⇒ 同结果**（可回读复现，判据用注入种子）。
+            bool aiBreaks = AiBreaksFirst(ResolvedRackSeed);
+            CurrentTurn = aiBreaks ? ShotTurn.Ai : ShotTurn.Player;
 
             // **一局定胜负**：`StartMatch` 是**唯一**能开新局的口 —— 它把结算位一并清掉
             // （⇒ "结算后不会自动进第 2 局"；要再来一局必须**显式**再调一次本方法）。
