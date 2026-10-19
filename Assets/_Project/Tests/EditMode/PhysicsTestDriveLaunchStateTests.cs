@@ -4054,6 +4054,202 @@ namespace Billiards.Tests
         }
 
         /// <summary>
+        /// **`T160`：两条"界面不许假陈述 / 不许静默"的补丁**（P37；由质量组源码复核抓出、主理人裁定修）。
+        ///
+        /// ── A · 对战 HUD 的对手名必须按**实际档位**（假陈述）────────────────────────
+        /// 旧实现：`PracticeHudView` 把 `PracticeHudState.OpponentDisplayName = "Expert AI"` 写死进右栏，
+        /// 而赛前屏走的是 `OpponentName(tier)` ⇒ 选 **Club** 时"赛前 `Club AI` / 对局 `Expert AI`"。
+        /// 判据三条：
+        /// · **(a1) 纯函数字面量**：三档的"对手名"逐条等于 `Casual AI` / `Club AI` / `Expert AI`
+        ///   （期望表**在测试里独有**，不从实现那边取 ⇒ 不是自证）；
+        /// · **(a2) 唯一真源**：`_oppName.text =` 的每一处**非空**赋值都必须来自
+        ///   `PracticeHudState.OpponentName(`，且必须含 `drive.MatchTier`（按实际档位，不是常量）；
+        /// · **(a3) 常量已删**：`PracticeHudState.cs` 去注释后不得再有 `OpponentDisplayName`
+        ///   （留着它就是留第二个真源，下一个人还会接错）。
+        ///
+        /// ── C · 对战里 `R` 不得走练习重摆（静默清零）────────────────────────────
+        /// 旧实现：`PracticeResultView.Update` 里 `Input.GetKeyDown(rackKey)` ⇒ `RequestReRack()`
+        /// **没有对手门**；P27 只隐藏了工具栏的重置图标，键盘路径没管 ⇒ 对战按 `R` 弹练习结算卡，
+        /// 卡上再确认 ⇒ `StartNewRack()` ⇒ `drive.ReloadRack()` ⇒ **一局对战被静默清零**（`MatchOver` 仍 false）。
+        /// 判据：**(c1)** 该分支必须带 `!drive.AiOpponentEnabled &&` 门（与本方法上方结算分支同一判据）；
+        /// **(c2)** `_tracker.RequestReRack()` 全文**恰好 1 处**调用（不许留第二条没门的入口）。
+        ///
+        /// ── 覆盖边界（如实登记，别当已覆盖）────────────────────────────────────
+        /// · C 的**行为级**验证在 EditMode 做不到：`Update()` 是私有的、且 `Input.GetKeyDown` 无法注入
+        ///   ⇒ 本判据是**源码级 + 单一调用点**，行为验收靠实机清单 **C15**（对战中按 R ⇒ 不弹卡、不乱局）。
+        /// · A 的**像素级**验证（TMP 实际渲染出的字）同样靠实机清单 **C2**；这里断的是"文案来源"。
+        ///
+        /// ── 注入负对照（实跑留档）──────────────────────────────────────────────
+        /// · **A**：把 `ApplyMatchHud` 里的按档位赋值改回写死 `"Expert AI"` ⇒ **(a2) 红**；
+        /// · **C**：删掉 `!drive.AiOpponentEnabled &&` ⇒ **(c1) 红**。
+        /// </summary>
+        [Test]
+        public void T160_MatchHudOpponentNameFollowsTier_AndRKeyGatedInMatch()
+        {
+            var failures = new List<string>();
+            string root = Path.GetDirectoryName(Application.dataPath) ?? ".";
+
+            // ── (a1) 三档对手名的字面量（期望表在测试里，独立于实现）──────────────
+            var expected = new (AiDifficulty Tier, string Name)[]
+            {
+                (AiDifficulty.Casual, "Casual AI"),
+                (AiDifficulty.Club, "Club AI"),
+                (AiDifficulty.Expert, "Expert AI"),
+            };
+
+            foreach ((AiDifficulty tier, string name) in expected)
+            {
+                string actual = Billiards.UI.PracticeHudState.OpponentName(tier);
+                if (actual != name)
+                {
+                    failures.Add($"T160(a1) {tier} 的对手名应为 \"{name}\"，实际 \"{actual}\"。");
+                }
+            }
+
+            // ── (a2)(a3) 源码级：对手名必须按档位取值，且常量已删 ─────────────────
+            string hudPath = Path.Combine(root, "Assets/_Project/Scripts/Runtime/UI/PracticeHudView.cs");
+            if (!File.Exists(hudPath))
+            {
+                failures.Add("T160(a2) 找不到 `PracticeHudView.cs`（对手名来源无从判定）。");
+            }
+            else
+            {
+                string code = StripCommentLines(File.ReadAllText(hudPath));
+                var assignments = CollectAssignmentStatements(code, "_oppName.text");
+
+                if (assignments.Count == 0)
+                {
+                    failures.Add("T160(a2) `PracticeHudView.cs` 里没有任何 `_oppName.text =` 赋值"
+                                 + " ⇒ 对手名没人写（或改名了）⇒ 本判据空扫。");
+                }
+
+                int tierDriven = 0;
+                foreach (string rhs in assignments)
+                {
+                    // ⚠ **只跳过"整句就是空串"的占位**（`_oppName.text = string.Empty;`）。
+                    //   不能写 `Contains("string.Empty")`：本仓真实现是三行三元式，**分支里就有** `: string.Empty`
+                    //   ⇒ 用 Contains 会把正确实现当成占位跳掉（我第一版就踩了这个假红）。
+                    if (rhs.Trim() == "string.Empty")
+                    {
+                        continue;
+                    }
+
+                    if (!rhs.Contains("PracticeHudState.OpponentName("))
+                    {
+                        failures.Add($"T160(a2) `_oppName.text` 的赋值 `{rhs.Trim()}` 不是来自 "
+                                     + "`PracticeHudState.OpponentName(...)` ⇒ 对手名又出现了**第二个真源**"
+                                     + "（旧实现写死 `\"Expert AI\"`，选 Club 时会与赛前屏矛盾）。");
+                        continue;
+                    }
+
+                    if (!rhs.Contains("drive.MatchTier"))
+                    {
+                        failures.Add($"T160(a2) `_oppName.text` 的赋值 `{rhs.Trim()}` 没用 `drive.MatchTier`"
+                                     + " ⇒ 对手名没按**实际档位**取（写死/取错源都会造成假陈述）。");
+                        continue;
+                    }
+
+                    tierDriven++;
+                }
+
+                if (assignments.Count > 0 && tierDriven == 0)
+                {
+                    failures.Add("T160(a2) 没有任何一处 `_oppName.text` 是按 `drive.MatchTier` 写的"
+                                 + " ⇒ 对战 HUD 的对手名不会随难度变。");
+                }
+            }
+
+            string statePath = Path.Combine(root, "Assets/_Project/Scripts/Runtime/UI/PracticeHudState.cs");
+            if (!File.Exists(statePath))
+            {
+                failures.Add("T160(a3) 找不到 `PracticeHudState.cs`。");
+            }
+            else
+            {
+                string stateCode = StripCommentLines(File.ReadAllText(statePath));
+                if (stateCode.Contains("OpponentDisplayName"))
+                {
+                    failures.Add("T160(a3) `PracticeHudState.cs` 里仍有 `OpponentDisplayName`（写死的对手名常量）"
+                                 + " ⇒ 那是**第二个真源**，迟早又会被接错；对手名只允许 `OpponentName(tier)`。");
+                }
+            }
+
+            // ── (c1)(c2) 对战里 `R` 必须无效 ──────────────────────────────────────
+            string resultPath = Path.Combine(root, "Assets/_Project/Scripts/Runtime/UI/PracticeResultView.cs");
+            if (!File.Exists(resultPath))
+            {
+                failures.Add("T160(c1) 找不到 `PracticeResultView.cs`。");
+            }
+            else
+            {
+                string resultCode = StripCommentLines(File.ReadAllText(resultPath));
+
+                // ⚠ **P37 后门搬进接缝 `TryRequestReRack()`**（验收标准 §1-S1）：`Update()` 里只允许
+                //   `Input.GetKeyDown(rackKey)` ⇒ `TryRequestReRack()`，门在方法内部一处。
+                //   ⇒ 断言改成"调用点 + 门在接缝里"，比原来的内联形态更稳（门只有一处、数得清）。
+                if (!resultCode.Contains("TryRequestReRack();"))
+                {
+                    failures.Add("T160(c1) `PracticeResultView.cs` 里 `R` 键没有走接缝 `TryRequestReRack()`"
+                                 + " ⇒ 模式门无处可落（对战里按 R 会走练习的\"主动重摆\"⇒ 弹练习结算卡）。");
+                }
+
+                if (!resultCode.Contains("drive.AiOpponentEnabled"))
+                {
+                    failures.Add("T160(c1) `PracticeResultView.cs` 里找不到对手门 `drive.AiOpponentEnabled`"
+                                 + " ⇒ 对战里按 R 会走练习的\"主动重摆\"⇒ 弹练习结算卡 ⇒ 再确认会 `ReloadRack()` "
+                                 + "把一局对战静默清零（且不结算）。");
+                }
+
+                int reRackCalls = CountOccurrences(resultCode, "_tracker.RequestReRack()");
+                if (reRackCalls != 1)
+                {
+                    failures.Add($"T160(c2) `_tracker.RequestReRack()` 应**恰好 1 处**调用（唯一入口，且带门），"
+                                 + $"实测 {reRackCalls} 处 ⇒ 存在第二条没门的入口。");
+                }
+            }
+
+            Assert.IsEmpty(failures, "T160（对手名按档位 / 对战 R 键门）失败：\n" + string.Join("\n", failures));
+        }
+
+        /// <summary>
+        /// 收集 `target = ...;` 这种赋值语句的**右侧原文**（**跨行**读到分号为止），例如
+        /// `_oppName.text = ...` ⇒ `{ "...", ... }`。**只认赋值**（`==` 不算）。
+        /// ⚠ 必须跨行：`_oppName.text = aiMatch ? ... : ...;` 在本仓就是三行写法，
+        ///   按行截断只会拿到 `aiMatch` ⇒ 会把正确实现判成红（假红同样有毒）。
+        /// </summary>
+        private static List<string> CollectAssignmentStatements(string code, string target)
+        {
+            var statements = new List<string>();
+            int index = code.IndexOf(target, System.StringComparison.Ordinal);
+            while (index >= 0)
+            {
+                int cursor = index + target.Length;
+                while (cursor < code.Length && (code[cursor] == ' ' || code[cursor] == '\t'))
+                {
+                    cursor++;
+                }
+
+                bool isAssign = cursor < code.Length && code[cursor] == '='
+                                && (cursor + 1 >= code.Length || code[cursor + 1] != '=');
+                if (isAssign)
+                {
+                    int start = cursor + 1;
+                    int end = code.IndexOf(';', start);
+                    if (end < 0)
+                    {
+                        end = code.Length;
+                    }
+
+                    statements.Add(code.Substring(start, end - start).Trim());
+                }
+
+                index = code.IndexOf(target, index + target.Length, System.StringComparison.Ordinal);
+            }
+
+            return statements;
+        }
+
+        /// <summary>
         /// 收集 `variable` 的**整型赋值**（`= &lt;数字&gt;`）的值，例如 `AiCandidatesPerFrame = 1;` ⇒ `{1}`。
         /// **只认赋值形态**（跳过 `stepped &lt; AiCandidatesPerFrame` 这类读取点），且跳过 `==` / `&gt;=` 等比较。
         /// </summary>

@@ -165,6 +165,9 @@ namespace Billiards.UI
         /// <summary>**对手回合点击被拒**的提示窗口截止时刻（P5-B："不许静默"；与上面两个窗口同形）。</summary>
         private float _opponentBlockedUntil;
 
+        /// <summary>"对手回合被拒"的时间窗**此刻是否开着**（`Refresh` 每帧写；供 `ApplyMatchHud` 用）。</summary>
+        private bool _opponentBlockedWindow;
+
         private bool _built;
 
         /// <summary>
@@ -602,10 +605,13 @@ namespace Billiards.UI
                 new Vector2(0.5f, 0.5f), new Vector2(ClubUiTokens.AvatarIconSize, ClubUiTokens.AvatarIconSize));
             _oppAvatar.gameObject.SetActive(false);
 
-            // 右栏文字（镜像左栏）：`Expert AI` + 组别小标签；开放球局时组别为空。
+            // 右栏文字（镜像左栏）：**对手名（按实际档位）+ 组别小标签**；开放球局时组别为空。
+            // ⚠ 对手名**不在这里定**：真源在 `ApplyMatchHud`（按 `drive.MatchTier` 取值）。
+            //   旧实现这里写死常量 `OpponentDisplayName = "Expert AI"` ⇒ 赛前屏写 `Club AI`、
+            //   进对局变 `Expert AI`（**假陈述**，`T160` 守它）。
             _oppName = CreateText(board, "OppName", bodyFont, ClubUiTokens.FontLabel, ClubUiTokens.Text,
                 TextAlignmentOptions.BottomRight, new Vector2(0.660f, 0.64f), new Vector2(0.900f, 1f));
-            _oppName.text = PracticeHudState.OpponentDisplayName;
+            _oppName.text = string.Empty;   // 占位：真正的文案由 `ApplyMatchHud` 按档位写（见上）
             _oppName.enableWordWrapping = false;
             _oppName.overflowMode = TextOverflowModes.Overflow;
             _oppGroupLabel = CreateText(board, "OppGroupTag", bodyFont, ClubUiTokens.FontSmall,
@@ -958,6 +964,11 @@ namespace Billiards.UI
             bool refusedWindow = now < _refusedUntil;
             bool placementRefusedWindow = now < _placementRefusedUntil;
             bool opponentBlockedWindow = now < _opponentBlockedUntil;
+
+            // **对战形态也要看得见这句**（P37 缺陷②）：练习走状态条说明行（`_stateCaption`），
+            // 但对战形态整条状态条是隐藏的（`SetActive(!aiMatch)`，见 `ApplyMatchHud`）
+            // ⇒ 提示写进去等于**静默**。这里把窗口状态记下来，由 `ApplyMatchHud` 写进**对战状态行**。
+            _opponentBlockedWindow = opponentBlockedWindow;
             bool ballInHand = _ballInHandLatch && phase == ShotPhase.Aim;
 
             // **待放球**（"全场自由球"新规则）：白球**不在台上**、玩家尚未放置、轮到玩家、台面已停
@@ -1270,6 +1281,67 @@ namespace Billiards.UI
         /// <summary>**判据用**：练习形态那排（`BALLS LEFT` + 15 颗球）此刻是否可见。</summary>
         public bool PracticeBallRowVisible => _ballsLabel != null && _ballsLabel.gameObject.activeSelf;
 
+        // ════════════ P37：两个"玩家到底看得到什么"的只读出口（名字由验收标准冻结）════════════
+
+        /// <summary>
+        /// **E3**：对战 HUD 右栏**对手名当前显示值**；对手块不可见（练习形态 / 未构建）⇒ `null`。
+        /// **为什么必须是"显示值"而不是纯函数**：缺陷① 的本体是"名字没接线"（写死常量），
+        /// 断纯函数 `OpponentName(tier)` = 与实现同源 = 抓不到没接线。
+        /// </summary>
+        public string OpponentNameText => IsTextVisible(_oppName) ? _oppName.text : null;
+
+        /// <summary>
+        /// **E1**：此刻**真正显示在屏幕上**的那一段状态文本（缺陷② 的判据出口）。
+        /// **口径**：按模式取**那个可见的**（练习 = 状态条说明行 `_stateCaption`；对战 = 状态行 `_matchStatus`）；
+        /// 可见但文本为空 ⇒ 返回 `""`；**一个可见的都没有 ⇒ `null`**。
+        /// ⚠ 关键就在"不可见返回 null"：若直接回 `_stateCaption.text`，缺陷② 下**照样非空**
+        /// （文案在、控件被 `SetActive(false)` 隐藏）⇒ 判据会假绿。
+        /// </summary>
+        public string VisibleStatusText
+        {
+            get
+            {
+                if (IsTextVisible(_matchStatus))
+                {
+                    return _matchStatus.text;
+                }
+
+                if (IsTextVisible(_stateCaption))
+                {
+                    return _stateCaption.text;
+                }
+
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// "这个文本**真的显示在屏幕上**吗"的单一判定点（`VisibleStatusText` / `OpponentNameText` 共用）：
+        /// ① 控件自身启用；② **所有祖先** `activeInHierarchy`；③ 途中经过的 `CanvasGroup` 未被关/透明度 &gt; 0。
+        /// </summary>
+        private static bool IsTextVisible(TMP_Text text)
+        {
+            if (text == null || !text.isActiveAndEnabled || !text.gameObject.activeInHierarchy)
+            {
+                return false;
+            }
+
+            for (Transform node = text.transform; node != null; node = node.parent)
+            {
+                if (!node.gameObject.activeInHierarchy)
+                {
+                    return false;
+                }
+
+                if (node.TryGetComponent(out CanvasGroup group) && (!group.enabled || group.alpha <= 0f))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         public void ApplyMatchHud(bool aiMatch, GroupState yourGroup, GroupState oppGroup, bool aiTurn,
                                   IReadOnlyList<int> yourNumbers, IReadOnlyList<int> oppNumbers)
         {
@@ -1300,6 +1372,13 @@ namespace Billiards.UI
             if (_oppName != null)
             {
                 _oppName.gameObject.SetActive(aiMatch);
+
+                // **对手名 = 实际档位**（`T160`）：真源 `drive.MatchTier`（由 `StartMatch(tier)` 写入），
+                // 与赛前屏同一个纯函数 `PracticeHudState.OpponentName(tier)` ⇒ **不存在第二个真源**。
+                // ⚠ `drive == null` 只发生在判据直接调本方法时（没有驱动器）⇒ 回落默认档，不崩、不猜。
+                _oppName.text = aiMatch
+                    ? PracticeHudState.OpponentName(drive != null ? drive.MatchTier : EightBallAi.DefaultDifficulty)
+                    : string.Empty;
             }
 
             // 中栏：小字 `RACK 1`（单局，不写 of 3）、大字 = **当前该谁打**；退回练习形态时恢复 `POCKETED`。
@@ -1332,10 +1411,18 @@ namespace Billiards.UI
 
             if (_matchStatus != null)
             {
+                // **被拒提示必须出现在"对战里唯一活着的文字出口"上**（P37 / `T161(b)`）：
+                // 旧的写法只抄 `_shotInfoValue.text`（= `StateTitle`，标题），而"你刚被拒"那句
+                // 是**说明行**、写在 `_stateCaption` 里 —— 那个控件在对战形态被隐藏 ⇒ 点了没反应。
+                // 文案**不新造**：直接用 `PracticeHudState.OpponentBlockedDetail`（与练习同一句）。
                 string status = _shotInfoValue != null ? _shotInfoValue.text : string.Empty;
-                bool showStatus = aiMatch && !string.IsNullOrEmpty(status) && status != PracticeHudState.StateAim;
+                bool showBlocked = aiMatch && _opponentBlockedWindow;
+                bool showStatus = showBlocked
+                                  || (aiMatch && !string.IsNullOrEmpty(status) && status != PracticeHudState.StateAim);
                 _matchStatus.gameObject.SetActive(showStatus);
-                _matchStatus.text = showStatus ? status : string.Empty;
+                _matchStatus.text = !showStatus
+                    ? string.Empty
+                    : (showBlocked ? PracticeHudState.OpponentBlockedDetail : status);
             }
 
             // 中栏在**对战形态要显示**：`RACK 1`（小字）+ `YOUR SHOT`/`AI`（大字）。
@@ -1450,6 +1537,12 @@ namespace Billiards.UI
                                       IReadOnlyList<int> yourNumbers, IReadOnlyList<int> oppNumbers)
         {
             int hash = aiMatch ? 1 : 0;
+            // ⚠ **档位必须进指纹**：换档开新局时其余入参可能全同（同为 OpenTable / 同一批号码）
+            //   ⇒ 不进指纹的话 HUD 名字会停在上一个档位（"Club 开局却写着 Expert AI" 的同一类假陈述）。
+            hash = hash * 31 + (int)(drive != null ? drive.MatchTier : EightBallAi.DefaultDifficulty);
+            // ⚠ **被拒窗口必须进指纹**：本方法是"写"的让位门，窗口开/关不参与指纹的话，
+            //   提示既不会出现、也不会在窗口结束后退回常驻标题（＝两种假陈述）。
+            hash = hash * 31 + (_opponentBlockedWindow ? 1 : 0);
             hash = hash * 31 + (aiTurn ? 1 : 0);
             hash = hash * 31 + (int)yourGroup;
             hash = hash * 31 + (int)oppGroup;

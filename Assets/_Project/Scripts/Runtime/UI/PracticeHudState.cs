@@ -220,8 +220,11 @@ namespace Billiards.UI
         /// <summary>组别小标签：花色球（`Stripes`）。</summary>
         public const string StripeGroupTag = "Stripes";
 
-        /// <summary>对手名（对战 HUD 右栏；与 `OpponentName(MatchSetup)` 方法区分）。</summary>
-        public const string OpponentDisplayName = "Expert AI";
+        // ⚠ **原来这里有个 `OpponentDisplayName = "Expert AI"` 常量，已删除**（P37/`T160`）：
+        //   它被对战 HUD 当作"对手名"写死，而赛前屏走的是 `OpponentName(tier)` ⇒ 选 Club 时
+        //   赛前写 `Club AI`、进对局写 `Expert AI`，**界面自相矛盾**（假陈述）。
+        //   ⇒ 现在**唯一真源 = `OpponentName(AiDifficulty tier)`**（下面这个纯函数），
+        //   调用方：赛前屏 `HomeView`（按 `MatchSetup.Selected`）+ 对局 HUD `ApplyMatchHud`（按 `drive.MatchTier`）。
 
         /// <summary>`GroupState` → 组别小标签；**开放球局返回空串**（零字形，用户原话"一开始是空的"）。</summary>
         public static string GroupTag(GroupState group)

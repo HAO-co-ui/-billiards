@@ -68,6 +68,16 @@ namespace Billiards.UI
         public static bool IsOpen { get; private set; }
 
         /// <summary>
+        /// **E2**：结算卡**被打开过几次**（单调不减；`Present(...)` 每成功执行一次 `+1`；`Hide()` **不减**）。
+        ///
+        /// ⚠ **为什么不只看 `IsOpen`**：`IsOpen` 只断"**此刻**开着没"；缺陷③ 的现场是"**开过又被关掉**"
+        /// （`OnPlayAgain()` / 再按 `R` 都会 `Hide()`）⇒ 现场自愈，只剩"球堆莫名回到开局"。
+        /// **只有次数留得下足迹** ⇒ 判据靠"次数没涨"来证明"那张卡从来没弹过"。
+        /// 生命周期与 <see cref="IsOpen"/> 一致（进程内静态）。
+        /// </summary>
+        public static int ShowCount { get; private set; }
+
+        /// <summary>
         /// **卡片当前显示的形态**（`None` = 卡未显示，或显示的是练习局结局）。
         ///
         /// **可判定出口**（判据读它，**不读像素/不读按钮文字**）——与 <see cref="IsOpen"/> 同口径。
@@ -384,16 +394,63 @@ namespace Billiards.UI
                 return;
             }
 
+            // ⚠ 首帧起局（`BeginRack`）已随"会话 tick"搬进 `TickSessionForJudge()`（E4，P37）——
+            //   这里**不许**再留一份：两份会让基线在**同一帧**被重取两次（顺序一乱就是静默 bug）。
+            if (Input.GetKeyDown(rackKey))
+            {
+                TryRequestReRack();
+            }
+
+            TickSessionForJudge();
+        }
+
+        // ════════════════ P37：两个接缝出口（名字由验收标准冻结；只读/只驱动，不改产品语义）════════════════
+
+        /// <summary>
+        /// **S1**：**"玩家按了重摆键"的唯一入口**（`Update()` 里 `Input.GetKeyDown(rackKey)` 只允许调它）。
+        /// 内部先过**模式门**：对战里（`drive.AiOpponentEnabled`）一律 **`false`**、什么也不做。
+        ///
+        /// ⚠ **为什么必须抽成方法**（P37 缺陷③ 的根因）：门写在 `Update` 里时判据**进不去**
+        /// ⇒ 只能退化成"源码子串守卫"，而源码守卫守不住**跨文件后果**（`Show()` 走练习形态、
+        /// `StartNewRack()` → `ReloadRack()` 把 `ruleState`/组别/回合清掉而 `MatchOver` 仍 false）。
+        /// 抽出来后：对战里 `TryRequestReRack() == false` ⇒ 下一次 `TickSessionForJudge()` **什么都不该发生**
+        /// （`ShowCount` 不变、`IsOpen` 仍 false、球心逐位不变）—— 这些都能在 EditMode 里驱动。
+        ///
+        /// 门用 `drive.AiOpponentEnabled`：与 `Update()` 里**结算分支**同一个判据（P12 定的"对手单一真源"）。
+        /// </summary>
+        public bool TryRequestReRack()
+        {
+            if (drive == null || drive.AiOpponentEnabled)
+            {
+                return false;
+            }
+
+            _tracker.RequestReRack();
+            return true;
+        }
+
+        /// <summary>
+        /// **E4**：跑一次 `Update()` 里"会话观察 → 结局判定 → 展示"那一段
+        /// （`BeginRack` / `CountBalls` / `Observe` / `if (Outcome != None) Show()`）。
+        ///
+        /// ⚠ **为什么必须有这个出口**：`Show()` **只**在 `Update()` 里被调用，而 **EditMode 不跑 `Update`**
+        /// ⇒ 没有它，`ShowCount` / `IsOpen` 在判据里**永远不变** ⇒ 断言会变成恒真（比不写更糟：
+        /// 给人"已覆盖"的错觉）。
+        /// ⚠ **抽取纪律**：只搬代码、不改顺序；`Update()` 里调用它的位置必须仍在那两个早退
+        /// （`IsOpen` / `MatchOver`）**之后**。
+        /// </summary>
+        public void TickSessionForJudge()
+        {
+            if (drive == null)
+            {
+                return;
+            }
+
             if (!_started)
             {
                 // 首帧起局：以**当前**出杆数为基线（不把进场景前的杆数算进本局）。
                 _tracker.BeginRack(drive.LaunchCount);
                 _started = true;
-            }
-
-            if (Input.GetKeyDown(rackKey))
-            {
-                _tracker.RequestReRack();
             }
 
             PoolSimulator simulator = drive.Simulator;
@@ -449,6 +506,7 @@ namespace Billiards.UI
             }
 
             CurrentForm = form;
+            ShowCount++;   // E2：**一次打开记一次**（含练习 / 对战两种形态；`Hide()` 不减）
 
             // **胜/负结算音**：只在卡片真正弹出时响一次（`Present` 已被一次性闸门守着，不会重复）。
             // 场景未接线时现找一次 `PoolAudio`（仅此处发生，不在每帧路径上）。
