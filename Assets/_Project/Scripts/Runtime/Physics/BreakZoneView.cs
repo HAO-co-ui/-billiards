@@ -1,3 +1,4 @@
+using Billiards.Core;
 using UnityEngine;
 
 namespace Billiards.Physics
@@ -30,7 +31,13 @@ namespace Billiards.Physics
                 return;
             }
 
-            bool show = drive != null && drive.BreakPlacementActive;
+            // ⚠ **首页/结算/设置/引导打开时一律不显示**（用户："主页面不要有闪白"）：
+            //   这些界面把球台当背景展示，开球提示在那里没有意义，只会变成脏斑。
+            bool modal = Billiards.UI.HomeView.IsOpen
+                         || Billiards.UI.PracticeResultView.IsOpen
+                         || Billiards.UI.PracticeHudView.IsSettingsOpen
+                         || Billiards.UI.PracticeHudView.IsOnboardingOpen;
+            bool show = drive != null && drive.BreakPlacementActive && !modal;
             if (_renderer.enabled != show)
             {
                 _renderer.enabled = show;
@@ -69,13 +76,15 @@ namespace Billiards.Physics
             float y1 = halfWidth - ballRadius;
             float z = 0.001f;   // 抬高 1 mm，避免与台呢 z-fighting
 
+            // ⚠ **必须走唯一转换点 `PoolGeometry.PhysicsToUnity`**：映射是 `(−px, h, −py)`。
+            //   之前直接写 `(x, z, y)` ⇒ X/Y 两个符号都反了 ⇒ 区域被画到**对角**（用户实机截图：闪白在脚端）。
             var mesh = new Mesh { name = "BreakZone" };
             mesh.SetVertices(new System.Collections.Generic.List<Vector3>
             {
-                new Vector3(x0, z, y0),
-                new Vector3(x1, z, y0),
-                new Vector3(x1, z, y1),
-                new Vector3(x0, z, y1),
+                PoolGeometry.PhysicsToUnity(new Vector2(x0, y0), z),
+                PoolGeometry.PhysicsToUnity(new Vector2(x1, y0), z),
+                PoolGeometry.PhysicsToUnity(new Vector2(x1, y1), z),
+                PoolGeometry.PhysicsToUnity(new Vector2(x0, y1), z),
             });
             mesh.SetColors(new System.Collections.Generic.List<Color>
             {
