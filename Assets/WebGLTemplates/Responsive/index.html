@@ -15,10 +15,27 @@
     #unity-progress-bar-full { width: 0%; height: 10px; border-radius: 5px; background: #C9A227; }
     #unity-warning { position: absolute; left: 50%; top: 5%; transform: translate(-50%);
       background: white; padding: 10px; display: none; }
+    /* 云排行榜（右上角）：不遮挡 Unity 画布主体，只在需要时展开。 */
+    #rank-toggle { position: absolute; right: 14px; top: 12px; z-index: 10;
+      padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(201,162,39,.55);
+      background: rgba(20,22,26,.78); color: #E8D9A8; font: 600 13px/1 Arial, sans-serif;
+      letter-spacing: .08em; cursor: pointer; user-select: none; }
+    #rank-panel { position: absolute; right: 14px; top: 54px; z-index: 10; width: 260px;
+      max-height: 60vh; overflow: auto; display: none; padding: 12px 14px;
+      border-radius: 12px; border: 1px solid rgba(201,162,39,.45);
+      background: rgba(18,20,24,.92); color: #EDE7DA; font: 12px/1.5 Arial, sans-serif; }
+    #rank-panel h3 { margin: 0 0 8px 0; font-size: 12px; letter-spacing: .14em;
+      color: #C9A227; text-transform: uppercase; }
+    #rank-panel ol { margin: 0; padding-left: 18px; }
+    #rank-panel li { margin: 3px 0; }
+    #rank-panel .muted { color: #8C8C8C; }
   </style>
 </head>
 <body>
   <div id="unity-container">
+    <div id="rank-toggle">RANK</div>
+    <div id="rank-panel"><h3>Leaderboard</h3><ol id="rank-list"></ol></div>
+
     <canvas id="unity-canvas" tabindex="-1"></canvas>
     <div id="unity-loading-bar">
       <div id="unity-logo"></div>
@@ -84,6 +101,89 @@
     }).catch((message) => {
       alert(message);
     });
+  </script>
+
+  <!-- 云服务 SDK（CDN 形式：本页无构建步骤）。 -->
+  <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+  <script>
+    // ── 云服务：练习成绩排行榜 ────────────────────────────────────────────────
+    // publicConfig 由开通云服务时下发（endpoint / oauthRelayBaseUrl / publishableKey）。
+    // ⚠ 这里**不含任何密钥**：publishableKey 只标识应用，服务端按 Origin 校验。
+    (function () {
+      const publicConfig = {
+        endpoint: "https://poolroom-8ball.app.workbuddy.host",
+        oauthRelayBaseUrl: "https://www.workbuddy.cn/v2/as/genie-baas/oauth",
+        publishableKey: "wbpk_bhMulmulphMH5feihXQZiM_oSp1wc7FWsV00fZrQCx3CPBUFi49Xshi"
+      };
+
+      const listEl = document.getElementById('rank-list');
+      const panelEl = document.getElementById('rank-panel');
+      const toggleEl = document.getElementById('rank-toggle');
+      let cloud = null;
+
+      function setList(rows) {
+        listEl.innerHTML = '';
+        if (!rows || !rows.length) {
+          const li = document.createElement('li');
+          li.className = 'muted';
+          li.textContent = '暂无记录 —— 打完一局练习就会出现在这里';
+          listEl.appendChild(li);
+          return;
+        }
+        rows.forEach(function (r) {
+          const li = document.createElement('li');
+          li.textContent = (r.player_name || 'Guest') + ' · ' + r.potted + ' 进袋 / ' +
+            r.shots + ' 杆' + (r.fouls ? ' · ' + r.fouls + ' 犯规' : '');
+          listEl.appendChild(li);
+        });
+      }
+
+      async function refresh() {
+        if (!cloud) return;
+        const { data, error } = await cloud.database.from('practice_scores')
+          .select('player_name, shots, potted, fouls, created_at')
+          .order('potted', { ascending: false })
+          .order('shots', { ascending: true })
+          .limit(8);
+        if (error) { console.warn('[PoolCloud] read failed', error); setList(null); return; }
+        setList(data);
+      }
+
+      async function submitScore(shots, potted, fouls, cleared) {
+        if (!cloud) return;
+        const name = 'Guest-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+        const { error } = await cloud.database.from('practice_scores').insert({
+          player_name: name,
+          shots: shots, potted: potted, fouls: fouls,
+          outcome: cleared ? 'cleared' : 'ended'
+        });
+        if (error) { console.warn('[PoolCloud] insert failed', error); return; }
+        await refresh();
+      }
+
+      window.PoolCloud = { submitScore: submitScore, refresh: refresh };
+
+      toggleEl.addEventListener('click', function () {
+        const open = panelEl.style.display === 'block';
+        panelEl.style.display = open ? 'none' : 'block';
+        if (!open) refresh();
+      });
+
+      try {
+        if (window.WorkBuddyCloud && window.WorkBuddyCloud.createWorkBuddyCloud) {
+          cloud = window.WorkBuddyCloud.createWorkBuddyCloud({
+            endpoint: publicConfig.endpoint,
+            oauthRelayBaseUrl: publicConfig.oauthRelayBaseUrl,
+            publishableKey: publicConfig.publishableKey
+          });
+          refresh();
+        } else {
+          console.warn('[PoolCloud] SDK 未加载，排行榜不可用（不影响单机玩法）');
+        }
+      } catch (e) {
+        console.warn('[PoolCloud] init failed', e);
+      }
+    })();
   </script>
 </body>
 </html>

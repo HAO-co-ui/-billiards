@@ -479,6 +479,11 @@ namespace Billiards.UI
             Present(MatchResultForm.None, outcome == RackOutcome.TableCleared,
                 PracticeSession.OutcomeTitle(outcome), MatchResultCopy.BadgePractice);
             ApplyStats(snapshot);
+
+            // **云服务上报**（仅 WebGL 生效）：一局练习结束时把成绩写进云排行榜。
+            // 结算卡是"这局收口"的唯一落点 ⇒ 上报也只在这里发一次（不绑在按钮上，避免重复上报）。
+            PoolCloudBridge.SubmitPracticeScore(snapshot.shots, snapshot.pots, snapshot.fouls,
+                outcome == RackOutcome.TableCleared);
         }
 
         /// <summary>
