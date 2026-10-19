@@ -134,7 +134,9 @@ namespace Billiards.Physics
                 return;
             }
 
-            if (drive.PendingCueBallPlacement || drive.BreakPlacementActive)
+            // ⚠ **开球摆球期必须允许蓄力**：此前这里把 `BreakPlacementActive` 也挡掉了 ⇒
+            //   开局第一杆"拉不动"（实机反馈）。摆球与蓄力是两件事：摆球只改白球位置，蓄力只改力度。
+            if (drive.PendingCueBallPlacement)
             {
                 return;
             }

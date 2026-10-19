@@ -428,7 +428,29 @@ namespace Billiards.UI
 
         private void Update()
         {
+            UpdateChargeAreaVisibility();
             Refresh();
+        }
+
+        /// <summary>
+        /// **蓄力区显隐的唯一控制点**：首页 / 结算 / 设置 / 引导打开时整块隐藏
+        /// （用户实机：主页面也出现了蓄力条，且那块区域会挡住顶部按钮）。
+        /// ⚠ 必须由 HUD 控制而不是组件自己 `SetActive`：**对象被隐藏后它自己的 `Update` 不再运行**，
+        ///   一旦隐藏就再也恢复不了。
+        /// </summary>
+        private void UpdateChargeAreaVisibility()
+        {
+            if (_chargeAreaRoot == null)
+            {
+                return;
+            }
+
+            bool modal = HomeView.IsOpen || PracticeResultView.IsOpen
+                         || IsSettingsOpen || IsOnboardingOpen;
+            if (_chargeAreaRoot.gameObject.activeSelf == modal)
+            {
+                _chargeAreaRoot.gameObject.SetActive(!modal);
+            }
         }
 
         /// <summary>
@@ -783,15 +805,82 @@ namespace Billiards.UI
             }
 
             // 顶部留出 18%：图标按钮在那一带，别被蓄力区挡住（按钮在射线顺序上更靠后会被吞）。
+            // ⚠ **顶部让出 38%**：顶部有品牌区与图标按钮（实测 18% 不够，按钮仍被挡住）。
             RectTransform area = AddRect(_canvas.transform, "ChargeArea",
-                new Vector2(0f, 0f), new Vector2(0.5f, 0.82f));
+                new Vector2(0f, 0f), new Vector2(0.5f, 0.62f));
             var image = area.gameObject.AddComponent<Image>();
             image.color = ClubUiTokens.Transparent;   // 透明，但仍参与射线命中（T124④：色值只走令牌）
             image.raycastTarget = true;
 
+            // **可见的力度条**（左侧细竖条 + 从下往上填充）：让玩家看得到当前力度；
+            // 整块左半屏仍是可拖区域（不必精确按在这根条上）。
+            RectTransform track = AddFramed(area, "ChargeTrack",
+                new Vector2(0.022f, 0.18f), new Vector2(0.040f, 0.82f),
+                ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
+            track.GetComponent<Image>().raycastTarget = false;
+
+            RectTransform fill = AddRect(track, "Fill", Vector2.zero, Vector2.one);
+            SetImage(fill.gameObject.AddComponent<Image>(), null, ClubUiTokens.Accent);
+            fill.GetComponent<Image>().raycastTarget = false;
+
+            _chargeAreaRoot = area;
             var charge = area.gameObject.AddComponent<ChargeArea>();
             charge.power = power;
+            charge.fill = fill;   // ⚠ 填在 `area` 里但坐标是相对 `track` 的父级 ⇒ 见 ChargeArea 的 Apply
+
+            BuildFineAimButtons();
+
+            // **手机端不再显示右上角的 POWER 面板**（用户要求：力度改到左边手动调节；电脑端不变）。
+            if (_power != null)
+            {
+                _power.gameObject.SetActive(false);
+            }
         }
+
+        /// <summary>左侧蓄力区根节点（**显隐由 <see cref="UpdateChargeAreaVisibility"/> 单点控制**）。</summary>
+        private RectTransform _chargeAreaRoot;
+
+        /// <summary>
+        /// **瞄准精调**（仅触摸设备）：右侧一对 `−` / `+` 小按钮，单击把瞄准角微调
+        /// <see cref="FineAimStepDegrees"/> 度。触摸拖拽很难压到 0.1° 级，所以给一对点按按钮兜底。
+        /// </summary>
+        private void BuildFineAimButtons()
+        {
+            var drive = FindObjectOfType<Billiards.Physics.PhysicsTestDrive>();
+            if (drive == null)
+            {
+                return;
+            }
+
+            float w = 0.052f;
+            float h = 0.075f;
+            for (int i = 0; i < 2; i++)
+            {
+                bool plus = i == 0;
+                string name = plus ? "FineAimPlus" : "FineAimMinus";
+                RectTransform btn = AddFramed(_canvas.transform, name,
+                    new Vector2(0.936f, plus ? 0.56f : 0.40f),
+                    new Vector2(0.936f + w, plus ? 0.56f + h : 0.40f + h),
+                    ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
+                var img = btn.GetComponent<Image>();
+                img.raycastTarget = true;
+
+                CreateText(btn, "Label", titleFont, 26f, ClubUiTokens.Text,
+                    TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = plus ? "+" : "-";
+
+                var button = btn.gameObject.AddComponent<Button>();
+                button.targetGraphic = img;
+                float delta = plus ? FineAimStepDegrees : -FineAimStepDegrees;
+                button.onClick.AddListener(() =>
+                {
+                    drive.aimDegrees += delta;
+                    drive.SyncAimIndicator();
+                });
+            }
+        }
+
+        /// <summary>精调步长（度）：0.05° ≈ 远台 1–2 cm 的落点差，够细且点得动。</summary>
+        private const float FineAimStepDegrees = 0.05f;
 
         /// <summary>
         /// **触摸设备的图标按钮放大系数**：手机横屏下画布只有 ~0.36 倍 ⇒ 38 px 设计尺寸约 14 CSS px，
