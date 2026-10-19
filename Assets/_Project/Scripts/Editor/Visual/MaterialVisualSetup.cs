@@ -244,8 +244,11 @@ namespace Billiards.EditorTools
             Configure(m, "Cue_Pool");
             m.SetTexture("_BaseMap", LoadTexture(CueTexPath, "cue"));
             m.SetColor("_BaseColor", Color.white);
-            m.SetFloat("_Metallic", 0f);
-            m.SetFloat("_Smoothness", 0.55f);
+            // **与资产现值同步**：P17 把球杆漆面反光调成 0.78/0.1，但那次只改了 `Cue_Pool.mat`、
+            // **没改本生成器** ⇒ 重跑本方法会把球杆外观静默降回 0.55/0（"重建材质 = 观感变更"）。
+            // 这里补齐单一真源；改观感只改这两行（并同步资产）。
+            m.SetFloat("_Metallic", 0.1f);
+            m.SetFloat("_Smoothness", 0.78f);
             m.SetFloat("_Surface", 0f);
             m.SetFloat("_AlphaClip", 0f);
             m.renderQueue = (int)RenderQueue.Geometry;

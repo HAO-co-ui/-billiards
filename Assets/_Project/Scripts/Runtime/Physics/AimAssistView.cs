@@ -117,7 +117,8 @@ namespace Billiards.Physics
 
         /// <summary>
         /// **白线的外发光**（同一条折线、更宽更淡、画在主线下层）。
-        /// 复用同一个 `_runtimeLineMaterial` ⇒ **不新增材质**（材质数 30/30 零余量）。
+        /// 复用同一个 `_runtimeLineMaterial` ⇒ **不新增材质**（材质数 30/30 零余量）；
+        /// 该实例来自 <see cref="RuntimeLineMaterial.Shared"/>（与 `PoolVfxView` **同一份**，跨类不再各建）。
         /// </summary>
         private LineRenderer _pathGlow;
 
@@ -343,14 +344,9 @@ namespace Billiards.Physics
                 return;
             }
 
-            if (_runtimeLineMaterial == null)
-            {
-                Shader shader = Shader.Find("Sprites/Default");
-                if (shader != null)
-                {
-                    _runtimeLineMaterial = new Material(shader);
-                }
-            }
+            // **共享材质单点**（与 `PoolVfxView` 同一实例）：各建一份会在
+            // `SmokeProbeRunner.SampleScenePeaks` 里各算一个 distinct material ⇒ 撞 30/30 零余量预算。
+            _runtimeLineMaterial = RuntimeLineMaterial.Shared;
 
             float width = PredictionLineWidth * DrawScale(playfieldRoot);
 
@@ -775,14 +771,8 @@ namespace Billiards.Physics
         /// <summary>创建一条挂在可视野根下的标记线（局部坐标 = 规范坐标；颜色/宽度见常量与调用方）。</summary>
         private LineRenderer CreateMarkerLine(string markerName, Color color, int positions)
         {
-            if (_runtimeLineMaterial == null)
-            {
-                Shader shader = Shader.Find("Sprites/Default");
-                if (shader != null)
-                {
-                    _runtimeLineMaterial = new Material(shader);
-                }
-            }
+            // **共享材质单点**：与 `PoolVfxView` 同一 `Sprites/Default` 实例（理由见 `RuntimeLineMaterial`）。
+            _runtimeLineMaterial = RuntimeLineMaterial.Shared;
 
             var go = new GameObject(markerName);
             go.transform.SetParent(playfieldRoot, false);

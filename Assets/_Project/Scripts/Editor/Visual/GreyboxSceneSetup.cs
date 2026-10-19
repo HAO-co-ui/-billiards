@@ -885,6 +885,11 @@ namespace Billiards.EditorTools
 
             RemoveAllColliders(cue);
 
+            // **材质接线**：球杆模型走 `materialImportMode=None`（美术侧禁止导入器自动建材质），
+            // 材质由 `MaterialVisualSetup` 手工建在 `Materials/Cue_Pool.mat` ⇒ 生成器必须显式赋给渲染器。
+            // ⚠ 旧实现漏了这一步 ⇒ 场景里的球杆渲染器 `sharedMaterial == null`，实机表现为"球杆没有材质"。
+            AssignCueMaterial(cue);
+
             var rootGo = new GameObject(CueStickRootObjectName);
             rootGo.transform.SetParent(parent, false);
             rootGo.transform.localPosition = Vector3.zero;
@@ -896,6 +901,78 @@ namespace Billiards.EditorTools
             cue.transform.localRotation = CueModelLocalRotation;
             cue.transform.localScale = Vector3.one;
             return rootGo.transform;
+        }
+
+        /// <summary>
+        /// 球杆模型材质接线的**唯一实现点**：把 <see cref="MaterialVisualSetup.CueMaterialPath"/> 赋给
+        /// 模型实例下全部 `MeshRenderer`，并在预制体实例上记录覆盖（场景保存后即成为持久接线）。
+        ///
+        /// 与 `BuildBallObject` 的球材质写法同源。服务两条路径：
+        ///  · 场景生成器（<see cref="BuildCueModel"/>）：重建场景时自动带上；
+        ///  · 就地修复菜单（<see cref="RepairCueMaterialInOpenScene"/>）：场景已打开、不重建时用。
+        ///
+        /// 盲带：只处理 `MeshRenderer`（球杆模型为单渲染器、无 SkinnedMeshRenderer）。
+        /// </summary>
+        private static void AssignCueMaterial(GameObject cueModelRoot)
+        {
+            if (cueModelRoot == null)
+            {
+                return;
+            }
+
+            Material cueMaterial = AssetDatabase.LoadAssetAtPath<Material>(MaterialVisualSetup.CueMaterialPath);
+            if (cueMaterial == null)
+            {
+                Debug.LogWarning("[SCENE] 球杆材质缺失，球杆会以无材质外观出现：" + MaterialVisualSetup.CueMaterialPath);
+                return;
+            }
+
+            MeshRenderer[] renderers = cueModelRoot.GetComponentsInChildren<MeshRenderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                renderers[i].sharedMaterial = cueMaterial;
+                if (PrefabUtility.IsPartOfPrefabInstance(renderers[i]))
+                {
+                    PrefabUtility.RecordPrefabInstancePropertyModifications(renderers[i]);
+                }
+            }
+        }
+
+        /// <summary>
+        /// **就地修复球杆材质**（当前已打开的场景，不重建）：给每个
+        /// <see cref="Physics.CueStickController.stickInstance"/> 的模型子层套上 `Cue_Pool.mat`，
+        /// 并把所在场景标脏（由你确认后保存）。
+        ///
+        /// 为什么需要它：生成器侧的修复只对"下一次重建场景"生效，而重建会重排 fileID（本工程已知）；
+        /// 场景已经在编辑器里打开时，就地修复是零重建、零结构性风险的那条路。
+        /// </summary>
+        [MenuItem("Billiards/Visual/Repair Cue Material In Open Scene", false, 406)]
+        public static void RepairCueMaterialInOpenScene()
+        {
+            CueStickController[] controllers =
+                UnityEngine.Object.FindObjectsByType<CueStickController>(FindObjectsSortMode.None);
+            if (controllers.Length == 0)
+            {
+                Debug.LogWarning("[SCENE] 当前场景里没有 CueStickController，未做任何修改。");
+                return;
+            }
+
+            int fixedCount = 0;
+            for (int i = 0; i < controllers.Length; i++)
+            {
+                Transform stick = controllers[i].stickInstance;
+                if (stick == null)
+                {
+                    continue;
+                }
+
+                AssignCueMaterial(stick.gameObject);
+                EditorSceneManager.MarkSceneDirty(stick.gameObject.scene);
+                fixedCount++;
+            }
+
+            Debug.Log($"[SCENE] 球杆材质就地修复：{fixedCount} 个球杆实例已套用 "
+                      + MaterialVisualSetup.CueMaterialPath + "（记得保存场景）。");
         }
 
         private static Transform[] BuildRackVisuals(GameObject playfieldRoot, TableConfig config, GameObject cueBall)

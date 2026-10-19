@@ -2487,6 +2487,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: CueModel
       objectReference: {fileID: 0}
+    - target: {fileID: -7511558181221131132, guid: b6e14fdd3476a3f4ca84089c8c87cd58, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2bfe012357675f349a37ca6f21bb3b3d, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

@@ -1187,14 +1187,9 @@ namespace Billiards.Physics
                 return;
             }
 
-            if (_lineMaterial == null)
-            {
-                Shader shader = Shader.Find("Sprites/Default");
-                if (shader != null)
-                {
-                    _lineMaterial = new Material(shader);
-                }
-            }
+            // **共享材质单点**（与 `AimAssistView` 同一实例）：各建一份 = 多算一个 distinct material，
+            // 撞 `SmokeProbe.MaxDistinctMaterialCount = 30` 的零余量预算（球杆材质接入需要该额度）。
+            _lineMaterial = RuntimeLineMaterial.Shared;
 
             for (int i = 0; i < SlotCapacity; i++)
             {

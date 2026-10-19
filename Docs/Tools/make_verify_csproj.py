@@ -55,6 +55,8 @@ TARGETS = [
         "Billiards.Runtime.csproj",
         "Billiards.Runtime-verify",
         [r"Assets\_Project\Scripts\Runtime\Physics\ShotPredictionWorkspace.cs",
+         # 球杆材质接入配套：瞄准线/特效线共享材质单点（材质预算 30/30 零余量）
+         r"Assets\_Project\Scripts\Runtime\Physics\RuntimeLineMaterial.cs",
          # 35-C P6（UI 侧）：结算卡两形态的文案/配色单点 + "回到首页"接缝
          r"Assets\_Project\Scripts\Runtime\UI\MatchResultCopy.cs",
          r"Assets\_Project\Scripts\Runtime\UI\HomeSeams.cs"],
