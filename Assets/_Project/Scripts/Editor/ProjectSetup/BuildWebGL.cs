@@ -46,8 +46,11 @@ namespace Billiards.EditorTools
                 return;
             }
 
-            // 联机验证用：关压缩，让 `python -m http.server` 之类的静态服务器能直接跑。
-            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
+            // **Gzip 压缩**（用户反馈"打开有点卡"）：之前关压缩是为了局域网静态服务器能直接跑，
+            // 代价是首屏要下 75 MB（wasm 44 MB + data 31 MB）。改为 Gzip 后体积约降到 1/4。
+            // ⚠ 保留 `decompressionFallback = true`：**不依赖服务器返回 `Content-Encoding`**
+            //   —— 缺头时 Unity 的加载器会自己解压（多花一点 CPU，但任何静态托管都能跑）。
+            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
             PlayerSettings.WebGL.decompressionFallback = true;
             // 画布自适应（PC 与手机浏览器都要铺满）。
             PlayerSettings.defaultWebScreenWidth = 1280;
@@ -73,12 +76,19 @@ namespace Billiards.EditorTools
             string dir = Path.GetFullPath(OutputRelativePath);
             string indexHtml = Path.Combine(dir, "index.html");
             string buildDir = Path.Combine(dir, "Build");
+            // ⚠ 开压缩后产物改名成 `*.wasm.unityweb` / `*.data.unityweb` ⇒ 自检必须两种命名都认，
+            //   否则构建成功却报 `artifactsOk=false`（退出码 3），把"压缩生效"误判成"构建失败"。
             string wasm = Directory.Exists(buildDir)
-                ? Directory.GetFiles(buildDir, "*.wasm").Length > 0 ? Directory.GetFiles(buildDir, "*.wasm")[0] : null
+                ? (Directory.GetFiles(buildDir, "*.wasm").FirstOrDefault()
+                   ?? Directory.GetFiles(buildDir, "*.wasm.unityweb").FirstOrDefault())
                 : null;
-            string data = Directory.Exists(buildDir) ? Directory.GetFiles(buildDir, "*.data").FirstOrDefault() : null;
+            string data = Directory.Exists(buildDir)
+                ? (Directory.GetFiles(buildDir, "*.data").FirstOrDefault()
+                   ?? Directory.GetFiles(buildDir, "*.data.unityweb").FirstOrDefault())
+                : null;
             string framework = Directory.Exists(buildDir)
-                ? Directory.GetFiles(buildDir, "*.framework.js").FirstOrDefault()
+                ? (Directory.GetFiles(buildDir, "*.framework.js").FirstOrDefault()
+                   ?? Directory.GetFiles(buildDir, "*.framework.js.unityweb").FirstOrDefault())
                 : null;
             string loader = Directory.Exists(buildDir) ? Directory.GetFiles(buildDir, "*.loader.js").FirstOrDefault() : null;
 
