@@ -123,6 +123,74 @@ namespace Billiards.Physics
         /// </summary>
         public static bool AnyChargingWithPointer { get; private set; }
 
+        /// <summary>本帧是否由**左侧竖向蓄力杆**驱动（移动端专用；与右键/手指拉杆互斥）。</summary>
+        private bool _leverCharging;
+
+        /// <summary>蓄力杆按下：走与右键**同一套门**（静止 / 非待放 / 非开球摆球 / 回合放行）。</summary>
+        public void BeginLeverCharge()
+        {
+            if (drive == null || drive.Simulator == null || !drive.Simulator.TableAtRest)
+            {
+                return;
+            }
+
+            if (drive.PendingCueBallPlacement || drive.BreakPlacementActive)
+            {
+                return;
+            }
+
+            if (!drive.TryConsumePlayerInput())
+            {
+                return;
+            }
+
+            IsCharging = true;
+            _leverCharging = true;
+            _chargeWithLeft = false;
+            AnyChargingWithPointer = true;   // 瞄准让位：手指在杆上，不该同时改方向
+            _chargeBeginRequested = true;
+            drive.power = 0f;
+        }
+
+        /// <summary>蓄力杆拖动：直接写力度（1:1，无惯性）。</summary>
+        public void SetLeverPower(float value)
+        {
+            if (_leverCharging)
+            {
+                drive.power = Mathf.Clamp01(value);
+            }
+        }
+
+        /// <summary>蓄力杆松手：过阈值出杆（复用球杆前推动画 / 直接出杆兜底），否则取消并归零。</summary>
+        public void EndLeverCharge(float value)
+        {
+            if (!_leverCharging)
+            {
+                return;
+            }
+
+            _leverCharging = false;
+            IsCharging = false;
+            AnyChargingWithPointer = false;
+
+            if (value >= launchThreshold)
+            {
+                if (cueStick != null)
+                {
+                    _strikeRequested = true;
+                }
+                else
+                {
+                    drive.Launch();
+                }
+            }
+            else
+            {
+                _chargeCancelRequested = true;
+                drive.power = 0f;
+            }
+        }
+
         /// <summary>触摸蓄力的"抓住白球"半径（CSS/屏幕像素）。</summary>
         private const float ChargeGrabPixels = 64f;
 
