@@ -493,6 +493,21 @@ namespace Billiards.Physics
         /// <summary>是否已写过颜色（`Color.white` 本身也是合法请求值 ⇒ 不能用魔数当"未初始化"）。</summary>
         private bool _hasLastTint;
 
+        /// <summary>关掉某物体全部渲染器的**投射**（保留接收阴影）。</summary>
+        private static void DisableShadowCasting(GameObject root)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            foreach (MeshRenderer r in root.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = true;
+            }
+        }
+
         private void EnsureStick()
         {
             if (_stick != null)
@@ -505,6 +520,11 @@ namespace Billiards.Physics
             {
                 _stick = stickInstance;
                 _stickRenderer = stickInstance.GetComponentInChildren<MeshRenderer>(true);
+                // **球杆不投影**（用户实机反馈：杆在台面上拖出一条巨大而模糊的影子，像一块脏斑）。
+                // 真实台球里杆确实会有影子，但本工程的灯是软阴影 + 低分辨率，
+                // 一根 1.4 m 的细杆会投出**成片的软影**，观感是 bug 而不是阴影。
+                // ⇒ 杆只接收、不投射；球仍投影，台面接触感不受影响。
+                DisableShadowCasting(stickInstance.gameObject);
                 return;
             }
 
