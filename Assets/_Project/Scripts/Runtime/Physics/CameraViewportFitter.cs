@@ -119,7 +119,12 @@ namespace Billiards.Physics
 
             float aspect = CurrentAspect();
             _lastAspect = aspect;
-            targetCamera.fieldOfView = ResolveVerticalFovDeg(aspect, baseAspect, baseVerticalFovDeg, maxVerticalFovDeg);
+
+            // **竖屏放宽上限**（真自适应）：串行化的 `maxVerticalFovDeg`（场景里是 100°）是按横屏留的余量；
+            // 竖屏（aspect < 1）要保住同样的**水平**覆盖需要 ≈124°。这里只对竖屏抬到 130°，
+            // 横屏仍用原上限 —— 避免超宽屏被无意拉宽视角。
+            float cap = aspect < 1f ? Mathf.Max(maxVerticalFovDeg, 130f) : maxVerticalFovDeg;
+            targetCamera.fieldOfView = ResolveVerticalFovDeg(aspect, baseAspect, baseVerticalFovDeg, cap);
         }
 
         private float CurrentAspect()

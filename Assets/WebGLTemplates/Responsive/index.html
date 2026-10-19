@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes">
+  <title>Idea35 Pool Room</title>
+  <style>
+    /* **真自适应模板**：画布永远铺满可视区（默认模板在"桌面样式"下写死 1280×720 ⇒ 小窗口/平板会被裁）。 */
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #231F20; overflow: hidden; }
+    #unity-container { position: fixed; inset: 0; width: 100%; height: 100%; }
+    #unity-canvas { display: block; width: 100%; height: 100%; background: #231F20; }
+    #unity-loading-bar { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; }
+    #unity-logo { width: 60px; height: 6px; margin: 0 auto 12px auto; border-radius: 3px; background: #C9A227; }
+    #unity-progress-bar-empty { width: 240px; height: 10px; border-radius: 5px; background: #3A3436; overflow: hidden; }
+    #unity-progress-bar-full { width: 0%; height: 10px; border-radius: 5px; background: #C9A227; }
+    #unity-warning { position: absolute; left: 50%; top: 5%; transform: translate(-50%);
+      background: white; padding: 10px; display: none; }
+  </style>
+</head>
+<body>
+  <div id="unity-container">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="unity-loading-bar">
+      <div id="unity-logo"></div>
+      <div id="unity-progress-bar-empty"><div id="unity-progress-bar-full"></div></div>
+    </div>
+    <div id="unity-warning"></div>
+  </div>
+
+  <script src="Build/{{{ LOADER_FILENAME }}}"></script>
+  <script>
+    var container = document.querySelector("#unity-container");
+    var canvas = document.querySelector("#unity-canvas");
+    var loadingBar = document.querySelector("#unity-loading-bar");
+    var progressBarFull = document.querySelector("#unity-progress-bar-full");
+    var warningBanner = document.querySelector("#unity-warning");
+
+    function unityShowBanner(msg, type) {
+      function updateBannerVisibility() {
+        warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+      }
+      var div = document.createElement('div');
+      div.innerHTML = msg;
+      warningBanner.appendChild(div);
+      if (type == 'error') div.style.cssText = 'background: red; padding: 10px;';
+      else { if (type == 'warning') div.style.cssText = 'background: yellow; padding: 10px;';
+             setTimeout(function() { warningBanner.removeChild(div); updateBannerVisibility(); }, 5000); }
+      updateBannerVisibility();
+    }
+
+    var buildUrl = "Build";
+    var config = {
+      dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
+      frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
+      codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
+#if MEMORY_FILENAME
+      memoryUrl: buildUrl + "/{{{ MEMORY_FILENAME }}}",
+#endif
+#if SYMBOLS_FILENAME
+      symbolsUrl: buildUrl + "/{{{ SYMBOLS_FILENAME }}}",
+#endif
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: {{{ JSON.stringify(COMPANY_NAME) }}},
+      productName: {{{ JSON.stringify(PRODUCT_NAME) }}},
+      productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},
+      showBanner: unityShowBanner,
+    };
+
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      var meta = document.createElement('meta');
+      meta.name = 'viewport';
+      meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+      document.getElementsByTagName('head')[0].appendChild(meta);
+      container.className = "unity-mobile";
+      canvas.className = "unity-mobile";
+    }
+
+    loadingBar.style.display = "block";
+
+    createUnityInstance(canvas, config, (progress) => {
+      progressBarFull.style.width = 100 * progress + "%";
+    }).then((unityInstance) => {
+      loadingBar.style.display = "none";
+    }).catch((message) => {
+      alert(message);
+    });
+  </script>
+</body>
+</html>

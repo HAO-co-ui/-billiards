@@ -61,12 +61,15 @@ TARGETS = [
          r"Assets\_Project\Scripts\Runtime\Physics\BreakZoneView.cs",
          # 35-C P6（UI 侧）：结算卡两形态的文案/配色单点 + "回到首页"接缝
          r"Assets\_Project\Scripts\Runtime\UI\MatchResultCopy.cs",
-         r"Assets\_Project\Scripts\Runtime\UI\HomeSeams.cs"],
+         r"Assets\_Project\Scripts\Runtime\UI\HomeSeams.cs",
+         # 画布自适应（横屏按高、竖屏按宽）
+         r"Assets\_Project\Scripts\Runtime\UI\ResponsiveCanvasScaler.cs"],
     ),
     (
         "Billiards.Editor.csproj",
         "Billiards.Editor-verify",
-        [],
+        [# WebGL 构建入口（联机/网页验证用；Unity 生成清单不会自动收录新文件）
+         r"Assets\_Project\Scripts\Editor\ProjectSetup\BuildWebGL.cs"],
     ),
     (
         "Billiards.Tests.EditMode.csproj",

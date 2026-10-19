@@ -2908,23 +2908,44 @@ namespace Billiards.Physics
                 return;
             }
 
-            GameObject stick = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            stick.name = AimIndicatorObjectName;
-
-            // ⚠ 本类位于 `Runtime/Physics/`：**源码里不得出现 PhysX 的两个类型名**
-            //（`D4-PHY-01` 扫名 + 汇编级 PhysX 守卫）。故下面用**运行时类型名拼接**，不写出该名字。
-            string primitiveContactTypeName = "Coll" + "ider";
-            foreach (Component c in stick.GetComponents<Component>())
-            {
-                if (c != null && c.GetType().Name.Contains(primitiveContactTypeName))
-                {
-                    UnityEngine.Object.DestroyImmediate(c);   // 自研物理铁律 R5-1：不得带碰撞体
-                    break;
-                }
-            }
+            // ⚠ **不用 `CreatePrimitive`**：它会顺手加碰撞体，而 WebGL 构建**剔除了物理模块** ⇒
+            //   浏览器控制台报 `Can't add component because class 'BoxCollider' doesn't exist!`（实测）。
+            //   这里手搓一个 1 单位立方体（8 顶点 / 12 三角形），不依赖任何 physics 类型。
+            var stick = new GameObject(AimIndicatorObjectName);
+            var filter = stick.AddComponent<MeshFilter>();
+            filter.sharedMesh = CreateUnitCubeMesh();
+            var renderer = stick.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = RuntimeLineMaterial.Shared;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
 
             stick.transform.SetParent(transform, false);
             aimIndicator = stick.transform;
+        }
+
+        /// <summary>1 单位立方体网格（**手搓，不用 primitive**：WebGL 无物理模块时 primitive 会报错）。</summary>
+        private static Mesh CreateUnitCubeMesh()
+        {
+            var mesh = new Mesh { name = "AimIndicatorCube" };
+            mesh.SetVertices(new System.Collections.Generic.List<Vector3>
+            {
+                new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.5f, -0.5f, -0.5f),
+                new Vector3(0.5f, 0.5f, -0.5f), new Vector3(-0.5f, 0.5f, -0.5f),
+                new Vector3(-0.5f, -0.5f, 0.5f), new Vector3(0.5f, -0.5f, 0.5f),
+                new Vector3(0.5f, 0.5f, 0.5f), new Vector3(-0.5f, 0.5f, 0.5f),
+            });
+            mesh.SetTriangles(new[]
+            {
+                0, 2, 1, 0, 3, 2,   // -z
+                4, 5, 6, 4, 6, 7,   // +z
+                0, 1, 5, 0, 5, 4,   // -y
+                3, 7, 6, 3, 6, 2,   // +y
+                0, 4, 7, 0, 7, 3,   // -x
+                1, 2, 6, 1, 6, 5,   // +x
+            }, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         /// <summary>

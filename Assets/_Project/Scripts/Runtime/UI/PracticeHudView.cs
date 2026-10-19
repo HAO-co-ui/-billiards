@@ -457,6 +457,10 @@ namespace Billiards.UI
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = PracticeHudLayout.MatchWidthOrHeight;
 
+            // **真自适应**（用户裁定）：横屏按高度、竖屏按宽度 —— 见 `ResponsiveCanvasScaler` 的注释。
+            // ⚠ 它会在 `Awake/Update` 里覆盖上面那行 match；这里保留默认值只为"组件未生效时的兜底口径"。
+            canvasGo.AddComponent<ResponsiveCanvasScaler>();
+
             // 射线器：**结算卡的按钮**与右上两个开关需要它
             // （本画布是全场景唯一带射线器的画布，`T102 (c)` 守）。
             canvasGo.AddComponent<GraphicRaycaster>();
