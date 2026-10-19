@@ -49,7 +49,10 @@ namespace Billiards.Physics
         public const float PredictionGapLength = 0f;
 
         /// <summary>线宽（**规范米**）。世界宽 = 本值 × <see cref="DrawScale"/>。</summary>
-        public const float PredictionLineWidth = 0.006f;
+        // **加粗一档**（用户实机：瞄准线"有点糊"）。0.006 → 0.0072 m（×DrawScale 1.2 ⇒ 世界 8.6 mm）。
+        // 线条只有 3–4 px 宽时，边缘的半透明抗锯齿像素占比过大 ⇒ 观感是"糊"而不是"细"。
+        // ⚠ **必须严格小于 `PoolVfxView.LineWidth`**（T115②：特效要比瞄准线粗，否则"更粗 = 是特效"失效）。
+        public const float PredictionLineWidth = 0.0072f;
 
         /// <summary>目标球出射线段长度（**规范米**，与 `PhysicsTestDrive.aimIndicatorLength = 0.55` 同量级）。</summary>
         public const float TargetLineLength = 0.40f;
@@ -83,7 +86,8 @@ namespace Billiards.Physics
         private static readonly Color GlowColor = new Color(0.98f, 0.96f, 0.90f, 0.12f);
 
         /// <summary>发光宽度 = 主线宽 × 本系数（约 2.6 倍 ⇒ 边缘一圈柔光）。</summary>
-        private const float GlowWidthFactor = 2.6f;
+        // **光晕收窄**：2.6 → 2.1。光晕是半透明的，太宽会把细芯糊成一条毛边（"糊"的另一半原因）。
+        private const float GlowWidthFactor = 2.1f;
 
         /// <summary>
         /// 白线**抬离台布的高度**（米）。线原本与台呢共面 ⇒ 深度测试打架 ⇒ 实机看到断续的"一段段"。
