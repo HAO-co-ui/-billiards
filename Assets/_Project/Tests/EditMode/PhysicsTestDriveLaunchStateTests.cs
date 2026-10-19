@@ -4295,5 +4295,65 @@ namespace Billiards.Tests
 
             return values;
         }
+        /// <summary>
+        /// **T182：开球前摆球（用户规则）** —— 白球只能在**开球线后方**任意位置摆；第一杆之后摆球期结束。
+        /// 负路径：线前的点必须被拒（否则"随便放"会变成"全台随便放"）。
+        /// </summary>
+        [Test]
+        public void T182_BreakPlacement_KitchenOnly_AndEndsAfterFirstLaunch()
+        {
+            var go = new GameObject("T182Drive");
+            try
+            {
+                PhysicsTestDrive drive = NewDrive(go, rack: true);
+                AdvanceToRest(drive, RestCap);
+
+                var failures = new List<string>();
+                if (!drive.BreakPlacementActive)
+                {
+                    failures.Add("T182①：新局开局应处于**开球摆球期**（`BreakPlacementActive` 为 true）。");
+                }
+
+                var beforeLine = new Vector2(PoolConstants.KitchenLineX - 0.05f, 0.0f);
+                if (drive.TryPlaceCueBallAtBreak(beforeLine))
+                {
+                    failures.Add("T182②：开球线**前**的落点必须被拒（球心须严格在线后）。");
+                }
+
+                var behindLine = new Vector2(PoolConstants.KitchenLineX + 0.08f, 0.35f);
+                if (!drive.TryPlaceCueBallAtBreak(behindLine))
+                {
+                    failures.Add("T182③：开球线**后**的合法落点应被接受。");
+                }
+                else
+                {
+                    Assert.AreEqual(RVec(behindLine), RVec(drive.Simulator.Balls[0].position),
+                        "T182③：白球必须落在**玩家指定的那一点**（逐位，容差 0）。");
+                }
+
+                // ⚠ 摆完球要重新等到"静止"：`Launch` 有 `TableAtRest` 门，而 `PlaceBall` 会重置静止计数。
+                AdvanceToRest(drive, RestCap);
+
+                drive.aimDegrees = 180f;
+                drive.power = 0.25f;
+                Assert.Greater(drive.Launch().magnitude, 0f, "T182④：摆球期**不挡出杆**（不摆也能直接开）。");
+
+                if (drive.BreakPlacementActive)
+                {
+                    failures.Add("T182⑤：第一杆之后摆球期必须结束（否则每杆都能挪白球 = 作弊）。");
+                }
+
+                if (drive.TryPlaceCueBallAtBreak(new Vector2(PoolConstants.KitchenLineX + 0.10f, 0.0f)))
+                {
+                    failures.Add("T182⑥：摆球期结束后 `TryPlaceCueBallAtBreak` 必须返回 false。");
+                }
+
+                Assert.IsEmpty(failures, "T182 失败：\n" + string.Join("\n", failures));
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
     }
 }

@@ -249,6 +249,13 @@ namespace Billiards.Physics
         public bool IsWaitingForPlacement => PendingCueBallPlacement;
 
         /// <summary>
+        /// **开球摆球期**（用户规则）：每局开球前，白球可在**开球线后方任意位置**摆放。
+        /// 与 `PendingCueBallPlacement` **刻意分开**：那是"必须放好才能出杆"，这是"**可以**挪、不挪也能直接开球"。
+        /// 置 true：每局重置（`Initialize` / `ReloadRack`）；置 false：本局**第一杆成功出杆**。
+        /// </summary>
+        public bool BreakPlacementActive { get; private set; }
+
+        /// <summary>
         /// **必须先把白球放好才能出杆**（**单一真源**，驱动 **球杆 / 瞄准线 / 悬浮 / 拒杆** 四处）。
         ///
         /// 判据：待放置 **且**（球已离台 **或** 当前位置不合法）。
@@ -451,6 +458,8 @@ namespace Billiards.Physics
             ruleState = new RuleState();
             BallInHand = BallInHandKind.None;
             PendingCueBallPlacement = false;
+            // **开球摆球期开始**（用户规则）：本局第一杆之前，白球可在开球线后方任意位置摆放。
+            BreakPlacementActive = true;
             AiPhase = AiShotPhase.None;
             _aiPhaseElapsed = 0f;
             _aiThinkElapsed = 0f;
@@ -496,6 +505,8 @@ namespace Billiards.Physics
             ruleState = new RuleState();
             BallInHand = BallInHandKind.None;
             PendingCueBallPlacement = false;
+            // **开球摆球期开始**（用户规则）：本局第一杆之前，白球可在开球线后方任意位置摆放。
+            BreakPlacementActive = true;
             AiPhase = AiShotPhase.None;
             _aiPhaseElapsed = 0f;
             _aiThinkElapsed = 0f;
@@ -1517,6 +1528,9 @@ namespace Billiards.Physics
         private AiShotContext _aiPlanContext;
         private int _aiPlanSeed;
 
+        /// <summary>开球摆球区提示（首次同步时懒建）。</summary>
+        private BreakZoneView _breakZone;
+
         private bool BeginAiShot()
         {
             // 种子：**注入位**优先（判据可复现）；否则每杆真随机 ⇒ 同一局不会每杆都一样。
@@ -2330,6 +2344,32 @@ namespace Billiards.Physics
         }
 
         /// <summary>
+        /// **开球前摆球**（用户规则）：把白球挪到开球线后方任意合法位置。
+        /// 与 `TryPlaceCueBall` 的区别：**不进/不依赖"待放态"**（不挡出杆），只在 <see cref="BreakPlacementActive"/> 期间可用。
+        /// 合法性**复用** `PoolSimulator.IsPlacementLegalInKitchen`（开球线后 + 台内 + 不压球 + 不在袋口）。
+        /// </summary>
+        public bool TryPlaceCueBallAtBreak(Vector2 position)
+        {
+            if (!BreakPlacementActive || _simulator == null || tableConfig == null || !_simulator.TableAtRest)
+            {
+                return false;
+            }
+
+            List<Vector2> occupied = BuildOccupiedForPlacement();
+            if (!PoolSimulator.IsPlacementLegalInKitchen(position, occupied, tableConfig.pockets,
+                    tableConfig.halfLength, tableConfig.halfWidth, PoolConstants.KitchenLineX))
+            {
+                RefusedPlacementCount++;   // 非法也留痕（不许静默）
+                return false;
+            }
+
+            _simulator.PlaceBall(0, position, Vector2.zero);
+            ResetVisualRotationTracking();
+            SyncVisual();
+            return true;
+        }
+
+        /// <summary>
         /// **兜底：把白球放回开球位**（<see cref="CueBallHomePosition"/>）并退出待放态。
         /// 由 `Launch()` 在待放球期间出杆时调用；也供 UI/按键挂钩（"放回原位"）。
         /// </summary>
@@ -2444,6 +2484,7 @@ namespace Billiards.Physics
             //   否则标志还在 ⇒ 用户会觉得"球老在飘"、下一杆又被当待放。
             PendingCueBallPlacement = false;
             BallInHand = BallInHandKind.None;
+            BreakPlacementActive = false;   // 开球摆球期只到**第一杆**为止
 
             // 只清**每杆计数**；逐球入袋记录是跨杆状态，**不得**在此抹掉（否则入袋球会复活）。
             _simulator.ResetDiagnostics();
@@ -2465,6 +2506,7 @@ namespace Billiards.Physics
 
         private void SyncVisual()
         {
+            EnsureBreakZone();   // 运行期懒建"开球摆球区"提示（首帧后即返回）
             if (_simulator == null)
             {
                 return;
@@ -2823,6 +2865,29 @@ namespace Billiards.Physics
         /// **按需创建**瞄准指示物（Game 视图可见；**无物理组件** —— 立即移除基元自带的碰撞体）。
         /// 用**细长立方体**而非 `LineRenderer`：只用默认材质、无材质/宽度曲线依赖 ⇒ 最朴素、开箱即用。
         /// </summary>
+        /// <summary>开球摆球区提示（懒建；只在运行期有球可视物时才有意义）。</summary>
+        private void EnsureBreakZone()
+        {
+            // ⚠ **只在运行期建**：这是纯视觉提示，EditMode 批处理里建出来会污染材质/渲染器计数判据
+            //   （`SmokeProbe` 的 distinctMaterialCount 是 30/30 零余量），且 batchmode 无渲染无意义。
+            if (!Application.isPlaying || _breakZone != null || _simulator == null || tableConfig == null)
+            {
+                return;
+            }
+
+            Transform parent = transform;
+            if (ballVisuals != null && ballVisuals.Length > 0 && ballVisuals[0] != null)
+            {
+                parent = ballVisuals[0].parent;
+            }
+
+            var go = new GameObject("BreakZone");
+            _breakZone = go.AddComponent<BreakZoneView>();
+            _breakZone.drive = this;
+            _breakZone.Build(parent, PoolConstants.KitchenLineX, tableConfig.halfLength, tableConfig.halfWidth,
+                PoolConstants.BallRadius);
+        }
+
         private void EnsureAimIndicator()
         {
             if (aimIndicator != null)

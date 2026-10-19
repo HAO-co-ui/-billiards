@@ -145,6 +145,14 @@ namespace Billiards.Physics
             // **全场自由球（待放球）让位**（第四个判据点）：白球不在场上时，"瞄准"没有对象
             // ⇒ 本组件**整体让位**，并**接管左键单击 = 放球**（见 `HandleCueBallPlacement`）。
             // 这样放球与右键蓄力（`PointerPowerController`）也不抢手势（那个组件在待放球期间同样让位）。
+            // **开球摆球期（用户规则）**：白球可直接拖动到开球线后方任意位置。
+            // 与"待放球"不同：**不挡出杆**，所以必须在瞄准分支**之前**单独接管"按住球拖"的手势；
+            // 只有按下点落在白球附近才接管，其余左键仍是正常瞄准（不抢手势）。
+            if (HandleBreakCueBallDrag())
+            {
+                return;
+            }
+
             if (drive.PendingCueBallPlacement)
             {
                 HandleCueBallPlacement();
@@ -197,6 +205,67 @@ namespace Billiards.Physics
 
             Vector2 direction = PointerAimSolver.AimDirectionPhysics(cuePhysics, targetPhysics);
             drive.aimDegrees = AimDegreesFromPhysicsDirection(direction, drive.aimDegrees);
+        }
+
+        /// <summary>开球摆球期：鼠标与白球的**屏幕距离**在这个像素内，按下即视为"抓住球"。</summary>
+        private const float breakGrabPixels = 48f;
+
+        private bool _breakDragging;
+
+        /// <summary>
+        /// **开球摆球期：按住白球拖动 ⇒ 摆到开球线后方任意位置**（用户规则）。
+        /// 返回 true 表示本帧输入已被本分支消费（`Update` 不再走瞄准）。
+        ///
+        /// 设计要点：
+        /// · **只有按下点落在白球附近**才接管 ⇒ 点别处仍是正常瞄准，不抢手势；
+        /// · 拖动过程中**逐帧**调 <see cref="PhysicsTestDrive.TryPlaceCueBallAtBreak"/>：非法点被拒（球停在上一个合法位置），
+        ///   与"放球窗口"的判据**同源**（`IsPlacementLegalInKitchen`），不另写一份；
+        /// · 松开左键即结束；**不消耗任何出杆输入**（出杆仍走 `PointerPowerController`）。
+        /// </summary>
+        private bool HandleBreakCueBallDrag()
+        {
+            if (drive == null || !drive.BreakPlacementActive || aimCamera == null || playfieldRoot == null
+                || drive.Simulator == null)
+            {
+                _breakDragging = false;
+                return false;
+            }
+
+            if (!_breakDragging)
+            {
+                if (!Input.GetMouseButtonDown(0))
+                {
+                    return false;
+                }
+
+                Vector2 cue = drive.Simulator.Balls[0].position;
+                Vector3 cueWorld = playfieldRoot.TransformPoint(new Vector3(cue.x, 0f, cue.y));
+                Vector3 cueScreen = aimCamera.WorldToScreenPoint(cueWorld);
+                if (cueScreen.z <= 0f)
+                {
+                    return false;
+                }
+
+                if (((Vector2)Input.mousePosition - (Vector2)cueScreen).magnitude > breakGrabPixels)
+                {
+                    return false;   // 没按在球上 ⇒ 交给瞄准
+                }
+
+                _breakDragging = true;
+            }
+
+            if (PointerAimSolver.TryPickPhysicsPoint(aimCamera, playfieldRoot, Input.mousePosition,
+                    out Vector2 physicsPoint))
+            {
+                drive.TryPlaceCueBallAtBreak(physicsPoint);
+            }
+
+            if (Input.GetMouseButtonUp(0))
+            {
+                _breakDragging = false;
+            }
+
+            return true;
         }
 
         /// <summary>
