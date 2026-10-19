@@ -1944,27 +1944,29 @@ namespace Billiards.UI
             backdropButton.targetGraphic = backdrop;
             backdropButton.onClick.AddListener(CloseSettings);
 
-            RectTransform card = AddFramed(root, "Card", new Vector2(0.345f, 0.27f), new Vector2(0.655f, 0.73f),
+            // **卡片收矮**（用户："下面空太多了"）：原来是 0.27–0.73（高 0.46），四行内容撑不满
+            // ⇒ 收到 0.34–0.66（高 0.32），让上下留白接近等距。
+            RectTransform card = AddFramed(root, "Card", new Vector2(0.345f, 0.34f), new Vector2(0.655f, 0.66f),
                 ClubUiTokens.LineStrong, ClubUiTokens.PanelStatus, ClubUiTokens.RadiusDialog);
 
-            CreateText(card, "Title", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Accent,
+            CreateText(card, "Title", titleFont, 15f, ClubUiTokens.Accent,
                 TextAlignmentOptions.Center, new Vector2(0.06f, 0.84f), new Vector2(0.94f, 0.97f))
                 .text = PracticeHudState.TitleSettings;
 
-            RectTransform divider = AddRect(card, "Divider", new Vector2(0.06f, 0.815f), new Vector2(0.94f, 0.815f));
+            RectTransform divider = AddRect(card, "Divider", new Vector2(0.06f, 0.775f), new Vector2(0.94f, 0.775f));
             divider.offsetMin = new Vector2(0f, -ClubUiTokens.Hairline);
             divider.offsetMax = Vector2.zero;
             SetImage(divider.gameObject.AddComponent<Image>(), null, ClubUiTokens.LineMid);
 
-            SettingsButtonRow(card, "BackToClub", PracticeHudState.ButtonBackToClub, 0.655f, 0.765f, OnBackToClub);
-            SettingsButtonRow(card, "Quit", PracticeHudState.ButtonQuit, 0.525f, 0.635f, OnQuitGame);
+            SettingsButtonRow(card, "BackToClub", PracticeHudState.ButtonBackToClub, 0.600f, 0.710f, OnBackToClub);
+            SettingsButtonRow(card, "Quit", PracticeHudState.ButtonQuit, 0.460f, 0.570f, OnQuitGame);
 
             // ── 音量：标签 + 可视轨道 + 百分比 + 两个圆角步进键 ────────────────
-            CreateText(card, "VolumeLabel", bodyFont, ClubUiTokens.FontCaption, ClubUiTokens.Muted,
-                TextAlignmentOptions.Left, new Vector2(0.06f, 0.16f), new Vector2(0.34f, 0.30f))
+            CreateText(card, "VolumeLabel", bodyFont, 12f, ClubUiTokens.Muted,
+                TextAlignmentOptions.Left, new Vector2(0.06f, 0.13f), new Vector2(0.34f, 0.27f))
                 .text = PracticeHudState.LabelVolume;
 
-            RectTransform minus = AddFramed(card, "VolumeDown", new Vector2(0.395f, 0.175f), new Vector2(0.475f, 0.285f),
+            RectTransform minus = AddFramed(card, "VolumeDown", new Vector2(0.395f, 0.145f), new Vector2(0.475f, 0.255f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusDialog);
             CreateText(minus, "Label", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
                 TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "-";
@@ -1976,15 +1978,15 @@ namespace Billiards.UI
             ApplyButtonTint(minusButton);
 
             // 轨道（只做视觉，不接收射线）：底色 + 按当前音量伸长的亮色条。
-            RectTransform rail = AddRect(card, "VolumeRail", new Vector2(0.50f, 0.205f), new Vector2(0.71f, 0.255f));
+            RectTransform rail = AddRect(card, "VolumeRail", new Vector2(0.50f, 0.175f), new Vector2(0.71f, 0.225f));
             SetImage(rail.gameObject.AddComponent<Image>(), null, ClubUiTokens.LineMid);
             _volumeFill = AddRect(rail, "Fill", Vector2.zero, Vector2.one);
             SetImage(_volumeFill.gameObject.AddComponent<Image>(), null, ClubUiTokens.Accent);
 
             _volumeValueText = CreateText(card, "VolumeValue", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
-                TextAlignmentOptions.Center, new Vector2(0.725f, 0.17f), new Vector2(0.845f, 0.29f));
+                TextAlignmentOptions.Center, new Vector2(0.725f, 0.14f), new Vector2(0.845f, 0.26f));
 
-            RectTransform plus = AddFramed(card, "VolumeUp", new Vector2(0.855f, 0.175f), new Vector2(0.935f, 0.285f),
+            RectTransform plus = AddFramed(card, "VolumeUp", new Vector2(0.855f, 0.145f), new Vector2(0.935f, 0.255f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusDialog);
             CreateText(plus, "Label", titleFont, ClubUiTokens.FontBody, ClubUiTokens.Text,
                 TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = "+";
@@ -2022,7 +2024,7 @@ namespace Billiards.UI
             RectTransform row = AddFramed(card, name, new Vector2(0.16f, yMin), new Vector2(0.84f, yMax),
                 ClubUiTokens.ButtonEdgeSecondary, ClubUiTokens.ButtonFill, ClubUiTokens.RadiusDialog);
 
-            CreateText(row, "Label", bodyFont, ClubUiTokens.FontBody, ClubUiTokens.ButtonText,
+            CreateText(row, "Label", bodyFont, ClubUiTokens.FontLabel, ClubUiTokens.ButtonText,
                 TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = label;
 
             var rowImage = row.GetComponent<Image>();

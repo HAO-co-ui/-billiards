@@ -323,7 +323,7 @@ namespace Billiards.UI
         /// （"点了没反应"的假可点态是本工程明令禁止的）。
         /// </summary>
         /// <summary>退出键相对主入口的字号系数（0.78 ≈ 18 px；仍与上面两行同一字体族）。</summary>
-        private const float QuitFontScale = 0.78f;
+        private const float QuitFontScale = 0.62f;
 
         /// <summary>**退出游戏**（文本按钮：无实底、只描边，避免和两个主入口抢视觉重量）。</summary>
         private void BuildQuitRow(Rect rect)
