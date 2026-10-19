@@ -2350,7 +2350,10 @@ namespace Billiards.Physics
         /// </summary>
         public bool TryPlaceCueBallAtBreak(Vector2 position)
         {
-            if (!BreakPlacementActive || _simulator == null || tableConfig == null || !_simulator.TableAtRest)
+            // ⚠ **不要求 `TableAtRest`**：`PlaceBall` 会重置"连续静止帧"计数 ⇒ 拖动时第 2 帧就被拒
+            //   （症状：只能挪一下、之后拖不动）。开球摆球期的安全性由 `BreakPlacementActive` 保证 ——
+            //   它在本局**第一杆成功出杆**时立刻变 false，之后任何拖动都无效。
+            if (!BreakPlacementActive || _simulator == null || tableConfig == null || _shotInFlight)
             {
                 return false;
             }

@@ -208,7 +208,7 @@ namespace Billiards.Physics
         }
 
         /// <summary>开球摆球期：鼠标与白球的**屏幕距离**在这个像素内，按下即视为"抓住球"。</summary>
-        private const float breakGrabPixels = 48f;
+        private const float breakGrabPixels = 64f;
 
         private bool _breakDragging;
 
@@ -239,7 +239,10 @@ namespace Billiards.Physics
                 }
 
                 Vector2 cue = drive.Simulator.Balls[0].position;
-                Vector3 cueWorld = playfieldRoot.TransformPoint(new Vector3(cue.x, 0f, cue.y));
+                // ⚠ **必须走唯一转换点**：物理→Unity 是 `(−px, h, −py)`。此前写成 `(x,0,y)` ⇒
+                //   抓取点落在**对角**（与"开球区画到对角"是同一个错）⇒ 按在球上判定不到 ⇒ 摆不了球。
+                Vector3 cueWorld = playfieldRoot.TransformPoint(
+                    Billiards.Core.PoolGeometry.PhysicsToUnity(cue, PoolConstants.BallRadius));
                 Vector3 cueScreen = aimCamera.WorldToScreenPoint(cueWorld);
                 if (cueScreen.z <= 0f)
                 {
