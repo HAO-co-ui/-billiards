@@ -246,6 +246,9 @@ namespace Billiards.UI
             _badgeText = PracticeHudView.CreateText(_badgeFrame, "BadgeLabel", hud.bodyFont,
                 ClubUiTokens.FontCaption, ClubUiTokens.Accent, TextAlignmentOptions.Center, Vector2.zero, Vector2.one);
             _badgeText.text = BadgeLabel;
+            // 徽标是**短标签**，永远单行：换行会把两行字压到标题上（实机截图）。
+            _badgeText.enableWordWrapping = false;
+            _badgeText.overflowMode = TextOverflowModes.Overflow;
         }
 
         private void BuildStatsRow()
@@ -707,7 +710,13 @@ namespace Billiards.UI
         {
             if (PracticeSessionStore.TryExportHistory(out string error))
             {
+                // **WebGL 的 `persistentDataPath` 是 `/idbfs/<hash>`**（虚拟文件系统，用户根本访问不到）
+                // ⇒ 网页版只告诉他"存在浏览器里"，不显示无意义路径；桌面版仍显示真实路径（可去文件夹找）。
+#if UNITY_WEBGL && !UNITY_EDITOR
+                ShowToast("Saved in this browser's site data");
+#else
                 ShowToast($"Exported to {PracticeSessionStore.ExportPath}");
+#endif
             }
             else
             {

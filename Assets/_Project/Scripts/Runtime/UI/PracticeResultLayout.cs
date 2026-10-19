@@ -43,7 +43,9 @@ namespace Billiards.UI
         public static readonly Rect IconLocal = new Rect(0.4485f, 0.827f, 0.103f, 0.0945f);
 
         /// <summary>小标 chip（`PRACTICE COMPLETE`）。</summary>
-        public static readonly Rect BadgeLocal = new Rect(0.350f, 0.712f, 0.300f, 0.045f);
+        // **加宽 + 略高**（用户实机截图：`PRACTICE COMPLETE` 在 0.30 宽里被挤成两行、压到标题上）。
+        // 0.44 宽 ≈ 229 px（卡宽 520），9 px 文本 × FontScale 1.9 ≈ 17 px ⇒ 单行放得下。
+        public static readonly Rect BadgeLocal = new Rect(0.280f, 0.706f, 0.440f, 0.056f);
 
         /// <summary>标题（`Rack ended` / `Table cleared`，Barlow 38 px）。</summary>
         public static readonly Rect TitleLocal = new Rect(0.06f, 0.550f, 0.88f, 0.118f);   // 0.550/0.118（=74.9 px）：38 px × FontScale 1.9 = 72.2 ⇒ 带高 ≥；顶边仍 0.668、与徽章(0.712)留 27.9 px、与"为什么"行(顶 0.540)留 6.4 px（T148(e)(f)）
