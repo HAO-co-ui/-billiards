@@ -690,8 +690,6 @@ namespace Billiards.UI
             _resetIcon = AddIconButton(brand, "ResetRack", ClubUiSprites.UiSprite.Orbit, 3, OnResetRack);
             _settingsToggle = (RectTransform)brand.Find("SettingsToggle");
 
-            // **移动端左侧蓄力杆**（用户要求）：把"瞄准"与"力度"分开，避免手指挡住白球。
-            BuildPowerLever();
         }
 
         /// <summary>
@@ -762,36 +760,6 @@ namespace Billiards.UI
             button.targetGraphic = hit;
             button.onClick.AddListener(action);
             return text;
-        }
-
-        /// <summary>
-        /// **左侧竖向蓄力杆**（仅触摸设备）：按住轨道上下拖 → 力度 0..1，松手出杆。
-        /// 出杆判定复用 `PointerPowerController` 的阈值与前推动画，本处只负责画与转发。
-        /// </summary>
-        private void BuildPowerLever()
-        {
-            if (IconTouchScale <= 1f || _canvas == null)
-            {
-                return;
-            }
-
-            var power = FindObjectOfType<Billiards.Physics.PointerPowerController>();
-            if (power == null)
-            {
-                return;
-            }
-
-            RectTransform track = AddFramed(_canvas.transform, "PowerLever",
-                new Vector2(0.016f, 0.18f), new Vector2(0.052f, 0.82f),
-                ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
-            track.GetComponent<Image>().raycastTarget = true;
-
-            RectTransform fill = AddRect(track, "Fill", Vector2.zero, Vector2.one);
-            SetImage(fill.gameObject.AddComponent<Image>(), null, ClubUiTokens.Accent);
-
-            var lever = track.gameObject.AddComponent<PowerLever>();
-            lever.fill = fill;
-            lever.power = power;
         }
 
         /// <summary>

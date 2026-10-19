@@ -191,8 +191,8 @@ namespace Billiards.Physics
             }
         }
 
-        /// <summary>触摸蓄力的"抓住白球"半径（CSS/屏幕像素）。</summary>
-        private const float ChargeGrabPixels = 64f;
+        /// <summary>左半屏蓄力的起始屏幕 Y（按下的位置），用于换算竖向拖动距离。</summary>
+        private float _chargeStartScreenY;
 
         private void Update()
         {
@@ -219,31 +219,23 @@ namespace Billiards.Physics
                 return;
             }
 
-            // **触摸/无右键设备的蓄力入口**（用户实机：手机端拉杆蓄力不好操控）。
-            // 手势：**按住白球往"杆的反方向"拖** —— 与真实拉杆同构；在别处按下仍然是瞄准，不抢手势。
+            // **触摸分屏手势（用户裁定）**：**左半屏 = 蓄力，右半屏 = 瞄准**。
+            // 左半屏按下即开始蓄力（不再要求按在白球上），上下拖动改力度；这样不需要单独的蓄力条，
+            // 也不会出现"手指按在球上却同时触发瞄准"。
             if (Input.touchSupported && !IsCharging && Input.GetMouseButtonDown(0)
+                && Input.mousePosition.x < Screen.width * 0.5f
                 && drive.BreakPlacementActive == false && !drive.PendingCueBallPlacement
-                && drive.Simulator != null && drive.Simulator.TableAtRest && aimCamera != null
-                && playfieldRoot != null && drive.Simulator.Balls != null)
+                && drive.Simulator != null && drive.Simulator.TableAtRest)
             {
-                Vector2 cue = drive.Simulator.Balls[0].position;
-                Vector3 cueWorld = playfieldRoot.TransformPoint(
-                    Billiards.Core.PoolGeometry.PhysicsToUnity(cue, Billiards.Core.PoolConstants.BallRadius));
-                Vector3 cueScreen = aimCamera.WorldToScreenPoint(cueWorld);
-                if (cueScreen.z > 0f
-                    && ((Vector2)Input.mousePosition - (Vector2)cueScreen).magnitude <= ChargeGrabPixels)
+                if (drive.TryConsumePlayerInput())
                 {
-                    if (drive.TryConsumePlayerInput()
-                        && PointerAimSolver.TryPickPhysicsPoint(aimCamera, playfieldRoot, Input.mousePosition,
-                            out Vector2 startLeft))
-                    {
-                        _dragStartPhysics = startLeft;
-                        _hadPick = true;
-                        IsCharging = true;
-                        _chargeWithLeft = true;
-                        AnyChargingWithPointer = true;
-                        _chargeBeginRequested = true;
-                    }
+                    _chargeStartScreenY = Input.mousePosition.y;
+                    _hadPick = true;
+                    drive.power = 0f;
+                    IsCharging = true;
+                    _chargeWithLeft = true;
+                    AnyChargingWithPointer = true;
+                    _chargeBeginRequested = true;
                 }
             }
 
@@ -272,16 +264,20 @@ namespace Billiards.Physics
             }
             else if (IsCharging && (_chargeWithLeft ? Input.GetMouseButton(0) : Input.GetMouseButton(1)))
             {
-                // 蓄力中：每帧以「当前」瞄准方向重投影（蓄力期间允许微调方向），直接写入（1:1 无惯性）。
-                if (PointerAimSolver.TryPickPhysicsPoint(aimCamera, playfieldRoot, Input.mousePosition, out Vector2 current))
+                if (_chargeWithLeft)
                 {
+                    // **左半屏：竖向拖动定力度**（向上 = 加大）。屏幕高 40% 视为满力，手指移动距离与力度 1:1。
+                    float dy = Input.mousePosition.y - _chargeStartScreenY;
+                    drive.power = Mathf.Clamp01(dy / Mathf.Max(1f, Screen.height * 0.4f));
+                }
+                else if (PointerAimSolver.TryPickPhysicsPoint(aimCamera, playfieldRoot, Input.mousePosition, out Vector2 current))
+                {
+                    // 鼠标右键：沿瞄准方向反投影（原有行为）。
                     _hadPick = true;
                     float rad = drive.aimDegrees * Mathf.Deg2Rad;
                     Vector2 aimDir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
                     drive.power = PowerFromDrag(current - _dragStartPhysics, aimDir, maxDragLength);
                 }
-
-                // 拾取失败（拖出台面 / 近平行）⇒ 保持上一帧力度（不产生 NaN）。
             }
             else if (IsCharging && (_chargeWithLeft ? Input.GetMouseButtonUp(0) : Input.GetMouseButtonUp(1)))
             {
@@ -289,7 +285,7 @@ namespace Billiards.Physics
                 IsCharging = false;
                 _chargeWithLeft = false;
                 AnyChargingWithPointer = false;
-                if (_hadPick && drive.power >= launchThreshold)
+                if ((_hadPick || _chargeWithLeft) && drive.power >= launchThreshold)
                 {
                     if (cueStick != null)
                     {
