@@ -698,12 +698,14 @@ namespace Billiards.UI
         private void AddSettingsButton(RectTransform parent, string name, int slot,
                                        UnityEngine.Events.UnityAction action)
         {
-            float step = ClubUiTokens.IconButtonSize + ClubUiTokens.IconButtonGap;
+            // 与 `AddIconButton` **同一放大口径**（设置键与重置键也必须够大才点得中）。
+            float scale = IconTouchScale;
+            float step = (ClubUiTokens.IconButtonSize + ClubUiTokens.IconButtonGap) * scale;
             RectTransform frame = AddFramed(parent, name,
                 new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
             frame.pivot = new Vector2(1f, 0.5f);
-            frame.sizeDelta = new Vector2(ClubUiTokens.IconButtonSize, ClubUiTokens.IconButtonSize);
+            frame.sizeDelta = new Vector2(ClubUiTokens.IconButtonSize * scale, ClubUiTokens.IconButtonSize * scale);
             frame.anchoredPosition = new Vector2(-slot * step, 0f);
 
             var hit = frame.GetComponent<Image>();
@@ -735,12 +737,14 @@ namespace Billiards.UI
         private TextMeshProUGUI AddTextButton(RectTransform parent, string name, string label, int slot,
                                               UnityEngine.Events.UnityAction action)
         {
-            float step = ClubUiTokens.IconButtonSize + ClubUiTokens.IconButtonGap;
+            // 与 `AddIconButton` **同一放大口径**（设置键与重置键也必须够大才点得中）。
+            float scale = IconTouchScale;
+            float step = (ClubUiTokens.IconButtonSize + ClubUiTokens.IconButtonGap) * scale;
             RectTransform frame = AddFramed(parent, name,
                 new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
             frame.pivot = new Vector2(1f, 0.5f);
-            frame.sizeDelta = new Vector2(ClubUiTokens.IconButtonSize, ClubUiTokens.IconButtonSize);
+            frame.sizeDelta = new Vector2(ClubUiTokens.IconButtonSize * scale, ClubUiTokens.IconButtonSize * scale);
             frame.anchoredPosition = new Vector2(-slot * step, 0f);
 
             var hit = frame.GetComponent<Image>();
@@ -756,15 +760,26 @@ namespace Billiards.UI
             return text;
         }
 
+        /// <summary>
+        /// **触摸设备的图标按钮放大系数**：手机横屏下画布只有 ~0.36 倍 ⇒ 38 px 设计尺寸约 14 CSS px，
+        /// 远低于可点最小尺寸（~44 px）。2.6 倍后约 36 CSS px，配合周围留白够点。
+        /// PC（无触摸）保持 1.0，避免把桌面 UI 放大成玩具。
+        /// </summary>
+        private static float IconTouchScale =>
+            Input.touchSupported && !Application.isEditor ? 2.6f : 1f;
+
         private Image AddIconButton(RectTransform parent, string name, ClubUiSprites.UiSprite sprite, int slot,
                                     UnityEngine.Events.UnityAction action)
         {
-            float step = ClubUiTokens.IconButtonSize + ClubUiTokens.IconButtonGap;
+            // **触摸设备放大**（用户实机：手机端顶部按钮太小，点不中）。
+            // 设计稿的 38 px 在 844×390 横屏下只有约 14 CSS px ⇒ 必须按平台放大，否则永远点不中。
+            float scale = IconTouchScale;
+            float step = (ClubUiTokens.IconButtonSize + ClubUiTokens.IconButtonGap) * scale;
             RectTransform frame = AddFramed(parent, name,
                 new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
             frame.pivot = new Vector2(1f, 0.5f);
-            frame.sizeDelta = new Vector2(ClubUiTokens.IconButtonSize, ClubUiTokens.IconButtonSize);
+            frame.sizeDelta = new Vector2(ClubUiTokens.IconButtonSize * scale, ClubUiTokens.IconButtonSize * scale);
             frame.anchoredPosition = new Vector2(-slot * step, 0f);
 
             var hit = frame.GetComponent<Image>();
@@ -772,7 +787,7 @@ namespace Billiards.UI
 
             RectTransform glyph = AddFixed(frame, "Glyph", sprite, ClubUiTokens.IconIdle,
                 new Vector2(0.5f, 0.5f),
-                new Vector2(ClubUiTokens.IconButtonIconSize, ClubUiTokens.IconButtonIconSize));
+                new Vector2(ClubUiTokens.IconButtonIconSize * scale, ClubUiTokens.IconButtonIconSize * scale));
 
             var button = frame.gameObject.AddComponent<Button>();
             button.targetGraphic = hit;

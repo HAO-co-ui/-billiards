@@ -148,6 +148,12 @@ namespace Billiards.Physics
             // **开球摆球期（用户规则）**：白球可直接拖动到开球线后方任意位置。
             // 与"待放球"不同：**不挡出杆**，所以必须在瞄准分支**之前**单独接管"按住球拖"的手势；
             // 只有按下点落在白球附近才接管，其余左键仍是正常瞄准（不抢手势）。
+            // **手指蓄力期间让位**：同一根手指既在拉杆又改角度，会把瞄准方向搅乱。
+            if (PointerPowerController.AnyChargingWithPointer)
+            {
+                return;
+            }
+
             if (HandleBreakCueBallDrag())
             {
                 return;

@@ -108,6 +108,24 @@ namespace Billiards.Physics
             return Mathf.Clamp01(backwardProjection / maxDragLength);
         }
 
+        /// <summary>
+        /// **本帧蓄力是否由"左键/手指按住白球"驱动**（触摸设备没有右键 ⇒ 必须有一条触摸可用的蓄力手势）。
+        /// 规则：按下点落在**白球附近**才开始 ⇒ 不抢"拖拽瞄准"（在别处按仍是瞄准）。
+        /// </summary>
+        private bool _chargeWithLeft;
+
+        /// <summary>供瞄准组件判断"这一拖是蓄力，不是瞄准"。</summary>
+        public bool IsChargingWithPointer => _chargeWithLeft && IsCharging;
+
+        /// <summary>
+        /// **跨组件的"正在用手指蓄力"信号**：瞄准组件据此让位（否则同一拖拽会同时改角度与力度）。
+        /// 用静态字段而不是互相找引用：两个组件挂在**不同对象**上，找引用会把预制体结构绑死。
+        /// </summary>
+        public static bool AnyChargingWithPointer { get; private set; }
+
+        /// <summary>触摸蓄力的"抓住白球"半径（CSS/屏幕像素）。</summary>
+        private const float ChargeGrabPixels = 64f;
+
         private void Update()
         {
             if (drive == null || aimCamera == null || playfieldRoot == null)
@@ -133,6 +151,34 @@ namespace Billiards.Physics
                 return;
             }
 
+            // **触摸/无右键设备的蓄力入口**（用户实机：手机端拉杆蓄力不好操控）。
+            // 手势：**按住白球往"杆的反方向"拖** —— 与真实拉杆同构；在别处按下仍然是瞄准，不抢手势。
+            if (Input.touchSupported && !IsCharging && Input.GetMouseButtonDown(0)
+                && drive.BreakPlacementActive == false && !drive.PendingCueBallPlacement
+                && drive.Simulator != null && drive.Simulator.TableAtRest && aimCamera != null
+                && playfieldRoot != null && drive.Simulator.Balls != null)
+            {
+                Vector2 cue = drive.Simulator.Balls[0].position;
+                Vector3 cueWorld = playfieldRoot.TransformPoint(
+                    Billiards.Core.PoolGeometry.PhysicsToUnity(cue, Billiards.Core.PoolConstants.BallRadius));
+                Vector3 cueScreen = aimCamera.WorldToScreenPoint(cueWorld);
+                if (cueScreen.z > 0f
+                    && ((Vector2)Input.mousePosition - (Vector2)cueScreen).magnitude <= ChargeGrabPixels)
+                {
+                    if (drive.TryConsumePlayerInput()
+                        && PointerAimSolver.TryPickPhysicsPoint(aimCamera, playfieldRoot, Input.mousePosition,
+                            out Vector2 startLeft))
+                    {
+                        _dragStartPhysics = startLeft;
+                        _hadPick = true;
+                        IsCharging = true;
+                        _chargeWithLeft = true;
+                        AnyChargingWithPointer = true;
+                        _chargeBeginRequested = true;
+                    }
+                }
+            }
+
             if (Input.GetMouseButtonDown(1))
             {
                 // **对手回合让位 + 可见反馈**（P5-B）：轮到 AI 时玩家输入被拒 —— 必须**登记一次可见提示**
@@ -156,7 +202,7 @@ namespace Billiards.Physics
                     _chargeBeginRequested = true;
                 }
             }
-            else if (IsCharging && Input.GetMouseButton(1))
+            else if (IsCharging && (_chargeWithLeft ? Input.GetMouseButton(0) : Input.GetMouseButton(1)))
             {
                 // 蓄力中：每帧以「当前」瞄准方向重投影（蓄力期间允许微调方向），直接写入（1:1 无惯性）。
                 if (PointerAimSolver.TryPickPhysicsPoint(aimCamera, playfieldRoot, Input.mousePosition, out Vector2 current))
@@ -169,10 +215,12 @@ namespace Billiards.Physics
 
                 // 拾取失败（拖出台面 / 近平行）⇒ 保持上一帧力度（不产生 NaN）。
             }
-            else if (IsCharging && Input.GetMouseButtonUp(1))
+            else if (IsCharging && (_chargeWithLeft ? Input.GetMouseButtonUp(0) : Input.GetMouseButtonUp(1)))
             {
                 // 松手：达到阈值 ⇒ 出杆（接线球杆时经前推动画在到位帧击球；否则直接出杆兜底）；否则取消并力度归零。
                 IsCharging = false;
+                _chargeWithLeft = false;
+                AnyChargingWithPointer = false;
                 if (_hadPick && drive.power >= launchThreshold)
                 {
                     if (cueStick != null)
