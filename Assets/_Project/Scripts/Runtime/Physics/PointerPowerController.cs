@@ -191,6 +191,13 @@ namespace Billiards.Physics
             }
         }
 
+        /// <summary>
+        /// **是否按触摸设备处理**：`Input.touchSupported` 在部分移动浏览器（含 WebGL）上会返回 false，
+        /// 单靠它会让"左半屏蓄力"整条分支永远进不去（实机反馈：左手拉不了）。
+        /// ⇒ 改为 **`Application.isMobilePlatform || Input.touchSupported`**：手机浏览器一定命中前者。
+        /// </summary>
+        private static bool IsTouchUi => Application.isMobilePlatform || Input.touchSupported;
+
         /// <summary>左半屏蓄力的起始屏幕 Y（按下的位置），用于换算竖向拖动距离。</summary>
         private float _chargeStartScreenY;
 
@@ -219,25 +226,9 @@ namespace Billiards.Physics
                 return;
             }
 
-            // **触摸分屏手势（用户裁定）**：**左半屏 = 蓄力，右半屏 = 瞄准**。
-            // 左半屏按下即开始蓄力（不再要求按在白球上），上下拖动改力度；这样不需要单独的蓄力条，
-            // 也不会出现"手指按在球上却同时触发瞄准"。
-            if (Input.touchSupported && !IsCharging && Input.GetMouseButtonDown(0)
-                && Input.mousePosition.x < Screen.width * 0.5f
-                && drive.BreakPlacementActive == false && !drive.PendingCueBallPlacement
-                && drive.Simulator != null && drive.Simulator.TableAtRest)
-            {
-                if (drive.TryConsumePlayerInput())
-                {
-                    _chargeStartScreenY = Input.mousePosition.y;
-                    _hadPick = true;
-                    drive.power = 0f;
-                    IsCharging = true;
-                    _chargeWithLeft = true;
-                    AnyChargingWithPointer = true;
-                    _chargeBeginRequested = true;
-                }
-            }
+            // **左半屏蓄力由 HUD 的 `ChargeArea`（uGUI 事件）接管** —— 见该组件注释：
+            // 触摸在 WebGL 移动浏览器上不保证映射成 `Input.mousePosition`，实测这条路失效（"左手拉不了"）。
+            // 因此这里**不再读裸 Input 做蓄力**，只保留鼠标右键（PC）。
 
             if (Input.GetMouseButtonDown(1))
             {

@@ -65,7 +65,9 @@ TARGETS = [
          # 画布自适应（横屏按高、竖屏按宽）
          r"Assets\_Project\Scripts\Runtime\UI\ResponsiveCanvasScaler.cs",
          # 云服务桥（WebGL 成绩上报）
-         r"Assets\_Project\Scripts\Runtime\UI\PoolCloudBridge.cs"],
+         r"Assets\_Project\Scripts\Runtime\UI\PoolCloudBridge.cs",
+         # 左半屏蓄力区（uGUI 事件）
+         r"Assets\_Project\Scripts\Runtime\UI\ChargeArea.cs"],
     ),
     (
         "Billiards.Editor.csproj",

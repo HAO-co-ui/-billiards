@@ -690,6 +690,9 @@ namespace Billiards.UI
             _resetIcon = AddIconButton(brand, "ResetRack", ClubUiSprites.UiSprite.Orbit, 3, OnResetRack);
             _settingsToggle = (RectTransform)brand.Find("SettingsToggle");
 
+            // **左半屏蓄力区**（触摸设备）：uGUI 事件驱动，见 `ChargeArea` 的注释。
+            BuildChargeArea();
+
         }
 
         /// <summary>
@@ -760,6 +763,34 @@ namespace Billiards.UI
             button.targetGraphic = hit;
             button.onClick.AddListener(action);
             return text;
+        }
+
+        /// <summary>
+        /// **左半屏蓄力区**（仅触摸设备）：一块**透明但可接收射线**的区域，避开顶部按钮栏。
+        /// 力度阈值与出杆路径全部复用 `PointerPowerController`，这里只做"手指位置 → 0..1"。
+        /// </summary>
+        private void BuildChargeArea()
+        {
+            if (_canvas == null || !(Application.isMobilePlatform || Input.touchSupported))
+            {
+                return;
+            }
+
+            var power = FindObjectOfType<Billiards.Physics.PointerPowerController>();
+            if (power == null)
+            {
+                return;
+            }
+
+            // 顶部留出 18%：图标按钮在那一带，别被蓄力区挡住（按钮在射线顺序上更靠后会被吞）。
+            RectTransform area = AddRect(_canvas.transform, "ChargeArea",
+                new Vector2(0f, 0f), new Vector2(0.5f, 0.82f));
+            var image = area.gameObject.AddComponent<Image>();
+            image.color = ClubUiTokens.Transparent;   // 透明，但仍参与射线命中（T124④：色值只走令牌）
+            image.raycastTarget = true;
+
+            var charge = area.gameObject.AddComponent<ChargeArea>();
+            charge.power = power;
         }
 
         /// <summary>

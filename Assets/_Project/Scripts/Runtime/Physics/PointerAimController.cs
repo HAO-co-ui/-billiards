@@ -161,7 +161,7 @@ namespace Billiards.Physics
 
             // **触摸分屏（用户裁定）**：左半屏归蓄力，**右半屏才瞄准**。
             // 放在"摆球"之后：开球摆球的拖动仍然在全屏有效（那是另一件事）。
-            if (Input.touchSupported && Input.GetMouseButton(0)
+            if ((Application.isMobilePlatform || Input.touchSupported) && Input.GetMouseButton(0)
                 && Input.mousePosition.x < Screen.width * 0.5f)
             {
                 return;
