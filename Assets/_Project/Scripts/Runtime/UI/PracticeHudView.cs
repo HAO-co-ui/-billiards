@@ -873,6 +873,9 @@ namespace Billiards.UI
                 float delta = plus ? FineAimStepDegrees : -FineAimStepDegrees;
                 button.onClick.AddListener(() =>
                 {
+                    // **先抑制瞄准 150 ms**：按钮按下/抬起的两帧会被拖拽瞄准读成一次手势，
+                    // 不抑制的话"点一下瞄准线就飞到按钮方向"（实机反馈）。
+                    Billiards.Physics.PointerAimController.SuppressAimUntil = Time.unscaledTime + 0.15f;
                     drive.aimDegrees += delta;
                     drive.SyncAimIndicator();
                 });

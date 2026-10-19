@@ -116,6 +116,29 @@ namespace Billiards.Physics
 
         // ── 胶水（薄；输入读取不被判据覆盖）────────────────────────────────────────
 
+        /// <summary>
+        /// **外部请求"暂停瞄准"到某个时刻**（unscaledTime）：精调按钮点击时置位，
+        /// 避免"按下 / 抬起"两帧被拖拽瞄准状态机读成一次瞄准手势（实机：点一下瞄准线就飞走）。
+        /// </summary>
+        public static float SuppressAimUntil { get; set; }
+
+        /// <summary>当前指针是否落在任意 uGUI 元素上（按钮 / 面板）。触摸用 fingerId 判定。</summary>
+        private static bool IsPointerOverUi()
+        {
+            UnityEngine.EventSystems.EventSystem es = UnityEngine.EventSystems.EventSystem.current;
+            if (es == null)
+            {
+                return false;
+            }
+
+            if (Input.touchCount > 0)
+            {
+                return es.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
+            }
+
+            return es.IsPointerOverGameObject();
+        }
+
         private void Update()
         {
             if (drive == null)
@@ -170,6 +193,20 @@ namespace Billiards.Physics
             if (drive.PendingCueBallPlacement)
             {
                 HandleCueBallPlacement();
+                return;
+            }
+
+            // **外部请求的短暂抑制**（精调按钮点击后的 150 ms）：按下/抬起都不许改瞄准。
+            if (Time.unscaledTime < SuppressAimUntil)
+            {
+                return;
+            }
+
+            // **指针落在 UI 上时，瞄准一律让位**（用户实机：点右侧"精调 +/-"按钮，
+            // 瞄准线会飞到按钮所在方向 —— 因为一次点击也被当成了"拖拽瞄准"的按下）。
+            // 只在**按住**时让位：松开后仍可用拖拽正常瞄准。
+            if (Input.GetMouseButton(0) && IsPointerOverUi())
+            {
                 return;
             }
 
