@@ -150,6 +150,8 @@ namespace Billiards.Physics
             _leverCharging = true;
             _chargeWithLeft = false;
             AnyChargingWithPointer = true;   // 瞄准让位：手指在杆上，不该同时改方向
+            // **按下这一帧也要挡住瞄准**：组件执行顺序不保证，只靠上面的布尔可能漏一帧。
+            Billiards.Physics.PointerAimController.SuppressAimUntil = Time.unscaledTime + 0.2f;
             _chargeBeginRequested = true;
             drive.power = 0f;
         }
@@ -174,6 +176,11 @@ namespace Billiards.Physics
             _leverCharging = false;
             IsCharging = false;
             AnyChargingWithPointer = false;
+
+            // ⚠ **松手这一帧必须继续挡住瞄准**（实机：松手后瞄准线跳到左手松手的位置，球就打歪了）。
+            // 原因：抬起帧 `GetMouseButton(0)` 已为 false，瞄准的状态机会把"当前指针位置"当成
+            // 一次新的瞄准输入，而此刻指针正停在左侧蓄力条上。⇒ 抑制到 0.2 s 后。
+            Billiards.Physics.PointerAimController.SuppressAimUntil = Time.unscaledTime + 0.2f;
 
             if (value >= launchThreshold)
             {
