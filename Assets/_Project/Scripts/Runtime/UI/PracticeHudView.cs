@@ -885,8 +885,9 @@ namespace Billiards.UI
                 bool plus = i == 0;
                 string name = plus ? "FineAimPlus" : "FineAimMinus";
                 RectTransform btn = AddFramed(_canvas.transform, name,
-                    new Vector2(0.902f, plus ? 0.28f : 0.12f),
-                    new Vector2(0.902f + w, plus ? 0.28f + h : 0.12f + h),
+                    // **上移到右中部**：底部被网页的 RANK 按钮压住过（实机截图），且这一带是空的。
+                    new Vector2(0.902f, plus ? 0.42f : 0.27f),
+                    new Vector2(0.902f + w, plus ? 0.42f + h : 0.27f + h),
                     ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
                 var img = btn.GetComponent<Image>();
                 img.raycastTarget = true;
@@ -913,8 +914,11 @@ namespace Billiards.UI
         private static bool SafeMode =>
             Application.absoluteURL != null && Application.absoluteURL.Contains("safe");
 
-        /// <summary>精调步长（度）：0.05° ≈ 远台 1–2 cm 的落点差，够细且点得动。</summary>
-        private const float FineAimStepDegrees = 0.05f;
+        /// <summary>
+        /// 精调步长（度）。**0.05° 在实机上等于"点不动"**（远台位移不到 1 mm，肉眼看不出来），
+        /// 改为 0.2°：一次点击大约挪 2–4 cm 的落点，既有感又不至于过冲。
+        /// </summary>
+        private const float FineAimStepDegrees = 0.2f;
 
         /// <summary>
         /// **触摸设备的图标按钮放大系数**：手机横屏下画布只有 ~0.36 倍 ⇒ 38 px 设计尺寸约 14 CSS px，
