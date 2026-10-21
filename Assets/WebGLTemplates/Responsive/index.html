@@ -106,8 +106,10 @@
     });
   </script>
 
-  <!-- 云服务 SDK（CDN 形式：本页无构建步骤）。 -->
-  <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+  <!-- 云服务 SDK（CDN 形式）。⚠ **必须 async**：同步 script 在网络不通时会把整页卡在加载阶段，
+       实测 jsdelivr 被重置时页面永远停在进度条 ⇒ 排行榜可选，不能挡住游戏本体。 -->
+  <script id="pool-cloud-sdk" async
+          src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
   <script>
     // ── 云服务：练习成绩排行榜 ────────────────────────────────────────────────
     // publicConfig 由开通云服务时下发（endpoint / oauthRelayBaseUrl / publishableKey）。
@@ -172,20 +174,35 @@
         if (!open) refresh();
       });
 
-      try {
+      // **SDK 就绪再初始化**（async 加载可能晚于本脚本执行）：最多等 10 秒，超时只关排行榜。
+      function initWhenReady(deadline) {
         if (window.WorkBuddyCloud && window.WorkBuddyCloud.createWorkBuddyCloud) {
-          cloud = window.WorkBuddyCloud.createWorkBuddyCloud({
-            endpoint: publicConfig.endpoint,
-            oauthRelayBaseUrl: publicConfig.oauthRelayBaseUrl,
-            publishableKey: publicConfig.publishableKey
-          });
-          refresh();
-        } else {
-          console.warn('[PoolCloud] SDK 未加载，排行榜不可用（不影响单机玩法）');
+          initCloud();
+          return;
         }
-      } catch (e) {
-        console.warn('[PoolCloud] init failed', e);
+        if (Date.now() > deadline) {
+          console.warn('[PoolCloud] SDK 未就绪，排行榜关闭（不影响游戏）');
+          return;
+        }
+        setTimeout(function () { initWhenReady(deadline); }, 400);
       }
+
+      function initCloud() {
+        try {
+          {
+            cloud = window.WorkBuddyCloud.createWorkBuddyCloud({
+              endpoint: publicConfig.endpoint,
+              oauthRelayBaseUrl: publicConfig.oauthRelayBaseUrl,
+              publishableKey: publicConfig.publishableKey
+            });
+            refresh();
+          }
+        } catch (e) {
+          console.warn('[PoolCloud] init failed', e);
+        }
+      }
+
+      initWhenReady(Date.now() + 10000);
     })();
   </script>
 </body>

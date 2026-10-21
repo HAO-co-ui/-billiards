@@ -25,6 +25,47 @@ namespace Billiards.UI
         /// <summary>力度填充条（可选；没有就不画）。</summary>
         public RectTransform fill;
 
+        /// <summary>接收射线的透明图元（模态时置 `enabled=false` 以**停用射线**，但不隐藏 GameObject）。</summary>
+        public Image blocker;
+
+        /// <summary>可见的力度条（模态时整体隐藏）。</summary>
+        public RectTransform visuals;
+
+        /// <summary>与本区域同门的其它控件（精调 +/- 按钮）。</summary>
+        public RectTransform[] extra;
+
+        /// <summary>
+        /// **模态期间隐藏一切 HUD 专属交互**。
+        /// ⚠ 这里**不能用 `SetActive(false)` 关自己**：对象一旦失活，本组件的 `Update` 就不跑了，
+        ///   也就再也不会恢复（先前正是这个坑）；所以只关**子物体与图元**。
+        /// </summary>
+        private void Update()
+        {
+            bool modal = HomeView.IsOpen || PracticeResultView.IsOpen
+                         || PracticeHudView.IsSettingsOpen || PracticeHudView.IsOnboardingOpen;
+
+            if (blocker != null && blocker.enabled == modal)
+            {
+                blocker.enabled = !modal;
+            }
+
+            if (visuals != null && visuals.gameObject.activeSelf == modal)
+            {
+                visuals.gameObject.SetActive(!modal);
+            }
+
+            if (extra != null)
+            {
+                for (int i = 0; i < extra.Length; i++)
+                {
+                    if (extra[i] != null && extra[i].gameObject.activeSelf == modal)
+                    {
+                        extra[i].gameObject.SetActive(!modal);
+                    }
+                }
+            }
+        }
+
         private RectTransform _rect;
         private float _startY;
 

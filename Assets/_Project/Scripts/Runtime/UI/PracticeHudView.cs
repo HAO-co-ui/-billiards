@@ -447,20 +447,11 @@ namespace Billiards.UI
 
             bool modal = HomeView.IsOpen || PracticeResultView.IsOpen
                          || IsSettingsOpen || IsOnboardingOpen;
-            if (_chargeAreaRoot.gameObject.activeSelf == modal)
-            {
-                _chargeAreaRoot.gameObject.SetActive(!modal);
-            }
+            // 蓄力区自身**保持常驻活动**（显隐在 ChargeArea 内部处理），这里只保留精调按钮的联动。
 
-            // 精调按钮同一道门（实机：主页面也出现了 +/- 按钮）。
-            for (int i = 0; i < _fineAimButtons.Count; i++)
-            {
-                RectTransform btn = _fineAimButtons[i];
-                if (btn != null && btn.gameObject.activeSelf == modal)
-                {
-                    btn.gameObject.SetActive(!modal);
-                }
-            }
+            // 精调按钮的显隐**交给 `ChargeArea`**（它常驻活动，能在首页也执行）；
+            // 这里不再重复处理，避免两处 SetActive 打架。
+
         }
 
         /// <summary>
@@ -837,6 +828,9 @@ namespace Billiards.UI
             var charge = area.gameObject.AddComponent<ChargeArea>();
             charge.power = power;
             charge.fill = fill;   // ⚠ 填在 `area` 里但坐标是相对 `track` 的父级 ⇒ 见 ChargeArea 的 Apply
+            charge.blocker = image;       // 模态时只关射线，不关 GameObject
+            charge.visuals = track;       // 可见力度条随模态隐藏
+            charge.extra = _fineAimButtons.ToArray();   // 精调按钮与本区域同门
 
             BuildFineAimButtons();
 
