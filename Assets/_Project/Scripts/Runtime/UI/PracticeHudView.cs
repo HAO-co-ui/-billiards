@@ -794,6 +794,13 @@ namespace Billiards.UI
         /// </summary>
         private void BuildChargeArea()
         {
+            // **安全开关**：地址里带 `safe` 就不建移动端专属控件（蓄力区/精调），
+            // 用于把"启动崩溃是否由这些控件引起"快速二分出来（?v=xx&safe=1）。
+            if (SafeMode)
+            {
+                return;
+            }
+
             if (_canvas == null || !(Application.isMobilePlatform || Input.touchSupported))
             {
                 return;
@@ -854,6 +861,11 @@ namespace Billiards.UI
         /// </summary>
         private void BuildFineAimButtons()
         {
+            if (SafeMode)
+            {
+                return;
+            }
+
             var drive = FindObjectOfType<Billiards.Physics.PhysicsTestDrive>();
             if (drive == null)
             {
@@ -894,6 +906,10 @@ namespace Billiards.UI
                 });
             }
         }
+
+        /// <summary>地址带 `safe` ⇒ 跳过移动端专属控件（诊断用，默认关闭）。</summary>
+        private static bool SafeMode =>
+            Application.absoluteURL != null && Application.absoluteURL.Contains("safe");
 
         /// <summary>精调步长（度）：0.05° ≈ 远台 1–2 cm 的落点差，够细且点得动。</summary>
         private const float FineAimStepDegrees = 0.05f;

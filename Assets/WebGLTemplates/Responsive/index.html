@@ -17,6 +17,15 @@
     #unity-progress-bar-full { width: 0%; height: 10px; border-radius: 5px; background: #C9A227; }
     #unity-warning { position: absolute; left: 50%; top: 5%; transform: translate(-50%);
       background: white; padding: 10px; display: none; }
+    /* 启动失败面板：可读、可滚动、可重载（替代原生 alert）。 */
+    #startup-error { display: none; position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%); width: min(560px, 90vw); max-height: 70vh; overflow: auto;
+      background: rgba(24,26,30,.97); border: 1px solid rgba(201,162,39,.5); border-radius: 12px;
+      padding: 16px 18px; color: #EDE7DA; font: 13px/1.5 Arial, sans-serif; z-index: 20; }
+    #startup-error h4 { margin: 0 0 8px; color: #D4AF37; font-size: 14px; letter-spacing: .06em; }
+    #startup-error pre { white-space: pre-wrap; word-break: break-word; margin: 0 0 12px; }
+    #startup-error button { padding: 8px 16px; border-radius: 8px; border: 1px solid #D4AF37;
+      background: transparent; color: #D4AF37; font-size: 13px; }
     /* 云排行榜（右上角）：不遮挡 Unity 画布主体，只在需要时展开。 */
     /* RANK 移到**右下角**：原来贴右上角，和游戏内右上那一排图标按钮打架（实机截图圈出重叠）。 */
     #rank-toggle { position: absolute; right: 14px; bottom: 18px; z-index: 10;
@@ -45,6 +54,11 @@
       <div id="unity-progress-bar-empty"><div id="unity-progress-bar-full"></div></div>
     </div>
     <div id="unity-warning"></div>
+    <div id="startup-error">
+      <h4>Failed to start</h4>
+      <pre id="startup-error-text"></pre>
+      <button onclick="location.reload()">Reload</button>
+    </div>
   </div>
 
   <script src="Build/{{{ LOADER_FILENAME }}}"></script>
@@ -102,7 +116,20 @@
     }).then((unityInstance) => {
       loadingBar.style.display = "none";
     }).catch((message) => {
-      alert(message);
+      // **不弹原生 alert**（移动端会盖住整页且信息难读）。改为页内面板，带重载按钮。
+      showStartupError(String(message));
+    });
+
+    function showStartupError(text) {
+      var box = document.getElementById('startup-error');
+      var msg = document.getElementById('startup-error-text');
+      if (!box || !msg) { console.error('[startup]', text); return; }
+      msg.textContent = text;
+      box.style.display = 'block';
+    }
+
+    window.addEventListener('error', function (e) {
+      if (e && e.message) showStartupError(e.message);
     });
   </script>
 
