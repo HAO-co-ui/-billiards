@@ -67,7 +67,9 @@ TARGETS = [
          # 云服务桥（WebGL 成绩上报）
          r"Assets\_Project\Scripts\Runtime\UI\PoolCloudBridge.cs",
          # 左半屏蓄力区（uGUI 事件）
-         r"Assets\_Project\Scripts\Runtime\UI\ChargeArea.cs"],
+         r"Assets\_Project\Scripts\Runtime\UI\ChargeArea.cs",
+         # 触摸平台判定（WebGL 下问浏览器）
+         r"Assets\_Project\Scripts\Runtime\UI\WebPlatform.cs"],
     ),
     (
         "Billiards.Editor.csproj",

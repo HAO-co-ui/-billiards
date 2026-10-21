@@ -801,7 +801,7 @@ namespace Billiards.UI
                 return;
             }
 
-            if (_canvas == null || !(Application.isMobilePlatform || Input.touchSupported))
+            if (_canvas == null || !WebPlatform.IsTouch)
             {
                 return;
             }
@@ -837,9 +837,11 @@ namespace Billiards.UI
             charge.fill = fill;   // ⚠ 填在 `area` 里但坐标是相对 `track` 的父级 ⇒ 见 ChargeArea 的 Apply
             charge.blocker = image;       // 模态时只关射线，不关 GameObject
             charge.visuals = track;       // 可见力度条随模态隐藏
-            charge.extra = _fineAimButtons.ToArray();   // 精调按钮与本区域同门
 
+            // ⚠ **顺序要紧**：必须先建精调按钮，再把它们交给蓄力区统一门控；
+            //   反过来 `ToArray()` 会是空数组 ⇒ 首页仍然看得到 +/-（实测）。
             BuildFineAimButtons();
+            charge.extra = _fineAimButtons.ToArray();
 
             // **手机端不再显示右上角的 POWER 面板**（用户要求：力度改到左边手动调节；电脑端不变）。
             if (_power != null)
@@ -920,7 +922,7 @@ namespace Billiards.UI
         /// PC（无触摸）保持 1.0，避免把桌面 UI 放大成玩具。
         /// </summary>
         private static float IconTouchScale =>
-            Input.touchSupported && !Application.isEditor ? 2.6f : 1f;
+            WebPlatform.IsTouch ? 2.6f : 1f;
 
         private Image AddIconButton(RectTransform parent, string name, ClubUiSprites.UiSprite sprite, int slot,
                                     UnityEngine.Events.UnityAction action)

@@ -198,7 +198,7 @@ namespace Billiards.Physics
         /// 单靠它会让"左半屏蓄力"整条分支永远进不去（实机反馈：左手拉不了）。
         /// ⇒ 改为 **`Application.isMobilePlatform || Input.touchSupported`**：手机浏览器一定命中前者。
         /// </summary>
-        private static bool IsTouchUi => Application.isMobilePlatform || Input.touchSupported;
+        private static bool IsTouchUi => Billiards.UI.WebPlatform.IsTouch;
 
         /// <summary>左半屏蓄力的起始屏幕 Y（按下的位置），用于换算竖向拖动距离。</summary>
         private float _chargeStartScreenY;
