@@ -813,17 +813,20 @@ namespace Billiards.UI
             }
 
             // 顶部留出 18%：图标按钮在那一带，别被蓄力区挡住（按钮在射线顺序上更靠后会被吞）。
-            // ⚠ **顶部让出 38%**：顶部有品牌区与图标按钮（实测 18% 不够，按钮仍被挡住）。
+            // **只占桌面左侧外的一条窄带**（用户裁定）：原来铺满左半屏 ⇒ 桌子左半边无法瞄准。
+            // 0–8.5% 宽落在**桌外的黑边**里（实机截图量到桌沿在 8.1%），844 宽时约 72 px，够放一根手指。
+            // 顶部仍让出 38%，避开品牌区与图标按钮。
             RectTransform area = AddRect(_canvas.transform, "ChargeArea",
-                new Vector2(0f, 0f), new Vector2(0.5f, 0.62f));
+                new Vector2(0f, 0f), new Vector2(0.085f, 0.62f));
             var image = area.gameObject.AddComponent<Image>();
             image.color = ClubUiTokens.Transparent;   // 透明，但仍参与射线命中（T124④：色值只走令牌）
             image.raycastTarget = true;
 
             // **可见的力度条**（左侧细竖条 + 从下往上填充）：让玩家看得到当前力度；
             // 整块左半屏仍是可拖区域（不必精确按在这根条上）。
+            // 力度条居中在这条窄带里（相对 `area` 的锚点）。
             RectTransform track = AddFramed(area, "ChargeTrack",
-                new Vector2(0.022f, 0.18f), new Vector2(0.040f, 0.82f),
+                new Vector2(0.30f, 0.18f), new Vector2(0.78f, 0.82f),
                 ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
             track.GetComponent<Image>().raycastTarget = false;
 

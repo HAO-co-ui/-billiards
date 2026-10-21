@@ -182,13 +182,9 @@ namespace Billiards.Physics
                 return;
             }
 
-            // **触摸分屏（用户裁定）**：左半屏归蓄力，**右半屏才瞄准**。
-            // 放在"摆球"之后：开球摆球的拖动仍然在全屏有效（那是另一件事）。
-            if (Billiards.UI.WebPlatform.IsTouch && Input.GetMouseButton(0)
-                && Input.mousePosition.x < Screen.width * 0.5f)
-            {
-                return;
-            }
+            // **不再按"左半屏"封瞄准**（用户实机：桌子左半边根本瞄不了球）。
+            // 现在蓄力区只占**桌面左侧外的一条窄带**，它是 uGUI 元素 ⇒ 手指落在上面时
+            // 由下面的 `IsPointerOverUi` 让位；其余区域（含桌子左半）全部可以正常拖拽瞄准。
 
             if (drive.PendingCueBallPlacement)
             {
