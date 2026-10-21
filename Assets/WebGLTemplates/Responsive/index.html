@@ -18,11 +18,12 @@
     #unity-warning { position: absolute; left: 50%; top: 5%; transform: translate(-50%);
       background: white; padding: 10px; display: none; }
     /* 云排行榜（右上角）：不遮挡 Unity 画布主体，只在需要时展开。 */
-    #rank-toggle { position: absolute; right: 14px; top: 12px; z-index: 10;
+    /* RANK 移到**右下角**：原来贴右上角，和游戏内右上那一排图标按钮打架（实机截图圈出重叠）。 */
+    #rank-toggle { position: absolute; right: 14px; bottom: 18px; z-index: 10;
       padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(201,162,39,.55);
       background: rgba(20,22,26,.78); color: #E8D9A8; font: 600 13px/1 Arial, sans-serif;
       letter-spacing: .08em; cursor: pointer; user-select: none; }
-    #rank-panel { position: absolute; right: 14px; top: 54px; z-index: 10; width: 260px;
+    #rank-panel { position: absolute; right: 14px; bottom: 64px; z-index: 10; width: 260px;
       max-height: 60vh; overflow: auto; display: none; padding: 12px 14px;
       border-radius: 12px; border: 1px solid rgba(201,162,39,.45);
       background: rgba(18,20,24,.92); color: #EDE7DA; font: 12px/1.5 Arial, sans-serif; }

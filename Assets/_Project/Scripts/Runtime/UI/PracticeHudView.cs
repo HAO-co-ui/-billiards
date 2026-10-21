@@ -451,6 +451,16 @@ namespace Billiards.UI
             {
                 _chargeAreaRoot.gameObject.SetActive(!modal);
             }
+
+            // 精调按钮同一道门（实机：主页面也出现了 +/- 按钮）。
+            for (int i = 0; i < _fineAimButtons.Count; i++)
+            {
+                RectTransform btn = _fineAimButtons[i];
+                if (btn != null && btn.gameObject.activeSelf == modal)
+                {
+                    btn.gameObject.SetActive(!modal);
+                }
+            }
         }
 
         /// <summary>
@@ -840,6 +850,10 @@ namespace Billiards.UI
         /// <summary>左侧蓄力区根节点（**显隐由 <see cref="UpdateChargeAreaVisibility"/> 单点控制**）。</summary>
         private RectTransform _chargeAreaRoot;
 
+        /// <summary>精调按钮（+/-）。**和蓄力区同一道显隐门**：首页/结算/设置里不该出现。</summary>
+        private readonly System.Collections.Generic.List<RectTransform> _fineAimButtons =
+            new System.Collections.Generic.List<RectTransform>();
+
         /// <summary>
         /// **瞄准精调**（仅触摸设备）：右侧一对 `−` / `+` 小按钮，单击把瞄准角微调
         /// <see cref="FineAimStepDegrees"/> 度。触摸拖拽很难压到 0.1° 级，所以给一对点按按钮兜底。
@@ -852,20 +866,25 @@ namespace Billiards.UI
                 return;
             }
 
-            float w = 0.052f;
-            float h = 0.075f;
+            // **放大到 1.6 倍并下移**：原尺寸 0.052×0.075 既小、又正好压在右上那一排图标按钮上
+            // （图标的锚点是「右边缘 + 垂直居中」，y≈0.5 一带）⇒ 变成"按键重叠"（实机截图圈出）。
+            // 现在固定在下半屏右缘（y 0.14..0.42），与图标行完全错开。
+            float w = 0.085f;
+            float h = 0.115f;
+            _fineAimButtons.Clear();
             for (int i = 0; i < 2; i++)
             {
                 bool plus = i == 0;
                 string name = plus ? "FineAimPlus" : "FineAimMinus";
                 RectTransform btn = AddFramed(_canvas.transform, name,
-                    new Vector2(0.936f, plus ? 0.56f : 0.40f),
-                    new Vector2(0.936f + w, plus ? 0.56f + h : 0.40f + h),
+                    new Vector2(0.902f, plus ? 0.28f : 0.12f),
+                    new Vector2(0.902f + w, plus ? 0.28f + h : 0.12f + h),
                     ClubUiTokens.LineMid, ClubUiTokens.PanelIconButton, ClubUiTokens.RadiusSegment);
                 var img = btn.GetComponent<Image>();
                 img.raycastTarget = true;
+                _fineAimButtons.Add(btn);
 
-                CreateText(btn, "Label", titleFont, 26f, ClubUiTokens.Text,
+                CreateText(btn, "Label", titleFont, 40f, ClubUiTokens.Text,
                     TextAlignmentOptions.Center, Vector2.zero, Vector2.one).text = plus ? "+" : "-";
 
                 var button = btn.gameObject.AddComponent<Button>();
